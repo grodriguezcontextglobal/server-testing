@@ -1,113 +1,126 @@
-const express = require("express");
-const bcrypt = require("bcryptjs");
-// const { validationResult } = require("express-validator");
-const User = require("../models/User");
-const { generateJWT } = require("../helpers/jwt");
+const { response } = require("express");
+const Event = require("../models/Event");
 
-const newUser = async (request, response = express.response) => {
-  const { email, password } = request.body;
+const getEvents = async (request, response = response) => {
+  const events = await Event.find().populate("user", "name"); //to bring more info of the event
 
-  try {
-    let user = await User.findOne({ email });
-
-    console.log(user);
-
-    if (user) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Email is registered already",
-      });
-    }
-
-    user = new User(request.body);
-
-    ///encriptar password
-    const salt = bcrypt.genSaltSync();
-    user.password = bcrypt.hashSync(password, salt);
-
-    await user.save();
-
-    //generate JWT
-    const token =  await generateJWT(user.id, user.name);
-
-    return response.status(201).json({
-      ok: true,
-      message: "register",
-      uid: user.id,
-      name: user.name,
-      token,
-    });
-  } catch (error) {
-    console.log(error);
-    response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrater",
-    });
-  }
-};
-
-const login = async (request, response = express.response) => {
-  const { email, password } = request.body;
-  console.log(request.body )
-
-  try {
-    let user = await User.findOne({ email });
-
-    console.log(user);
-
-    if (!user) {
-      return response.status(400).json({
-        ok: false,
-        msg: "User is not found",
-      });
-    }
-
-    //confirmar password
-    const validPassword = bcrypt.compareSync(password, user.password);
-
-    if (!validPassword) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Pasword incorrect",
-      });
-    }
-
-    //generate jwt (json web token)
-    const token = await generateJWT(user.id, user.name);
-
-    return response.status(200).json({
-      ok: true,
-      uid: user.id,
-      name: user.name,
-      token,
-    });
-  } catch (error) {
-    console.log(error);
-    response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrater",
-    });
-  }
-};
-
-const renewToken = async (request, response = express.response) => {
-
-  const { uid, name } = request
-
-
-  //genrate a new jwt and return it in this request
-  const token = await generateJWT(uid, name);
-
-  response.json({
+  return response.json({
     ok: true,
-    name,
-    uid,
-    token
+    events,
   });
 };
 
+const createEvent = async (request, response = response) => {
+  const event = new Event(request.body);
+  console.log(request.body);
+
+  try {
+    event.user = request.uid;
+    console.log("Event.user", event.user);
+
+    const eventSaved = await event.save();
+
+    return response.json({
+      ok: true,
+      msg: "Create event",
+      event: eventSaved,
+    });
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: "Please contact administrater",
+    });
+  }
+};
+
+const editEvent = async (request, response = response) => {
+  const eventId = request.params.id;
+  const uid = request.uid;
+
+  console.log(eventId);
+  console.log(uid);
+
+  try {
+    const event = await Event.findById(eventId);
+    console.log(event);
+
+    if (!event) {
+      return response.status(404).json({
+        ok: false,
+        msg: "Event/id do not match",
+      });
+    }
+
+    if (event.user.toString() !== uid) {
+      return response.status(401).json({
+        ok: false,
+        msg: "No auhorize to edit event",
+      });
+    }
+
+    const newEvent = {
+      ...request.body,
+      user: uid,
+    };
+
+    const eventUpdated = await Event.findByIdAndUpdate(eventId, newEvent, {
+      new: true,
+    }); //3 parameters event id, new event and how it will be returned as new event
+
+    return response.json({
+      ok: true,
+      event: eventUpdated,
+    });
+  } catch (error) {
+    console.log(error);
+    return response.status(500).json({
+      ok: false,
+      msg: "Contact Administrator",
+    });
+  }
+};
+
+const deleteEvent = async (request, response = response) => {
+  const eventId = request.params.id;
+  const uid = request.uid;
+
+  console.log(eventId);
+  console.log(uid);
+
+  try {
+    const event = await Event.findById(eventId);
+    console.log(event);
+
+    if (!event) {
+      return response.status(404).json({
+        ok: false,
+        msg: "Event/id do not match",
+      });
+    }
+
+    if (event.user.toString() !== uid) {
+      return response.status(401).json({
+        ok: false,
+        msg: "No auhorize to edit event",
+      });
+    }
+
+    const eventDeleted = await Event.findByIdAndDelete(eventId);
+
+    return response.json({
+      ok: true,
+      eventDeleted,
+    });
+  } catch (error) {
+    console.log(error);
+    msg: "Please contact administrator";
+  }
+};
+
 module.exports = {
-  newUser,
-  login,
-  renewToken,
+  getEvents,
+  createEvent,
+  editEvent,
+  deleteEvent,
 };

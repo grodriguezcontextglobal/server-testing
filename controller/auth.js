@@ -44,11 +44,11 @@ const newUser = async (request, response = response) => {
 const editUser = async (request, response = response) => {
     const userId = request.params.id;
   
-    console.log({userId});
-  
     try {
       const user = await User.findById(userId);
-      console.log({user});
+
+      const { email, phoneNumber } = user
+
   
       if (!user) {
         return response.status(404).json({
@@ -56,18 +56,24 @@ const editUser = async (request, response = response) => {
           msg: "User/id do not match",
         });
       }
-  
-      // if (event.user.toString() !== uid) {
-      //   return response.status(401).json({
-      //     ok: false,
-      //     msg: "No auhorize to edit event",
-      //   });
-      // }
-  
+
       const userEdited = {
         ...request.body,
       };
-  
+      if( userEdited.email === request.body.email){
+        return response.status(404).json({
+          ok: false,
+          msg: "Email is already registered",
+        });
+      }
+
+      if( userEdited.phoneNumber === request.body.phoneNumber){
+        return response.status(404).json({
+          ok: false,
+          msg: "Phone number is already registered",
+        });
+      }
+
       const userUpdated = await User.findByIdAndUpdate(userId, userEdited, {
         new: true,
         
