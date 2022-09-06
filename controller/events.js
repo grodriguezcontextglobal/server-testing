@@ -19,6 +19,7 @@ const createEvent = async (request, response = response) => {
     console.log("Event.user", event.user);
 
     const eventSaved = await event.save();
+    console.log({eventSaved})
 
     return response.json({
       ok: true,

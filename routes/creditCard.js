@@ -7,7 +7,7 @@
  const router = Router();
  const { check } = require("express-validator");
  
- const { newCreditCard } = require("../controller/creditCard"); //import functions related to credit card info
+ const { newCreditCard, editCreditCard } = require("../controller/creditCard"); //import functions related to credit card info
  const validateFields = require("../middlewares/validate-field");
  const { validateJWT } = require("../middlewares/validate-jwt");
  
@@ -32,7 +32,7 @@
  );
  
  //editar evento
-//  router.put('/:id', editUser)
+ router.put('/:id', editCreditCard)
  
  
 //  router.get("/renew", validateJWT, renewToken);

@@ -7,7 +7,7 @@ const { Router } = require("express");
 const router = Router();
 const { check } = require("express-validator");
 
-const { newUser, login, editUser, renewToken } = require("../controller/auth");
+const { newUser, getUser, editUser, renewToken } = require("../controller/auth");
 const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
 
@@ -15,7 +15,7 @@ router.post(
   "/new",
   [
     //middelwares para validar
-    check("groupName", "Group name is mandatory").not().isEmpty(),
+    // check("groupName", "Group name is mandatory").not().isEmpty(),
     check("name","Name is mandatory").not().isEmpty(),
     check("lastName", "Last name is mandatory").not().isEmpty(),
     check("email", "Email is mandatory").isEmail(),
@@ -32,7 +32,10 @@ router.post(
 //editar evento
 router.put('/:id', editUser)
 
+//obtener la info del usuario
+router.get('/:id', getUser)
 
+//renovar token
 router.get("/renew", validateJWT, renewToken);
 
 module.exports = router;

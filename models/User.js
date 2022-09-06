@@ -5,7 +5,6 @@ const UserSchema = Schema({
 
     groupName:{
         type: String,
-        required: false,
         unique: false
     },
     name:{
