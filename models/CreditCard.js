@@ -24,7 +24,7 @@ const CreditCardSchema = new Schema({
         required: true
     },
     zip: {
-        type: Number,
+        type: {},
         required: true
     },
     country: {

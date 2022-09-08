@@ -19,7 +19,7 @@ const getUser = async (request, response = response) => {
       user,
     });
 
-    console.log('user created', response.body.user )
+    // console.log('user created', response.body.user )
 
   } catch (error) {
     console.log(error);
@@ -54,6 +54,8 @@ const newUser = async (request, response = response) => {
     user = new User(request.body);
 
     await user.save();
+
+    // console.log('user created', user)
 
     response.status(201).json({
       ok: true,

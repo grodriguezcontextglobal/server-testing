@@ -20,7 +20,7 @@
      check("mm", "Experation month is mandatory").not().isEmpty().isNumeric(),
      check("yy", "Experation year is mandatory").not().isEmpty().isNumeric(),
      check("cvv", "Cvv is mandatory").not().isEmpty().isNumeric(),
-     check("zip", "Zip code must be provided").notEmpty().isNumeric(),
+     check("zip", "Zip code must be provided").notEmpty(),
      check("country", "Country must be provided").not().isEmpty(),
      // check(
      //   "password",
@@ -32,7 +32,16 @@
  );
  
  //editar evento
- router.put('/:id', editCreditCard)
+ router.put('/:id',[
+  //middelwares para validar
+  check("cardName", "Card name is mandatory").not().isEmpty(),
+  check("cardNumber","Card number is mandatory").not().isEmpty().isNumeric(),
+  check("mm", "Experation month is mandatory").not().isEmpty().isNumeric(),
+  check("yy", "Experation year is mandatory").not().isEmpty().isNumeric(),
+  check("cvv", "Cvv is mandatory").not().isEmpty().isNumeric(),
+  check("zip", "Zip code must be provided").notEmpty(),
+  check("country", "Country must be provided").not().isEmpty(),
+ ], editCreditCard)
  
  
 //  router.get("/renew", validateJWT, renewToken);

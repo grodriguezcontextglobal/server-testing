@@ -4,19 +4,19 @@ const CreditCard = require("../models/CreditCard");
 const newCreditCard = async (request, response = response) => {
 
   let creditCard = new CreditCard(request.body);
-
-  console.log("request body ", request);
-
-
+  
   try {
 
-    creditCard.user = request.body.user
-    const creaidtCardSaved = await creditCard.save();
+    creditCard.user = request.user//bring id from user
+
+    /*console.log('credit card user', request._id)*/
+
+    const creditCardSaved = await creditCard.save();
 
     response.status(201).json({
       ok: true,
       msg: "new credit card",
-      creditCard: creaidtCardSaved,
+      creditCard: creditCardSaved,
     });
   } catch (error) {
     console.log(error);
@@ -30,7 +30,7 @@ const newCreditCard = async (request, response = response) => {
 
 const editCreditCard = async (request, response = response) => {
   const creditCardId = request.params.id;
-
+// console.log({creditCardId})
   try {
     const creditCard = await CreditCard.findById(creditCardId);
 
@@ -53,6 +53,7 @@ const editCreditCard = async (request, response = response) => {
       }
     ); //3 parameters user id, new user and how it will be returned as new event
 
+    // console.log({creditCardUpdated})
     return response.json({
       ok: true,
       creditCard: creditCardUpdated,
