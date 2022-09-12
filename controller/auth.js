@@ -20,7 +20,6 @@ const getUser = async (request, response = response) => {
       user,
     });
 
-    // console.log('user created', response.body.user )
   } catch (error) {
     console.log(error);
     return response.status(500).json({
@@ -30,10 +29,15 @@ const getUser = async (request, response = response) => {
   }
 };
 const checkUser = async (request, response = response) => {
+  
   console.log('request',request.body)
 
+  const { userInfoEmailCheck } = request.body
+
   try {
-    const user = await User.findOne(request.body)
+    const user = await User.findOne({ "email": userInfoEmailCheck })
+
+    console.log('user', user )
 
     if (user) {
       return response.status(201).json({

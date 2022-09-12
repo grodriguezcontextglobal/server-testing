@@ -42,7 +42,7 @@ router.put("/:id", editUser);
 router.get("/:id", getUser);
 
 //check user existencia
-router.get("/", check("email", "Email is mandatory").isEmail(), checkUser);
+router.post("/",check("email", "Email is mandatory").isEmail(), checkUser); 
 
 //renovar token
 router.get("/renew", validateJWT, renewToken);
