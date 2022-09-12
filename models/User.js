@@ -29,7 +29,7 @@ const UserSchema = Schema({
     }
 })
 
-//to eliminate return an id instead of _id
+//to return an id instead of _id
 
 UserSchema.method('toJSON', function() {
     const { _id, __v, ...object } = this.toObject()

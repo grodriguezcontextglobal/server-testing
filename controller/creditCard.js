@@ -5,9 +5,11 @@ const newCreditCard = async (request, response = response) => {
 
   let creditCard = new CreditCard(request.body);
   
+  console.log( 'request', request)
   try {
 
-    creditCard.user = request.user//bring id from user
+    // creditCard.user = request.uid//bring id from user
+    // console.log('user', request.uid )
 
     /*console.log('credit card user', request._id)*/
 

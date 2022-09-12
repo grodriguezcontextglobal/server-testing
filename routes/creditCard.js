@@ -10,6 +10,9 @@
  const { newCreditCard, editCreditCard } = require("../controller/creditCard"); //import functions related to credit card info
  const validateFields = require("../middlewares/validate-field");
  const { validateJWT } = require("../middlewares/validate-jwt");
+
+ //validation
+//  router.use( validateJWT )
  
  router.post(
    "/new_credit_card",
