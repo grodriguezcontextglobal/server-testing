@@ -104,7 +104,7 @@ const newUser = async (request, response = response) => {
     });
 
   } catch (error) {
-    console.log(error);
+    console.log(error);gi
     response.status(500).json({
       ok: false,
       msg: "Please contact adminitrator",
@@ -114,9 +114,12 @@ const newUser = async (request, response = response) => {
 
 const editUser = async (request, response = response) => {
   const userId = request.params.id;
+  console.log('userId',{ userId })
 
   try {
     const user = await User.findById(userId);
+
+    console.log("user", user)
 
     if (!user) {
       return response.status(404).json({
@@ -124,6 +127,8 @@ const editUser = async (request, response = response) => {
         msg: "User/id do not match",
       });
     }
+
+    console.log('request', request.body)
 
     const userEdited = {
       ...request.body,
