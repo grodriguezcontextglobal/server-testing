@@ -19,7 +19,6 @@ const getUser = async (request, response = response) => {
       ok: true,
       user,
     });
-
   } catch (error) {
     console.log(error);
     return response.status(500).json({
@@ -29,29 +28,42 @@ const getUser = async (request, response = response) => {
   }
 };
 const checkUser = async (request, response = response) => {
-  
-  console.log('request',request.body)
-
-  const { userInfoEmailCheck } = request.body
+  const { userInfoEmailCheck } = request.body;
 
   try {
-    const user = await User.findOne({ "email": userInfoEmailCheck })
+    const user = await User.findOne({ email: userInfoEmailCheck });
 
-    console.log('user', user )
+    if (user !== null) {
+      //generate JWT
+      const token = await generateJWT(user.id, user.name);
 
-    if (user) {
       return response.status(201).json({
         ok: true,
         user,
-        msg: "existing user"
+        token,
+        msg: "existing user",
       });
-    } else {
+    }
+    else {
       return response.status(201).json({
         ok: false,
-        msg: "user does not exist"
+        msg: "user does not exist",
       });
     }
 
+    // if (token) {
+    //   return response.status(201).json({
+    //     ok: true,
+    //     user,
+    //     token,
+    //     msg: "existing user",
+    //   });
+    // } else {
+    //   return response.status(201).json({
+    //     ok: false,
+    //     msg: "user does not exist",
+    //   });
+    // }
   } catch (error) {
     console.log(error);
     return response.status(500).json({
@@ -62,7 +74,7 @@ const checkUser = async (request, response = response) => {
 };
 
 const newUser = async (request, response = response) => {
-  console.log({request})
+  console.log({ request });
 
   const { email, phoneNumber } = request.body;
   try {
@@ -87,10 +99,10 @@ const newUser = async (request, response = response) => {
 
     const userCreated = await user.save();
 
-    console.log({ userCreated })
+    console.log({ userCreated });
 
     //generate JWT
-    const token = await generateJWT( user.id, user.name)
+    const token = await generateJWT(user.id, user.name);
 
     response.status(201).json({
       ok: true,
@@ -100,11 +112,11 @@ const newUser = async (request, response = response) => {
       email: userCreated.email,
       phone: userCreated.phoneNumber,
       uid: userCreated.id,
-      token
+      token,
     });
-
   } catch (error) {
-    console.log(error);gi
+    console.log(error);
+    gi;
     response.status(500).json({
       ok: false,
       msg: "Please contact adminitrator",
@@ -114,12 +126,12 @@ const newUser = async (request, response = response) => {
 
 const editUser = async (request, response = response) => {
   const userId = request.params.id;
-  console.log('userId',{ userId })
+  console.log("userId", { userId });
 
   try {
     const user = await User.findById(userId);
 
-    console.log("user", user)
+    console.log("user", user);
 
     if (!user) {
       return response.status(404).json({
@@ -128,11 +140,14 @@ const editUser = async (request, response = response) => {
       });
     }
 
-    console.log('request', request.body)
+    console.log("request", request.body);
 
     const userEdited = {
       ...request.body,
     };
+
+    //generate JWT
+    const token = await generateJWT(user.id, user.name);
 
     const userUpdated = await User.findByIdAndUpdate(userId, userEdited, {
       new: true,
@@ -141,6 +156,7 @@ const editUser = async (request, response = response) => {
     return response.json({
       ok: true,
       user: userUpdated,
+      token,
     });
   } catch (error) {
     console.log(error);
