@@ -21,7 +21,7 @@ router.post(
   "/new",
   [
     //middelwares para validar
-    // check("groupName", "Group name is mandatory").not().isEmpty(),
+    // check("groupName", "Group name is mandatory"),
     check("name", "Name is mandatory").not().isEmpty(),
     check("lastName", "Last name is mandatory").not().isEmpty(),
     check("email", "Email is mandatory").isEmail(),
