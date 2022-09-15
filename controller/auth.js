@@ -51,19 +51,6 @@ const checkUser = async (request, response = response) => {
       });
     }
 
-    // if (token) {
-    //   return response.status(201).json({
-    //     ok: true,
-    //     user,
-    //     token,
-    //     msg: "existing user",
-    //   });
-    // } else {
-    //   return response.status(201).json({
-    //     ok: false,
-    //     msg: "user does not exist",
-    //   });
-    // }
   } catch (error) {
     console.log(error);
     return response.status(500).json({
@@ -155,7 +142,12 @@ const editUser = async (request, response = response) => {
 
     return response.json({
       ok: true,
-      user: userUpdated,
+      msg: "user updated",
+      name: userUpdated.name,
+      lastName: userUpdated.lastName,
+      email: userUpdated.email,
+      phone: userUpdated.phoneNumber,
+      uid: userUpdated.id,
       token,
     });
   } catch (error) {
