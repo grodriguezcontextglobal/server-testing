@@ -12,7 +12,7 @@
  const { validateJWT } = require("../middlewares/validate-jwt");
 
  //validation
-//  router.use( validateJWT )
+ router.use( validateJWT )
  
  router.post(
    "/new_credit_card",
