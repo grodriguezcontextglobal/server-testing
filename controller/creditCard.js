@@ -8,10 +8,9 @@ const newCreditCard = async (request, response = response) => {
   console.log( 'request', request)
   try {
 
-    // creditCard.user = request.uid//bring id from user
-    // console.log('user', request.uid )
+    creditCard.user = request.uid/
+    console.log('user', request.uid )
 
-    /*console.log('credit card user', request._id)*/
 
     const creditCardSaved = await creditCard.save();
 
