@@ -8,7 +8,7 @@ const newCreditCard = async (request, response = response) => {
   console.log( 'request', request)
   try {
 
-    creditCard.user = request.uid/
+    creditCard.user = request.uid
     console.log('user', request.uid )
 
 
