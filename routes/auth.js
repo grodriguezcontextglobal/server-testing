@@ -12,24 +12,23 @@ const {
   getUser,
   checkUser,
   editUser,
-  renewToken,
+  showAllUsers,
 } = require("../controller/auth");
 const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
 
+//render all users
+router.get("/users", showAllUsers)
+
+//create new user
 router.post(
   "/new",
   [
     //middelwares para validar
-    // check("groupName", "Group name is mandatory"),
     check("name", "Name is mandatory").not().isEmpty(),
     check("lastName", "Last name is mandatory").not().isEmpty(),
     check("email", "Email is mandatory").isEmail(),
     check("phoneNumber", "Phone number is mandatory").not().isEmpty(),
-    // check(
-    //   "password",
-    //   "el password es debe ser superior a 6 caracteres"
-    // ).isLength({ min: 6 }),
     validateFields,
   ],
   newUser
@@ -43,8 +42,5 @@ router.get("/:id", getUser);
 
 //check user existencia
 router.post("/",check("email", "Email is mandatory").isEmail(), checkUser); 
-
-//renovar token
-router.get("/renew", validateJWT, renewToken);
 
 module.exports = router;

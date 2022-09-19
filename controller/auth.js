@@ -2,6 +2,14 @@ const { response } = require("express");
 const User = require("../models/User");
 const { generateJWT } = require("../helpers/jwt");
 
+const showAllUsers = async (request, response) => {
+  const users = await User.find().populate("user", "name")
+
+  return response.status(200).json({
+    ok: true,
+    users
+  })
+}
 const getUser = async (request, response = response) => {
   const userId = request.params.id;
 
@@ -159,17 +167,10 @@ const editUser = async (request, response = response) => {
   }
 };
 
-const renewToken = (request, response = response) => {
-  response.json({
-    ok: true,
-    msg: "renew",
-  });
-};
-
 module.exports = {
+  showAllUsers,
   newUser,
-  renewToken,
   editUser,
   getUser,
-  checkUser,
+  checkUser
 };

@@ -25,6 +25,7 @@ app.use( express.json())
 app.use('/api/auth', ( require('./routes/auth')))
 app.use('/api/creditCard', ( require('./routes/creditCard')))
 app.use('/api/stripe', require('./routes/stripe'))
+app.use('/api/admin', require('./routes/admin'))
 
 //TODO:  CRUD Events 
 

@@ -1,47 +1,38 @@
-const { response } = require("express")
-require('dotenv').config()
+const { response } = require("express");
 const Stripe = require("stripe")
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
 
 // console.log({...stripe._api})
 
-const publicKey = async (request, response = response) => {
-    response.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY})
+const paymentIntent = async (req, res = response ) => {
+  console.log("request", req.body);
+
+  const { amount } = req.body
+
+  try {
+      // Create a PaymentIntent with the order amount and currency
+  const paymentIntent = await stripe.paymentIntents.create({
+    amount: amount,
+    currency: "usd",
+    payment_method_types: ["card"],
+    capture_method: "manual",
+  });
+  res.status(201).send({
+    ok: true,
+    clientSecret: paymentIntent.client_secret,
+    paymentIntent
+  });
+
+  } catch (error) {
+    console.log( error )
+    res.status(500).json({
+      ok: false,
+      msg: 'Contact to Admin'
+    })
+  }
 }
 
-const paymentIntent = async ( request, response) => {
-
-    console.log('stripe',request.body)
-
-    const { device } = request.body
-
-    try {
-        const paymentIntent = await stripe.paymentIntents.create({
-            amount: 1 * 200 * 100,
-            currency: "usd",
-            payment_method_types: ["card"],
-        })
-
-        console.log({paymentIntent})
-        
-        response.status(201).json({
-            ok: true,
-            clientSecret: paymentIntent.client_secret,
-            id: paymentIntent.id,
-            url: paymentIntent.charges.url
-        })
-    
-    } catch (error) {
-        console.log(error)
-        response.status(500).json({
-            ok: false,
-            msg: "Contact Administrator"
-        })
-    }
- }
-
 module.exports = {
-    publicKey,
-    paymentIntent
-  };
+  paymentIntent
+}

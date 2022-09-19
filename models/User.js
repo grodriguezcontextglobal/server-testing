@@ -3,10 +3,6 @@ const { Schema, model } = require("mongoose")
 
 const UserSchema = Schema({
 
-    // groupName:{
-    //     type: String,
-    //     unique: false
-    // },
     name:{
         type: String,
         required: true,

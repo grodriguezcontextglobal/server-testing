@@ -68,7 +68,17 @@ const editCreditCard = async (request, response = response) => {
   }
 };
 
+const getAllCreditCards = async (request, response ) => {
+  const creditCards = await CreditCard.find().populate("user")
+
+  return response.status(201).json({
+    ok: true,
+    creditCards
+  })
+}
+
 module.exports = {
   newCreditCard,
   editCreditCard,
+  getAllCreditCards
 };

@@ -7,7 +7,7 @@
  const router = Router();
  const { check } = require("express-validator");
  
- const { newCreditCard, editCreditCard } = require("../controller/creditCard"); //import functions related to credit card info
+ const { newCreditCard, editCreditCard, getAllCreditCards } = require("../controller/creditCard"); //import functions related to credit card info
  const validateFields = require("../middlewares/validate-field");
  const { validateJWT } = require("../middlewares/validate-jwt");
 
@@ -46,6 +46,7 @@
   check("country", "Country must be provided").not().isEmpty(),
  ], editCreditCard)
  
+ router.get("/", getAllCreditCards)
  
 //  router.get("/renew", validateJWT, renewToken);
  
