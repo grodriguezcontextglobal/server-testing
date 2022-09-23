@@ -5,10 +5,8 @@
 
  const { Router } = require("express");
  const router = Router();
-//  const { check } = require("express-validator"); 
- const { paymentIntent } = require("../controller/stripe"); //import functions related to credit card info
+ const { stripePaymentIntent } = require("../controller/stripe"); 
 
-
- router.post('/create-payment-intent', paymentIntent)
+ router.post('/create-payment-intent', stripePaymentIntent)
 
  module.exports = router;

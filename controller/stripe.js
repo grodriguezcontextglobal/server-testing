@@ -1,38 +1,54 @@
 const { response } = require("express");
-const Stripe = require("stripe")
+const Stripe = require("stripe");
+require("dotenv").config();
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-// console.log({...stripe._api})
+console.log("stripe SK", process.env.STRIPE_SECRET_KEY);
 
-const paymentIntent = async (req, res = response ) => {
-  console.log("request", req.body);
+const stripePaymentIntent = async (req, res) => {
 
   const { amount } = req.body
 
   try {
-      // Create a PaymentIntent with the order amount and currency
-  const paymentIntent = await stripe.paymentIntents.create({
-    amount: amount,
-    currency: "usd",
-    payment_method_types: ["card"],
-    capture_method: "manual",
-  });
-  res.status(201).send({
-    ok: true,
-    clientSecret: paymentIntent.client_secret,
-    paymentIntent
-  });
-
+    // Create a PaymentIntent with the order amount and currency
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amount,
+      currency: "usd",
+      payment_method_types: ["card"],
+      capture_method: "manual",
+    });
+    console.log({ paymentIntent });
+    res.send({
+      clientSecret: paymentIntent.client_secret,
+    });
   } catch (error) {
-    console.log( error )
-    res.status(500).json({
-      ok: false,
-      msg: 'Contact to Admin'
-    })
+    console.log(error);
   }
-}
+};
 
 module.exports = {
-  paymentIntent
-}
+  stripePaymentIntent,
+};
+
+/**
+ * Payment Intent
+ *   const { amount } = req.body;
+  console.log( 'amount',amount )
+  try {
+    // Create a PaymentIntent with the order amount and currency
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amount,
+      currency: "usd",
+      payment_method_types: ["card"],
+      capture_method: "manual",
+    });
+    console.log({ paymentIntent });
+    res.send({
+      clientSecret: paymentIntent.client_secret,
+    });
+  } catch (error) {
+    console.log(error);
+  }
+
+ */

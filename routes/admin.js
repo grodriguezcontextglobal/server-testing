@@ -20,9 +20,9 @@
  router.post(
    "/new_admin_user", 
  [ //middelwares para validar 
-   check('name', 'el nombre es obligatorio').not().isEmpty(),
-   check('email', 'el email es obligatorio').isEmail(),
-   check('password', 'el password es debe ser superior a 6 caracteres').isLength({ min: 6}),
+   check('name', 'Name must be provided').not().isEmpty(),
+   check('email', 'Email must be provided').isEmail(),
+   check('password', 'Password must have 6 charaters or more').isLength({ min: 6}),
    validateFields
  ], 
    createAdminUser);
@@ -30,8 +30,8 @@
    //login user
  router.post("/login", 
  [ //middelwares para validar 
-   check('email', 'el email es obligatorio').isEmail(),
-   check('password', 'el password es debe ser superior a 6 caracteres').isLength({ min: 6}),
+   check('email', 'Email must be provided').isEmail(),
+   check('password', 'Password must have 6 charaters or mor').isLength({ min: 6}),
    validateFields
  ], 
  loginUser);
