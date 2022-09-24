@@ -6,7 +6,7 @@ return new Promise( (resolve, reject)  => {
 
     const payload = { uid, name };
 
-    console.log({uid, name })
+    console.log('token',{uid, name })
 
     jwt.sign( payload, process.env.SECRET_JWT_SEED, {
         expiresIn: '1h'

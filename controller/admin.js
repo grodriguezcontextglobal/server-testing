@@ -4,7 +4,7 @@ const AdminUser = require("../models/AdminUser");
 const { generateJWT } = require("../helpers/jwt");
 
 const createAdminUser = async (request, response = express.response) => {
-  const { email, password } = request.body;
+  const { email, password, role } = request.body;
 
   try {
     let adminUser = await AdminUser.findOne({ email });
@@ -47,9 +47,10 @@ const createAdminUser = async (request, response = express.response) => {
 
 const loginUser = async (request, response = express.response) => {
   const { email, password } = request.body;
-
+  console.log(request.body)
   try {
     let adminUser = await AdminUser.findOne({ email });
+    console.log( adminUser)
 
     if (!adminUser) {
       return response.status(400).json({
