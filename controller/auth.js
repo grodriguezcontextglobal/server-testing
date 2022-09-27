@@ -3,13 +3,13 @@ const User = require("../models/User");
 const { generateJWT } = require("../helpers/jwt");
 
 const showAllUsers = async (request, response) => {
-  const users = await User.find().populate("user", "name")
+  const users = await User.find().populate("user", "name");
 
   return response.status(200).json({
     ok: true,
-    users
-  })
-}
+    users,
+  });
+};
 const getUser = async (request, response = response) => {
   const userId = request.params.id;
 
@@ -51,14 +51,12 @@ const checkUser = async (request, response = response) => {
         token,
         msg: "existing user",
       });
-    }
-    else {
+    } else {
       return response.status(201).json({
         ok: false,
         msg: "user does not exist",
       });
     }
-
   } catch (error) {
     console.log(error);
     return response.status(500).json({
@@ -74,6 +72,7 @@ const newUser = async (request, response = response) => {
   const { email, phoneNumber } = request.body;
   try {
     let user = await User.findOne({ email });
+    //generate JWT
 
     if (user) {
       return response.status(400).json({
@@ -172,5 +171,5 @@ module.exports = {
   newUser,
   editUser,
   getUser,
-  checkUser
+  checkUser,
 };

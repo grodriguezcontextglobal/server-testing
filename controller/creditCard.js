@@ -5,7 +5,6 @@ const newCreditCard = async (request, response = response) => {
 
   let creditCard = new CreditCard(request.body);
   
-  console.log( 'request', request)
   try {
 
     creditCard.user = request.uid

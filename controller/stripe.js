@@ -1,36 +1,54 @@
 const { response } = require("express");
 const Stripe = require("stripe");
+const StripeTransaction = require("../models/StripeTransaction");
 require("dotenv").config();
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-const stripeSetupIntent = async (req, res) => {
-  const setupIntent = await stripe.setupIntent.create({
-    payment_method_types: ["card"],
-  });
-
-  console.log(setupIntent);
-};
 const stripePaymentIntent = async (req, res) => {
-  const { amount } = req.body;
-  console.log(amount);
+  const { device } = req.body;
+  const total = device * 200 * 100;
+  console.log({ total });
 
-  if (amount > 0) {
-    try {
-      // Create a PaymentIntent with the order amount and currency
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount:amount,
-        currency: "usd",
-        payment_method_types: ["card"],
-        capture_method: "manual",
-      });
-      console.log({ paymentIntent });
-      res.send({
-        clientSecret: paymentIntent.client_secret,
-      });
-    } catch (error) {
-      console.log(error);
-    }
+  try {
+    // Create a PaymentIntent with the order amount and currency
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: total,
+      currency: "usd",
+      payment_method_types: ["card"],
+      capture_method: "manual",
+    });
+    console.log({ paymentIntent });
+    res.send({
+      clientSecret: paymentIntent.client_secret,
+      payment_intent_id: paymentIntent.id,
+      amount: paymentIntent.amount,
+      paymentIntent
+    });
+  } catch (error) {
+    console.log(error);
+  }
+};
+
+const stripePaymentIntentUpdate = async (request, response) => {
+  const { paymentIntentId, device } = request.body;
+  console.log(paymentIntentId);
+  const total = device * 20000;
+  console.log("total", total);
+  try {
+    const updatePaymentIntent = await stripe.paymentIntents.update(
+      paymentIntentId,
+      { amount: total }
+    );
+    console.log({ ...updatePaymentIntent.amount });
+    response.json({
+      clientSecret: updatePaymentIntent.client_secret,
+      id: updatePaymentIntent,
+      amount: updatePaymentIntent.amount,
+      updatePaymentIntent
+    });
+  } catch (error) {
+    console.log({ error });
   }
 };
 
@@ -40,8 +58,34 @@ const listAllPaymentIntents = async (request, response) => {
   });
 };
 
+const saveStripeTransaction = async (request, response) => {
+  const stripeTransaction = new StripeTransaction(request.body);
+
+  try {
+    stripeTransaction.user = request.uid;
+    console.log("transaction ", stripeTransaction.user);
+
+    const stripeTransactionSaved = await stripeTransaction.save();
+
+    console.log("transaction saved", stripeTransactionSaved);
+
+    response.status(201).json({
+      ok: true,
+      msg: "Transaction saved",
+      stripeTransaction: stripeTransactionSaved,
+    });
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: "Please contact adminitrator",
+    });
+  }
+};
+
 module.exports = {
   stripePaymentIntent,
   listAllPaymentIntents,
-  stripeSetupIntent,
+  stripePaymentIntentUpdate,
+  saveStripeTransaction,
 };
