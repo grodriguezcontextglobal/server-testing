@@ -23,7 +23,7 @@ const stripePaymentIntent = async (req, res) => {
       clientSecret: paymentIntent.client_secret,
       payment_intent_id: paymentIntent.id,
       amount: paymentIntent.amount,
-      paymentIntent
+      paymentIntent,
     });
   } catch (error) {
     console.log(error);
@@ -45,7 +45,7 @@ const stripePaymentIntentUpdate = async (request, response) => {
       clientSecret: updatePaymentIntent.client_secret,
       id: updatePaymentIntent,
       amount: updatePaymentIntent.amount,
-      updatePaymentIntent
+      updatePaymentIntent,
     });
   } catch (error) {
     console.log({ error });
@@ -53,9 +53,26 @@ const stripePaymentIntentUpdate = async (request, response) => {
 };
 
 const listAllPaymentIntents = async (request, response) => {
-  const allPaymentIntents = await stripe.paymentIntents.list({
-    limit: 100,
-  });
+  try {
+    const paymentIntents = await stripe.paymentIntents.list({
+      limit: 10,
+    });
+
+    console.log( paymentIntents )
+
+    response.status(201).json({
+      ok: true,
+      paymentIntents
+    })
+    {/*const paymentIntent = await StripeTransaction.find().populate("user");
+
+    return response.status(201).json({
+      ok: true,
+      paymentIntent,
+    });*/}
+  } catch (error) {
+    console.log(error);
+  }
 };
 
 const saveStripeTransaction = async (request, response) => {
@@ -82,7 +99,6 @@ const saveStripeTransaction = async (request, response) => {
     });
   }
 };
-
 module.exports = {
   stripePaymentIntent,
   listAllPaymentIntents,

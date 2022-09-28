@@ -18,7 +18,7 @@ const { validateJWT } = require("../middlewares/validate-jwt");
 
 router.post("/create-payment-intent", stripePaymentIntent);
 
-router.get("/payment_intents", listAllPaymentIntents);
+router.get("/payment-intents", listAllPaymentIntents);
 
 router.post("/payment-intents/:id", stripePaymentIntentUpdate);
 
