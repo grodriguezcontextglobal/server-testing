@@ -30,48 +30,24 @@ const stripePaymentIntent = async (req, res) => {
   }
 };
 
-const stripePaymentIntentUpdate = async (request, response) => {
-  const { paymentIntentId, device } = request.body;
-  console.log(paymentIntentId);
-  const total = device * 20000;
-  console.log("total", total);
-  try {
-    const updatePaymentIntent = await stripe.paymentIntents.update(
-      paymentIntentId,
-      { amount: total }
-    );
-    console.log({ ...updatePaymentIntent.amount });
-    response.json({
-      clientSecret: updatePaymentIntent.client_secret,
-      id: updatePaymentIntent,
-      amount: updatePaymentIntent.amount,
-      updatePaymentIntent,
-    });
-  } catch (error) {
-    console.log({ error });
-  }
-};
-
 const listAllPaymentIntents = async (request, response) => {
   try {
     const paymentIntents = await stripe.paymentIntents.list({
       limit: 10,
     });
 
-    console.log( paymentIntents )
-
-    response.status(201).json({
+    if( paymentIntents.status === "require_capture"){
+      response.status(201).json({
       ok: true,
-      paymentIntents
-    })
-    {/*const paymentIntent = await StripeTransaction.find().populate("user");
-
-    return response.status(201).json({
-      ok: true,
-      paymentIntent,
-    });*/}
+      paymentIntents,
+    });
+    }
   } catch (error) {
     console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: error
+    })
   }
 };
 
@@ -99,9 +75,48 @@ const saveStripeTransaction = async (request, response) => {
     });
   }
 };
+
+const captureStripePaymentIntent = async (request, response) => {
+  const { id } = request.body
+  console.log( id )
+  try {
+    const paymentIntent = await stripe.paymentIntents.capture( id );
+    response.status(201).json({
+      ok: true,
+      paymentIntent
+    })
+  } catch (error) {
+    console.log(error);
+    response.status(404).json({
+      ok: false,
+      msg:"Transaction failed"
+    })
+  }
+};
+
+const cancelStripePaymentIntent = async (request, response) => {
+  const { id } = request.body
+
+  console.log( id )
+  try {
+    const paymentIntent = await stripe.paymentIntents.cancel("pi_3Ln7W5A4UM3TTNMj1LcHzwU9");
+    response.status(201).json({
+      ok: true,
+      paymentIntent,
+      status: paymentIntent.status 
+    })
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: "Contact Administrator"
+    })
+  }
+};
 module.exports = {
   stripePaymentIntent,
   listAllPaymentIntents,
-  stripePaymentIntentUpdate,
   saveStripeTransaction,
+  captureStripePaymentIntent,
+  cancelStripePaymentIntent,
 };
