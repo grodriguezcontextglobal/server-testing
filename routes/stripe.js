@@ -8,20 +8,25 @@ const router = Router();
 const {
   stripePaymentIntent,
   listAllPaymentIntents,
-  stripePaymentIntentUpdate,
   saveStripeTransaction,
+  captureStripePaymentIntent,
+  cancelStripePaymentIntent
 } = require("../controller/stripe");
 const { validateJWT } = require("../middlewares/validate-jwt");
 
-//validation
-// router.use(validateJWT);
-
+//create payment intent
 router.post("/create-payment-intent", stripePaymentIntent);
 
+//list all payment intent created
 router.get("/payment-intents", listAllPaymentIntents);
 
-router.post("/payment-intents/:id", stripePaymentIntentUpdate);
-
+//save object {device, paymentIntentId, clientSecret} in database
 router.post("/stripe-transaction",validateJWT,  saveStripeTransaction);
+
+//capture payment intent amount
+router.post("/payment-intents/:id/capture", captureStripePaymentIntent)
+
+//cancel payment intent amount
+router.post("/payment-intents/:id/cancel", cancelStripePaymentIntent)
 
 module.exports = router;
