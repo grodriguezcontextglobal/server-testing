@@ -5,6 +5,32 @@ require("dotenv").config();
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+const stripeCustomer = async (request, response) => {
+  console.log(request.body);
+  try {
+    const customer = await stripe.customers.create({
+      name: request.body.name,
+      email: request.body.email,
+      phone: request.body.phone,
+    });
+
+    console.log(customer);
+    response.status(201).json({
+      ok: true,
+      fullName: customer.name,
+      email: customer.email,
+      phone: customer.phone,
+      customer,
+    });
+  } catch (error) {
+    console.log(error);
+    response.status(400).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
 const stripePaymentIntent = async (req, res) => {
   const { device } = req.body;
   const total = device * 200 * 100;
@@ -30,24 +56,40 @@ const stripePaymentIntent = async (req, res) => {
   }
 };
 
+const stripePaymentIntentConfirm = async (request, response) => {
+  console.log(request.body);
+  try {
+    const paymentIntent = await stripe.paymentIntents.confirm({
+      elements,
+    });
+    console.log({ paymentIntent });
+    response.send({
+      true: ok,
+      paymentIntent,
+      confirmParams: {
+        // Make sure to change this to your payment completion page
+        return_url: "http://localhost:3000/confirmation",
+      },
+    });
+  } catch (error) {
+    console.log(error);
+  }
+};
 const listAllPaymentIntents = async (request, response) => {
   try {
     const paymentIntents = await stripe.paymentIntents.list({
       limit: 10,
     });
-
-    if( paymentIntents.status === "require_capture"){
-      response.status(201).json({
+    response.status(201).json({
       ok: true,
       paymentIntents,
     });
-    }
   } catch (error) {
     console.log(error);
     response.status(500).json({
       ok: false,
-      msg: error
-    })
+      msg: error,
+    });
   }
 };
 
@@ -77,43 +119,46 @@ const saveStripeTransaction = async (request, response) => {
 };
 
 const captureStripePaymentIntent = async (request, response) => {
-  const { id } = request.body
-  console.log( id )
+  const { id } = request.body;
+  console.log(id);
   try {
-    const paymentIntent = await stripe.paymentIntents.capture( id );
+    const paymentIntent = await stripe.paymentIntents.capture(id);
     response.status(201).json({
       ok: true,
-      paymentIntent
-    })
+      paymentIntent,
+    });
   } catch (error) {
     console.log(error);
     response.status(404).json({
       ok: false,
-      msg:"Transaction failed"
-    })
+      msg: "Transaction failed",
+    });
   }
 };
 
 const cancelStripePaymentIntent = async (request, response) => {
-  const { id } = request.body
+  const { id } = request.body;
 
-  console.log( id )
+  console.log(id);
   try {
-    const paymentIntent = await stripe.paymentIntents.cancel("pi_3Ln7W5A4UM3TTNMj1LcHzwU9");
+    const paymentIntent = await stripe.paymentIntents.cancel(
+      "pi_3Ln7W5A4UM3TTNMj1LcHzwU9"
+    );
     response.status(201).json({
       ok: true,
       paymentIntent,
-      status: paymentIntent.status 
-    })
+      status: paymentIntent.status,
+    });
   } catch (error) {
     console.log(error);
     response.status(500).json({
       ok: false,
-      msg: "Contact Administrator"
-    })
+      msg: "Contact Administrator",
+    });
   }
 };
 module.exports = {
+  stripeCustomer,
   stripePaymentIntent,
   listAllPaymentIntents,
   saveStripeTransaction,
