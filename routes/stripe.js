@@ -10,9 +10,13 @@ const {
   listAllPaymentIntents,
   saveStripeTransaction,
   captureStripePaymentIntent,
-  cancelStripePaymentIntent
+  cancelStripePaymentIntent,
+  stripeCustomer
 } = require("../controller/stripe");
 const { validateJWT } = require("../middlewares/validate-jwt");
+
+//create customer
+router.post("/customer", stripeCustomer)
 
 //create payment intent
 router.post("/create-payment-intent", stripePaymentIntent);
