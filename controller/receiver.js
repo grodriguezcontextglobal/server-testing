@@ -13,7 +13,7 @@ const addReceiverToTransaction = async (request, response) => {
       device: receiversAssignedPerUser.device,
       paymentIntent: receiversAssignedPerUser.paymentIntent,
       receiversAssignedPerUser,
-      date: new Date()
+      date: new Date(),
     });
   } catch (error) {
     console.log(error);
@@ -25,34 +25,30 @@ const addReceiverToTransaction = async (request, response) => {
 };
 
 const checkingReceiversAssigned = async (request, response) => {
-    const { paymentIntent } = request.body
-  
-    console.log( request.body)
-    try {
-      const receiver = await Receivers.findOne({ paymentIntent: paymentIntent })
-  
-      if( receiver !== null){
-          return response.status( 201 ).json({
-              ok: true,
-              receiver,
-              msg: "Receivers assigned to PaymentIntent already"
-          })
-      }else {
-          return response.status(201).json({
-            ok: false,
-            msg: "PaymentIntent does not have receivers assigned yet",
-          });
-        }
-    } catch (error) {
-      console.log(error);
-      response.status(501).json({
+
+  const { paymentIntent } = request.body
+
+  try {
+    const receiver = await Receivers.find({paymentIntent: paymentIntent});
+
+    if (receiver !== null) {
+      return response.status(201).json({
+        receiver,
+      });
+    } else {
+      return response.status(201).json({
         ok: false,
-        msg: error,
+        msg: "PaymentIntent does not have receivers assigned yet",
       });
     }
-  };
-  
-
+  } catch (error) {
+    console.log(error);
+    response.status(501).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
 
 module.exports = {
   addReceiverToTransaction,
