@@ -3,13 +3,24 @@ const User = require("../models/User");
 const { generateJWT } = require("../helpers/jwt");
 
 const showAllUsers = async (request, response) => {
-  const users = await User.find().populate("user", "name");
+  try {
 
-  return response.status(200).json({
+    const users = await User.find()
+
+      return response.status(200).json({
     ok: true,
     users,
   });
+
+  } catch (error) {
+    console.log(error)
+    response.status(500).json({
+      ok: false,
+      msg: error
+    })
+  }
 };
+
 const getUser = async (request, response = response) => {
   const userId = request.params.id;
 
