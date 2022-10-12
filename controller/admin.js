@@ -1,6 +1,7 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const AdminUser = require("../models/AdminUser");
+const Article = require("../models/Article");
 const { generateJWT } = require("../helpers/jwt");
 const StripeTransaction = require("../models/StripeTransaction");
 
@@ -28,7 +29,7 @@ const createAdminUser = async (request, response = express.response) => {
     await adminUser.save();
 
     //generate JWT
-    const token =  await generateJWT(adminUser.id, adminUser.name);
+    const token = await generateJWT(adminUser.id, adminUser.name);
 
     return response.status(201).json({
       ok: true,
@@ -49,10 +50,10 @@ const createAdminUser = async (request, response = express.response) => {
 
 const loginUser = async (request, response = express.response) => {
   const { email, password } = request.body;
-  console.log(request.body)
+  console.log(request.body);
   try {
     let adminUser = await AdminUser.findOne({ email });
-    console.log( adminUser)
+    console.log(adminUser);
 
     if (!adminUser) {
       return response.status(400).json({
@@ -78,7 +79,7 @@ const loginUser = async (request, response = express.response) => {
       ok: true,
       uid: adminUser.id,
       name: adminUser.name,
-      email:adminUser.email,
+      email: adminUser.email,
       token,
     });
   } catch (error) {
@@ -92,7 +93,7 @@ const loginUser = async (request, response = express.response) => {
 
 const editAdminUser = async (request, response = response) => {
   const adminUserId = request.params.id;
-  console.log("adminUserId",  adminUserId );
+  console.log("adminUserId", adminUserId);
 
   try {
     const adminUser = await AdminUser.findById(adminUserId);
@@ -109,26 +110,30 @@ const editAdminUser = async (request, response = response) => {
     console.log("request", request.body);
 
     const adminUserEdited = {
-      ...request.body
-    }
+      ...request.body,
+    };
 
-    console.log('admin user edited', adminUserEdited )
+    console.log("admin user edited", adminUserEdited);
 
     //generate JWT
     const token = await generateJWT(adminUserId, adminUser.name);
 
-    console.log('token', token)
+    console.log("token", token);
 
-    const adminUserUpdated = await AdminUser.findByIdAndUpdate(adminUserId, adminUserEdited, {
-      new: true,
-    }); //3 parameters user id, new user and how it will be returned as new event
+    const adminUserUpdated = await AdminUser.findByIdAndUpdate(
+      adminUserId,
+      adminUserEdited,
+      {
+        new: true,
+      }
+    ); //3 parameters user id, new user and how it will be returned as new event
 
     return response.json({
       msg: "admin user updated",
       ok: true,
       uid: adminUserUpdated.id,
       name: adminUserUpdated.name,
-      email:adminUserUpdated.email,
+      email: adminUserUpdated.email,
       token,
     });
   } catch (error) {
@@ -140,11 +145,8 @@ const editAdminUser = async (request, response = response) => {
   }
 };
 
-
 const renewToken = async (request, response = express.response) => {
-
-  const { uid, name } = request
-
+  const { uid, name } = request;
 
   //genrate a new jwt and return it in this request
   const token = await generateJWT(uid, name);
@@ -153,30 +155,73 @@ const renewToken = async (request, response = express.response) => {
     ok: true,
     name,
     uid,
-    token
+    token,
   });
 };
 
 const showAllUsers = async (request, response) => {
-  
-  const stripeTransactions = await StripeTransaction.find().populate("user")
+  const stripeTransactions = await StripeTransaction.find().populate("user");
 
   try {
     response.status(201).json({
       ok: true,
-      stripeTransactions
-    })
+      stripeTransactions,
+    });
   } catch (error) {
     response.status(500).json({
       ok: false,
-      msg: error
-    })
+      msg: error,
+    });
   }
-}
+};
+const articleSetup = async (request, response) => {
+  const { img, title, body } = request.body;
+  const newArticle = new Article({
+    img,
+    title,
+    body,
+  });
+
+  try {
+    newArticle.adminUser = request.uid;
+    console.log(request.uid);
+    await newArticle.save();
+
+    return response.status(201).json({
+      ok: true,
+      message: "article created",
+      newArticle,
+    });
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
+const displayArticles = async (request, response) => {
+  try {
+    const articles = await Article.find();
+    response.status(201).json({
+      ok: true,
+     articles,
+    });
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: error.response.data,
+    });
+  }
+};
 module.exports = {
   renewToken,
   loginUser,
   createAdminUser,
   editAdminUser,
   showAllUsers,
+  articleSetup,
+  displayArticles,
 };
