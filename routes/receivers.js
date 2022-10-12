@@ -15,7 +15,7 @@ const { addReceiverToTransaction, checkingReceiversAssigned } = require("../cont
  router.post("/receiver-assignation", addReceiverToTransaction )
 
  //check paymentIntent was used for receivers
- router.get("/receiver-assigned", checkingReceiversAssigned )
+ router.post("/receiver-assigned", checkingReceiversAssigned )
  
  
  module.exports = router;
