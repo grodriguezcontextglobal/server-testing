@@ -18,6 +18,10 @@ const ReceiversSchema = new Schema({
     ref: "AdminUser",
     required: true,
   },
+  active: {
+    type: Boolean,
+    default: true
+  }
 });
 
 ReceiversSchema.method("toJSON", function () {
