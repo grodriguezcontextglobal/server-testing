@@ -119,10 +119,9 @@ const saveStripeTransaction = async (request, response) => {
 };
 
 const captureStripePaymentIntent = async (request, response) => {
-  const { id } = request.body;
-  console.log(id);
+  const { id, amount } = request.body;
   try {
-    const paymentIntent = await stripe.paymentIntents.capture(id);
+    const paymentIntent = await stripe.paymentIntents.capture(id, {amount_capturable: amount});
     response.status(201).json({
       ok: true,
       paymentIntent,
@@ -138,12 +137,8 @@ const captureStripePaymentIntent = async (request, response) => {
 
 const cancelStripePaymentIntent = async (request, response) => {
   const { id } = request.body;
-
-  console.log(id);
   try {
-    const paymentIntent = await stripe.paymentIntents.cancel(
-      "pi_3Ln7W5A4UM3TTNMj1LcHzwU9"
-    );
+    const paymentIntent = await stripe.paymentIntents.cancel(id);
     response.status(201).json({
       ok: true,
       paymentIntent,
