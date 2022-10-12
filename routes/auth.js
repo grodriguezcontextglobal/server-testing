@@ -15,7 +15,7 @@ const {
   showAllUsers,
 } = require("../controller/auth");
 const validateFields = require("../middlewares/validate-field");
-const { validateJWT } = require("../middlewares/validate-jwt");
+// const { validateJWT } = require("../middlewares/validate-jwt");
 
 //render all users
 router.get("/users", showAllUsers)
