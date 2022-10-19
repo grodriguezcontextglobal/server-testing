@@ -17,10 +17,10 @@ const AdminUserSchema = Schema({
         required: true,
         unique: true
     },
-    role: [{
+    role: {
         type: String,
         default:"Editor"
-    }],
+    },
     active: {
         type: Boolean,
         default: true
