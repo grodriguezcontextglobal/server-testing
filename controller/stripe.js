@@ -55,26 +55,6 @@ const stripePaymentIntent = async (req, res) => {
     console.log(error);
   }
 };
-
-const stripePaymentIntentConfirm = async (request, response) => {
-  console.log(request.body);
-  try {
-    const paymentIntent = await stripe.paymentIntents.confirm({
-      elements,
-    });
-    console.log({ paymentIntent });
-    response.send({
-      true: ok,
-      paymentIntent,
-      confirmParams: {
-        // Make sure to change this to your payment completion page
-        return_url: "http://localhost:3000/confirmation",
-      },
-    });
-  } catch (error) {
-    console.log(error);
-  }
-};
 const listAllPaymentIntents = async (request, response) => {
   try {
     const paymentIntents = await stripe.paymentIntents.list({
@@ -119,9 +99,12 @@ const saveStripeTransaction = async (request, response) => {
 };
 
 const captureStripePaymentIntent = async (request, response) => {
-  const { id, amount } = request.body;
+  const { id, amount_to_capture } = request.body;
+  const total = amount_to_capture * 200 * 100;
   try {
-    const paymentIntent = await stripe.paymentIntents.capture(id, {amount_capturable: amount});
+    const paymentIntent = await stripe.paymentIntents.capture(id, {
+      amount_to_capture: total,
+    });
     response.status(201).json({
       ok: true,
       paymentIntent,
