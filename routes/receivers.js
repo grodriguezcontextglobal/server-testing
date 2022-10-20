@@ -7,7 +7,7 @@
  const router = Router();
  const { check } = require("express-validator");
 
-const { addReceiverToTransaction, checkingReceiversAssigned } = require("../controller/receiver");
+const { addReceiverToTransaction, checkingReceiversAssigned, udpateReceiverStatus } = require("../controller/receiver");
  const validateFields = require("../middlewares/validate-field");
  const { validateJWT } = require("../middlewares/validate-jwt");
  
@@ -16,6 +16,9 @@ const { addReceiverToTransaction, checkingReceiversAssigned } = require("../cont
 
  //check paymentIntent was used for receivers
  router.post("/receiver-assigned", checkingReceiversAssigned )
+
+ //update receiver assigned data
+ router.put("/receiver-update/:id", udpateReceiverStatus)
  
  
  module.exports = router;
