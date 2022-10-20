@@ -95,11 +95,8 @@ const loginUser = async (request, response = express.response) => {
 
 const editAdminUser = async (request, response = response) => {
   const adminUserId = request.params.id;
-  console.log("request", request.body);
-  console.log("adminUserId", adminUserId);
   try {
     const adminUser = await AdminUser.findById(adminUserId);
-    console.log("adminUser", adminUser);
     if (!adminUser) {
       return response.status(404).json({
         ok: false,
@@ -111,15 +108,13 @@ const editAdminUser = async (request, response = response) => {
     };
     //generate JWT
     const token = await generateJWT(adminUserId, adminUser.name);
-    console.log("token", token);
     const adminUserUpdated = await AdminUser.findByIdAndUpdate(
       adminUserId,
       adminUserEdited,
       {
         new: true,
       }
-    ); //3 parameters user id, new user and how it will be returned as new event
-    console.log("adminUserUpdated", adminUserUpdated);
+    );
     return response.json({
       msg: "admin user updated",
       ok: true,
@@ -137,6 +132,29 @@ const editAdminUser = async (request, response = response) => {
     });
   }
 };
+
+const deleteAdminUser = async (request, response) => {
+  console.log("request", request.body)
+
+  const adminUserId = request.body.adminUserId
+  try {
+    const adminUser = await AdminUser.findByIdAndDelete(adminUserId);
+    if (!adminUser) {
+      return response.status(404).json({
+        ok: false,
+        msg: "Admin user/id do not match",
+      });
+    }
+    response.status(201).json({
+      ok:true,
+      adminUser,
+      msg: 'admin user deleted'
+    })
+  } catch (error) {
+    console.log( error )
+    response
+  }
+}
 
 const renewToken = async (request, response = express.response) => {
   const { uid, name } = request;
@@ -232,6 +250,7 @@ module.exports = {
   loginUser,
   createAdminUser,
   editAdminUser,
+  deleteAdminUser,
   showAllUsers,
   displayAllAdminUser,
   articleSetup,
