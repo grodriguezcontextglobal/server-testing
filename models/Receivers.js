@@ -2,7 +2,7 @@ const { Schema, model } = require("mongoose");
 
 const ReceiversSchema = new Schema({
   device: [{
-    type: String,
+    type: Object,
     required: true,
   }],
   paymentIntent: {
@@ -12,11 +12,6 @@ const ReceiversSchema = new Schema({
   user: {
     type: String,
     required: true
-  },
-  adminUser: {
-    type: Schema.Types.ObjectId,
-    ref: "AdminUser",
-    required: true,
   },
   active: {
     type: Boolean,
