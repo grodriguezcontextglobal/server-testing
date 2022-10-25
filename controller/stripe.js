@@ -20,6 +20,7 @@ const stripeCustomer = async (request, response) => {
       fullName: customer.name,
       email: customer.email,
       phone: customer.phone,
+      id: customer.id,
       customer,
     });
   } catch (error) {
@@ -32,19 +33,18 @@ const stripeCustomer = async (request, response) => {
 };
 
 const stripePaymentIntent = async (req, res) => {
-  const { device } = req.body;
+  const { device, customer } = req.body;
   const total = device * 200 * 100;
-  console.log({ total });
-
+  console.log(customer);
+  const customerId = customer;
   try {
-    // Create a PaymentIntent with the order amount and currency
     const paymentIntent = await stripe.paymentIntents.create({
       amount: total,
       currency: "usd",
       payment_method_types: ["card"],
       capture_method: "manual",
+      customer: customerId,
     });
-    console.log({ paymentIntent });
     res.send({
       clientSecret: paymentIntent.client_secret,
       payment_intent_id: paymentIntent.id,
@@ -99,11 +99,14 @@ const saveStripeTransaction = async (request, response) => {
 };
 
 const captureStripePaymentIntent = async (request, response) => {
+  console.log('request', request.body)
   const { id, amount_to_capture } = request.body;
-  const total = amount_to_capture * 200 * 100;
+  console.log('total', amount_to_capture)
+  const totalToCapture = amount_to_capture * 100;
+  console.log( totalToCapture)
   try {
     const paymentIntent = await stripe.paymentIntents.capture(id, {
-      amount_to_capture: total,
+      amount_to_capture: totalToCapture,
     });
     response.status(201).json({
       ok: true,
