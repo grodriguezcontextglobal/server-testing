@@ -13,7 +13,6 @@ const {
   loginUser,
   showAllUsers,
   editAdminUser,
-  displayAllAdminUser,
   deleteAdminUser,
 } = require("../controller/admin");
 const {
@@ -62,7 +61,7 @@ router.get("/:id", showAllUsers);
 router.put("/profile/:id", validateJWT, editAdminUser);
 
 //delete admin suer
-router.delete("/:id", validateJWT, deleteAdminUser)
+router.delete("/:id", deleteAdminUser)
 
 //post receivers per user per transaction
 router.post("/receiver-assignation", addReceiverToTransaction);
