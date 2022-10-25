@@ -5,13 +5,10 @@
 
  const { Router } = require("express");
  const router = Router();
- const { check } = require("express-validator");
 
 const { addReceiverToTransaction, checkingReceiversAssigned, udpateReceiverStatus } = require("../controller/receiver");
- const validateFields = require("../middlewares/validate-field");
- const { validateJWT } = require("../middlewares/validate-jwt");
- 
- //post receivers per user per transaction
+
+//post receivers per user per transaction
  router.post("/receiver-assignation", addReceiverToTransaction )
 
  //check paymentIntent was used for receivers
