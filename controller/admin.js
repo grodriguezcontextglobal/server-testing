@@ -134,10 +134,8 @@ const editAdminUser = async (request, response = response) => {
 };
 
 const deleteAdminUser = async (request, response) => {
-  console.log("request", request.body)
-
-  const adminUserId = request.body.adminUserId
   try {
+    const adminUserId = await request.params.id;
     const adminUser = await AdminUser.findByIdAndDelete(adminUserId);
     if (!adminUser) {
       return response.status(404).json({
@@ -146,15 +144,18 @@ const deleteAdminUser = async (request, response) => {
       });
     }
     response.status(201).json({
-      ok:true,
+      ok: true,
       adminUser,
-      msg: 'admin user deleted'
-    })
+      msg: "admin user deleted",
+    });
   } catch (error) {
-    console.log( error )
-    response
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: error,
+    });
   }
-}
+};
 
 const renewToken = async (request, response = express.response) => {
   const { uid, name } = request;
