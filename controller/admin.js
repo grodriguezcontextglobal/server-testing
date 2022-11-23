@@ -6,7 +6,7 @@ const { generateJWT } = require("../helpers/jwt");
 const StripeTransaction = require("../models/StripeTransaction");
 
 const createAdminUser = async (request, response = express.response) => {
-  const { email, password, role } = request.body;
+  const { email, password } = request.body;
 
   try {
     let adminUser = await AdminUser.findOne({ email });
