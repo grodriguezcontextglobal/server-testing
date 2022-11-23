@@ -16,12 +16,12 @@ const StripeUserSchema = Schema({
     email:{
         type: String,
         required: true,
-        unique: true
+        unique: true,
     },
     phoneNumber:{
         type: Number,
         required: true,
-        unique:true
+        unique:true,
     }
 })
 
