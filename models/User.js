@@ -16,13 +16,22 @@ const UserSchema = Schema({
     email:{
         type: String,
         required: true,
-        unique: true
+        unique: true,
     },
     phoneNumber:{
         type: Number,
         required: true,
         unique:false
-    }
+    },
+    privacyPolicy:{
+        type:Boolean,
+        required: true,
+    },
+    category:{
+        type:String,
+        required: true,
+        default:"Regular"
+    },
 })
 
 //to return an id instead of _id
