@@ -78,13 +78,10 @@ const checkUser = async (request, response = response) => {
 };
 
 const newUser = async (request, response = response) => {
-  console.log({ request });
-
   const { email, phoneNumber } = request.body;
   try {
     let user = await User.findOne({ email });
     //generate JWT
-
     if (user) {
       return response.status(400).json({
         ok: false,
@@ -101,27 +98,24 @@ const newUser = async (request, response = response) => {
     }
 
     user = new User(request.body);
-
-    const userCreated = await user.save();
-
-    console.log({ userCreated });
-
+    const userCreated = await user.save(); 
     //generate JWT
     const token = await generateJWT(user.id, user.name);
 
     response.status(201).json({
       ok: true,
-      msg: "new user",
+      msg: "New user created",
+      category:userCreated.category,
       name: userCreated.name,
       lastName: userCreated.lastName,
       email: userCreated.email,
       phone: userCreated.phoneNumber,
+      privacyPolicy: userCreated.privacyPolicy,
       uid: userCreated.id,
       token,
     });
   } catch (error) {
     console.log(error);
-    gi;
     response.status(500).json({
       ok: false,
       msg: "Please contact adminitrator",
@@ -144,9 +138,6 @@ const editUser = async (request, response = response) => {
         msg: "User/id do not match",
       });
     }
-
-    console.log("request", request.body);
-
     const userEdited = {
       ...request.body,
     };
