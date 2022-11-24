@@ -3,23 +3,15 @@
  * host + /api/article
  */
 
- const { Router } = require("express");
- const router = Router();
- 
- const {
+const { Router } = require("express");
+const { articleSetup, displayArticles } = require("../controller/article");
+const router = Router();
+const { validateJWT } = require("../middlewares/validate-jwt");
 
-   articleSetup,
-   displayArticles,
- } = require("../controller/admin");
- const validateFields = require("../middlewares/validate-field");
- const { validateJWT } = require("../middlewares/validate-jwt");
+//create article
+router.post("/article-creation", validateJWT, articleSetup);
 
- 
- //create article
- router.post("/article-creation", validateJWT, articleSetup);
- 
- //display all articles
- router.get("/articles", displayArticles)
- 
- module.exports = router;
- 
+//display all articles
+router.get("/articles", validateJWT, displayArticles);
+
+module.exports = router;
