@@ -11,8 +11,6 @@ const createAdminUser = async (request, response = express.response) => {
   try {
     let adminUser = await AdminUser.findOne({ email });
 
-    console.log(adminUser);
-
     if (adminUser) {
       return response.status(400).json({
         ok: false,
@@ -171,6 +169,54 @@ const renewToken = async (request, response = express.response) => {
   });
 };
 
+const updatePassword = async (request, response) => {
+  const { email, password } = request.body;
+
+  try {
+    let adminUser = await AdminUser.findOne({ email });
+    console.log("🚀 ~ file: admin.js ~ line 177 ~ updatePassword ~ adminUser", adminUser)
+    if (!adminUser) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Email/User was not found",
+      });
+    }
+
+    const id = adminUser.id
+    ///encriptar password
+    const salt = bcrypt.genSaltSync();
+    adminUser.password = bcrypt.hashSync(password, salt);
+
+    //generate JWT
+    const token = await generateJWT(id, adminUser.name);
+
+    //update password in adminUser object
+    const updateAdminUserPassword = await AdminUser.findByIdAndUpdate(id, adminUser,
+      {
+        new: true,
+      })
+
+    return response.status(201).json({
+      ok: true,
+      message: "register",
+      uid: updateAdminUserPassword.id,
+      name: updateAdminUserPassword.name,
+      email: updateAdminUserPassword.email,
+      role: updateAdminUserPassword.role,
+      token,
+    });
+  } catch (error) {
+    console.log(
+      "🚀 ~ file: admin.js ~ line 178 ~ updatePassword ~ error",
+      error
+    );
+    response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
 const showAllUsers = async (request, response) => {
   const stripeTransactions = await StripeTransaction.find().populate("user");
 
@@ -252,6 +298,7 @@ module.exports = {
   createAdminUser,
   editAdminUser,
   deleteAdminUser,
+  updatePassword,
   showAllUsers,
   displayAllAdminUser,
   articleSetup,
