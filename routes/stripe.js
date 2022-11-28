@@ -12,7 +12,8 @@ const {
   captureStripePaymentIntent,
   cancelStripePaymentIntent,
   stripeCustomer,
-  saveStripeTransactionTemplateForNoRegularUser
+  saveStripeTransactionTemplateForNoRegularUser,
+  removeDuplicateEntries
 } = require("../controller/stripe");
 const { validateJWT } = require("../middlewares/validate-jwt");
 
@@ -36,5 +37,8 @@ router.post("/payment-intents/:id/cancel", cancelStripePaymentIntent)
 
 //save No regular user object {device, paymentIntentId, clientSecret} in database
 router.post("/stripe-transaction-no-regular-user", saveStripeTransactionTemplateForNoRegularUser);
+
+//removing duplicate entries in database
+router.delete("/remove-duplicate/:id", removeDuplicateEntries)
 
 module.exports = router;
