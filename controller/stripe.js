@@ -1,4 +1,5 @@
 const { response } = require("express");
+const { default: mongoose } = require("mongoose");
 const Stripe = require("stripe");
 const StripeTransaction = require("../models/StripeTransaction");
 require("dotenv").config();
@@ -32,27 +33,27 @@ const stripeCustomer = async (request, response) => {
   }
 };
 
-const stripePaymentIntent = async (req, res) => {
-  const { device, customer } = req.body;
+const stripePaymentIntent = async (request, response) => {
+  const { device } = request.body;
   const total = device * 200 * 100;
-  console.log(customer);
-  const customerId = customer;
   try {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: total,
       currency: "usd",
       payment_method_types: ["card"],
       capture_method: "manual",
-      customer: customerId,
     });
-    res.send({
+    response.status(201).json({
       clientSecret: paymentIntent.client_secret,
       payment_intent_id: paymentIntent.id,
       amount: paymentIntent.amount,
       paymentIntent,
     });
   } catch (error) {
-    console.log(error);
+    console.log("stripe payment intent error", error);
+    response.status(500).json({
+      msg: error,
+    });
   }
 };
 const listAllPaymentIntents = async (request, response) => {
@@ -75,15 +76,9 @@ const listAllPaymentIntents = async (request, response) => {
 
 const saveStripeTransaction = async (request, response) => {
   const stripeTransaction = new StripeTransaction(request.body);
-
   try {
     stripeTransaction.user = request.uid;
-    console.log("transaction ", stripeTransaction.user);
-
-    const stripeTransactionSaved = await stripeTransaction.save();
-
-    console.log("transaction saved", stripeTransactionSaved);
-
+    const stripeTransactionSaved = await stripeTransaction.save()
     response.status(201).json({
       ok: true,
       msg: "Transaction saved",
@@ -99,11 +94,8 @@ const saveStripeTransaction = async (request, response) => {
 };
 
 const captureStripePaymentIntent = async (request, response) => {
-  console.log('request', request.body)
   const { id, amount_to_capture } = request.body;
-  console.log('total', amount_to_capture)
   const totalToCapture = amount_to_capture * 100;
-  console.log( totalToCapture)
   try {
     const paymentIntent = await stripe.paymentIntents.capture(id, {
       amount_to_capture: totalToCapture,
@@ -138,6 +130,47 @@ const cancelStripePaymentIntent = async (request, response) => {
     });
   }
 };
+
+const saveStripeTransactionTemplateForNoRegularUser = async (
+  request,
+  response
+) => {
+  const stripeTransaction = new StripeTransaction(request.body);
+  try {
+    const stripeTransactionSaved = await stripeTransaction.save();
+    response.status(201).json({
+      ok: true,
+      msg: "Transaction saved",
+      stripeTransaction: stripeTransactionSaved,
+    });
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: "Please contact adminitrator",
+    });
+  }
+};
+
+const removeDuplicateEntries = async (request, response) => {
+  try {
+    const duplicateEnrtyId = request.params.id
+    const duplicateEnrty = await StripeTransaction.findByIdAndDelete(duplicateEnrtyId);
+    if(duplicateEnrty){
+      response.status(201).json({
+        ok:true,
+        msg:`duplicate entry id ${duplicateEnrtyId} removed`
+      })
+    }
+  } catch (error) {
+    console.log("🚀 ~ file: stripe.js ~ line 159 ~ removeDuplicateEntries ~ error", error)
+    response.status(500).json({
+      ok:false,
+      msg: error
+    })
+  }
+}
+
 module.exports = {
   stripeCustomer,
   stripePaymentIntent,
@@ -145,4 +178,6 @@ module.exports = {
   saveStripeTransaction,
   captureStripePaymentIntent,
   cancelStripePaymentIntent,
+  saveStripeTransactionTemplateForNoRegularUser,
+  removeDuplicateEntries,
 };
