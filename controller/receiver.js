@@ -1,5 +1,6 @@
 const { response } = require("express");
 const { Error } = require("mongoose");
+const ReceiverReturnedStatus = require("../models/ReceiverReturnedStatus");
 const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
 
@@ -49,7 +50,6 @@ const checkingReceiversAssigned = async (request, response) => {
     });
   }
 };
-//!function to check if device exist in database and if it exists, modify state instad of add it as new
 const checkingReceiversExistInDatabase = async (request, response) => {
   const { device } = request.body;
 
@@ -214,6 +214,38 @@ const listOfAssignedReceiver = async (request, response) => {
     });
   }
 };
+const trackReturnedReceiverWithIssue = async (request, response) => {
+  try {
+    const trackDevice = new ReceiverReturnedStatus(request.body)
+    trackDevice.save()
+    response.status(201).json({
+      ok:true,
+      record:trackDevice
+    })
+  } catch (error) {
+    console.log("🚀 ~ file: receiver.js ~ line 220 ~ trackReturnedReceiverWithIssue ~ error", error)
+    response.status(500).json({
+      ok:false,
+      msg: error.response
+    })
+  }
+}
+
+const getListOfReceiverReturnedByIssue = async (request, response) => {
+  try {
+    const trackDevice = await ReceiverReturnedStatus.find()
+    response.status(201).json({
+      ok:true,
+      record:trackDevice
+    })
+  } catch (error) {
+    console.log("🚀 ~ file: receiver.js ~ line 220 ~ trackReturnedReceiverWithIssue ~ error", error)
+    response.status(500).json({
+      ok:false,
+      msg: error.response
+    })
+  }
+}
 
 module.exports = {
   addReceiverToTransaction,
@@ -223,5 +255,7 @@ module.exports = {
   poolReceivers,
   updatePoolReceivers,
   receiverPoolList,
-  listOfAssignedReceiver
+  listOfAssignedReceiver,
+  trackReturnedReceiverWithIssue,
+  getListOfReceiverReturnedByIssue
 };
