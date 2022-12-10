@@ -8,6 +8,7 @@ const router = Router();
 const {
   stripePaymentIntent,
   listAllPaymentIntents,
+  listAllCustomers,
   saveStripeTransaction,
   captureStripePaymentIntent,
   cancelStripePaymentIntent,
@@ -25,6 +26,9 @@ router.post("/create-payment-intent", stripePaymentIntent);
 
 //list all payment intent created
 router.get("/payment-intents", listAllPaymentIntents);
+
+//list all customers created
+router.get("/customers", listAllCustomers)
 
 //save object {device, paymentIntentId, clientSecret} in database
 router.post("/stripe-transaction",validateJWT,  saveStripeTransaction);
