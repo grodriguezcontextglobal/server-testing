@@ -88,8 +88,9 @@ const listAllCustomers = async (request, response) => {
   try {
     const { email } = request.body
     const customers = await stripe.customers.list({email: email});
+    console.log("🚀 ~ file: stripe.js:91 ~ listAllCustomers ~ customers", customers)
     response.status(201).json({
-      customer: customers.data.at(-1).id,
+      customer: customers.data,
     });
   } catch (error) {
     console.log(error);
