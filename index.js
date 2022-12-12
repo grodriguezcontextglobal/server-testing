@@ -23,7 +23,6 @@ app.use( express.json())
 //rutas
 //TODO: auth // crear, login, renew
 app.use('/api/auth', ( require('./routes/auth')))
-app.use('/api/creditCard', ( require('./routes/creditCard')))
 app.use('/api/stripe', require('./routes/stripe'))
 app.use('/api/admin', require('./routes/admin'))
 app.use('/api/receiver', require('./routes/receivers'))
