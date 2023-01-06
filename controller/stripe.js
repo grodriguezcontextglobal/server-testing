@@ -8,11 +8,12 @@ require("dotenv").config();
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const stripeCustomer = async (request, response) => {
+  const { email, name, phone } = request.body
   try {
     const customer = await stripe.customers.create({
-      name: request.body.name,
-      email: request.body.email,
-      phone: request.body.phone,
+      name: name,
+      email: email,
+      phone: phone,
     });
 
     const customerProfile = new StripeCustomer({
@@ -42,8 +43,7 @@ const stripeCustomer = async (request, response) => {
 };
 
 const stripePaymentIntent = async (request, response) => {
-  const { customerId, device } = request.body;
-  console.log("🚀 ~ file: stripe.js:46 ~ stripePaymentIntent ~ customerId", customerId)
+  const { customerEmail, customerId, device } = request.body;
   const total = device * 200 * 100;
   try {
     const paymentIntent = await stripe.paymentIntents.create({
@@ -51,7 +51,8 @@ const stripePaymentIntent = async (request, response) => {
       currency: "usd",
       payment_method_types: ["card"],
       capture_method: "manual",
-      customer: customerId
+      customer: customerId,
+      receipt_email: customerEmail
     });
     response.status(201).json({
       clientSecret: paymentIntent.client_secret,
@@ -86,10 +87,8 @@ const listAllPaymentIntents = async (request, response) => {
 
 const listAllCustomers = async (request, response) => {
   try {
-    const { email } = request.body
-    console.log("🚀 ~ file: stripe.js:90 ~ listAllCustomers ~ email", email)
+    const { email } = request.body;
     const customers = await stripe.customers.list();
-    console.log("🚀 ~ file: stripe.js:91 ~ listAllCustomers ~ customers", customers)
     response.status(201).json({
       customer: customers.data,
     });
