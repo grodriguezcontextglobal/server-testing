@@ -31,7 +31,7 @@ const UserSchema = Schema({
         type:String,
         required: true,
         default:"Regular"
-    },
+    }
 })
 
 //to return an id instead of _id
