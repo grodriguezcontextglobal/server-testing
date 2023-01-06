@@ -6,7 +6,7 @@ const { generateJWT } = require("../helpers/jwt");
 const StripeTransaction = require("../models/StripeTransaction");
 
 const createAdminUser = async (request, response = express.response) => {
-  const { email, password } = request.body;
+  const { email, password, answer } = request.body;
 
   try {
     let adminUser = await AdminUser.findOne({ email });
@@ -20,7 +20,7 @@ const createAdminUser = async (request, response = express.response) => {
 
     adminUser = new AdminUser(request.body);
 
-    ///encriptar password
+    //encrypt password
     const salt = bcrypt.genSaltSync();
     adminUser.password = bcrypt.hashSync(password, salt);
 
@@ -31,7 +31,7 @@ const createAdminUser = async (request, response = express.response) => {
 
     return response.status(201).json({
       ok: true,
-      message: "register",
+      message: "registered",
       uid: adminUser.id,
       name: adminUser.name,
       email: adminUser.email,
@@ -49,11 +49,8 @@ const createAdminUser = async (request, response = express.response) => {
 
 const loginUser = async (request, response = express.response) => {
   const { email, password } = request.body;
-  console.log(request.body);
   try {
     let adminUser = await AdminUser.findOne({ email });
-    console.log(adminUser);
-
     if (!adminUser) {
       return response.status(400).json({
         ok: false,
@@ -170,11 +167,11 @@ const renewToken = async (request, response = express.response) => {
 };
 
 const updatePassword = async (request, response) => {
-  const { email, password } = request.body;
+  const { email, password, answer } = request.body;
 
   try {
     let adminUser = await AdminUser.findOne({ email });
-    console.log("🚀 ~ file: admin.js ~ line 177 ~ updatePassword ~ adminUser", adminUser)
+
     if (!adminUser) {
       return response.status(400).json({
         ok: false,
@@ -182,8 +179,8 @@ const updatePassword = async (request, response) => {
       });
     }
 
-    const id = adminUser.id
-    ///encriptar password
+    const id = adminUser.id;
+    ///encrypt password
     const salt = bcrypt.genSaltSync();
     adminUser.password = bcrypt.hashSync(password, salt);
 
@@ -191,10 +188,13 @@ const updatePassword = async (request, response) => {
     const token = await generateJWT(id, adminUser.name);
 
     //update password in adminUser object
-    const updateAdminUserPassword = await AdminUser.findByIdAndUpdate(id, adminUser,
+    const updateAdminUserPassword = await AdminUser.findByIdAndUpdate(
+      id,
+      adminUser,
       {
         new: true,
-      })
+      }
+    );
 
     return response.status(201).json({
       ok: true,
