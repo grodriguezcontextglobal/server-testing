@@ -1,37 +1,39 @@
-const express = require('express')
-const { dbConnection } = require('./database/config')
-const cors = require('cors')
-require('dotenv').config() //connect with dotenv file
+const express = require("express");
+const { dbConnection } = require("./database/config");
+const cors = require("cors");
+require("dotenv").config(); //connect with dotenv file
 
 ///crear el servidor de express
-const app = express()
+const app = express();
 
 //Database
-dbConnection() 
+dbConnection();
 
 //cors
-app.use(cors())
-
+app.use(
+  cors({
+    methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
+    origin:'*'
+  })
+);
 
 //directorio publico
-app.use( express.static('public'))
-
+app.use(express.static("public"));
 
 //lectura y parseo del body
-app.use( express.json())
+app.use(express.json());
 
 //rutas
 //TODO: auth // crear, login, renew
-app.use('/api/auth', ( require('./routes/auth')))
-app.use('/api/stripe', require('./routes/stripe'))
-app.use('/api/admin', require('./routes/admin'))
-app.use('/api/receiver', require('./routes/receivers'))
-app.use('/api/article', require('./routes/article'))
-app.use('/api/staff', require('./routes/staff'))
-
-
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/stripe", require("./routes/stripe"));
+app.use("/api/admin", require("./routes/admin"));
+app.use("/api/receiver", require("./routes/receivers"));
+app.use("/api/article", require("./routes/article"));
+app.use("/api/staff", require("./routes/staff"));
+app.use("/api/notification", require("./routes/notification"));
 
 //escuchar peticiones
-app.listen( process.env.PORT, () => {
-    console.log('Server on Port', process.env.PORT )
-})
+app.listen(process.env.PORT, () => {
+  console.log("Server on Port", process.env.PORT);
+});
