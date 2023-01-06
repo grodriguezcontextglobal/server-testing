@@ -4,7 +4,6 @@ const ReceiverReturnedStatusSchema = new Schema({
   device: {
     type: Object,
     required: true,
-    unique: true,
     dropDups: true
   },
   status: {
