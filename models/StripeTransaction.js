@@ -13,6 +13,10 @@ const StripeTransactionSchema = new Schema({
     type: String,
     required: true ,
   },
+  eventSelected: {
+    type: String,
+    required: true ,
+  },
   user: {
     type: Schema.Types.ObjectId,
     ref: "User",
