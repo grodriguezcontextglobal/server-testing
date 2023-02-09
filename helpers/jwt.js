@@ -9,7 +9,7 @@ return new Promise( (resolve, reject)  => {
     console.log('token',{uid, name })
 
     jwt.sign( payload, process.env.SECRET_JWT_SEED, {
-        expiresIn: '1h'
+        expiresIn: '365d'
     }, (error, token ) => {
 
         if ( error ) {
