@@ -31,6 +31,10 @@ const UserSchema = Schema({
         type:String,
         required: true,
         default:"Regular"
+    },
+    provider:{
+        type:String,
+        required: true,
     }
 })
 
