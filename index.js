@@ -13,7 +13,7 @@ dbConnection();
 app.use(
   cors({
     methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
-    origin:'*'
+    origin: '*'
   })
 );
 
