@@ -6,7 +6,7 @@ const { generateJWT } = require("../helpers/jwt");
 const StripeTransaction = require("../models/StripeTransaction");
 
 const createAdminUser = async (request, response = express.response) => {
-  const { email, password, answer } = request.body;
+  const { email, password } = request.body;
 
   try {
     let adminUser = await AdminUser.findOne({ email });
@@ -17,7 +17,6 @@ const createAdminUser = async (request, response = express.response) => {
         msg: "Email is registered already",
       });
     }
-
     adminUser = new AdminUser(request.body);
 
     //encrypt password
@@ -35,7 +34,10 @@ const createAdminUser = async (request, response = express.response) => {
       uid: adminUser.id,
       name: adminUser.name,
       email: adminUser.email,
+      phone: adminUser.phone,
       role: adminUser.role,
+      affilate: adminUser.affilia,
+      company: adminUser.company,
       token,
     });
   } catch (error) {
@@ -76,7 +78,10 @@ const loginUser = async (request, response = express.response) => {
       uid: adminUser.id,
       name: adminUser.name,
       email: adminUser.email,
+      phone: adminUser.phone,
       role: adminUser.role,
+      affilate: adminUser.affilia,
+      company: adminUser.company,
       token,
     });
   } catch (error) {
@@ -116,6 +121,7 @@ const editAdminUser = async (request, response = response) => {
       uid: adminUserUpdated.id,
       name: adminUserUpdated.name,
       email: adminUserUpdated.email,
+      phone: adminUserUpdated.phone,
       role: adminUserUpdated.role,
       token,
     });
@@ -202,7 +208,10 @@ const updatePassword = async (request, response) => {
       uid: updateAdminUserPassword.id,
       name: updateAdminUserPassword.name,
       email: updateAdminUserPassword.email,
+      phone: updateAdminUserPassword.phone,
       role: updateAdminUserPassword.role,
+      affilate: updateAdminUserPassword.affilia,
+      company: updateAdminUserPassword.company,
       token,
     });
   } catch (error) {

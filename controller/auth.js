@@ -4,9 +4,7 @@ const { generateJWT } = require("../helpers/jwt");
 
 const showAllUsers = async (request, response) => {
   try {
-
     const users = await User.find()
-
       return response.status(200).json({
     ok: true,
     users,
@@ -23,17 +21,14 @@ const showAllUsers = async (request, response) => {
 
 const getUser = async (request, response = response) => {
   const userId = request.params.id;
-
   try {
     const user = await User.findById(userId); //.populate('user');
-
     if (!user) {
       return response.status(404).json({
         ok: false,
         msg: "User/id do not match",
       });
     }
-
     return response.json({
       ok: true,
       user,
@@ -46,9 +41,9 @@ const getUser = async (request, response = response) => {
     });
   }
 };
+
 const checkUser = async (request, response = response) => {
   const { userInfoEmailCheck } = request.body;
-
   try {
     const user = await User.findOne({ email: userInfoEmailCheck });
 
