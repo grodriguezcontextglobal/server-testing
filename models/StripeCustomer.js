@@ -14,10 +14,9 @@ const StripeCustomerSchema = new Schema({
         type:String,
         required: true
     },
-    id:{
+    stripeid:{
         type: String,
         required: true,
-        unique: true
     }
 });
 
