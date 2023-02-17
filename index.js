@@ -3,7 +3,7 @@ const { dbConnection } = require("./database/config");
 const cors = require("cors");
 require("dotenv").config(); //connect with dotenv file
 
-///crear el servidor de express
+//create express server
 const app = express();
 
 //Database
@@ -17,14 +17,13 @@ app.use(
   })
 );
 
-//directorio publico
+//public directory
 app.use(express.static("public"));
 
-//lectura y parseo del body
+//Read and body parse
 app.use(express.json());
 
-//rutas
-//TODO: auth // crear, login, renew
+//routes
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/stripe", require("./routes/stripe"));
 app.use("/api/admin", require("./routes/admin"));
@@ -34,7 +33,7 @@ app.use("/api/staff", require("./routes/staff"));
 app.use("/api/twilio", require("./routes/twilio"));
 
 
-//escuchar peticiones
+//listen requests
 app.listen(process.env.PORT, () => {
   console.log("Server on Port", process.env.PORT);
 });
