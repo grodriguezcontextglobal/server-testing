@@ -36,6 +36,14 @@ const AdminUserSchema = Schema({
     type: Boolean,
     default: true,
   },
+  affiliate: {
+    type: Boolean,
+    required: true,
+  },
+  company: {
+    type: String,
+    required: true,
+  },
 });
 
 AdminUserSchema.method("toJSON", function () {
