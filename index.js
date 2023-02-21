@@ -10,13 +10,11 @@ const app = express();
 dbConnection();
 
 //cors
-app.use(
-  cors({
-    methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
-    origin: '*'
-  })
-);
-
+app.use(cors({
+  methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
+  origin: ["https://app.devitrak.net", "https://admin.devitrak.net"],
+  credentials: true
+}));
 //public directory
 app.use(express.static("public"));
 
@@ -31,6 +29,7 @@ app.use("/api/receiver", require("./routes/receivers"));
 app.use("/api/article", require("./routes/article"));
 app.use("/api/staff", require("./routes/staff"));
 app.use("/api/twilio", require("./routes/twilio"));
+app.use("/api/eventLog", require("./routes/eventLog"));
 
 
 //listen requests
