@@ -8,6 +8,7 @@ const StripeTransaction = require("../models/StripeTransaction");
 const createAdminUser = async (request, response = express.response) => {
   const { email, password } = request.body;
 
+  console.log("request", request.body)
   try {
     let adminUser = await AdminUser.findOne({ email });
 
@@ -36,7 +37,6 @@ const createAdminUser = async (request, response = express.response) => {
       email: adminUser.email,
       phone: adminUser.phone,
       role: adminUser.role,
-      affilate: adminUser.affilia,
       company: adminUser.company,
       token,
     });
@@ -80,7 +80,6 @@ const loginUser = async (request, response = express.response) => {
       email: adminUser.email,
       phone: adminUser.phone,
       role: adminUser.role,
-      affilate: adminUser.affilia,
       company: adminUser.company,
       token,
     });
@@ -210,7 +209,6 @@ const updatePassword = async (request, response) => {
       email: updateAdminUserPassword.email,
       phone: updateAdminUserPassword.phone,
       role: updateAdminUserPassword.role,
-      affilate: updateAdminUserPassword.affilia,
       company: updateAdminUserPassword.company,
       token,
     });
