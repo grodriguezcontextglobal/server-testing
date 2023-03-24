@@ -32,6 +32,9 @@ app.use("/api/receiver", require("./routes/receivers"));
 app.use("/api/article", require("./routes/article"));
 app.use("/api/staff", require("./routes/staff"));
 app.use("/api/twilio", require("./routes/twilio"));
+app.use("/api/eventLog", require("./routes/eventLog"));
+app.use("/api/event", require("./routes/event"));
+app.use("/api/transactionAuditLog", require("./routes/transactionAuditLog"));
 
 
 //escuchar peticiones
