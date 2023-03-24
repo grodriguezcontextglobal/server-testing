@@ -3,28 +3,25 @@ const { dbConnection } = require("./database/config");
 const cors = require("cors");
 require("dotenv").config(); //connect with dotenv file
 
-///crear el servidor de express
+//create express server
 const app = express();
 
 //Database
 dbConnection();
 
 //cors
-app.use(
-  cors({
-    methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
-    origin:'*'
-  })
-);
-
-//directorio publico
+app.use(cors({
+  methods: ["GET", "HEAD", "POST", "PUT", "DELETE"],
+  origin: ["https://app.devitrak.net", "https://admin.devitrak.net"],
+  credentials: true
+}));
+//public directory
 app.use(express.static("public"));
 
-//lectura y parseo del body
+//Read and body parse
 app.use(express.json());
 
-//rutas
-//TODO: auth // crear, login, renew
+//routes
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/stripe", require("./routes/stripe"));
 app.use("/api/admin", require("./routes/admin"));
@@ -37,7 +34,7 @@ app.use("/api/event", require("./routes/event"));
 app.use("/api/transactionAuditLog", require("./routes/transactionAuditLog"));
 
 
-//escuchar peticiones
+//listen requests
 app.listen(process.env.PORT, () => {
   console.log("Server on Port", process.env.PORT);
 });
