@@ -6,22 +6,23 @@ const StripeUserSchema = Schema({
     name:{
         type: String,
         required: true,
-        unique: false
+        unique: false,
     },
     lastName:{
         type: String,
         required: true,
-        unique: false
+        unique: false,
     },
     email:{
         type: String,
         required: true,
-        unique: true,
+        unique: false,
     },
     phoneNumber:{
         type: Number,
         required: true,
-        unique:true,
+        unique: false,
+        
     }
 })
 

@@ -11,13 +11,7 @@ const EventLogSchema = Schema({
   },
   time: {
     type: String,
-    required: false,
-    unique: false,
-  },
-  password: {
-    type: String,
     required: true,
-    unique: true,
   }
 });
 

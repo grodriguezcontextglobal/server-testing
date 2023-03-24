@@ -70,28 +70,29 @@ const stripePaymentIntent = async (request, response) => {
 };
 
 const stripePaymentIntentCustomized = async (request, response) => {
-  const { customerEmail, total } = request.body;
-  console.log(
-    "🚀 ~ file: stripe.js:74 ~ stripePaymentIntentCustomized ~ total",
-    request.body
-  );
-  const totalToCharge = total * 100;
+  const { receipt_email, total, id } = request.body
+  const customerEmail = receipt_email
+  const totalToCharge = parseInt(total) * 100;
+  console.log(request.body)
   try {
     const paymentIntentCustomized = await stripe.paymentIntents.create({
       amount: totalToCharge,
       currency: "usd",
-      payment_method_types: ["card"],
+      payment_method: id,
       capture_method: "manual",
       customer: customerId,
       receipt_email: customerEmail,
     });
+    console.log("paymentIntentCustomized", paymentIntentCustomized)
     response.status(201).json({
-      clientSecret: paymentIntentCustomized.client_secret,
-      payment_intent_id: paymentIntentCustomized.id,
-      amount: paymentIntentCustomized.amount,
       paymentIntentCustomized,
+      msg:"Transaction done"
     });
-  } catch (error) {
+ {// clientSecret: paymentIntentCustomized.client_secret,
+      // payment_intent_id: paymentIntentCustomized.id,
+      // amount: paymentIntentCustomized.amount,
+    } 
+    } catch (error) {
     console.log("stripe payment intent error", error);
     response.status(500).json({
       msg: error,
