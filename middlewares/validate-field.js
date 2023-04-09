@@ -5,7 +5,7 @@ const { validationResult } = require('express-validator')
 
 const validateFields = (request, response, next) => {
 
-    //manejo de errors
+    //handle errors
     const errors = validationResult( request );
 
     if(!errors.isEmpty()){

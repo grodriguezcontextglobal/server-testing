@@ -5,7 +5,7 @@ const ReceiversPoolSchema = new Schema({
     type: Object,
     required: true,
     unique: true,
-    dropDups: true
+    dropDups: true,
   },
   status: {
     type: String,
@@ -22,7 +22,14 @@ const ReceiversPoolSchema = new Schema({
     required: false,
     default: "No comment",
   },
-
+  eventSelected: {
+    type: String,
+    required: true,
+  },
+  provider: {
+    type: String,
+    required: true,
+  },
 });
 
 ReceiversPoolSchema.method("toJSON", function () {
