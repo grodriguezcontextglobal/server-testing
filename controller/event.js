@@ -3,6 +3,7 @@ const Event = require("../models/Event");
 
 
 const createEvent = async (request, response = express.response) => {
+    console.log("🚀 ~ file: event.js:6 ~ createEvent ~ request:", request)
     try {
         let event = new Event(request.body);
         await event.save();
@@ -14,7 +15,7 @@ const createEvent = async (request, response = express.response) => {
         console.log(error);
         response.status(500).json({
             ok: false,
-            msg: "Please contact Administrater",
+            msg: "Please contact Administrator",
         });
     }
 };

@@ -16,6 +16,14 @@ const ReceiversSchema = new Schema({
   active: {
     type: Boolean,
     default: true
+  },
+  eventSelected:{
+    type:String,
+    required:true
+  },
+  provider:{
+    type:String,
+    required:true
   }
 });
 

@@ -18,6 +18,14 @@ const StripeTransactionSchema = new Schema({
     ref: "User",
     required: true,
   },
+  eventSelected:{
+    type:String,
+    required:true
+  },
+  provider:{
+    type:String,
+    required:true
+  }
 });
 
 StripeTransactionSchema.method("toJSON", function () {
