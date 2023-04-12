@@ -121,11 +121,7 @@ const poolReceivers = async (request, response) => {
     await receiversPool.save();
     return response.status(201).json({
       ok: true,
-      device: receiversPool.device,
-      status: receiversPool.status,
-      activity: receiversPool.activity,
-      comment: receiversPool.comment,
-      id: receiversPool._id
+      receiversPool
     });
   } catch (error) {
     console.log(error);
@@ -193,6 +189,7 @@ const receiverPoolList = async (request, response) => {
 const listOfAssignedReceiver = async (request, response) => {
   try {
     const listOfReceivers = await Receivers.find();
+    
     response.status(201).json({
       ok: true,
       listOfReceivers,
