@@ -11,7 +11,7 @@ const EventLogSchema = Schema({
   },
   time: {
     type: String,
-    required: false,
+    required: true,
   }
 });
 
