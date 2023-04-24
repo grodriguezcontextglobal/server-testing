@@ -22,14 +22,18 @@ const ReceiversPoolSchema = new Schema({
     required: false,
     default: "No comment",
   },
-  eventSelected: {
-    type: String,
-    required: true,
-  },
-  provider: {
-    type: String,
-    required: true,
-  },
+  eventSelected: [
+    {
+      type: String,
+      required: true,
+    },
+  ],
+  provider: [
+    {
+      type: String,
+      required: true,
+    },
+  ],
 });
 
 ReceiversPoolSchema.method("toJSON", function () {
