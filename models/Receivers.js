@@ -1,30 +1,36 @@
 const { Schema, model } = require("mongoose");
 
 const ReceiversSchema = new Schema({
-  device: [{
-    type: Object,
-    required: true,
-  }],
+  device: [
+    {
+      type: Object,
+      required: true,
+    },
+  ],
   paymentIntent: {
     type: String,
     required: true,
   },
   user: {
     type: String,
-    required: true
+    required: true,
   },
   active: {
     type: Boolean,
-    default: true
+    default: true,
   },
-  eventSelected:{
-    type:String,
-    required:true
-  },
-  provider:{
-    type:String,
-    required:true
-  }
+  eventSelected: [
+    {
+      type: String,
+      required: true,
+    },
+  ],
+  provider: [
+    {
+      type: String,
+      required: true,
+    },
+  ],
 });
 
 ReceiversSchema.method("toJSON", function () {
