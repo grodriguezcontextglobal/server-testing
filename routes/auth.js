@@ -6,7 +6,8 @@
 const { Router } = require("express");
 const router = Router();
 const { check } = require("express-validator");
-
+const apicache = require('apicache')
+const cache =  apicache.middleware
 const {
   newUser,
   getUser,
@@ -15,10 +16,9 @@ const {
   showAllUsers,
 } = require("../controller/auth");
 const validateFields = require("../middlewares/validate-field");
-// const { validateJWT } = require("../middlewares/validate-jwt");
 
 //render all users
-router.get("/users", showAllUsers)
+router.get("/users",cache("1 minute"), showAllUsers)
 
 //create new user
 router.post(
