@@ -12,6 +12,6 @@ const { validateJWT } = require("../middlewares/validate-jwt");
 router.post("/article-creation", validateJWT, articleSetup);
 
 //display all articles
-router.get("/articles", validateJWT, displayArticles);
+router.get("/articles", displayArticles);
 
 module.exports = router;
