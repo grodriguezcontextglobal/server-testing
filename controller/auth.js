@@ -4,18 +4,17 @@ const { generateJWT } = require("../helpers/jwt");
 
 const showAllUsers = async (request, response) => {
   try {
-    const users = await User.find()
-      return response.status(200).json({
-    ok: true,
-    users,
-  });
-
+    const users = await User.find();
+    return response.status(200).json({
+      ok: true,
+      users,
+    });
   } catch (error) {
-    console.log(error)
+    console.log(error);
     response.status(500).json({
       ok: false,
-      msg: error
-    })
+      msg: error,
+    });
   }
 };
 
@@ -74,6 +73,7 @@ const checkUser = async (request, response = response) => {
 
 const newUser = async (request, response = response) => {
   const { email, phoneNumber } = request.body;
+  console.log(request.body);
   try {
     let user = await User.findOne({ email });
     //generate JWT
@@ -83,28 +83,30 @@ const newUser = async (request, response = response) => {
         msg: "Email is registered already",
       });
     }
-    user = await User.findOne({ phoneNumber });
+    // user = await User.findOne({ phoneNumber });
 
-    if (user) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Phone number is registered already",
-      });
-    }
+    // if (user) {
+    //   return response.status(400).json({
+    //     ok: false,
+    //     msg: "Phone number is registered already",
+    //   });
+    // }
 
     user = new User(request.body);
-    const userCreated = await user.save(); 
+    const userCreated = await user.save();
     //generate JWT
     const token = await generateJWT(user.id, user.name);
 
     response.status(201).json({
       ok: true,
       msg: "New user created",
-      category:userCreated.category,
+      category: userCreated.category,
       name: userCreated.name,
       lastName: userCreated.lastName,
       email: userCreated.email,
       phone: userCreated.phoneNumber,
+      eventSelected: userCreated.eventSelected,
+      company: userCreated.company,
       privacyPolicy: userCreated.privacyPolicy,
       uid: userCreated.id,
       token,
@@ -120,14 +122,9 @@ const newUser = async (request, response = response) => {
 
 const editUser = async (request, response = response) => {
   const userId = request.params.id;
-  console.log("userId", { userId });
-
   try {
     const user = await User.findById(userId);
-
-    console.log("user", user);
-
-    if (!user) {
+if (!user) {
       return response.status(404).json({
         ok: false,
         msg: "User/id do not match",
@@ -147,6 +144,7 @@ const editUser = async (request, response = response) => {
     return response.json({
       ok: true,
       msg: "user updated",
+      userUpdated,
       name: userUpdated.name,
       lastName: userUpdated.lastName,
       email: userUpdated.email,
@@ -162,6 +160,8 @@ const editUser = async (request, response = response) => {
     });
   }
 };
+
+
 
 module.exports = {
   showAllUsers,

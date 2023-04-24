@@ -2,16 +2,9 @@ const express = require("express");
 const Article = require("../models/Article");
 
 const articleSetup = async (request, response) => {
-  const { img, title, body } = request.body;
-  const newArticle = new Article({
-    img,
-    title,
-    body,
-  });
-
+  const newArticle = new Article(request.body);
   try {
     newArticle.adminUser = request.uid;
-    console.log(request.uid);
     await newArticle.save();
 
     return response.status(201).json({

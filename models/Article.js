@@ -1,10 +1,6 @@
 const { Schema, model } = require("mongoose");
 
 const ArticleSchema = Schema({
-  img: {
-    type: Buffer,
-    required: true,
-  },
   title: {
     type: String,
     required: true,
@@ -21,6 +17,10 @@ const ArticleSchema = Schema({
   active: {
     type: Boolean,
     default: false,
+  },
+  event: {
+    type: String,
+    required: true,
   },
 });
 

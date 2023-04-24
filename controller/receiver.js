@@ -115,17 +115,13 @@ const udpateReceiverStatus = async (request, response) => {
   }
 };
 const poolReceivers = async (request, response) => {
+  console.log("request.body PoolReceiver", request.body)
   try {
     const receiversPool = new ReceiversPool(request.body);
-    console.log("🚀 ~ file: receiver.js ~ line 120 ~ poolReceivers ~ receiversPool", receiversPool)
     await receiversPool.save();
     return response.status(201).json({
       ok: true,
-      device: receiversPool.device,
-      status: receiversPool.status,
-      activity: receiversPool.activity,
-      comment: receiversPool.comment,
-      id: receiversPool._id,
+      receiversPool
     });
   } catch (error) {
     console.log(error);
@@ -137,13 +133,8 @@ const poolReceivers = async (request, response) => {
 };
 const updatePoolReceivers = async (request, response) => {
   const { device, status, activity, comment } = request.body;
-  console.log("request", request.body);
   try {
     const receiverAssigned = await ReceiversPool.findById(request.params.id);
-    console.log(
-      "🚀 ~ file: receiver.js ~ line 120 ~ updatePoolReceivers ~ receiverAssigned",
-      receiverAssigned
-    );
     if (!receiverAssigned) {
       return response.status(404).json({
         ok: false,
@@ -198,6 +189,7 @@ const receiverPoolList = async (request, response) => {
 const listOfAssignedReceiver = async (request, response) => {
   try {
     const listOfReceivers = await Receivers.find();
+    
     response.status(201).json({
       ok: true,
       listOfReceivers,

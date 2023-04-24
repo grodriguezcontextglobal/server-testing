@@ -70,12 +70,10 @@ const stripePaymentIntent = async (request, response) => {
 };
 
 const stripePaymentIntentCustomized = async (request, response) => {
-  const { customerEmail, total } = request.body;
-  console.log(
-    "🚀 ~ file: stripe.js:74 ~ stripePaymentIntentCustomized ~ total",
-    request.body
-  );
-  const totalToCharge = total * 100;
+  const { receipt_email, total, customerId } = request.body;
+  const customerEmail = receipt_email;
+  const totalToCharge = parseInt(total) * 100;
+  console.log(request.body);
   try {
     const paymentIntentCustomized = await stripe.paymentIntents.create({
       amount: totalToCharge,
@@ -85,16 +83,47 @@ const stripePaymentIntentCustomized = async (request, response) => {
       customer: customerId,
       receipt_email: customerEmail,
     });
+    console.log("paymentIntentCustomized", paymentIntentCustomized);
     response.status(201).json({
-      clientSecret: paymentIntentCustomized.client_secret,
-      payment_intent_id: paymentIntentCustomized.id,
-      amount: paymentIntentCustomized.amount,
       paymentIntentCustomized,
+      msg: "Transaction done",
     });
+    {
+      // clientSecret: paymentIntentCustomized.client_secret,
+      // payment_intent_id: paymentIntentCustomized.id,
+      // amount: paymentIntentCustomized.amount,
+    }
   } catch (error) {
     console.log("stripe payment intent error", error);
     response.status(500).json({
       msg: error,
+    });
+  }
+};
+
+const stripePaymentIntentSubscription = async (request, response) => {
+  const { total, customerEmail } = request.body;
+  console.log("request body", request.body);
+  try {
+    const paymentSubscription = await stripe.paymentIntents.create({
+      amount: total,
+      currency: "usd",
+      automatic_payment_methods: {enabled: true},
+      receipt_email: customerEmail,
+    });
+    console.log("paymentSubscription", paymentSubscription);
+    response.status(201).json({
+      clientSecret: paymentSubscription.client_secret,
+      paymentSubscription,
+    });
+  } catch (error) {
+    console.log(
+      "🚀 ~ file: stripe.js:107 ~ stripePaymentIntentSubscription ~ error:",
+      error
+    );
+    response.status(500).json({
+      msg: "Please contact administrator",
+      error: error,
     });
   }
 };
@@ -257,18 +286,9 @@ const saveStripeTransactionTemplateForNoRegularUser = async (
   request,
   response
 ) => {
-  console.log("request.body", request.body);
   const stripeTransaction = new StripeTransaction(request.body);
-  console.log(
-    "🚀 ~ file: stripe.js:233 ~ stripeTransaction",
-    stripeTransaction
-  );
   try {
     const stripeTransactionSaved = await stripeTransaction.save();
-    console.log(
-      "🚀 ~ file: stripe.js:237 ~ stripeTransactionSaved",
-      stripeTransactionSaved
-    );
     response.status(201).json({
       ok: true,
       msg: "Transaction saved",
@@ -327,21 +347,21 @@ const retrievePaymentIntent = async (request, response) => {
       error,
     });
   }
-};
-
+}; 
 module.exports = {
-  stripeCustomer,
-  stripePaymentIntent,
-  listAllPaymentIntents,
+  cancelStripePaymentIntent,
+  captureStripePaymentIntent,
   listAllCustomers,
+  listAllPaymentIntents,
+  refundStripePaymentIntent,
+  removeDuplicateEntries,
+  retrievePaymentIntent,
   saveStripeTransaction,
   saveStripeTransactionAdmin,
-  captureStripePaymentIntent,
-  cancelStripePaymentIntent,
   saveStripeTransactionTemplateForNoRegularUser,
-  removeDuplicateEntries,
-  stripePaymentIntentCustomized,
   searchCustomerId,
-  retrievePaymentIntent,
-  refundStripePaymentIntent,
+  stripeCustomer,
+  stripePaymentIntent,
+  stripePaymentIntentCustomized,
+  stripePaymentIntentSubscription,
 };
