@@ -52,7 +52,7 @@ router.get("/customers/search", searchCustomerId);
 router.post("/stripe-transaction", validateJWT, saveStripeTransaction);
 
 //save object {device, paymentIntentId, clientSecret} in database
-router.post("/stripe-transaction-admin", saveStripeTransactionAdmin);
+router.post("/stripe-transaction-admin",validateJWT, saveStripeTransactionAdmin);
 
 //capture payment intent amount
 router.post("/payment-intents/:id/capture", captureStripePaymentIntent);
