@@ -10,16 +10,21 @@ const app = express();
 dbConnection();
 
 //cors
-app.use(cors({
-  origin: [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "https://app.devitrak.net",
-    "https://admin.devitrak.net"
-  ],
-  methods: ["GET", "POST", "PUT", "DELETE"],
-  // allowedHeaders: ["Content-Type", "Authorization"]
-}));
+// const corsOptions ={
+//   origin:['http://localhost:3000', 'http://localhost:3001'], 
+//   credentials:true,            //access-control-allow-credentials:true
+//   optionSuccessStatus:200
+// }
+app.use(cors());
+
+// {
+//   origin: [
+//     "http://localhost:3000",
+//     "http://localhost:3001",
+//   ],
+//   methods: ["GET", "POST", "PUT", "DELETE"],
+//   allowedHeaders: ["Content-Type", "Authorization"]
+// }
 
 //public directory
 app.use(express.static("public"));
