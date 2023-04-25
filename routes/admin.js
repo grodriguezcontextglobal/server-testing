@@ -6,7 +6,7 @@
 const { Router } = require("express");
 const router = Router();
 const { check } = require("express-validator");
-
+const apicache = require("apicache");
 const {
   renewToken,
   createAdminUser,
@@ -22,7 +22,7 @@ const {
 } = require("../controller/receiver");
 const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
-
+const cache = apicache.middleware;
 //create admin user
 router.post(
   "/new_admin_user",
@@ -56,21 +56,21 @@ router.post(
 router.get("/renew", validateJWT, renewToken);
 
 //show all users in admin page
-router.get("/:id", showAllUsers);
+router.get("/:id", cache("2 minutes"), showAllUsers);
 
 //edit admin user
 router.put("/profile/:id", validateJWT, editAdminUser);
 
 //delete admin suer
-router.delete("/:id", deleteAdminUser)
+router.delete("/:id", deleteAdminUser);
 
 //update password
-router.put("/update-password", updatePassword)
+router.put("/update-password", updatePassword);
 
 //post receivers per user per transaction
 router.post("/receiver-assignation", addReceiverToTransaction);
 
 //check paymentIntent was used for receivers
-router.get("/receiver-assigned", checkingReceiversAssigned);
+router.get("/receiver-assigned", cache("1 minute"), checkingReceiversAssigned);
 
 module.exports = router;

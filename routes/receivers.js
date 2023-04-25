@@ -19,10 +19,10 @@ const {
   trackReturnedReceiverWithIssue,
   getListOfReceiverReturnedByIssue,
 } = require("../controller/receiver");
-const accessControlAllowOrigin = require("../middlewares/accessControlAllowOrigin");
+// const accessControlAllowOrigin = require("../middlewares/accessControlAllowOrigin");
 
 //post receivers per user per transaction
-router.post("/receiver-assignation",accessControlAllowOrigin, addReceiverToTransaction);
+router.post("/receiver-assignation", addReceiverToTransaction);
 
 //check paymentIntent was used for receivers
 router.post("/receiver-assigned", checkingReceiversAssigned);

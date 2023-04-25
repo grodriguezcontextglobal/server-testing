@@ -18,7 +18,7 @@ const {
 const validateFields = require("../middlewares/validate-field");
 
 //render all users
-router.get("/users",cache("1 minute"), showAllUsers)
+router.get("/users",cache("2 minute"), showAllUsers)
 
 //create new user
 router.post(
@@ -34,13 +34,13 @@ router.post(
   newUser
 );
 
-//editar evento
+//edit user
 router.put("/:id", editUser);
 
-//obtener la info del usuario
-router.get("/:id", getUser);
+//get user info
+router.get("/:id",cache("2 minutes"), getUser);
 
-//check user existencia
+//check existing user
 router.post("/",check("email", "Email is mandatory").isEmail(), checkUser); 
 
 module.exports = router;
