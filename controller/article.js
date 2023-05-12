@@ -36,7 +36,24 @@ const displayArticles = async (request, response) => {
     });
   }
 };
+const deleteArticle = async(request, response) => {
+  try {
+    const { id } = request.body
+    const articleToDelete = await Article.findByIdAndDelete(id)
+    response.status(201).json({
+      ok: true,
+      articleToDelete
+    })
+  } catch (error) {
+    console.log("🚀 ~ file: article.js:43 ~ deleteArticle ~ error:", error)
+    response.status(500).json({
+      ok: false,
+      msg:"There was an error in the request. Please try it later"
+    })
+  }
+}
 module.exports = {
   articleSetup,
   displayArticles,
+  deleteArticle
 };

@@ -306,9 +306,12 @@ const saveStripeTransactionTemplateForNoRegularUser = async (
 const removeDuplicateEntries = async (request, response) => {
   try {
     const duplicateEnrtyId = request.params.id;
+    console.log("🚀 ~ file: stripe.js:309 ~ removeDuplicateEntries ~ duplicateEnrtyId:", duplicateEnrtyId)
+  
     const duplicateEnrty = await StripeTransaction.findByIdAndDelete(
       duplicateEnrtyId
     );
+    console.log("🚀 ~ file: stripe.js:314 ~ removeDuplicateEntries ~  duplicateEnrty:",  duplicateEnrty)
     if (duplicateEnrty) {
       response.status(201).json({
         ok: true,
