@@ -10,7 +10,7 @@ const whatsappNotification = async (request, response) => {
     client.messages
       .create({
         body: body,
-        from: "whatsapp:+14155238886",
+        from: "whatsapp:+16076227183",
         to: `whatsapp:+${to}`,
       })
       .then((message) => console.log(message.sid))
@@ -37,7 +37,7 @@ const SMSNotification = async (request, response) => {
     client.messages 
       .create({ 
          body: body,  
-         messagingServiceSid: 'MG3b54148dbff0744d71ca9aaada27297d',      
+         from:"+16076227183",      
          to: `+${to}` 
        }) 
       .then(message => console.log(message.sid)) 
