@@ -1,39 +1,46 @@
 const { Schema, model } = require("mongoose");
 
 const ReceiversPoolSchema = new Schema({
+  eventSelected:
+  {
+    type: String,
+    required: true,
+    unique: true,
+  },
   device: {
     type: Object,
     required: true,
-    unique: true,
-    dropDups: true,
+    unique: false,
+  },
+  type: {
+    type: String,
+    required: true,
+    unique: false,
   },
   status: {
     type: String,
     required: true,
     default: "Operational",
+    unique: false,
   },
   activity: {
     type: String,
     require: true,
-    default: "Stored",
+    default: "No",
+    unique: false,
   },
   comment: {
     type: String,
     required: false,
     default: "No comment",
+    unique: false,
   },
-  eventSelected: [
-    {
-      type: String,
-      required: true,
-    },
-  ],
-  provider: [
-    {
-      type: String,
-      required: true,
-    },
-  ],
+  provider:
+  {
+    type: String,
+    required: true,
+    unique: false,
+  },
 });
 
 ReceiversPoolSchema.method("toJSON", function () {

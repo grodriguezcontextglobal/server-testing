@@ -6,7 +6,6 @@
 const { Router } = require("express");
 const router = Router();
 const { check } = require("express-validator");
-const apicache = require("apicache");
 const {
   renewToken,
   createAdminUser,
@@ -15,6 +14,7 @@ const {
   editAdminUser,
   deleteAdminUser,
   updatePassword,
+  editOtherAdminUser,
 } = require("../controller/admin");
 const {
   addReceiverToTransaction,
@@ -22,7 +22,9 @@ const {
 } = require("../controller/receiver");
 const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
-const cache = apicache.middleware;
+
+
+
 //create admin user
 router.post(
   "/new_admin_user",
@@ -44,7 +46,7 @@ router.post(
   [
     //middelwares para validar
     check("email", "Email must be provided").isEmail(),
-    check("password", "Password must have 6 charaters or mor").isLength({
+    check("password", "Password must have 6 charaters or more").isLength({
       min: 6,
     }),
     validateFields,
@@ -56,21 +58,24 @@ router.post(
 router.get("/renew", validateJWT, renewToken);
 
 //show all users in admin page
-router.get("/:id", cache("2 minutes"), showAllUsers);
+router.get("/:id", showAllUsers);
 
 //edit admin user
-router.put("/profile/:id", validateJWT, editAdminUser);
+router.patch("/profile/:id", validateJWT, editAdminUser);
+
+//edit admin user
+router.patch("/admin-user/:id", editOtherAdminUser);
 
 //delete admin suer
 router.delete("/:id", deleteAdminUser);
 
 //update password
-router.put("/update-password", updatePassword);
+router.patch("/update-password", updatePassword);
 
 //post receivers per user per transaction
 router.post("/receiver-assignation", addReceiverToTransaction);
 
 //check paymentIntent was used for receivers
-router.get("/receiver-assigned", cache("1 minute"), checkingReceiversAssigned);
+router.get("/receiver-assigned", checkingReceiversAssigned);
 
 module.exports = router;

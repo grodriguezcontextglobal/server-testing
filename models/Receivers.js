@@ -1,12 +1,10 @@
 const { Schema, model } = require("mongoose");
 
 const ReceiversSchema = new Schema({
-  device: [
-    {
-      type: Object,
-      required: true,
-    },
-  ],
+  device: {
+    type: Object,
+    required: true,
+  },
   paymentIntent: {
     type: String,
     required: true,
@@ -23,14 +21,16 @@ const ReceiversSchema = new Schema({
     {
       type: String,
       required: true,
-    },
-  ],
+    }],
   provider: [
     {
       type: String,
       required: true,
-    },
-  ],
+    }],
+    timeStamp: {
+      type: Date,
+      required: true
+    }
 });
 
 ReceiversSchema.method("toJSON", function () {

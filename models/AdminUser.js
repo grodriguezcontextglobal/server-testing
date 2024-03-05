@@ -5,6 +5,10 @@ const AdminUserSchema = Schema({
     type: String,
     required: true,
   },
+  lastName: {
+    type: String,
+    required: true,
+  },
   email: {
     type: String,
     required: true,
@@ -40,6 +44,33 @@ const AdminUserSchema = Schema({
     type: String,
     required: true,
   },
+  imageProfile: {
+    type: String,
+  },
+  emailNotifications:{
+    type:Object,
+    default:{
+      newsAndUpdates:false,
+      tipsAndTutorials:false,
+      userResearch:false
+    }
+  },
+  dailySummaries:{
+    type: String,
+    default:"do not notify me"
+  },
+  eventReminder: {
+    type: String,
+    default: "do not notify me"
+  },
+  subscriptionRenewals: {
+    type: String,
+    default: "do not notify me"
+  },
+  online: {
+    type:Boolean,
+    default: false
+  }
 });
 
 AdminUserSchema.method("toJSON", function () {

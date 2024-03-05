@@ -6,8 +6,6 @@
 const { Router } = require("express");
 const router = Router();
 const { check } = require("express-validator");
-const apicache = require('apicache')
-const cache =  apicache.middleware
 const {
   newUser,
   getUser,
@@ -18,7 +16,13 @@ const {
 const validateFields = require("../middlewares/validate-field");
 
 //render all users
-router.get("/users",cache("2 minute"), showAllUsers)
+router.get("/users", showAllUsers)
+
+//render user information by queries
+router.post("/user-query", showAllUsers)
+
+//render user information by queries
+router.post("/users", showAllUsers)
 
 //create new user
 router.post(
@@ -35,10 +39,10 @@ router.post(
 );
 
 //edit user
-router.put("/:id", editUser);
+router.patch("/:id", editUser);
 
-//get user info
-router.get("/:id",cache("2 minutes"), getUser);
+//retreive consumer information
+router.get("/:id", getUser);
 
 //check existing user
 router.post("/",check("email", "Email is mandatory").isEmail(), checkUser); 

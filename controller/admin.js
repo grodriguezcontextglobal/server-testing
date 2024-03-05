@@ -1,21 +1,19 @@
 const express = require("express");
 const bcrypt = require("bcryptjs");
 const AdminUser = require("../models/AdminUser");
-const Article = require("../models/Article");
 const { generateJWT } = require("../helpers/jwt");
 const StripeTransaction = require("../models/StripeTransaction");
 
 const createAdminUser = async (request, response = express.response) => {
   const { email, password } = request.body;
 
-  console.log("request", request.body)
   try {
     let adminUser = await AdminUser.findOne({ email });
 
     if (adminUser) {
       return response.status(400).json({
         ok: false,
-        msg: "Email is registered already",
+        msg: `${email} is already in our record. Please use a different email address to create a new account.`,
       });
     }
     adminUser = new AdminUser(request.body);
@@ -25,15 +23,17 @@ const createAdminUser = async (request, response = express.response) => {
     adminUser.password = bcrypt.hashSync(password, salt);
 
     await adminUser.save();
-
+    
     //generate JWT
     const token = await generateJWT(adminUser.id, adminUser.name);
 
     return response.status(201).json({
       ok: true,
       message: "registered",
+      entire: adminUser,
       uid: adminUser.id,
       name: adminUser.name,
+      lastName: adminUser.lastName,
       email: adminUser.email,
       phone: adminUser.phone,
       role: adminUser.role,
@@ -66,7 +66,7 @@ const loginUser = async (request, response = express.response) => {
     if (!validPassword) {
       return response.status(400).json({
         ok: false,
-        msg: "Pasword incorrect",
+        msg: "You have entered an invalid username or password",
       });
     }
 
@@ -75,8 +75,10 @@ const loginUser = async (request, response = express.response) => {
 
     return response.status(200).json({
       ok: true,
+      entire: adminUser,
       uid: adminUser.id,
       name: adminUser.name,
+      lastName: adminUser.lastName,
       email: adminUser.email,
       phone: adminUser.phone,
       role: adminUser.role,
@@ -117,10 +119,13 @@ const editAdminUser = async (request, response = response) => {
     return response.json({
       msg: "admin user updated",
       ok: true,
+      entire: adminUserUpdated,
       uid: adminUserUpdated.id,
       name: adminUserUpdated.name,
+      lastName: adminUserUpdated.lastName,
       email: adminUserUpdated.email,
       phone: adminUserUpdated.phone,
+      company: adminUserUpdated.company,
       role: adminUserUpdated.role,
       token,
     });
@@ -132,6 +137,37 @@ const editAdminUser = async (request, response = response) => {
     });
   }
 };
+//*
+const editOtherAdminUser = async (request, response = response) => {
+  const adminUserId = request.params.id;
+
+  try {
+    const adminUserEdited = {
+
+      ...request.body,
+    };
+    const adminUserUpdated = await AdminUser.findByIdAndUpdate(
+      adminUserId,
+      adminUserEdited,
+      {
+        new: true,
+      }
+    );
+
+    return response.json({
+      msg: "admin user updated",
+      ok: true,
+      adminUpdated: adminUserUpdated
+    });
+  } catch (error) {
+    console.log(error);
+    return response.status(500).json({
+      ok: false,
+      msg: "Contact Administrator",
+    });
+  }
+};
+
 
 const deleteAdminUser = async (request, response) => {
   try {
@@ -172,7 +208,7 @@ const renewToken = async (request, response = express.response) => {
 };
 
 const updatePassword = async (request, response) => {
-  const { email, password, answer } = request.body;
+  const { email, password } = request.body;
 
   try {
     let adminUser = await AdminUser.findOne({ email });
@@ -240,9 +276,25 @@ const showAllUsers = async (request, response) => {
   }
 };
 
+const showStaffs = async (request, response) => {
+  const staff = await AdminUser.find(request.body);
+
+  try {
+    response.status(201).json({
+      ok: true,
+      staff,
+    });
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
 const displayAllAdminUser = async (request, response) => {
   try {
-    const adminUsers = await AdminUser.find();
+    const adminUsers = await AdminUser.find(request.body);
 
     response.status(201).json({
       ok: true,
@@ -267,7 +319,6 @@ const articleSetup = async (request, response) => {
 
   try {
     newArticle.adminUser = request.uid;
-    console.log(request.uid);
     await newArticle.save();
 
     return response.status(201).json({
@@ -304,9 +355,11 @@ module.exports = {
   loginUser,
   createAdminUser,
   editAdminUser,
+  editOtherAdminUser,
   deleteAdminUser,
   updatePassword,
   showAllUsers,
+  showStaffs,
   displayAllAdminUser,
   articleSetup,
   displayArticles,

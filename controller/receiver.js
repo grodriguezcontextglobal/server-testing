@@ -114,8 +114,8 @@ const udpateReceiverStatus = async (request, response) => {
     });
   }
 };
+
 const poolReceivers = async (request, response) => {
-  console.log("request.body PoolReceiver", request.body)
   try {
     const receiversPool = new ReceiversPool(request.body);
     await receiversPool.save();
@@ -132,7 +132,6 @@ const poolReceivers = async (request, response) => {
   }
 };
 const updatePoolReceivers = async (request, response) => {
-  const { device, status, activity, comment } = request.body;
   try {
     const receiverAssigned = await ReceiversPool.findById(request.params.id);
     if (!receiverAssigned) {
@@ -142,10 +141,7 @@ const updatePoolReceivers = async (request, response) => {
       });
     }
     const receiverEdited = {
-      device,
-      status,
-      activity,
-      comment,
+      ...request.body
     };
     const receiverUpdated = await ReceiversPool.findByIdAndUpdate(
       request.params.id,
@@ -169,7 +165,7 @@ const updatePoolReceivers = async (request, response) => {
 
 const receiverPoolList = async (request, response) => {
   try {
-    const receiversInventory = await ReceiversPool.find();
+    const receiversInventory = await ReceiversPool.find(request.body);
     response.status(201).json({
       ok: true,
       receiversInventory,
@@ -188,9 +184,8 @@ const receiverPoolList = async (request, response) => {
 
 const listOfAssignedReceiver = async (request, response) => {
   try {
-    const listOfReceivers = await Receivers.find();
-    
-    response.status(201).json({
+    const listOfReceivers = await Receivers.find(request.body);
+    await response.status(201).json({
       ok: true,
       listOfReceivers,
     });
@@ -211,13 +206,13 @@ const trackReturnedReceiverWithIssue = async (request, response) => {
     const trackDevice = new ReceiverReturnedStatus(request.body)
     trackDevice.save()
     response.status(201).json({
-      ok:true,
-      record:trackDevice
+      ok: true,
+      record: trackDevice
     })
   } catch (error) {
     console.log("🚀 ~ file: receiver.js ~ line 220 ~ trackReturnedReceiverWithIssue ~ error", error)
     response.status(500).json({
-      ok:false,
+      ok: false,
       msg: error.response
     })
   }
@@ -225,19 +220,51 @@ const trackReturnedReceiverWithIssue = async (request, response) => {
 
 const getListOfReceiverReturnedByIssue = async (request, response) => {
   try {
-    const trackDevice = await ReceiverReturnedStatus.find()
+    const trackDevice = await ReceiverReturnedStatus.find(request.body)
     response.status(201).json({
-      ok:true,
-      record:trackDevice
+      ok: true,
+      record: trackDevice
     })
   } catch (error) {
-    console.log("🚀 ~ file: receiver.js ~ line 220 ~ trackReturnedReceiverWithIssue ~ error", error)
     response.status(500).json({
-      ok:false,
+      ok: false,
       msg: error.response
     })
   }
 }
+
+const updateIssueDevice = async (request, response) => {
+  try {
+    const receiver = await ReceiverReturnedStatus.findById(request.params.id);
+    if (!receiver) {
+      return response.status(404).json({
+        ok: false,
+        msg: "Receiver ID do not match",
+      });
+    }
+    const updateIssueReceiver = {
+      ...request.body
+    };
+    const receiverUpdated = await ReceiverReturnedStatus.findByIdAndUpdate(
+      request.params.id,
+      updateIssueReceiver,
+      {
+        new: true,
+      }
+    );
+    return response.status(201).json({
+      ok: true,
+      receiverUpdated,
+    });
+  } catch (error) {
+    console.log(error);
+    return response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
 
 module.exports = {
   addReceiverToTransaction,
@@ -249,5 +276,6 @@ module.exports = {
   receiverPoolList,
   listOfAssignedReceiver,
   trackReturnedReceiverWithIssue,
-  getListOfReceiverReturnedByIssue
+  getListOfReceiverReturnedByIssue,
+  updateIssueDevice
 };

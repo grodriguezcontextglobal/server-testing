@@ -3,13 +3,12 @@ const Event = require("../models/Event");
 
 
 const createEvent = async (request, response = express.response) => {
-    console.log("🚀 ~ file: event.js:6 ~ createEvent ~ request:", request)
     try {
         let event = new Event(request.body);
         await event.save();
         return response.status(201).json({
             ok: true,
-           event
+            event
         });
     } catch (error) {
         console.log(error);
@@ -21,36 +20,64 @@ const createEvent = async (request, response = express.response) => {
 };
 
 const editEvent = async (request, response = response) => {
-    const adminUserId = request.params.id;
+    const eventId = request.params.id;
     try {
-        const adminUser = await AdminUser.findById(adminUserId);
-        if (!adminUser) {
+        const eventToFind = await Event.findById(eventId);
+        if (!eventToFind) {
             return response.status(404).json({
                 ok: false,
-                msg: "Admin user/id do not match",
+                msg: "Event does not exist",
             });
         }
-        const adminUserEdited = {
+        const eventStaffToEdit = {
             ...request.body,
         };
-        //generate JWT
-        const token = await generateJWT(adminUserId, adminUser.name);
-        const adminUserUpdated = await AdminUser.findByIdAndUpdate(
-            adminUserId,
-            adminUserEdited,
+
+        const staffEventEdited = await Event.findByIdAndUpdate(
+            eventId,
+            eventStaffToEdit,
             {
                 new: true,
             }
         );
         return response.json({
-            msg: "admin user updated",
             ok: true,
-            uid: adminUserUpdated.id,
-            name: adminUserUpdated.name,
-            email: adminUserUpdated.email,
-            phone: adminUserUpdated.phone,
-            role: adminUserUpdated.role,
-            token,
+            event: staffEventEdited
+        });
+    } catch (error) {
+        console.log(error);
+        return response.status(500).json({
+            ok: false,
+            msg: "Contact Administrator",
+        });
+    }
+};
+
+const editSubscriptionEvent = async (request, response = response) => {
+    const eventId = request.params.id;
+    try {
+        const eventToFind = await Event.findById(eventId);
+        if (!eventToFind) {
+            return response.status(404).json({
+                ok: false,
+                msg: "Event does not exist",
+            });
+        }
+        const subscriptionEventInfoToEdit = {
+            ...request.body,
+        };
+        //generate JWT
+
+        const subscriptionEventEdited = await Event.findByIdAndUpdate(
+            eventId,
+            subscriptionEventInfoToEdit,
+            {
+                new: true,
+            }
+        );
+        return response.json({
+            ok: true,
+            event: subscriptionEventEdited
         });
     } catch (error) {
         console.log(error);
@@ -85,9 +112,9 @@ const deleteEvent = async (request, response) => {
     }
 };
 
-const eventList = async(request, response) => {
+const eventList = async (request, response) => {
     try {
-        let list = await Event.find();
+        let list = await Event.find(request.body);
         response.status(201).json({
             ok: true,
             list
@@ -95,12 +122,14 @@ const eventList = async(request, response) => {
     } catch (error) {
         console.log("🚀 ~ file: event.js:91 ~ eventList ~ error:", error)
         response.status(500).json({
-            ok:false,
-            msg:"Please contact Administrator"
+            ok: false,
+            msg: "Please contact Administrator"
         })
     }
 }
 module.exports = {
-createEvent,
-eventList
+    createEvent,
+    editSubscriptionEvent,
+    eventList,
+    editEvent
 };

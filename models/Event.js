@@ -5,8 +5,8 @@ const EventSchema = Schema({
     type: String,
     required: true,
   },
-  company:{
-    type:String,
+  company: {
+    type: String,
     required: true
   },
   subscription: {
@@ -20,6 +20,22 @@ const EventSchema = Schema({
   staff: {
     type: Object,
     required: true,
+  },
+  contactInfo: {
+    type: Object,
+    required: true,
+  },
+  deviceSetup: [{
+    type: Object,
+    required: true,
+  }],
+  active: {
+    type: Boolean,
+    required: true
+  },
+  qrCodeLink: {
+    type: String,
+    required: true
   },
 });
 
