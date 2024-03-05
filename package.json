@@ -5,9 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon index.js",
-    "start": "node index.js",
-    "start:prod": "node ./prod-build/main.js",
-    "build": "webpack --config webpack.prod.js --mode production"
+    "start": "node index.js"
   },
   "author": "",
   "license": "ISC",
