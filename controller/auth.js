@@ -4,7 +4,7 @@ const { generateJWT } = require("../helpers/jwt");
 
 const showAllUsers = async (request, response) => {
   try {
-    const users = await User.find();
+    const users = await User.find(request.body);
     return response.status(200).json({
       ok: true,
       users,
@@ -21,7 +21,7 @@ const showAllUsers = async (request, response) => {
 const getUser = async (request, response = response) => {
   const userId = request.params.id;
   try {
-    const user = await User.findById(userId); //.populate('user');
+    const user = await User.findById(userId); 
     if (!user) {
       return response.status(404).json({
         ok: false,
@@ -73,7 +73,6 @@ const checkUser = async (request, response = response) => {
 
 const newUser = async (request, response = response) => {
   const { email, phoneNumber } = request.body;
-  console.log(request.body);
   try {
     let user = await User.findOne({ email });
     //generate JWT
@@ -83,14 +82,6 @@ const newUser = async (request, response = response) => {
         msg: "Email is registered already",
       });
     }
-    // user = await User.findOne({ phoneNumber });
-
-    // if (user) {
-    //   return response.status(400).json({
-    //     ok: false,
-    //     msg: "Phone number is registered already",
-    //   });
-    // }
 
     user = new User(request.body);
     const userCreated = await user.save();
@@ -122,6 +113,7 @@ const newUser = async (request, response = response) => {
 
 const editUser = async (request, response = response) => {
   const userId = request.params.id;
+
   try {
     const user = await User.findById(userId);
 if (!user) {
@@ -137,9 +129,11 @@ if (!user) {
     //generate JWT
     const token = await generateJWT(user.id, user.name);
 
+
     const userUpdated = await User.findByIdAndUpdate(userId, userEdited, {
       new: true,
     }); //3 parameters user id, new user and how it will be returned as new event
+
 
     return response.json({
       ok: true,

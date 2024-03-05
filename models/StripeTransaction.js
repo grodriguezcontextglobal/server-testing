@@ -8,6 +8,7 @@ const StripeTransactionSchema = new Schema({
   paymentIntent: {
     type: String,
     required: true,
+    // unique:true,
   },
   clientSecret: {
     type: String,

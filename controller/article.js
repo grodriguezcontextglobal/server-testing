@@ -23,7 +23,7 @@ const articleSetup = async (request, response) => {
 
 const displayArticles = async (request, response) => {
   try {
-    const articles = await Article.find();
+    const articles = await Article.find(request.body);
     response.status(201).json({
       ok: true,
       articles,
@@ -36,24 +36,51 @@ const displayArticles = async (request, response) => {
     });
   }
 };
-const deleteArticle = async(request, response) => {
+const deleteArticle = async (request, response) => {
   try {
-    const { id } = request.body
-    const articleToDelete = await Article.findByIdAndDelete(id)
+    const deleteArticleId = await request.params.id;
+    const articleToDelete = await Article.findByIdAndDelete(deleteArticleId)
+
     response.status(201).json({
       ok: true,
       articleToDelete
     })
   } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: "There was an error in the request. Please try it later"
+    })
+  }
+}
+
+const editArticle = async (request, response) => {
+  try {
+    const articleIdToEdit = request.params.id;
+    const contentToEditArticle = {
+      ...request.body
+    }
+    const articleEdited = await Article.findByIdAndUpdate(
+      articleIdToEdit,
+      contentToEditArticle,
+      {
+        new: true
+      }
+    )
+    response.status(201).json({
+      ok: true,
+      article: articleEdited
+    })
+  } catch (error) {
     console.log("🚀 ~ file: article.js:43 ~ deleteArticle ~ error:", error)
     response.status(500).json({
       ok: false,
-      msg:"There was an error in the request. Please try it later"
+      msg: "There was an error in the request. Please try it later"
     })
   }
 }
 module.exports = {
   articleSetup,
   displayArticles,
-  deleteArticle
+  deleteArticle,
+  editArticle
 };

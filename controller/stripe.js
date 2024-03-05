@@ -1,19 +1,21 @@
-const { response, json } = require("express");
+const { response, json, request } = require("express");
 const { default: mongoose } = require("mongoose");
 const Stripe = require("stripe");
 const StripeCustomer = require("../models/StripeCustomer");
 const StripeTransaction = require("../models/StripeTransaction");
+const Transaction = require("../models/Transaction");
+const StripeCompany = require("../models/StripeCompany");
 require("dotenv").config();
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const stripeCustomer = async (request, response) => {
-  const { email, name, phone } = request.body;
+  const { email, name, phoneNumber } = request.body;
   try {
     const customer = await stripe.customers.create({
       name: name,
       email: email,
-      phone: phone,
+      phone: phoneNumber,
     });
 
     const customerProfile = new StripeCustomer({
@@ -42,6 +44,42 @@ const stripeCustomer = async (request, response) => {
   }
 };
 
+const companyInformationAccountStripe = async (request, response) => {
+  try {
+    const { companyName, ownerEmail, ownerFirstName, ownerLastName } = request.body
+    const checkExistingCompanyCustomer = await StripeCompany.findOne({ "email": ownerEmail })
+    if (checkExistingCompanyCustomer) {
+      return response.status(500).json({
+        ok: false,
+        msg: `${ownerEmail} is already in our records. Please login or create new account using a different email address!`
+      })
+    }
+    const companyCustomer = await stripe.customers.create({
+      name: `${ownerFirstName} ${ownerLastName} / company: ${companyName}`,
+      email: ownerEmail,
+    });
+
+    const savingNewCompanyCustomer = new StripeCompany({
+      companyName,
+      ownerEmail,
+      ownerFirstName,
+      ownerLastName,
+      stripeID: companyCustomer.id
+    })
+    await savingNewCompanyCustomer.save()
+    response.status(201).json({
+      ok: true,
+      companyCustomer: savingNewCompanyCustomer
+    })
+
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: error.msg
+    })
+
+  }
+}
 const stripePaymentIntent = async (request, response) => {
   const { customerEmail, customerId, device } = request.body;
   const total = device * 100;
@@ -51,10 +89,9 @@ const stripePaymentIntent = async (request, response) => {
       currency: "usd",
       payment_method_types: ["card"],
       capture_method: "manual",
-      customer: customerId,
+      // customer: customerId, 
       receipt_email: customerEmail,
     });
-    console.log(paymentIntent);
     response.status(201).json({
       clientSecret: paymentIntent.client_secret,
       payment_intent_id: paymentIntent.id,
@@ -62,72 +99,242 @@ const stripePaymentIntent = async (request, response) => {
       paymentIntent,
     });
   } catch (error) {
-    console.log("stripe payment intent error", error);
     response.status(500).json({
-      msg: error,
+      msg: error.message,
     });
   }
 };
 
 const stripePaymentIntentCustomized = async (request, response) => {
-  const { receipt_email, total, customerId } = request.body;
+  const { receipt_email, total } = request.body;
   const customerEmail = receipt_email;
   const totalToCharge = parseInt(total) * 100;
-  console.log(request.body);
   try {
     const paymentIntentCustomized = await stripe.paymentIntents.create({
       amount: totalToCharge,
       currency: "usd",
-      payment_method_types: ["card"],
+      payment_method_types: ['card'],
       capture_method: "manual",
-      customer: customerId,
+      // customer: customerId,
       receipt_email: customerEmail,
     });
-    console.log("paymentIntentCustomized", paymentIntentCustomized);
     response.status(201).json({
+      clientSecret: paymentIntentCustomized.client_secret,
+      payment_intent_id: paymentIntentCustomized.id,
+      amount: paymentIntentCustomized.amount,
       paymentIntentCustomized,
-      msg: "Transaction done",
     });
-    {
-      // clientSecret: paymentIntentCustomized.client_secret,
-      // payment_intent_id: paymentIntentCustomized.id,
-      // amount: paymentIntentCustomized.amount,
-    }
+
   } catch (error) {
-    console.log("stripe payment intent error", error);
+    console.log("stripe payment intent error", error.message);
     response.status(500).json({
-      msg: error,
+      msg: error.message,
     });
   }
 };
 
 const stripePaymentIntentSubscription = async (request, response) => {
   const { total, customerEmail } = request.body;
-  console.log("request body", request.body);
   try {
     const paymentSubscription = await stripe.paymentIntents.create({
       amount: total,
       currency: "usd",
-      automatic_payment_methods: {enabled: true},
+      automatic_payment_methods: {
+        enabled: true,
+      },
       receipt_email: customerEmail,
     });
-    console.log("paymentSubscription", paymentSubscription);
     response.status(201).json({
       clientSecret: paymentSubscription.client_secret,
+      payment_intent_id: paymentSubscription.id,
+      amount: paymentSubscription.amount,
       paymentSubscription,
     });
   } catch (error) {
-    console.log(
-      "🚀 ~ file: stripe.js:107 ~ stripePaymentIntentSubscription ~ error:",
-      error
-    );
     response.status(500).json({
       msg: "Please contact administrator",
-      error: error,
+      error: error.message,
     });
   }
 };
 
+const creatingSubscription = async (request, response) => {
+  try {
+    const { stripeCustomerID, items } = request.body
+    const subscription = await stripe.subscriptions.create({
+      customer: stripeCustomerID,
+      items: items,
+      payment_behavior: 'default_incomplete',
+      payment_settings: { save_default_payment_method: 'on_subscription', payment_method_types: ['card'], },
+      expand: ['latest_invoice.payment_intent'],
+    });
+    response.status(201).json({
+      ok: true,
+      subscriptionId: subscription.id,
+      clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+      data: subscription
+    })
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: error.message
+    })
+  }
+}
+
+const searchSubscriptions = async (request, response) => {
+  try {
+    const id = request.params.id
+    const subscription = await stripe.subscriptions.retrieve(id);
+    response.status(201).json({
+      ok: true,
+      subscriptionInfo: subscription
+    })
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: error.message
+    })
+  }
+}
+
+const updateSubcriptionInCompanyAccount = async (request, response) => {
+  try {
+    const storedSubcriptionID = request.params.id
+    const newInfo = request.body
+    const updatingStoredSubscriptionInfo = await StripeCompany.findByIdAndUpdate(
+      storedSubcriptionID,
+      newInfo,
+      {
+        new: true,
+      })
+    response.status(201).json({
+      ok: true,
+      companyCustomer: updatingStoredSubscriptionInfo
+    })
+  } catch (error) {
+    response.status().json({
+      ok: false,
+      msg: error.message
+    })
+  }
+}
+
+const updateCancelSubscription = async (request, response) => {
+  try {
+    const { cancelAtPeriodEnd, cancellationComment } = request.body
+    const subscriptionID = request.params.id
+    const updateSubscription = await stripe.subscriptions.update(subscriptionID, {
+      cancel_at_period_end: cancelAtPeriodEnd,
+      cancellation_details: [
+        { comment: cancellationComment }
+      ]
+    })
+    response.status(201).json({
+      ok: true,
+      msg: 'Subscription updated.',
+      subscription: updateSubscription
+    })
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: error.message
+    })
+  }
+}
+const cancelSubscriptionCompany = async (request, response) => {
+  try {
+    const subscriptionID = request.params.id
+    const cancelSubscription = await stripe.subscriptions.cancel(subscriptionID)
+    response.status(201).json({
+      ok: true,
+      msg: 'Subscription cancelled.',
+      subscription: cancelSubscription
+    })
+  } catch (error) {
+    response.status().json({
+      ok: false,
+      msg: error.message
+    })
+  }
+}
+
+const displayAllPaidInvoicesPerSubscription = async (request, response) => {
+  try {
+    const { subscriptionID } = request.body
+    const invoices = await stripe.invoices.list({
+      limit: 100,
+      status: 'paid',
+      subscription: subscriptionID
+    });
+    response.status(201).json({
+      ok: true,
+      invoices
+    })
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: error.message
+    })
+  }
+}
+
+const updateDefaultPaymentMethodInSubscription = async (request, response) => {
+  try {
+    const newPaymentMethodID = request.body
+    const subscriptionID = request.params.id
+    const paymentMethodUpdated = await stripe.subscriptions.update(
+      subscriptionID,
+      { default_payment_method: `${newPaymentMethodID}` }
+    );
+    response.status(201).json({
+      ok: true,
+      card: paymentMethodUpdated
+    })
+  } catch (error) {
+    console.log("🚀 ~ file: stripe.js:307 ~ updateDefaultPaymentMethodInSubscription ~ error:", error)
+    response.status(error.statusCode ?? 500).json({
+      ok: false,
+      msg: error.message
+    })
+  }
+}
+
+const updateDefaultPaymentMethodInCustomer = async (request, response) => {
+  try {
+    const {customerID} = request.body
+    const newPaymentMethodID = request.params.id
+    const customerUpdated = await stripe.paymentMethods.attach(
+      newPaymentMethodID,
+      { customer: `${customerID}` }
+    );
+    response.status(201).json({
+      ok: true,
+      customer: customerUpdated
+    })
+  } catch (error) {
+    console.log("🚀 ~ file: stripe.js:307 ~ updateDefaultPaymentMethodInSubscription ~ error:", error)
+    response.status(error.statusCode ?? 500).json({
+      ok: false,
+      msg: error.message
+    })
+  }
+}
+const searchStripeTransaction = async (request, response) => {
+  try {
+    const paymentIntent = await stripe.paymentIntents.search({
+      query: 'status:\'requires_capture\'',
+    });
+    response.status(201).json({
+      paymentIntent
+    });
+  } catch (error) {
+    response.status(500).json({
+      msg: "Please contact administrator",
+      error: error.message,
+    });
+  }
+};
 const listAllPaymentIntents = async (request, response) => {
   try {
     const paymentIntents = await stripe.paymentIntents.list({
@@ -164,22 +371,14 @@ const listAllCustomers = async (request, response) => {
 
 const searchCustomerId = async (request, response) => {
   try {
-    console.log("request.body email", request.body);
-
     const customer = await stripe.customers.search({
       query: `email:\'${request.body.email}\'`,
     });
-    console.log(
-      "🚀 ~ file: stripe.js:138 ~ searchCustomerId ~ customer",
-      customer
-    );
-
     response.status(201).json({
       ok: true,
       customer,
     });
   } catch (error) {
-    console.log("🚀 ~ file: stripe.js:147 ~ searchCustomerId ~ error", error);
     response.status(500).json({
       ok: false,
       error,
@@ -189,7 +388,7 @@ const searchCustomerId = async (request, response) => {
 const saveStripeTransaction = async (request, response) => {
   const stripeTransaction = new StripeTransaction(request.body);
   try {
-    stripeTransaction.user = request.uid;
+    // stripeTransaction.user = request.uid;
     const stripeTransactionSaved = await stripeTransaction.save();
     response.status(201).json({
       ok: true,
@@ -205,10 +404,10 @@ const saveStripeTransaction = async (request, response) => {
   }
 };
 
+
 const saveStripeTransactionAdmin = async (request, response) => {
   const stripeTransaction = new StripeTransaction(request.body);
   try {
-    stripeTransaction.user = request.uid;
     const stripeTransactionSaved = await stripeTransaction.save();
     response.status(201).json({
       ok: true,
@@ -271,10 +470,6 @@ const refundStripePaymentIntent = async (request, response) => {
       refund,
     });
   } catch (error) {
-    console.log(
-      "🚀 ~ file: stripe.js:237 ~ refundStripePaymentIntent ~ error",
-      error
-    );
     response.status(500).json({
       ok: false,
       msg: error,
@@ -306,12 +501,9 @@ const saveStripeTransactionTemplateForNoRegularUser = async (
 const removeDuplicateEntries = async (request, response) => {
   try {
     const duplicateEnrtyId = request.params.id;
-    console.log("🚀 ~ file: stripe.js:309 ~ removeDuplicateEntries ~ duplicateEnrtyId:", duplicateEnrtyId)
-  
     const duplicateEnrty = await StripeTransaction.findByIdAndDelete(
       duplicateEnrtyId
     );
-    console.log("🚀 ~ file: stripe.js:314 ~ removeDuplicateEntries ~  duplicateEnrty:",  duplicateEnrty)
     if (duplicateEnrty) {
       response.status(201).json({
         ok: true,
@@ -319,10 +511,6 @@ const removeDuplicateEntries = async (request, response) => {
       });
     }
   } catch (error) {
-    console.log(
-      "🚀 ~ file: stripe.js ~ line 159 ~ removeDuplicateEntries ~ error",
-      error
-    );
     response.status(500).json({
       ok: false,
       msg: error,
@@ -342,15 +530,36 @@ const retrievePaymentIntent = async (request, response) => {
       });
     }
   } catch (error) {
-    console.log(
-      "🚀 ~ file: stripe.js:286 ~ retrievePaymentIntent ~ error",
-      error
-    );
     response.status(500).json({
       error,
     });
   }
-}; 
+};
+
+const getListOfAllSavedStripeTransaction = async (request, response) => {
+  try {
+    const listOfStripeTransactionsSaved = await StripeTransaction.find(request.body).populate('user')
+    response.status(201).json({
+      ok: true,
+      list: listOfStripeTransactionsSaved
+    })
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: error
+    })
+  }
+}
+
+const stripeCompanyAccountFound = async (request, response) => {
+  const company = request.params.companyName
+  const companyAccountStripeFound = await StripeCompany.findOne({ companyName: company })
+  response.status(201).json({
+    ok: true,
+    companyAccountStripeFound
+  })
+}
+
 module.exports = {
   cancelStripePaymentIntent,
   captureStripePaymentIntent,
@@ -362,9 +571,21 @@ module.exports = {
   saveStripeTransaction,
   saveStripeTransactionAdmin,
   saveStripeTransactionTemplateForNoRegularUser,
+  searchStripeTransaction,
   searchCustomerId,
   stripeCustomer,
   stripePaymentIntent,
   stripePaymentIntentCustomized,
   stripePaymentIntentSubscription,
+  getListOfAllSavedStripeTransaction,
+  companyInformationAccountStripe,
+  creatingSubscription,
+  stripeCompanyAccountFound,
+  searchSubscriptions,
+  updateSubcriptionInCompanyAccount,
+  cancelSubscriptionCompany,
+  displayAllPaidInvoicesPerSubscription,
+  updateCancelSubscription,
+  updateDefaultPaymentMethodInSubscription,
+  updateDefaultPaymentMethodInCustomer
 };

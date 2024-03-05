@@ -3,11 +3,8 @@ const EventLog = require("../models/EventLog");
 
 const feedEventLog = async (request, response) => {
     try {
-        console.log("request.body",request.body)
         let feedEvent = new EventLog(request.body);
-
         await feedEvent.save();
-
         return response.status(201).json({
             ok: true,
             feedEvent
@@ -21,6 +18,23 @@ const feedEventLog = async (request, response) => {
     }
 };
 
+const renderActivity = async (request, response) => {
+    try {
+        const findActivity = await EventLog.find()
+        response.status(201).json({
+            ok: true,
+            activity: findActivity
+        })
+    } catch (error) {
+        console.log("🚀 ~ file: eventLog.js:25 ~ renderActivity ~ error:", error)
+        response.status(500).json({
+            ok: false,
+            msg: error.message
+        })
+    }
+}
+
 module.exports = {
-feedEventLog
+    feedEventLog,
+    renderActivity
 };

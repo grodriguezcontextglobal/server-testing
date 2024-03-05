@@ -22,6 +22,14 @@ const ArticleSchema = Schema({
     type: String,
     required: true,
   },
+  company: {
+    type: String,
+    required: true,
+  },
+  image: {
+    type: String,
+    default:""
+  },
 });
 
 module.exports = model("Article", ArticleSchema);

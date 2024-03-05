@@ -13,7 +13,7 @@ const whatsappNotification = async (request, response) => {
         from: "whatsapp:+16076227183",
         to: `whatsapp:+${to}`,
       })
-      .then((message) => console.log(message.sid))
+      .then((message) => message.sid)
       .done();
       response.status(201).json({
         ok:true,
@@ -40,7 +40,7 @@ const SMSNotification = async (request, response) => {
          from:"+16076227183",      
          to: `+${to}` 
        }) 
-      .then(message => console.log(message.sid)) 
+      .then(message => message.sid)
       .done();
       response.status(201).json({
         ok:true,

@@ -5,13 +5,16 @@
 
  const { Router } = require("express");
  const router = Router();
- const apicache = require("apicache")
  const {
-   displayAllAdminUser,
+   displayAllAdminUser, editOtherAdminUser,
  } = require("../controller/admin");
 
- const cache = apicache.middleware
  //display all admin users
- router.get("/admin-users", cache("2 minutes"), displayAllAdminUser);
+router.get("/admin-users", displayAllAdminUser);
+
+//display all admin by queries
+router.post("/admin-users", displayAllAdminUser);
+
+ router.patch("/edit-admin/:id", editOtherAdminUser)
  
  module.exports = router;

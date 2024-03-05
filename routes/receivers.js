@@ -18,8 +18,8 @@ const {
   listOfAssignedReceiver,
   trackReturnedReceiverWithIssue,
   getListOfReceiverReturnedByIssue,
+  updateIssueDevice,
 } = require("../controller/receiver");
-// const accessControlAllowOrigin = require("../middlewares/accessControlAllowOrigin");
 
 //post receivers per user per transaction
 router.post("/receiver-assignation", addReceiverToTransaction);
@@ -27,25 +27,49 @@ router.post("/receiver-assignation", addReceiverToTransaction);
 //check paymentIntent was used for receivers
 router.post("/receiver-assigned", checkingReceiversAssigned);
 
-//update receiver assigned data
-router.put("/receiver-update/:id", udpateReceiverStatus);
-
 //add receivers to pool
 router.post("/receivers-pool", poolReceivers);
-
-//update receivers to pool
-router.put("/receivers-pool-update/:id", updatePoolReceivers);
-
-//render all device in pool
-router.get("/receiver-pool-list",cache('1 minute'), receiverPoolList);
-
-//
-router.get("/receiver-assigned-list",cache("1 minute"),listOfAssignedReceiver)
 
 //track receiver returned by issue
 router.post("/receiver-returned-issue", trackReturnedReceiverWithIssue)
 
+//update entire data of an assigned receiver
+router.put("/receiver-update/:id", udpateReceiverStatus);
+
+//update specific value of receiver assigned data
+router.patch("/receiver-update/:id", udpateReceiverStatus);
+
+//update specific value of receiver data in pool
+router.patch("/receivers-pool-update/:id", updatePoolReceivers);
+
+//update specific value of an issue receiver data
+router.patch("/receiver-returned-issue/:id", updateIssueDevice)
+
+//render all device in pool
+router.post("/receiver-pool-list", receiverPoolList);
+
+//render list of all assigned receiver
+router.post("/receiver-assigned-list",listOfAssignedReceiver)
+
 //render all receiver returned by issue
-router.get("/list-receiver-returned-issue",cache("1 minute"), getListOfReceiverReturnedByIssue)
+router.get("/list-receiver-returned-issue", getListOfReceiverReturnedByIssue)
+
+//render all receiver returned by issue
+router.post("/list-receiver-returned-issue", getListOfReceiverReturnedByIssue)
+
+//update entire data of an assigned receiver
+router.put("/receiver-update/:id", udpateReceiverStatus);
+
+//update specific value of receiver assigned data
+router.patch("/receiver-update/:id", udpateReceiverStatus);
+
+//update specific value of receiver data in pool
+router.patch("/receivers-pool-update/:id", updatePoolReceivers);
+
+//update specific value of an issue receiver data
+router.patch("/receiver-returned-issue/:id", updateIssueDevice)
+
+
+
 
 module.exports = router;

@@ -5,7 +5,15 @@ const EventLogSchema = Schema({
     type: String,
     required: true,
   },
+  action: {
+    type: String,
+    required: true,
+  },
   actionTaken: {
+    type: String,
+    required: true,
+  },
+  company: {
     type: String,
     required: true,
   },
