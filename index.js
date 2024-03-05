@@ -25,7 +25,8 @@ app.use(cors({
       'https://admin.devitrak.net',
       'https://app.devitrak.net',
       'https://consumer-testing-app.netlify.app',
-      'https://admin-devitrak-clone.netlify.app'
+      'https://admin-devitrak-clone.netlify.app',
+      'https://admin-testing-dev.netlify.app'
     ]
     if (ACCEPTED_ORIGIN.includes(origin)) {
       return callback(null, true)
