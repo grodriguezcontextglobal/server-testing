@@ -62,7 +62,7 @@ app.use("/api/admin", require("./routes/admin"));
 app.use("/api/receiver", require("./routes/receivers"));
 app.use("/api/article", require("./routes/article"));
 app.use("/api/staff", require("./routes/staff"));
-app.use("/api/twilio", require("./routes/twilio"));
+// app.use("/api/twilio", require("./routes/twilio"));
 app.use("/api/event-log", require("./routes/eventLog"));
 app.use("/api/event", require("./routes/event"));
 app.use("/api/transaction-audit-log", require("./routes/transactionAuditLog"));
