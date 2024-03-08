@@ -108,31 +108,27 @@ const assigningDeviceMessageHtml = (props) => {
         <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
           This email confirms that you have been assigned a set of devices.
           Please see the details below.
-          <span
+        </p>
+        <div
             style="
               width: 100%;
               display: flex;
               flex-direction: column;
               margin: 1.5rem auto 0.5rem;
+              color: #475467;
+              font-size: 1rem;"
             "
           >
-            <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-              >Event: <strong>${props.event}</strong></span
-            >
-            <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-              >Company: <strong>${props.company}</strong></span
-            >
-            <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-              >Date: <strong>${props.date}</strong></span
-            >
-            <span style="margin: 0.3rem auto; width: 100%; text-align: left">
-              Time: <strong>${props.time}</strong></span
-            >
-            <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-              >Transaction ID: <strong>${props.transaction}</strong></span
-            >
-          </span>
-        </p>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Date: <strong>${props.date}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Time: <strong>${props.time}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+          </div>
         <a
           href="${props.link}"
           target="_blank"
@@ -140,6 +136,7 @@ const assigningDeviceMessageHtml = (props) => {
             display: flex;
             justify-content: center;
             align-items: center;
+            margin:auto;
             gap: 8px;
             align-self: stretch;
             border-radius: 8px;
@@ -153,19 +150,19 @@ const assigningDeviceMessageHtml = (props) => {
           ><p
             style="
               color: var(--Base-White, #fff);
-
+              margin:auto;
               /* Text md/Semibold */
               font-family: Inter;
               font-size: 16px;
               font-style: normal;
               font-weight: 600;
               line-height: 24px; /* 150% */
+              padding:8px 12px;
             "
           >
             Open app
           </p>
         </a>
-      </div>
       <div style="margin-top: 2.5rem">
         <h2
           style="
@@ -183,7 +180,8 @@ const assigningDeviceMessageHtml = (props) => {
           asked questions. For any specific questions please contact the staff
           at ${props.company}.
         </p>
-      </div>
+      </div>      </div>
+
     </div>
   </body>
 </html>
@@ -297,31 +295,28 @@ const returnConfirmationMessageHtml = (props) => {
         </h1>
         <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
         This email confirms that you have returned all of the devices from transaction detailed below.
-          <span
+          
+        </p>
+        <div
             style="
               width: 100%;
               display: flex;
               flex-direction: column;
               margin: 1.5rem auto 0.5rem;
+              color: #475467;
+              font-size: 1rem;"
             "
           >
-            <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-              >Event: <strong>${props.event}</strong></span
-            >
-            <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-              >Company: <strong>${props.company}</strong></span
-            >
-            <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-              >Date: <strong>${props.date}</strong></span
-            >
-            <span style="margin: 0.3rem auto; width: 100%; text-align: left">
-              Time: <strong>${props.time}</strong></span
-            >
-            <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-              >Transaction ID: <strong>${props.transaction}</strong></span
-            >
-          </span>
-        </p>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Date: <strong>${props.date}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Time: <strong>${props.time}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+          </div>
         <a
           href="${props.link}"
           target="_blank"
@@ -334,28 +329,29 @@ const returnConfirmationMessageHtml = (props) => {
             border-radius: 8px;
             border: 1px solid var(--Blue-dark-600, #155eef);
             background: var(--Blue-dark-600, #155eef);
-
+            margin:auto;
             /* Shadow/xs */
             box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
             text-decoration: none;
           "
           ><p
             style="
+              margin:auto;
               color: var(--Base-White, #fff);
-
+              text-align: center;
               /* Text md/Semibold */
               font-family: Inter;
               font-size: 16px;
               font-style: normal;
               font-weight: 600;
               line-height: 24px; /* 150% */
+              padding:8px 12px;
             "
           >
             Open app
           </p>
         </a>
-      </div>
-      <div style="margin-top: 2.5rem">
+       <div style="margin-top: 2.5rem">
         <h2
           style="
             font-size: 1.25rem;
@@ -372,14 +368,13 @@ const returnConfirmationMessageHtml = (props) => {
           asked questions. For any specific questions please contact the staff
           at ${props.company}.
         </p>
-      </div>
+      </div>     </div>
+
     </div>
   </body>
 </html>
 `;
 }
-// You can now use the 'returnConfirmationMessageHtml' variable to display the return confirmation message to your consumers.
-
 
 const cancelingDepositMessageHtml = (props) => {
   return `
@@ -487,32 +482,28 @@ const cancelingDepositMessageHtml = (props) => {
           Deposit released confirmation
           </h1>
           <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-          This email confirms that the ${props.amount} deposit has been released and returned to you from the transaction detailed below.
-            <span
-              style="
-                width: 100%;
-                display: flex;
-                flex-direction: column;
-                margin: 1.5rem auto 0.5rem;
-              "
-            >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Event: <strong>${props.event}</strong></span
-              >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Company: <strong>${props.company}</strong></span
-              >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Date: <strong>${props.date}</strong></span
-              >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left">
-                Time: <strong>${props.time}</strong></span
-              >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Transaction ID: <strong>${props.transaction}</strong></span
-              >
-            </span>
+          This email confirms that the $${props.amount} deposit has been released and returned to you from the transaction detailed below.
           </p>
+          <div
+            style="
+              width: 100%;
+              display: flex;
+              flex-direction: column;
+              margin: 1.5rem auto 0.5rem;
+              color: #475467;
+              font-size: 1rem;"
+            "
+          >
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Date: <strong>${props.date}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Time: <strong>${props.time}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+          </div>
           <a
             href="${props.link}"
             target="_blank"
@@ -520,6 +511,7 @@ const cancelingDepositMessageHtml = (props) => {
               display: flex;
               justify-content: center;
               align-items: center;
+              margin:auto;
               gap: 8px;
               align-self: stretch;
               border-radius: 8px;
@@ -533,7 +525,7 @@ const cancelingDepositMessageHtml = (props) => {
             ><p
               style="
                 color: var(--Base-White, #fff);
-  
+                margin:auto;
                 /* Text md/Semibold */
                 font-family: Inter;
                 font-size: 16px;
@@ -545,8 +537,7 @@ const cancelingDepositMessageHtml = (props) => {
               Open app
             </p>
           </a>
-        </div>
-        <div style="margin-top: 2.5rem">
+ <div style="margin-top: 2.5rem">
           <h2
             style="
               font-size: 1.25rem;
@@ -563,7 +554,8 @@ const cancelingDepositMessageHtml = (props) => {
             asked questions. For any specific questions please contact the staff
             at ${props.company}.
           </p>
-        </div>
+        </div>       </div>
+        
       </div>
     </body>
   </html>
@@ -678,32 +670,28 @@ const capturingDepositMessageHtml = (props) => {
           Deposit captured confirmation
           </h1>
           <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-          This email confirms that ${props.amount} of your deposit has been charged due to the lost devices from the transaction detailed below.
-            <span
-              style="
-                width: 100%;
-                display: flex;
-                flex-direction: column;
-                margin: 1.5rem auto 0.5rem;
-              "
-            >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Event: <strong>${props.event}</strong></span
-              >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Company: <strong>${props.company}</strong></span
-              >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Date: <strong>${props.date}</strong></span
-              >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left">
-                Time: <strong>${props.time}</strong></span
-              >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Transaction ID: <strong>${props.transaction}</strong></span
-              >
-            </span>
+          This email confirms that $${props.amount} of your deposit has been charged due to the lost devices from the transaction detailed below.
           </p>
+          <div
+            style="
+              width: 100%;
+              display: flex;
+              flex-direction: column;
+              margin: 1.5rem auto 0.5rem;
+              color: #475467;
+              font-size: 1rem;"
+            "
+          >
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Date: <strong>${props.date}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Time: <strong>${props.time}</strong></div>
+              <br/>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+          </div>
           <a
             href="${props.link}"
             target="_blank"
@@ -711,11 +699,12 @@ const capturingDepositMessageHtml = (props) => {
               display: flex;
               justify-content: center;
               align-items: center;
+              margin:auto;
               gap: 8px;
               align-self: stretch;
               border-radius: 8px;
-              border: 1px solid var(--Blue-dark-600, #155eef);
-              background: var(--Blue-dark-600, #155eef);
+              border: 1px solid #155eef;
+              background-color: #155eef;
   
               /* Shadow/xs */
               box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
@@ -723,8 +712,8 @@ const capturingDepositMessageHtml = (props) => {
             "
             ><p
               style="
-                color: var(--Base-White, #fff);
-  
+                color: #fff;
+                margin:auto;
                 /* Text md/Semibold */
                 font-family: Inter;
                 font-size: 16px;
@@ -736,7 +725,6 @@ const capturingDepositMessageHtml = (props) => {
               Open app
             </p>
           </a>
-        </div>
         <div style="margin-top: 2.5rem">
           <h2
             style="
@@ -754,7 +742,8 @@ const capturingDepositMessageHtml = (props) => {
             asked questions. For any specific questions please contact the staff
             at ${props.company}.
           </p>
-        </div>
+        </div>        </div>
+
       </div>
     </body>
   </html>
@@ -877,16 +866,16 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
             >
               <span style="margin: 0.3rem auto; width: 100%; text-align: left"
                 >Event: <strong>${props.event}</strong></span
-              >
+              ><br/>
               <span style="margin: 0.3rem auto; width: 100%; text-align: left"
                 >Company: <strong>${props.company}</strong></span
-              >
+              ><br/>
               <span style="margin: 0.3rem auto; width: 100%; text-align: left"
                 >Date: <strong>${props.date}</strong></span
-              >
+              ><br/>
               <span style="margin: 0.3rem auto; width: 100%; text-align: left">
                 Time: <strong>${props.time}</strong></span
-              >
+              ><br/>
               <span style="margin: 0.3rem auto; width: 100%; text-align: left"
                 >Transaction ID: <strong>${props.transaction}</strong></span
               >
@@ -924,8 +913,7 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
               Open app
             </p>
           </a>
-        </div>
-        <div style="margin-top: 2.5rem">
+<div style="margin-top: 2.5rem">
           <h2
             style="
               font-size: 1.25rem;
@@ -942,15 +930,13 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
             asked questions. For any specific questions please contact the staff
             at ${props.company}.
           </p>
-        </div>
+        </div>        </div>
+        
       </div>
     </body>
   </html>
 `;
 }
-
-// You can now use the 'lostDeviceFeeCollectedMessageHtml' function to generate the message by passing the appropriate props.
-
 
 const confirmationNewConsumerAccountMessageHtml = (props) => {
   return `
@@ -1094,8 +1080,7 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
             Confirm account
           </p>
         </a>
-      </div>
-      <div style="margin-top: 2.5rem">
+  <div style="margin-top: 2.5rem">
         <h2
           style="
             font-size: 1.25rem;
@@ -1112,7 +1097,8 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
           asked questions. For any specific questions please contact the staff
           at ${props.company}.
         </p>
-      </div>
+      </div>      </div>
+    
     </div>
   </body>
 </html>
@@ -1226,7 +1212,7 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
           </h1>
           <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
             Please click the button below to log in to the Devitrak app and manage
-            your devices and transactions with ${companyName}.
+            your devices and transactions with ${props.company}.
           </p>
   
           <a
@@ -1261,8 +1247,7 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
               Log in
             </p></a
           >
-        </div>
-        <div style="margin-top: 2.5rem">
+ <div style="margin-top: 2.5rem">
           <h2
             style="
               font-size: 1.25rem;
@@ -1279,13 +1264,14 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
             asked questions. For any specific questions please contact the staff
             at ${props.company}.
           </p>
+        </div>        
         </div>
+       
       </div>
     </body>
   </html>
 `
 }
-
 
 const linkToResetUserPassword = (props) => {
   return `
@@ -1428,7 +1414,6 @@ const linkToResetUserPassword = (props) => {
               Reset password
             </p></a
           >
-        </div>
         <div style="margin-top: 2.5rem">
           <h2
             style="
@@ -1446,7 +1431,8 @@ const linkToResetUserPassword = (props) => {
             asked questions. For any specific questions please contact the staff
             at ${props.company}.
           </p>
-        </div>
+        </div>        </div>
+
       </div>
     </body>
   </html>

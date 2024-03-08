@@ -104,7 +104,7 @@ const cancelDepositNotification = async (request, response) => {
             from: 'Devitrak Notifications <devitrak.testing@outlook.com>',
             to: `${request.body.consumer.name} <${request.body.consumer.email}>`,
             subject: 'Deposit returned notification',
-            html: cancelingDepositMessageHtml(request.body.message)
+            html: cancelingDepositMessageHtml(request.body)
         })
 
         response.status(201).json({
@@ -141,7 +141,7 @@ const captureDepositNotification = async (request, response) => {
             from: 'Devitrak Notifications <devitrak.testing@outlook.com>',
             to: `${request.body.consumer.name} <${request.body.consumer.email}>`,
             subject: 'Deposit captured',
-            html: capturingDepositMessageHtml(request.body.message)
+            html: capturingDepositMessageHtml(request.body)
         })
 
         response.status(201).json({
