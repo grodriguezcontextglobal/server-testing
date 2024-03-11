@@ -140,7 +140,6 @@ const deleteEvent = async (request, response) => {
 const insertingStaffInEvent = async (request, response) => {
 
     try {
-        console.log('request.body', request.body)
         const query = `
         insert into staff_event (event_id, staff_id, role)
         values(?,?,?)
