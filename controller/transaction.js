@@ -63,11 +63,9 @@ const saveTransactionTemplateForNoRegularUser = async (
 
 const updateTransaction = async (request, response) => {
     // const { id, active } = request.body;
-    console.log("🚀 ~ updateTransaction ~ request.body:", request.body)
     try {
         const id = request.params.id
         const transaction = await Transaction.findById(id);
-        console.log("🚀 ~ updateTransaction ~ transaction:", transaction)
         if (!transaction) {
             return response.status(404).json({
                 ok: false,

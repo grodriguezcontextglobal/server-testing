@@ -20,8 +20,6 @@ const createReport = async (request, response = express.response) => {
 const cashReport = async (request, response) => {
     try {
         let report = await CashReport.find(request.body);
-        console.log("🚀 ~ cashReport ~ request.body:", request.body)
-        console.log("🚀 ~ cashReport ~ report:", report)
         response.status(201).json({
             report
         })
