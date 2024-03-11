@@ -261,7 +261,7 @@ const updatePassword = async (request, response) => {
 };
 
 const showAllUsers = async (request, response) => {
-  const stripeTransactions = await StripeTransaction.find().populate("user");
+  const stripeTransactions = await StripeTransaction.find(request.body).populate("user");
 
   try {
     response.status(201).json({

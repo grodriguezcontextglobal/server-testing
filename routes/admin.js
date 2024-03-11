@@ -60,6 +60,9 @@ router.get("/renew", validateJWT, renewToken);
 //show all users in admin page
 router.get("/:id", showAllUsers);
 
+//show all users in admin page
+router.post("/users", showAllUsers);
+
 //edit admin user
 router.patch("/profile/:id", validateJWT, editAdminUser);
 
