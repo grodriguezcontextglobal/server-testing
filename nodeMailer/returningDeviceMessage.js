@@ -205,7 +205,7 @@ const returnConfirmationMessageHtml = (props) => {
       font-family: 'Inter', sans-serif;
       -webkit-text-size-adjust: 100%;
       -ms-text-size-adjust: 100%;
-      margin: 0;
+      margin: auto;
       padding: 0;
     "
   >
@@ -388,7 +388,7 @@ const cancelingDepositMessageHtml = (props) => {
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
         -ms-text-size-adjust: 100%;
-        margin: 0;
+        margin: auto;
         padding: 0;
       "
     >
@@ -568,7 +568,7 @@ const capturingDepositMessageHtml = (props) => {
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
         -ms-text-size-adjust: 100%;
-        margin: 0;
+        margin: auto;
         padding: 0;
       "
     >
@@ -747,7 +747,7 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
         -ms-text-size-adjust: 100%;
-        margin: 0;
+        margin: auto;
         padding: 0;
       "
     >
@@ -929,7 +929,7 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
       font-family: 'Inter', sans-serif;
       -webkit-text-size-adjust: 100%;
       -ms-text-size-adjust: 100%;
-      margin: 0;
+      margin: auto;
       padding: 0;
     "
   >
@@ -1090,7 +1090,7 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
         -ms-text-size-adjust: 100%;
-        margin: 0;
+        margin: auto;
         padding: 0;
       "
     >
@@ -1248,7 +1248,7 @@ const linkToResetUserPassword = (props) => {
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
         -ms-text-size-adjust: 100%;
-        margin: 0;
+        margin: auto;
         padding: 0;
       "
       >
