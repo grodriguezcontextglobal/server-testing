@@ -2,7 +2,6 @@ const { response } = require("express")
 
 const assigningDeviceMessageHtml = (props) => {
   return `
-  <!DOCTYPE html>
 <html lang="en" translate="no">
   <head>
     <meta charset="UTF-8" />
@@ -17,13 +16,14 @@ const assigningDeviceMessageHtml = (props) => {
   </head>
   <body
     style="
-      width: 100%;
-      background-color: #fff;
+      max-width: 768px;
+      min-width: 320px;
+      background-color:#fff;
       color: #1a202c;
       font-family: 'Inter', sans-serif;
       -webkit-text-size-adjust: 100%;
       -ms-text-size-adjust: 100%;
-      margin: 0;
+      margin: auto;
       padding: 0;
     "
   >
@@ -32,8 +32,7 @@ const assigningDeviceMessageHtml = (props) => {
         margin-left: auto;
         margin-right: auto;
         padding: 2rem;
-        max-width: 768px;
-        min-width: 320px;
+        width: 100%;
         border-radius: 12px;
       "
     >
@@ -52,7 +51,6 @@ const assigningDeviceMessageHtml = (props) => {
               text-align: left;
               width: 100%;
               color: #475467;
-              font-family: 'Inter', sans-serif;
               font-size: 9px;
               font-style: normal;
               font-weight: 500;
@@ -140,23 +138,19 @@ const assigningDeviceMessageHtml = (props) => {
             gap: 8px;
             align-self: stretch;
             border-radius: 8px;
-            border: 1px solid var(--Blue-dark-600, #155eef);
-            background: var(--Blue-dark-600, #155eef);
-
-            /* Shadow/xs */
+            border: 1px solid #155eef;
+            background: #155eef;
             box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
             text-decoration: none;
           "
           ><p
             style="
-              color: var(--Base-White, #fff);
+              color:#fff;
               margin:auto;
-              /* Text md/Semibold */
-              font-family: Inter;
               font-size: 16px;
               font-style: normal;
               font-weight: 600;
-              line-height: 24px; /* 150% */
+              line-height: 24px;
               padding:8px 12px;
             "
           >
@@ -180,9 +174,9 @@ const assigningDeviceMessageHtml = (props) => {
           asked questions. For any specific questions please contact the staff
           at ${props.company}.
         </p>
-      </div>      </div>
-
-    </div>
+      </div>
+      </div>
+      </div>
   </body>
 </html>
   `
@@ -190,7 +184,6 @@ const assigningDeviceMessageHtml = (props) => {
 
 const returnConfirmationMessageHtml = (props) => {
   return `
-  <!DOCTYPE html>
 <html lang="en" translate="no">
   <head>
     <meta charset="UTF-8" />
@@ -205,8 +198,9 @@ const returnConfirmationMessageHtml = (props) => {
   </head>
   <body
     style="
-      width: 100%;
-      background-color: #fff;
+      max-width: 768px;
+      min-width: 320px;
+      background-color:#fff;
       color: #1a202c;
       font-family: 'Inter', sans-serif;
       -webkit-text-size-adjust: 100%;
@@ -220,8 +214,7 @@ const returnConfirmationMessageHtml = (props) => {
         margin-left: auto;
         margin-right: auto;
         padding: 2rem;
-        max-width: 768px;
-        min-width: 320px;
+        width: 100%;
         border-radius: 12px;
       "
     >
@@ -240,7 +233,6 @@ const returnConfirmationMessageHtml = (props) => {
               text-align: left;
               width: 100%;
               color: #475467;
-              font-family: 'Inter', sans-serif;
               font-size: 9px;
               font-style: normal;
               font-weight: 500;
@@ -327,19 +319,16 @@ const returnConfirmationMessageHtml = (props) => {
             gap: 8px;
             align-self: stretch;
             border-radius: 8px;
-            border: 1px solid var(--Blue-dark-600, #155eef);
-            background: var(--Blue-dark-600, #155eef);
-            margin:auto;
-            /* Shadow/xs */
-            box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+            border: 1px solid #155eef;
+            background: #155eef;
+            margin:auto;box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
             text-decoration: none;
           "
           ><p
             style="
               margin:auto;
-              color: var(--Base-White, #fff);
+              color:#fff;
               text-align: center;
-              /* Text md/Semibold */
               font-family: Inter;
               font-size: 16px;
               font-style: normal;
@@ -368,8 +357,8 @@ const returnConfirmationMessageHtml = (props) => {
           asked questions. For any specific questions please contact the staff
           at ${props.company}.
         </p>
-      </div>     </div>
-
+      </div>
+      </div>
     </div>
   </body>
 </html>
@@ -378,7 +367,6 @@ const returnConfirmationMessageHtml = (props) => {
 
 const cancelingDepositMessageHtml = (props) => {
   return `
-   <!DOCTYPE html>
   <html lang="en" translate="no">
     <head>
       <meta charset="UTF-8" />
@@ -393,8 +381,9 @@ const cancelingDepositMessageHtml = (props) => {
     </head>
     <body
       style="
-        width: 100%;
-        background-color: #fff;
+        max-width: 768px;
+        min-width: 320px;
+        background-color:#fff;
         color: #1a202c;
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
@@ -408,8 +397,7 @@ const cancelingDepositMessageHtml = (props) => {
           margin-left: auto;
           margin-right: auto;
           padding: 2rem;
-          max-width: 768px;
-          min-width: 320px;
+          width: 100%;
           border-radius: 12px;
         "
       >
@@ -515,18 +503,14 @@ const cancelingDepositMessageHtml = (props) => {
               gap: 8px;
               align-self: stretch;
               border-radius: 8px;
-              border: 1px solid var(--Blue-dark-600, #155eef);
-              background: var(--Blue-dark-600, #155eef);
-  
-              /* Shadow/xs */
+              border: 1px solid #155eef;
+              background: #155eef;
               box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
               text-decoration: none;
             "
             ><p
               style="
-                color: var(--Base-White, #fff);
-                margin:auto;
-                /* Text md/Semibold */
+                color:#fff;
                 font-family: Inter;
                 font-size: 16px;
                 font-style: normal;
@@ -537,7 +521,7 @@ const cancelingDepositMessageHtml = (props) => {
               Open app
             </p>
           </a>
- <div style="margin-top: 2.5rem">
+          <div style="margin-top: 2.5rem">
           <h2
             style="
               font-size: 1.25rem;
@@ -554,19 +538,15 @@ const cancelingDepositMessageHtml = (props) => {
             asked questions. For any specific questions please contact the staff
             at ${props.company}.
           </p>
-        </div>       </div>
-        
-      </div>
+        </div>       
+        </div>
+        </div>
     </body>
   </html>
   `};
 
-// You can now use the 'returnDepositMessageHtml' variable to display the deposit return notice to your consumers.
-
-
 const capturingDepositMessageHtml = (props) => {
   return `
-   <!DOCTYPE html>
   <html lang="en" translate="no">
     <head>
       <meta charset="UTF-8" />
@@ -581,8 +561,9 @@ const capturingDepositMessageHtml = (props) => {
     </head>
     <body
       style="
-        width: 100%;
-        background-color: #fff;
+        max-width: 768px;
+        min-width: 320px;
+        background-color:#fff;
         color: #1a202c;
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
@@ -595,9 +576,8 @@ const capturingDepositMessageHtml = (props) => {
         style="
           margin-left: auto;
           margin-right: auto;
+          width: 100%;
           padding: 2rem;
-          max-width: 768px;
-          min-width: 320px;
           border-radius: 12px;
         "
       >
@@ -704,18 +684,13 @@ const capturingDepositMessageHtml = (props) => {
               align-self: stretch;
               border-radius: 8px;
               border: 1px solid #155eef;
-              background-color: #155eef;
-  
-              /* Shadow/xs */
+              background: #155eef;
               box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
               text-decoration: none;
             "
             ><p
               style="
-                color: #fff;
-                margin:auto;
-                /* Text md/Semibold */
-                font-family: Inter;
+                color:#fff;
                 font-size: 16px;
                 font-style: normal;
                 font-weight: 600;
@@ -742,8 +717,8 @@ const capturingDepositMessageHtml = (props) => {
             asked questions. For any specific questions please contact the staff
             at ${props.company}.
           </p>
-        </div>        </div>
-
+        </div>
+      </div>
       </div>
     </body>
   </html>
@@ -751,7 +726,6 @@ const capturingDepositMessageHtml = (props) => {
 
 const lostDeviceFeeCollectedMessageHtml = (props) => {
   return `
-  <!DOCTYPE html>
   <html lang="en" translate="no">
     <head>
       <meta charset="UTF-8" />
@@ -766,8 +740,9 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
     </head>
     <body
       style="
-        width: 100%;
-        background-color: #fff;
+        max-width: 768px;
+        min-width: 320px;
+        background-color:#fff;
         color: #1a202c;
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
@@ -781,9 +756,8 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
           margin-left: auto;
           margin-right: auto;
           padding: 2rem;
-          max-width: 768px;
-          min-width: 320px;
           border-radius: 12px;
+          width: 100%;
         "
       >
         <div
@@ -801,7 +775,6 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
                 text-align: left;
                 width: 100%;
                 color: #475467;
-                font-family: 'Inter', sans-serif;
                 font-size: 9px;
                 font-style: normal;
                 font-weight: 500;
@@ -891,19 +864,14 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
               gap: 8px;
               align-self: stretch;
               border-radius: 8px;
-              border: 1px solid var(--Blue-dark-600, #155eef);
-              background: var(--Blue-dark-600, #155eef);
-  
-              /* Shadow/xs */
+              border: 1px solid #155eef;
+              background: #155eef;
               box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
               text-decoration: none;
             "
             ><p
               style="
-                color: var(--Base-White, #fff);
-  
-                /* Text md/Semibold */
-                font-family: Inter;
+                color:#fff;
                 font-size: 16px;
                 font-style: normal;
                 font-weight: 600;
@@ -913,7 +881,7 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
               Open app
             </p>
           </a>
-<div style="margin-top: 2.5rem">
+          <div style="margin-top: 2.5rem">
           <h2
             style="
               font-size: 1.25rem;
@@ -930,9 +898,9 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
             asked questions. For any specific questions please contact the staff
             at ${props.company}.
           </p>
-        </div>        </div>
-        
+        </div>
       </div>
+     </div>
     </body>
   </html>
 `;
@@ -940,7 +908,6 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
 
 const confirmationNewConsumerAccountMessageHtml = (props) => {
   return `
-  <!DOCTYPE html>
 <html lang="en" translate="no">
   <head>
     <meta charset="UTF-8" />
@@ -955,8 +922,9 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
   </head>
   <body
     style="
-      width: 100%;
-      background-color: #fff;
+      max-width: 768px;
+      min-width: 320px;
+      background-color:#fff;
       color: #1a202c;
       font-family: 'Inter', sans-serif;
       -webkit-text-size-adjust: 100%;
@@ -970,8 +938,7 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
         margin-left: auto;
         margin-right: auto;
         padding: 2rem;
-        max-width: 768px;
-        min-width: 320px;
+        width: 100%;
         border-radius: 12px;
       "
     >
@@ -1058,19 +1025,14 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
             gap: 8px;
             align-self: stretch;
             border-radius: 8px;
-            border: 1px solid var(--Blue-dark-600, #155eef);
-            background: var(--Blue-dark-600, #155eef);
-
-            /* Shadow/xs */
-            box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+            border: 1px solid #155eef;
+            background:#155eef;
+            -shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
             text-decoration: none;
           "
           ><p
             style="
-              color: var(--Base-White, #fff);
-
-              /* Text md/Semibold */
-              font-family: Inter;
+              color:#fff;
               font-size: 16px;
               font-style: normal;
               font-weight: 600;
@@ -1080,7 +1042,7 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
             Confirm account
           </p>
         </a>
-  <div style="margin-top: 2.5rem">
+        <div style="margin-top: 2.5rem">
         <h2
           style="
             font-size: 1.25rem;
@@ -1097,8 +1059,8 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
           asked questions. For any specific questions please contact the staff
           at ${props.company}.
         </p>
-      </div>      </div>
-    
+      </div>
+      </div>
     </div>
   </body>
 </html>
@@ -1107,7 +1069,6 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
 }
 const linkToLoginExistingConsumerMessageHtml = (props) => {
   return `
-  <!DOCTYPE html>
   <html lang="en" translate="no">
     <head>
       <meta charset="UTF-8" />
@@ -1122,8 +1083,9 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
     </head>
     <body
       style="
-        width: 100%;
-        background-color: #fff;
+        max-width: 768px;
+        min-width: 320px;
+        background-color:#fff;
         color: #1a202c;
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
@@ -1137,8 +1099,7 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
           margin-left: auto;
           margin-right: auto;
           padding: 2rem;
-          max-width: 768px;
-          min-width: 320px;
+          width: 100%;
           border-radius: 12px;
         "
       >
@@ -1157,7 +1118,6 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
                 text-align: left;
                 width: 100%;
                 color: #475467;
-                font-family: 'Inter', sans-serif;
                 font-size: 9px;
                 font-style: normal;
                 font-weight: 500;
@@ -1214,7 +1174,7 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
             Please click the button below to log in to the Devitrak app and manage
             your devices and transactions with ${props.company}.
           </p>
-  
+
           <a
             href="${props.link}"
             target="_blank"
@@ -1225,73 +1185,65 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
               gap: 8px;
               align-self: stretch;
               border-radius: 8px;
-              border: 1px solid var(--Blue-dark-600, #155eef);
-              background: var(--Blue-dark-600, #155eef);
-  
-              /* Shadow/xs */
+              border: 1px solid #155eef;
+              background:#155eef;
               box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
               text-decoration: none;
             "
-            ><p
-              style="
-                color: var(--Base-White, #fff);
-  
-                /* Text md/Semibold */
-                font-family: Inter;
+          ><p
+            style="
+                color:#fff;
                 font-size: 16px;
                 font-style: normal;
                 font-weight: 600;
                 line-height: 24px; /* 150% */
               "
-            >
-              Log in
-            </p></a
           >
- <div style="margin-top: 2.5rem">
-          <h2
-            style="
+              Log in
+            </p>
+            </a>
+          <div style="margin-top: 2.5rem">
+            <h2
+              style="
               font-size: 1.25rem;
               font-weight: 600;
               color: #101828;
               margin-bottom: 1rem;
             "
-          >
-            What to expect
-          </h2>
-          <p style="font-size: 1rem; color: #475467">
-            In the application you will be able to request new devices, review
-            your transactions, request support, and get answers to frequently
-            asked questions. For any specific questions please contact the staff
-            at ${props.company}.
-          </p>
-        </div>        
+            >
+              What to expect
+            </h2>
+            <p style="font-size: 1rem; color: #475467">
+              In the application you will be able to request new devices, review
+              your transactions, request support, and get answers to frequently
+              asked questions. For any specific questions please contact the staff
+              at ${props.company}.
+            </p>
+          </div>
         </div>
-       
       </div>
     </body>
   </html>
-`
+  `
 }
 
 const linkToResetUserPassword = (props) => {
   return `
-  <!DOCTYPE html>
-  <html lang="en" translate="no">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>
-        Devitrak App | Easy way to manage inventory. A good solution for your
-        business no matter the size of your organization.
-      </title>
-      <style>
-        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
-      </style>
-    </head>
-    <body
-      style="
-        width: 100%;
-        background-color: #fff;
+    < html lang = "en" translate = "no" >
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>
+          Devitrak App | Easy way to manage inventory. A good solution for your
+          business no matter the size of your organization.
+        </title>
+        <style>
+          @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+        </style>
+      </head>
+      <body
+        style="
+        background-color:#fff;
         color: #1a202c;
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
@@ -1299,9 +1251,9 @@ const linkToResetUserPassword = (props) => {
         margin: 0;
         padding: 0;
       "
-    >
-      <div
-        style="
+      >
+        <div
+          style="
           margin-left: auto;
           margin-right: auto;
           padding: 2rem;
@@ -1309,19 +1261,19 @@ const linkToResetUserPassword = (props) => {
           min-width: 320px;
           border-radius: 12px;
         "
-      >
-        <div
-          style="
+        >
+          <div
+            style="
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 2.5rem;
             width: 100%;
           "
-        >
-          <div style="align-self: flex-start">
-            <p
-              style="
+          >
+            <div style="align-self: flex-start">
+              <p
+                style="
                 text-align: left;
                 width: 100%;
                 color: #475467;
@@ -1331,111 +1283,107 @@ const linkToResetUserPassword = (props) => {
                 font-weight: 500;
                 line-height: 9px;
               "
-            >
-              Power by
-            </p>
-            <div
-              style="
+              >
+                Power by
+              </p>
+              <div
+                style="
                 display: flex;
                 justify-content: flex-end;
                 align-items: center;
                 margin-top: 2.5px;
               "
-            >
-              <img
-                src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
-                alt="devitrak-logo"
-                style="
+              >
+                <img
+                  src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+                  alt="devitrak-logo"
+                  style="
                   object-fit: contain;
                   object-position: 50% 50%;
                   align-self: flex-start;
                   display: flex;
                   align-items: center;
                 "
-              />
-              <img
-                src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
-                alt="devitrak-name"
-                style="
+                />
+                <img
+                  src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+                  alt="devitrak-name"
+                  style="
                   object-fit: contain;
                   object-position: 50% 50%;
                   align-self: flex-start;
                   display: flex;
                   align-items: center;
                 "
-              />
+                />
+              </div>
             </div>
           </div>
-        </div>
-        <div style="max-width: 768px; min-width: 320px">
-          <h1
-            style="
+          <div style="max-width: 768px; min-width: 320px">
+            <h1
+              style="
               font-size: 1.5rem;
               font-weight: 600;
               color: #101828;
               margin-bottom: 1rem;
             "
-          >
-            Reset your password
-          </h1>
-          <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-            Please click the button below to reset your password to Devitrak.
-          </p>
-  
-          <a
-            href="${props.linkToResetPassword}"
-            target="_blank"
-            style="
+            >
+              Reset your password
+            </h1>
+            <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
+              Please click the button below to reset your password to Devitrak.
+            </p>
+
+            <a
+              href="${props.linkToResetPassword}"
+              target="_blank"
+              style="
               display: flex;
               justify-content: center;
               align-items: center;
               gap: 8px;
               align-self: stretch;
               border-radius: 8px;
-              border: 1px solid var(--Blue-dark-600, #155eef);
-              background: var(--Blue-dark-600, #155eef);
-  
-              /* Shadow/xs */
+              border: 1px solid #155eef;
+              background: #155eef;
               box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
               text-decoration: none;
             "
-            ><p
-              style="
-                color: var(--Base-White, #fff);
-  
-                /* Text md/Semibold */
-                font-family: Inter;
+            >
+              <p
+                style="
+                color:#fff;
                 font-size: 16px;
                 font-style: normal;
                 font-weight: 600;
-                line-height: 24px; /* 150% */
+                line-height: 24px;
               "
+              >
+                Reset password
+              </p></a
             >
-              Reset password
-            </p></a
-          >
-        <div style="margin-top: 2.5rem">
-          <h2
-            style="
+            <div style="margin-top: 2.5rem">
+              <h2
+                style="
               font-size: 1.25rem;
               font-weight: 600;
               color: #101828;
               margin-bottom: 1rem;
             "
-          >
-            What to expect
-          </h2>
-          <p style="font-size: 1rem; color: #475467">
-            In the application you will be able to request new devices, review
-            your transactions, request support, and get answers to frequently
-            asked questions. For any specific questions please contact the staff
-            at ${props.company}.
-          </p>
-        </div>        </div>
-
-      </div>
-    </body>
-  </html>
+              >
+                What to expect
+              </h2>
+              <p style="font-size: 1rem; color: #475467">
+                In the application you will be able to request new devices, review
+                your transactions, request support, and get answers to frequently
+                asked questions. For any specific questions please contact the staff
+                at ${props.company}.
+              </p>
+            </div>
+          </div>
+        </div>
+      </body>
+    </ >
   `
 }
 
