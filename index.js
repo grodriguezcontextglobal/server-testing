@@ -81,7 +81,8 @@ app.use("/api/db_consumer_attending_event_record", require("./mysql/routes/consu
 app.use("/api/db_company", require("./mysql/routes/company"))
 app.use("/api/db_staff", require("./mysql/routes/staff"))
 app.use("/api/db_stripe", require("./mysql/routes/stripe"))
-
+app.use("/api/db_record", require("./mysql/routes/recordEvent"))
+//db_record
 //create workers
 if (cluster.isPrimary) {
   for (let index = 0; index < numCpu; index++) {
