@@ -299,15 +299,30 @@ const returnConfirmationMessageHtml = (props) => {
               font-size: 1rem;"
             "
           >
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong>
+            </p>
+            </div>
               <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong>
+            </p>
+            </div>
               <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Date: <strong>${props.date}</strong></div>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Date: <strong>${props.date}</strong>
+            </p>
+            </div>
               <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Time: <strong>${props.time}</strong></div>
+            <div style="margin: 0.3rem auto; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Time: <strong>${props.time}</strong>
+            </p>
+            </div>
               <br/>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong>
+            </p>
+            </div>
           </div>
         <a
           href="${props.link}"
@@ -329,7 +344,6 @@ const returnConfirmationMessageHtml = (props) => {
               margin:auto;
               color:#fff;
               text-align: center;
-              font-family: Inter;
               font-size: 16px;
               font-style: normal;
               font-weight: 600;
@@ -511,7 +525,6 @@ const cancelingDepositMessageHtml = (props) => {
             ><p
               style="
                 color:#fff;
-                font-family: Inter;
                 font-size: 16px;
                 font-style: normal;
                 font-weight: 600;
@@ -1229,7 +1242,7 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
 
 const linkToResetUserPassword = (props) => {
   return `
-    < html lang = "en" translate = "no" >
+    <html lang="en" translate="no">
       <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -1287,36 +1300,36 @@ const linkToResetUserPassword = (props) => {
                 Power by
               </p>
               <div
-                style="
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
                 display: flex;
-                justify-content: flex-end;
                 align-items: center;
-                margin-top: 2.5px;
               "
-              >
-                <img
-                  src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
-                  alt="devitrak-logo"
-                  style="
-                  object-fit: contain;
-                  object-position: 50% 50%;
-                  align-self: flex-start;
-                  display: flex;
-                  align-items: center;
-                "
-                />
-                <img
-                  src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
-                  alt="devitrak-name"
-                  style="
-                  object-fit: contain;
-                  object-position: 50% 50%;
-                  align-self: flex-start;
-                  display: flex;
-                  align-items: center;
-                "
-                />
-              </div>
+            />
+            <img
+              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
             </div>
           </div>
           <div style="max-width: 768px; min-width: 320px">
