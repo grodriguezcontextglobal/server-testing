@@ -47,13 +47,7 @@ const stripeCustomer = async (request, response) => {
 const companyInformationAccountStripe = async (request, response) => {
   try {
     const { companyName, ownerEmail, ownerFirstName, ownerLastName } = request.body
-    const checkExistingCompanyCustomer = await StripeCompany.findOne({ "email": ownerEmail })
-    if (checkExistingCompanyCustomer) {
-      return response.status(500).json({
-        ok: false,
-        msg: `${ownerEmail} is already in our records. Please login or create new account using a different email address!`
-      })
-    }
+    console.log("🚀 ~ companyInformationAccountStripe ~ request.body:", request.body)  
     const companyCustomer = await stripe.customers.create({
       name: `${ownerFirstName} ${ownerLastName} / company: ${companyName}`,
       email: ownerEmail,
@@ -73,6 +67,7 @@ const companyInformationAccountStripe = async (request, response) => {
     })
 
   } catch (error) {
+    console.log("🚀 ~ companyInformationAccountStripe ~ error:", error)
     response.status(500).json({
       ok: false,
       msg: error.msg

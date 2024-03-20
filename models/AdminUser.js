@@ -1,6 +1,6 @@
 const { Schema, model } = require("mongoose");
 
-const AdminUserSchema = Schema({
+const AdminUserSchema = new Schema({
   name: {
     type: String,
     required: true,
@@ -47,17 +47,17 @@ const AdminUserSchema = Schema({
   imageProfile: {
     type: String,
   },
-  emailNotifications:{
-    type:Object,
-    default:{
-      newsAndUpdates:false,
-      tipsAndTutorials:false,
-      userResearch:false
+  emailNotifications: {
+    type: Object,
+    default: {
+      newsAndUpdates: false,
+      tipsAndTutorials: false,
+      userResearch: false
     }
   },
-  dailySummaries:{
+  dailySummaries: {
     type: String,
-    default:"do not notify me"
+    default: "do not notify me"
   },
   eventReminder: {
     type: String,
@@ -68,9 +68,13 @@ const AdminUserSchema = Schema({
     default: "do not notify me"
   },
   online: {
-    type:Boolean,
+    type: Boolean,
     default: false
-  }
+  },
+  super_user: {
+    type: Boolean,
+    default: false
+  },
 });
 
 AdminUserSchema.method("toJSON", function () {

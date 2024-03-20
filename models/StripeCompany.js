@@ -12,7 +12,6 @@ const StripeCompanySchema = Schema({
     ownerEmail: {
         type: String,
         required: true,
-        unique: true,
     },
     ownerFirstName: {
         type: String,
