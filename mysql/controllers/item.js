@@ -27,7 +27,7 @@ const insertingItem = (request, response) => {
                         warehouse, 
                         location,
                         company)
-                        values(?,?,?,?,?,?,?,?)`;
+                        values(?,?,?,?,?,?,?,?,?)`;
         const values = [`${category_name}`, `${item_group}`, `${cost}`, `${descript_item}`, `${ownership}`, `${serial_number}`, warehouse, `${company}`, `${location}`];
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(500).json({
