@@ -61,6 +61,7 @@ app.use("/api/auth", require("./routes/auth"));
 app.use("/api/stripe", require("./routes/stripe"));
 app.use("/api/transaction", require("./routes/transaction"));
 app.use("/api/admin", require("./routes/admin"));
+app.use("/api/company", require("./routes/company"));
 app.use("/api/receiver", require("./routes/receivers"));
 app.use("/api/article", require("./routes/article"));
 app.use("/api/staff", require("./routes/staff"));

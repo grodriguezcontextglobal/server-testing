@@ -15,7 +15,7 @@ const connection = createConnection({
 
 const insertingItem = (request, response) => {
     try {
-        const { category_name, item_group, cost, descript_item, ownership, serial_number, warehouse, created_at, updated_at, company } = request.body
+        const { category_name, item_group, cost, descript_item, ownership, serial_number, warehouse, company, location } = request.body
         const query = `
                         insert into item_inv
                         (category_name, 
@@ -25,9 +25,10 @@ const insertingItem = (request, response) => {
                         ownership, 
                         serial_number, 
                         warehouse, 
+                        location,
                         company)
                         values(?,?,?,?,?,?,?,?)`;
-        const values = [`${category_name}`, `${item_group}`, `${cost}`, `${descript_item}`, `${ownership}`, `${serial_number}`, warehouse, `${company}`];
+        const values = [`${category_name}`, `${item_group}`, `${cost}`, `${descript_item}`, `${ownership}`, `${serial_number}`, warehouse, `${company}`, `${location}`];
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(500).json({
                 ok: false,
@@ -145,7 +146,7 @@ const consultingItemInWarehouseTable = (request, response) => {
 
 const updateItemInTable = async (request, response) => {
     try {
-        const { category_name, item_group, cost, descript_item, serial_number, warehouse, ownership, company, create_at, update_at, item_id } = request.body;
+        const { category_name, item_group, cost, descript_item, serial_number, warehouse, location, ownership, company, create_at, update_at, item_id } = request.body;
         const query = `UPDATE item_inv 
                         SET category_name=?,
                             item_group=?,  
@@ -153,13 +154,14 @@ const updateItemInTable = async (request, response) => {
                             descript_item=?,
                             serial_number=?,
                             warehouse=?,
+                            location=?,
                             ownership=?,
                             company=?,
                             status=?,
                             create_at=?,
                             update_at=?
                         WHERE item_id=?;`;
-        const values = [category_name, item_group, cost, descript_item, serial_number, warehouse, ownership, company, status, create_at, update_at, item_id];
+        const values = [category_name, item_group, cost, descript_item, serial_number, warehouse, location, ownership, company, status, create_at, update_at, item_id];
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(401).json({
                 ok: false,
@@ -218,6 +220,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
             serial_number,
             category_name,
             item_group,
+            location,
             company } = request.body;
         const query = ` UPDATE
         item_inv
@@ -229,6 +232,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
         serial_number =?
         and category_name = ?
         and item_group = ?
+        and location = ?
         and company = ?;`;
         const values = [warehouse,
             status,
@@ -236,6 +240,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
             serial_number,
             category_name,
             item_group,
+            location,
             company];
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(401).json({

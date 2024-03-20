@@ -430,7 +430,6 @@ const cancelingDepositMessageHtml = (props) => {
                 text-align: left;
                 width: 100%;
                 color: #475467;
-                font-family: 'Inter', sans-serif;
                 font-size: 9px;
                 font-style: normal;
                 font-weight: 500;
@@ -609,7 +608,6 @@ const capturingDepositMessageHtml = (props) => {
                 text-align: left;
                 width: 100%;
                 color: #475467;
-                font-family: 'Inter', sans-serif;
                 font-size: 9px;
                 font-style: normal;
                 font-weight: 500;
@@ -970,7 +968,6 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
               text-align: left;
               width: 100%;
               color: #475467;
-              font-family: 'Inter', sans-serif;
               font-size: 9px;
               font-style: normal;
               font-weight: 500;
@@ -1290,7 +1287,6 @@ const linkToResetUserPassword = (props) => {
                 text-align: left;
                 width: 100%;
                 color: #475467;
-                font-family: 'Inter', sans-serif;
                 font-size: 9px;
                 font-style: normal;
                 font-weight: 500;
