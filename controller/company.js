@@ -13,7 +13,8 @@ const createCompany = async (request, response = express.response) => {
             main_email,
             industry,
             stripe_customer_id,
-            employees
+            employees,
+            location
         } = request.body
         let companyInfo = await Company.findOne({ company_name });
         if (!companyInfo) {
@@ -42,7 +43,8 @@ const createCompany = async (request, response = express.response) => {
                     user: employees.at(-1).user,
                     super_user: employees.at(-1).super_user,
                     role: employees.at(-1).role
-                }]
+                }],
+                location: location
             });
 
             await companyInfo.save();

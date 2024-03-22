@@ -30,6 +30,11 @@ const Company = new Schema({
             default: "unknown"
         }
     },
+    location: [{
+        type: String,
+        required: true,
+        default: "unknown"
+    }],
     phone: {
         main: {
             type: String,

@@ -14,6 +14,7 @@ const connection = createConnection({
 });
 
 const insertingItem = (request, response) => {
+    console.log(request.body)
     try {
         const { category_name, item_group, cost, descript_item, ownership, serial_number, warehouse, company, location } = request.body
         const query = `
@@ -25,8 +26,8 @@ const insertingItem = (request, response) => {
                         ownership, 
                         serial_number, 
                         warehouse, 
-                        location,
-                        company)
+                       company, 
+                       location)
                         values(?,?,?,?,?,?,?,?,?)`;
         const values = [`${category_name}`, `${item_group}`, `${cost}`, `${descript_item}`, `${ownership}`, `${serial_number}`, warehouse, `${company}`, `${location}`];
         connection.execute(query, values, function (err, result, fields) {
