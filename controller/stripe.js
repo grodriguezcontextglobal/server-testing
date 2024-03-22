@@ -47,7 +47,6 @@ const stripeCustomer = async (request, response) => {
 const companyInformationAccountStripe = async (request, response) => {
   try {
     const { companyName, ownerEmail, ownerFirstName, ownerLastName } = request.body
-    console.log("🚀 ~ companyInformationAccountStripe ~ request.body:", request.body)  
     const companyCustomer = await stripe.customers.create({
       name: `${ownerFirstName} ${ownerLastName} / company: ${companyName}`,
       email: ownerEmail,
@@ -155,27 +154,34 @@ const stripePaymentIntentSubscription = async (request, response) => {
 
 const creatingSubscription = async (request, response) => {
   try {
+    // Calculate the future date 12 months from now
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 12);
+
     const { stripeCustomerID, items } = request.body
     const subscription = await stripe.subscriptions.create({
       customer: stripeCustomerID,
       items: items,
+      cancel_at: Math.floor(endDate.getTime() / 1000), // Set billing cycle to 12 months from now
       payment_behavior: 'default_incomplete',
       payment_settings: { save_default_payment_method: 'on_subscription', payment_method_types: ['card'], },
       expand: ['latest_invoice.payment_intent'],
     });
+    console.log("🚀 ~ creatingSubscription ~ subscription:", subscription)
+
     response.status(201).json({
       ok: true,
       subscriptionId: subscription.id,
       clientSecret: subscription.latest_invoice.payment_intent.client_secret,
       data: subscription
-    })
+    });
   } catch (error) {
     response.status(500).json({
       ok: false,
       msg: error.message
-    })
+    });
   }
-}
+};
 
 const searchSubscriptions = async (request, response) => {
   try {
@@ -297,7 +303,7 @@ const updateDefaultPaymentMethodInSubscription = async (request, response) => {
 
 const updateDefaultPaymentMethodInCustomer = async (request, response) => {
   try {
-    const {customerID} = request.body
+    const { customerID } = request.body
     const newPaymentMethodID = request.params.id
     const customerUpdated = await stripe.paymentMethods.attach(
       newPaymentMethodID,
