@@ -305,7 +305,7 @@ const consultingInventoryTracking = (request, response) => {
     try {
         const item_id = request.params.id
         const query = `
-        SELECT ii.item_id,ii.serial_number, ii.warehouse, ii.category_name, ii.item_group, ii.cost, ii.ownership, iiae.status, iiae.condition, ei.event_name
+        SELECT ii.item_id,ii.serial_number,ii.location, ii.warehouse, ii.category_name, ii.item_group, ii.cost, ii.ownership, iiae.status, iiae.condition, ei.event_name
         FROM item_inv ii
         LEFT JOIN item_inv_assigned_event iiae ON iiae.item_id = ii.item_id
         LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
