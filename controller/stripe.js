@@ -154,21 +154,26 @@ const stripePaymentIntentSubscription = async (request, response) => {
 
 const creatingSubscription = async (request, response) => {
   try {
-    // Calculate the future date 12 months from now
+    const { stripeCustomerID, items, period } = request.body;
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + 12);
-
-    const { stripeCustomerID, items } = request.body
+    const monthly_frequency = Math.floor(Date.now() / 1000)
+    const yearly_frequency = Math.floor(endDate.getTime() / 1000)
+    // Create a subscription with the specified contract duration
     const subscription = await stripe.subscriptions.create({
       customer: stripeCustomerID,
       items: items,
-      cancel_at: Math.floor(endDate.getTime() / 1000), // Set billing cycle to 12 months from now
+      cancel_at: Math.floor(endDate.getTime() / 1000), // Set billing cycle based on contract duration
+      billing_cycle_anchor: period === 'month' ? monthly_frequency : yearly_frequency,
       payment_behavior: 'default_incomplete',
-      payment_settings: { save_default_payment_method: 'on_subscription', payment_method_types: ['card'], },
+      payment_settings: {
+        save_default_payment_method: 'on_subscription',
+        payment_method_types: ['card'],
+      },
       expand: ['latest_invoice.payment_intent'],
     });
-    console.log("🚀 ~ creatingSubscription ~ subscription:", subscription)
 
+    // Prepare the response
     response.status(201).json({
       ok: true,
       subscriptionId: subscription.id,
@@ -176,6 +181,7 @@ const creatingSubscription = async (request, response) => {
       data: subscription
     });
   } catch (error) {
+    // Handle any errors
     response.status(500).json({
       ok: false,
       msg: error.message
