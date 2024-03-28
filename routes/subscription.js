@@ -5,6 +5,7 @@
 
 const { Router } = require("express");
 const { createSubscription, searchSubscription, updateSubscription } = require("../controller/subscription");
+const { searchingSubscriptionInStripe } = require("../controller/stripe");
 const router = Router();
 
 //*create subscription
@@ -18,5 +19,8 @@ router.get("/search_subscription", searchSubscription)
 
 //*update subscription
 router.patch("/update-subscription", updateSubscription)
+
+//*search subscription in stripe
+router.get('/subscriptions/:id', searchingSubscriptionInStripe)
 
 module.exports = router;

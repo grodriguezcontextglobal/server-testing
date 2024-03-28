@@ -221,8 +221,8 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
             serial_number,
             category_name,
             item_group,
-            location,
             company } = request.body;
+            console.log("🚀 ~ returningItemToStockWhenEventIsFinished ~ request.body:", request.body)
         const query = ` UPDATE
         item_inv
     SET
@@ -233,7 +233,6 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
         serial_number =?
         and category_name = ?
         and item_group = ?
-        and location = ?
         and company = ?;`;
         const values = [warehouse,
             status,
@@ -241,7 +240,6 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
             serial_number,
             category_name,
             item_group,
-            location,
             company];
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(401).json({
