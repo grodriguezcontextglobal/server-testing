@@ -3,7 +3,7 @@ const Subscription = require("../models/Subscription");
 
 const createSubscription = async (request, response = express.response) => {
     try {
-       let subscription = new Subscription(request.body);
+        let subscription = new Subscription(request.body);
         await subscription.save()
         return response.status(201).json({
             ok: true,
@@ -70,8 +70,9 @@ const searchSubscription = async (request, response) => {
     }
 };
 
+
 module.exports = {
     createSubscription,
     updateSubscription,
-    searchSubscription
+    searchSubscription,
 };

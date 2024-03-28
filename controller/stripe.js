@@ -567,6 +567,23 @@ const stripeCompanyAccountFound = async (request, response) => {
   })
 }
 
+const searchingSubscriptionInStripe = async (request, response) => {
+  try {
+    const subs_id = request.params.id
+    console.log("🚀 ~ searchingSubscriptionInStripe ~ subs_id:", subs_id)
+    const subscriptions = await stripe.subscriptions.retrieve(`${subs_id}`);
+    console.log("🚀 ~ searchingSubscriptionInStripe ~ subscriptions:", subscriptions)
+    response.status(201).json({
+      ok: true,
+      subscriptions
+    })
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      error: error.message
+    })
+  }
+}
 module.exports = {
   cancelStripePaymentIntent,
   captureStripePaymentIntent,
@@ -594,5 +611,6 @@ module.exports = {
   displayAllPaidInvoicesPerSubscription,
   updateCancelSubscription,
   updateDefaultPaymentMethodInSubscription,
-  updateDefaultPaymentMethodInCustomer
+  updateDefaultPaymentMethodInCustomer,
+  searchingSubscriptionInStripe
 };

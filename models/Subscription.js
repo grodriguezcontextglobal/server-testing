@@ -26,6 +26,10 @@ const SubscriptionSchema = new Schema({
             type: String,
             required: true,
             default: "unknown"
+        },
+        created_at: {
+            type: Number,
+            required: true
         }
     }],
 });
