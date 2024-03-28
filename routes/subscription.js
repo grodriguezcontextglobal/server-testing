@@ -18,7 +18,7 @@ router.post("/search_subscription", searchSubscription)
 router.get("/search_subscription", searchSubscription)
 
 //*update subscription
-router.patch("/update-subscription", updateSubscription)
+router.patch("/update-subscription/:id", updateSubscription)
 
 //*search subscription in stripe
 router.get('/subscriptions/:id', searchingSubscriptionInStripe)
