@@ -19,10 +19,11 @@ const createSubscription = async (request, response = express.response) => {
 };
 const updateSubscription = async (request, response) => {
     try {
-        const { company, newSubscriptionData } = request.body;
+        const { newSubscriptionData } = request.body;
+        const subscriptionID = request.params.id
         // Find the subscription by company name and update it
         let subscription = await Subscription.findOneAndUpdate(
-            { company: company },
+            {_id: subscriptionID},
             { $set: newSubscriptionData },
             { new: true } // Return the updated subscription
         );

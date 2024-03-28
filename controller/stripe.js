@@ -157,14 +157,12 @@ const creatingSubscription = async (request, response) => {
     const { stripeCustomerID, items, period } = request.body;
     const endDate = new Date();
     endDate.setMonth(endDate.getMonth() + 12);
-    const monthly_frequency = Math.floor(Date.now() / 1000)
-    const yearly_frequency = Math.floor(endDate.getTime() / 1000)
     // Create a subscription with the specified contract duration
     const subscription = await stripe.subscriptions.create({
       customer: stripeCustomerID,
       items: items,
       cancel_at: Math.floor(endDate.getTime() / 1000), // Set billing cycle based on contract duration
-      billing_cycle_anchor: period === 'month' ? monthly_frequency : yearly_frequency,
+      billing_cycle_anchor: period === 'month' ? Math.floor(Date.now() / 1000) : Math.floor(endDate.getTime() / 1000),
       payment_behavior: 'default_incomplete',
       payment_settings: {
         save_default_payment_method: 'on_subscription',
