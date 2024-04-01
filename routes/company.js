@@ -15,5 +15,4 @@ router.post('/search-company', searchingCompany)
 
 router.post('/companies', getCompanyList)
 
-
 module.exports = router;
