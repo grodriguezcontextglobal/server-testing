@@ -75,6 +75,28 @@ const AdminUserSchema = new Schema({
     type: Boolean,
     default: false
   },
+  multipleCompanies: {
+    type: Boolean,
+    default: false
+  },
+  companiesAssigned:[{
+    company: {
+      type: String,
+      required: true,
+    },
+    active: {
+      type: Boolean,
+      default: true,
+    },
+    super_user: {
+      type: Boolean,
+      default: false
+    },
+    role: {
+      type: String,
+      default: "Editor",
+    },
+  }]
 });
 
 AdminUserSchema.method("toJSON", function () {

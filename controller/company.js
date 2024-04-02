@@ -68,7 +68,9 @@ const createCompany = async (request, response = express.response) => {
 const updatingCompany = async (request, response = express.response) => {
     try {
         const paramsId = request.params.id
+        console.log("🚀 ~ updatingCompany ~ paramsId:", paramsId)
         let companyInfo = await Company.findById(paramsId)
+        console.log("🚀 ~ updatingCompany ~ companyInfo:", companyInfo)
         if (!companyInfo) {
             response.status(500).json({
                 ok: false,
@@ -100,7 +102,7 @@ const updatingCompany = async (request, response = express.response) => {
 };
 const searchingCompany = async (request, response = express.response) => {
     try {
-        let companyInfo = await Company.findOne(request.body);
+        let companyInfo = await Company.find(request.body);
         if (!companyInfo) {
             response.status(500).json({
                 ok: false,
