@@ -5,7 +5,7 @@ const { assigningDeviceMessageHtml, cancelingDepositMessageHtml,
     capturingDepositMessageHtml, returnConfirmationMessageHtml,
     returnReminderMessageHtml, staffNotificationMessageHtml,
     lostDeviceFeeCollectedMessageHtml, linkToLoginExistingConsumerMessageHtml,
-    linkToResetUserPassword, editingDeviceAdminMessageHtml, confirmationNewConsumerAccountMessageHtml, customizedEmailMessageHtml, singleEmailMessageHtml } = require('./returningDeviceMessage');
+    linkToResetUserPassword, editingDeviceAdminMessageHtml, confirmationNewConsumerAccountMessageHtml, customizedEmailMessageHtml, singleEmailMessageHtml, newUserInvitationMessageHtml } = require('./returningDeviceMessage');
 
 const assingDeviceNotification = async (request, response) => {
     try {
@@ -492,6 +492,41 @@ const singleEmailNotitifaction = (request, response) => {
     }
 }
 
+const newUserInvitationNotitifaction = (request, response) => {
+    try {
+        const transport = nodeMailer.createTransport({
+            service: "Outlook365",
+            host: "smtp.office365.com",
+            port: "587",
+            tls: {
+                ciphers: "SSLv3",
+                rejectUnauthorized: false,
+            },
+            auth: {
+                user: "devitrak.testing@outlook.com",
+                pass: "@dmin.Devitr@k"
+            },
+            tls: {
+                ciphers: 'SSLv3'
+            }
+        })
+        const info = transport.sendMail({
+            from: 'Devitrak Notifications <devitrak.testing@outlook.com>',
+            to: request.body.consumer,
+            subject: `Devitrak Notification - ${request.body.subject}`,
+            html: newUserInvitationMessageHtml(request.body)
+        })
+
+        response.status(201).json({
+            notification: info.messageId,
+            ok: true
+        })
+
+    } catch (error) {
+        console.log(`read the following error: ${error.message}`)
+        response.status(500).json("failed")
+    }
+}
 module.exports = {
     assingDeviceNotification,
     returningDeviceNotification,
@@ -505,5 +540,6 @@ module.exports = {
     linkToResetPassword,
     editingDeviceAdminNotification,
     customizedEmailNotification,
-    singleEmailNotitifaction
+    singleEmailNotitifaction,
+    newUserInvitationNotitifaction
 };

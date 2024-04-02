@@ -99,6 +99,6 @@ if (cluster.isPrimary) {
     cluster.fork()
   })
 } else {
-  app.listen(process.env.PORT);
+  app.listen(process.env.PORT, () => console.log(`Listing in port ${process.env.PORT}`));
 }
 

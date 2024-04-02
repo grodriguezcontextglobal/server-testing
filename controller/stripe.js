@@ -162,7 +162,7 @@ const creatingSubscription = async (request, response) => {
       customer: stripeCustomerID,
       items: items,
       cancel_at: Math.floor(endDate.getTime() / 1000), // Set billing cycle based on contract duration
-      billing_cycle_anchor: period === 'month' ? Math.floor(Date.now() / 1000) : Math.floor(endDate.getTime() / 1000),
+      billing_cycle_anchor: period === 'month' ? Math.floor(new Date().getTime() / 1000) : Math.floor(endDate.getTime() / 1000),
       payment_behavior: 'default_incomplete',
       payment_settings: {
         save_default_payment_method: 'on_subscription',
