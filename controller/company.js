@@ -41,6 +41,9 @@ const createCompany = async (request, response = express.response) => {
                 stripe_customer_id,
                 employees: [{
                     user: employees.at(-1).user,
+                    firstName:employees.at(-1).firstName,
+                    lastName:employees.at(-1).lastName,
+                    status:employees.at(-1).status,
                     super_user: employees.at(-1).super_user,
                     role: employees.at(-1).role
                 }],
