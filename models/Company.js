@@ -93,7 +93,19 @@ const Company = new Schema({
         user: {
             type: String,
             required: true,
-            default: ""
+        },
+        firstName: {
+            type: String,
+            required: true,
+        },
+        lastName: {
+            type: String,
+            required: true,
+        },
+        status:{
+            type:String,
+            required:true,
+            default:"Pending"
         },
         super_user: {
             type: Boolean,
