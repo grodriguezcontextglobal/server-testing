@@ -30,7 +30,7 @@ router.post('/tracking_item/:id', consultingInventoryTracking)
 router.post('/new_item', insertingItem)
 
 //insert new item
-router.patch('/edit-item', updateItemInTable)
+router.post('/edit-item', updateItemInTable)
 
 //updating item in inv after being added to event set up
 router.post('/item-out-warehouse', updateItemInWarehouseAfterBeingAddedToEvent)
