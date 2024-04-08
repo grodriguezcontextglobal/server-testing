@@ -14,22 +14,26 @@ const connection = createConnection({
 });
 
 const insertingItem = (request, response) => {
-    console.log(request.body)
     try {
-        const { category_name, item_group, cost, descript_item, ownership, serial_number, warehouse, company, location } = request.body
+        const { category_name, item_group, cost, brand, descript_item, ownership, main_warehouse, serial_number, warehouse, company, location, current_location } = request.body
         const query = `
                         insert into item_inv
-                        (category_name, 
+                        (
+                        category_name, 
                         item_group, 
                         cost, 
+                        brand,
                         descript_item, 
                         ownership, 
+                        main_warehouse,
                         serial_number, 
                         warehouse, 
-                       company, 
-                       location)
-                        values(?,?,?,?,?,?,?,?,?)`;
-        const values = [`${category_name}`, `${item_group}`, `${cost}`, `${descript_item}`, `${ownership}`, `${serial_number}`, warehouse, `${company}`, `${location}`];
+                        company, 
+                        location,
+                        current_location
+                        )
+                        values(?,?,?,?,?,?,?,?,?,?,?,?)`;
+        const values = [`${category_name}`, `${item_group}`, `${cost}`, `${brand}`, `${descript_item}`, `${ownership}`, `${main_warehouse}`, `${serial_number}`, warehouse, `${company}`, `${location}`, `${current_location}`];
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(500).json({
                 ok: false,
@@ -147,28 +151,30 @@ const consultingItemInWarehouseTable = (request, response) => {
 
 const updateItemInTable = async (request, response) => {
     try {
-        const { category_name, item_group, cost, descript_item, serial_number, warehouse, location, ownership, company, create_at, update_at, item_id } = request.body;
+        const { item_id, category_name, item_group, cost, brand, descript_item, ownership, serial_number, warehouse, status, main_warehouse, updated_at, company, location, current_location } = request.body;
         const query = `UPDATE item_inv 
                         SET category_name=?,
                             item_group=?,  
-                            cost=?,
+                            cost=?,  -- Changed to accept numeric value
+                            brand=?,
                             descript_item=?,
+                            ownership=?,
                             serial_number=?,
                             warehouse=?,
-                            location=?,
-                            ownership=?,
-                            company=?,
                             status=?,
-                            create_at=?,
-                            update_at=?
+                            main_warehouse=?,
+                            update_at=?,
+                            company=?,
+                            location=?,
+                            current_location=?
                         WHERE item_id=?;`;
-        const values = [category_name, item_group, cost, descript_item, serial_number, warehouse, location, ownership, company, status, create_at, update_at, item_id];
+        const values = [category_name, item_group, cost, brand, descript_item, ownership, serial_number, warehouse, status, main_warehouse, updated_at, company, location, current_location, item_id];  // Updated values array
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(401).json({
                 ok: false,
                 msg: `${err.message}`,
             });
-            return response?.status(201)?.json({
+            return response.status(201).json({  // Removed unnecessary ? from response.status(201)
                 ok: true,
                 items: result
             });
@@ -181,6 +187,7 @@ const updateItemInTable = async (request, response) => {
         });
     }
 };
+
 
 const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) => {
     try {
@@ -221,8 +228,9 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
             serial_number,
             category_name,
             item_group,
-            company } = request.body;
-            console.log("🚀 ~ returningItemToStockWhenEventIsFinished ~ request.body:", request.body)
+            company
+        } = request.body;
+        console.log("🚀 ~ returningItemToStockWhenEventIsFinished ~ request.body:", request.body)
         const query = ` UPDATE
         item_inv
     SET
