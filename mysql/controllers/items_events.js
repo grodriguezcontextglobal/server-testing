@@ -134,8 +134,8 @@ const consultingInventoryInEvent = (request, response) => {
     try {
         const event_id = request.params.id;
         const query = `
-                            SELECT
-                            ii.item_id , ii.category_name, ii.item_group ,ii.serial_number ,ii.warehouse, ii.cost , iiae.status , iiae.condition ,iiae.updated_at 
+                SELECT
+                ii.item_id , ii.category_name, ii.item_group ,ii.serial_number ,ii.warehouse, ii.brand, ii.main_warehouse, ii.cost , iiae.status , iiae.condition ,iiae.updated_at 
                 FROM
                     item_inv ii
                 LEFT JOIN (
