@@ -4,6 +4,35 @@ const cors = require("cors");
 require("dotenv").config();
 const cluster = require('node:cluster')
 const OS = require('node:os');
+const path = require('path')
+// const mainRoutes = require("./routes/mainRoutes")
+
+const admin = require("./routes/admin")
+const article = require("./routes/article")
+const auth = require("./routes/auth")
+const cashReport = require("./routes/cashReport")
+const company = require("./routes/company")
+const companySQL = require("./mysql/routes/company")
+const consumerAttendingEvent = require("./mysql/routes/consumerAttendingEvent")
+const consumers = require("./mysql/routes/consumers")
+const event = require("./routes/event")
+const eventLog = require("./routes/eventLog")
+const eventSQL = require("./mysql/routes/events")
+const image = require("./routes/image")
+const inventory = require("./routes/inventory")
+const item = require("./routes/item")
+const itemSQl = require("./mysql/routes/item")
+const nodeMailer = require("./routes/nodeMailer")
+const notificationLog = require("./routes/notificationLog")
+const receivers = require("./routes/receivers")
+const recordEvent = require("./mysql/routes/recordEvent")
+const staff = require("./routes/staff")
+const staffSQL = require("./mysql/routes/staff")
+const stripe = require("./routes/stripe")
+const stripeSQL = require("./mysql/routes/stripe")
+const subscription = require("./routes/subscription")
+const transaction = require("./routes/transaction")
+const transactionAuditLog = require("./routes/transactionAuditLog")
 
 //create express server
 const app = express();
@@ -51,38 +80,39 @@ app.use(cors({
 }))
 
 //public directory
-app.use(express.static("public"));
+app.use(express.static(path.join(__dirname, "/public")));
 
 //Read and body parse
 app.use(express.json({ limit: "1mb" }));
 
 //routes
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/stripe", require("./routes/stripe"));
-app.use("/api/subscription", require("./routes/subscription"));
-app.use("/api/transaction", require("./routes/transaction"));
-app.use("/api/admin", require("./routes/admin"));
-app.use("/api/company", require("./routes/company"));
-app.use("/api/receiver", require("./routes/receivers"));
-app.use("/api/article", require("./routes/article"));
-app.use("/api/staff", require("./routes/staff"));
-app.use("/api/event-log", require("./routes/eventLog"));
-app.use("/api/event", require("./routes/event"));
-app.use("/api/transaction-audit-log", require("./routes/transactionAuditLog"));
-app.use("/api/notification-log", require("./routes/notificationLog"));
-app.use("/api/cash-report", require("./routes/cashReport"));
-app.use("/api/nodemailer", require("./routes/nodeMailer"));
-app.use("/api/inventory", require("./routes/inventory"));
-app.use("/api/item", require("./routes/item"));
-app.use("/api/image", require("./routes/image"));
-app.use("/api/db_consumer", require("./mysql/routes/consumers"))
-app.use("/api/db_event", require("./mysql/routes/events"))
-app.use("/api/db_item", require("./mysql/routes/item"))
-app.use("/api/db_consumer_attending_event_record", require("./mysql/routes/consumerAttendingEvent"))
-app.use("/api/db_company", require("./mysql/routes/company"))
-app.use("/api/db_staff", require("./mysql/routes/staff"))
-app.use("/api/db_stripe", require("./mysql/routes/stripe"))
-app.use("/api/db_record", require("./mysql/routes/recordEvent"))
+// app.use("/", mainRoutes)
+app.use("/api/auth", auth);
+app.use("/api/stripe", stripe);
+app.use("/api/subscription", subscription);
+app.use("/api/transaction", transaction);
+app.use("/api/admin", admin);
+app.use("/api/company", company);
+app.use("/api/receiver", receivers);
+app.use("/api/article", article);
+app.use("/api/staff", staff);
+app.use("/api/event-log", eventLog);
+app.use("/api/event", event);
+app.use("/api/transaction-audit-log", transactionAuditLog);
+app.use("/api/notification-log", notificationLog);
+app.use("/api/cash-report", cashReport);
+app.use("/api/nodemailer", nodeMailer);
+app.use("/api/inventory", inventory);
+app.use("/api/item", item);
+app.use("/api/image", image);
+app.use("/api/db_consumer", consumers)
+app.use("/api/db_event", eventSQL)
+app.use("/api/db_item", itemSQl)
+app.use("/api/db_consumer_attending_event_record", consumerAttendingEvent)
+app.use("/api/db_company", companySQL)
+app.use("/api/db_staff", staffSQL)
+app.use("/api/db_stripe", stripeSQL)
+app.use("/api/db_record", recordEvent)
 //db_record
 //create workers
 if (cluster.isPrimary) {
