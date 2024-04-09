@@ -5,7 +5,6 @@ const ReceiversPoolSchema = new Schema({
   {
     type: String,
     required: true,
-    unique: true,
   },
   device: {
     type: Object,
