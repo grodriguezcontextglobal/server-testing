@@ -1,17 +1,17 @@
 const { createConnection } = require('mysql2');
 require('dotenv').config()
 
-const mysql = require('mysql2');
-
-    const conn = await createConnection({
+const getConnection = () => {
+    return createConnection({
         connectionLimit: 100,
-        host: process.env.PLANETSCALE_DATABASE_HOST,
-        user: process.env.PLANETSCALE_DATABASE_USERNAME,
-        password:process.env.PLANETSCALE_DATABASE_PASSWORD,
-        database: process.env.PLANETSCALE_DATABASE_NAME,
+        host: 'aws.connect.psdb.cloud',
+        user: 'lypzlon9pede4sd8l2sx',
+        password: 'pscale_pw_fFRrYmw5LhxWIT9mPLlRol7l4E9mJuLKfEws2r3kcNx',
+        database: 'devitrak_db',
         ssl: {
             rejectUnauthorized: false
         }
     });
+};
 
-module.exports = conn
+module.exports = getConnection
