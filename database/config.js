@@ -3,13 +3,9 @@ require("dotenv").config();
 
 const dbConnection = async () => {
   try {
-    await mongoose.connect(process.env.DB_TESTING_CNN, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
-
-    // Set strictQuery option to prepare for future changes
-    mongoose.set('strictQuery', true); // or true if you prefer to suppress the warning
+    await mongoose.connect(process.env.DB_TESTING_CNN) 
+    mongoose.set('strictQuery', true); 
+    console.log('Connected to db')
   } catch (error) {
     console.log(error);
     throw new Error(`Error in starting connecting with DB ${error.message}`);
