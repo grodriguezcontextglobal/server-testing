@@ -1,17 +1,9 @@
 require('dotenv').config()
 const { response } = require("express");
 const { createConnection } = require('mysql2');
+const getConnection = require('../database/config');
 
-const connection = createConnection({
-    connectionLimit: 100,
-    host: 'aws.connect.psdb.cloud',
-    user: 'lypzlon9pede4sd8l2sx',
-    password: 'pscale_pw_fFRrYmw5LhxWIT9mPLlRol7l4E9mJuLKfEws2r3kcNx',
-    database: 'devitrak_db',
-    ssl: {
-        rejectUnauthorized: false
-    }
-});
+const connection = getConnection()
 
 const insertingItemInEvent = (request, response) => {
     try {

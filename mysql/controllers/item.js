@@ -1,20 +1,12 @@
 const { response, request } = require('express')
-const { createConnection } = require('mysql2');
+const getConnection = require('../database/config');
+const { clientRedis } = require('../../database/redisConfing');
 require('dotenv').config()
 
-const connection = createConnection({
-    connectionLimit: 6000,
-    host: 'aws.connect.psdb.cloud',
-    user: 'lypzlon9pede4sd8l2sx',
-    password: 'pscale_pw_fFRrYmw5LhxWIT9mPLlRol7l4E9mJuLKfEws2r3kcNx',
-    database: 'devitrak_db',
-    ssl: {
-        rejectUnauthorized: false
-    }
-});
-
+const cache = clientRedis
 const insertingItem = (request, response) => {
     try {
+        const connection = getConnection()
         const { category_name, item_group, cost, brand, descript_item, ownership, main_warehouse, serial_number, warehouse, company, location, current_location } = request.body
         const query = `
                         insert into item_inv
@@ -55,8 +47,10 @@ const insertingItem = (request, response) => {
 }
 
 
-const consultingItem = (request, response) => {
+const consultingItem = async (request, response) => {
     try {
+
+        const connection = getConnection()
         const reference = Object.entries(request.body)
         const query = `select * from item_inv where \`${reference[0][0]}\`=?`;
         const values = [reference[0][1]];
@@ -65,11 +59,14 @@ const consultingItem = (request, response) => {
                 ok: false,
                 msg: `${err.message}`,
             })
-
-            return response.status(201).json({
-                ok: true,
-                items: result
-            })
+            console.log("cache", cache.on('connection', () => console.log('inside on connected')))
+            if (cache.on('connection', () => {
+                cache.set(`stock-company:${reference[0][1]}`, JSON.stringify)
+            }))
+                return response.status(201).json({
+                    ok: true,
+                    items: result
+                })
         });
     } catch (error) {
         console.error('Error:', error.message);
@@ -82,6 +79,7 @@ const consultingItem = (request, response) => {
 
 const deleteItem = async () => {
     try {
+        const connection = getConnection()
         const query = 'delete from item_inv where item_id=?';
         const values = [request.body.item_id];
         connection.execute(query, values, function (err, result, fields) {
@@ -102,6 +100,7 @@ const deleteItem = async () => {
 
 const consultingItemTable = async (request, response) => {
     try {
+        const connection = getConnection()
         const query = 'select * from item_inv where company=?;';
         const values = [`${request.body.company}`];
         connection.execute(query, values, function (err, result, fields) {
@@ -126,6 +125,7 @@ const consultingItemTable = async (request, response) => {
 
 const consultingItemInWarehouseTable = (request, response) => {
     try {
+        const connection = getConnection()
         const query = 'select * from item_inv where company=? and warehouse =?';
         const values = [`${request.body.company}`, request.body.warehouse];
         connection.execute(query, values, function (err, result, fields) {
@@ -151,6 +151,7 @@ const consultingItemInWarehouseTable = (request, response) => {
 
 const updateItemInTable = async (request, response) => {
     try {
+        const connection = getConnection()
         const { item_id, category_name, item_group, cost, brand, descript_item, ownership, serial_number, warehouse, status, main_warehouse, updated_at, company, location, current_location } = request.body;
         const query = `UPDATE item_inv 
                         SET category_name=?,
@@ -191,6 +192,7 @@ const updateItemInTable = async (request, response) => {
 
 const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) => {
     try {
+        const connection = getConnection()
         const { warehouse, item_group, min_serial_number, max_serial_number, company } = request.body;
 
         const query = `
@@ -222,6 +224,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) =>
 
 const returningItemToStockWhenEventIsFinished = async (request, response) => {
     try {
+        const connection = getConnection()
         const { warehouse,
             status,
             update_at,
@@ -270,6 +273,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
 
 const itemFinalStatusWhenEventIsFinished = async (request, response) => {
     try {
+        const connection = getConnection()
         const { status,
             condition,
             updated_at,
@@ -309,6 +313,7 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
 
 const consultingInventoryTracking = (request, response) => {
     try {
+        const connection = getConnection()
         const item_id = request.params.id
         const query = `
         SELECT ii.item_id,ii.serial_number,ii.location, ii.warehouse, ii.category_name, ii.item_group, ii.cost, ii.ownership, iiae.status, iiae.condition, ei.event_name

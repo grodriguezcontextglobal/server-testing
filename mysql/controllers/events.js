@@ -155,7 +155,7 @@ const insertingStaffInEvent = async (request, response) => {
                 ok: true,
                 result: result
             })
-        });
+        });  
     } catch (error) {
         console.error('Error:', error.message);
     }
