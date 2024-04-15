@@ -1,5 +1,6 @@
 const express = require("express");
 const Image = require("../models/Image");
+const cache = require("../cache/cache");
 const storingImage = async (request, response = express.response) => {
     try {
         let item = new Image(request.body);
@@ -20,11 +21,13 @@ const storingImage = async (request, response = express.response) => {
 const retrieveImage = async (request, response) => {
     try {
         let item = await Image.find(request.body)
-        if (!item) return response.status(500).json({ ok: true, msg: "Item does not exist in our record." })
-        return response.status(201).json({
-            ok: true,
-            item
-        })
+        if (!item) { return response.status(500).json({ ok: true, msg: "Item does not exist in our record." }) }
+        else {
+            return response.status(201).json({
+                ok: true,
+                item
+            })
+        }
     } catch (error) {
         console.log("🚀 ~ retrieveImage ~ error:", error)
         response.status(500).json({
