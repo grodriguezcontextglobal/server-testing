@@ -1,6 +1,5 @@
 require('dotenv').config()
 const { response } = require("express");
-const { createConnection } = require('mysql2');
 const getConnection = require('../database/config');
 
 const connection = getConnection()
