@@ -3,12 +3,15 @@ const { Error } = require("mongoose");
 const ReceiverReturnedStatus = require("../models/ReceiverReturnedStatus");
 const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
+const cache = require("../cache/cache");
+const User = require("../models/User");
 
 const addReceiverToTransaction = async (request, response) => {
   try {
     Receivers.adminuser = request.body.adminUser;
     const receiversAssignedPerUser = new Receivers(request.body);
     await receiversAssignedPerUser.save();
+    cache.set(`${receiversAssignedPerUser.paymentIntent}-${receiversAssignedPerUser.device}`, receiversAssignedPerUser)
     return response.status(201).json({
       ok: true,
       message: "ASSIGNED",
@@ -99,13 +102,27 @@ const udpateReceiverStatus = async (request, response) => {
         new: true,
       }
     );
-    return response.status(201).json({
-      ok: true,
-      id: receiverUpdated.id,
-      user: receiverUpdated.user,
-      paymentIntent: receiverUpdated.paymentIntent,
-      device: receiverUpdated.device,
-    });
+    if (cache.has(`${receiverAssigned.paymentIntent}-${device}`)) {
+      const receiverData = cache.get(`${receiverAssigned.paymentIntent}-${device}`)
+      return response.status(201).json({
+        ok: true,
+        id: receiverData.id,
+        user: receiverData.user,
+        paymentIntent: receiverData.paymentIntent,
+        device: receiverData.device,
+      });
+    } else {
+      cache.set(`${receiverAssigned.paymentIntent}-${device}`, receiverUpdated)
+      return response.status(201).json({
+        ok: true,
+        id: receiverUpdated.id,
+        user: receiverUpdated.user,
+        paymentIntent: receiverUpdated.paymentIntent,
+        device: receiverUpdated.device,
+      });
+    }
+
+
   } catch (error) {
     console.log(error);
     return response.status(500).json({
@@ -201,6 +218,40 @@ const listOfAssignedReceiver = async (request, response) => {
     });
   }
 };
+const listOfAssignedReceiverPlusUserInformation = async (request, response) => {
+  try {
+    const listOfReceivers = await Receivers.find(request.body);
+
+    // Extract user emails from the list of receivers
+    const userEmails = listOfReceivers.map(receiver => receiver.user);
+
+    // Query the users collection to populate user information
+    const usersInfo = await User.find({ email: { $in: userEmails } });
+
+    // Merge user information into the list of receivers
+    const receiversWithUserInfo = listOfReceivers.map(receiver => {
+      const userInfo = usersInfo.find(user => user.email === receiver.user);
+      return {
+        ...receiver.toObject(),
+        userInfo // Add user information to each receiver object
+      };
+    });
+
+    response.status(200).json({
+      ok: true,
+      listOfReceivers: receiversWithUserInfo,
+    });
+  } catch (error) {
+    console.log("Error fetching receiver information:", error);
+    response.status(500).json({
+      ok: false,
+      msg: "Error fetching receiver information",
+      error: error.message,
+    });
+  }
+};
+
+
 const trackReturnedReceiverWithIssue = async (request, response) => {
   try {
     const trackDevice = new ReceiverReturnedStatus(request.body)
@@ -277,5 +328,6 @@ module.exports = {
   listOfAssignedReceiver,
   trackReturnedReceiverWithIssue,
   getListOfReceiverReturnedByIssue,
-  updateIssueDevice
+  updateIssueDevice,
+  listOfAssignedReceiverPlusUserInformation
 };

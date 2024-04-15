@@ -5,8 +5,6 @@
 
 const { Router } = require("express");
 const router = Router();
-const apicache = require('apicache')
-const cache =  apicache.middleware
 
 const {
   addReceiverToTransaction,
@@ -19,6 +17,7 @@ const {
   trackReturnedReceiverWithIssue,
   getListOfReceiverReturnedByIssue,
   updateIssueDevice,
+  listOfAssignedReceiverPlusUserInformation,
 } = require("../controller/receiver");
 
 //post receivers per user per transaction
@@ -50,6 +49,9 @@ router.post("/receiver-pool-list", receiverPoolList);
 
 //render list of all assigned receiver
 router.post("/receiver-assigned-list",listOfAssignedReceiver)
+
+//render list of all assigned receiver
+router.post("/receiver-assigned-users-list",listOfAssignedReceiverPlusUserInformation)
 
 //render all receiver returned by issue
 router.get("/list-receiver-returned-issue", getListOfReceiverReturnedByIssue)
