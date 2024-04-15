@@ -5,7 +5,6 @@
 
 const { Router } = require("express");
 const router = Router();
-const apicache = require('apicache')
 const {
     createEvent,
     eventList,

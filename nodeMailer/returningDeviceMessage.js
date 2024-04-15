@@ -1489,20 +1489,20 @@ const newUserInvitationMessageHtml = (props) => {
         </div>
       </div>
       <div style="max-width: 768px; min-width: 320px">
-        <h1
-          style="
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #101828;
-            margin-bottom: 1rem;
-          "
-        >
-        Invitation to ${props.company}
-        </h1>
-        <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-        You are invited to join ${props.company}.Please follow the link below to accept the invitation
-          
-        </p>
+      <h1
+      style="
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 1rem;
+      "
+    >
+      Invitation to Create an Account with ${props.company}
+    </h1>
+    <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
+      You are invited to create an account with ${props.company}. Please follow the link below to accept the invitation.
+    </p>
+    
         <a
           href="${props.link}"
           target="_blank"
@@ -1533,25 +1533,27 @@ const newUserInvitationMessageHtml = (props) => {
             Accept invitation
           </p>
         </a>
-       <div style="margin-top: 2.5rem">
-        <h2
-          style="
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #101828;
-            margin-bottom: 1rem;
-          "
-        >
-          Instructions
-        </h2>
-        <p style="font-size: 1rem; color: #475467">
-        The next steps to complete the process of creating a user typically involve the following:
-                
-        1. Clicking on the verification link sent to your email inbox to be redirected.
-        2. Entering and confirming a password to secure your account.
-        3. Upon successful verification, gaining access to the user account and being able to use the platform's features and functionalities.
-        </p>
-      </div>
+      <div style="margin-top: 2.5rem">
+      <h2
+        style="
+          font-size: 1.25rem;
+          font-weight: 600;
+          color: #101828;
+          margin-bottom: 1rem;
+        "
+      >
+        Instructions to Complete Account Creation
+      </h2>
+      <p style="font-size: 1rem; color: #475467">
+        The next steps to complete the process of creating your account typically involve the following:
+        <ol>
+          <li>Clicking on the verification link sent to your email inbox to be redirected.</li>
+          <li>Entering and confirming a password to secure your account.</li>
+          <li>Upon successful verification, gaining access to your user account and being able to use the platform's features and functionalities.</li>
+        </ol>
+      </p>
+    </div>
+        
       </div>
     </div>
   </body>

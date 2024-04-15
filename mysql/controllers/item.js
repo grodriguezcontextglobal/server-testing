@@ -1,9 +1,6 @@
 const { response, request } = require('express')
 const getConnection = require('../database/config');
-const { clientRedis } = require('../../database/redisConfing');
 require('dotenv').config()
-
-const cache = clientRedis
 const insertingItem = (request, response) => {
     try {
         const connection = getConnection()
@@ -49,7 +46,6 @@ const insertingItem = (request, response) => {
 
 const consultingItem = async (request, response) => {
     try {
-
         const connection = getConnection()
         const reference = Object.entries(request.body)
         const query = `select * from item_inv where \`${reference[0][0]}\`=?`;
@@ -59,14 +55,10 @@ const consultingItem = async (request, response) => {
                 ok: false,
                 msg: `${err.message}`,
             })
-            console.log("cache", cache.on('connection', () => console.log('inside on connected')))
-            if (cache.on('connection', () => {
-                cache.set(`stock-company:${reference[0][1]}`, JSON.stringify)
-            }))
-                return response.status(201).json({
-                    ok: true,
-                    items: result
-                })
+            return response.status(201).json({
+                ok: true,
+                items: result
+            })
         });
     } catch (error) {
         console.error('Error:', error.message);
@@ -87,7 +79,6 @@ const deleteItem = async () => {
                 ok: false,
                 msg: `${err.message}`,
             })
-
             return response?.status(201)?.json({
                 ok: true,
                 item_deleted: result
@@ -108,8 +99,7 @@ const consultingItemTable = async (request, response) => {
                 ok: false,
                 msg: `${err.message}`,
             })
-
-            return response?.status(201)?.json({
+            return response.status(201).json({
                 ok: true,
                 items: result
             })
@@ -128,6 +118,16 @@ const consultingItemInWarehouseTable = (request, response) => {
         const connection = getConnection()
         const query = 'select * from item_inv where company=? and warehouse =?';
         const values = [`${request.body.company}`, request.body.warehouse];
+        connection.execute(query, values, function (err, result, fields) {
+            if (err) return response.status(500).json({
+                ok: false,
+                msg: `${err.message}`,
+            })
+            return response.status(201).json({
+                ok: true,
+                items: result
+            })
+        });
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(500).json({
                 ok: false,

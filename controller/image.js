@@ -1,6 +1,5 @@
 const express = require("express");
 const Image = require("../models/Image");
-const cache = require("../cache/cache");
 const storingImage = async (request, response = express.response) => {
     try {
         let item = new Image(request.body);
