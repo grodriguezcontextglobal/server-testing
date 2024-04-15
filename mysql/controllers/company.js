@@ -1,7 +1,6 @@
 require('dotenv').config()
 const { response } = require("express");
 const getConnection = require('../database/config');
-const { clientRedis } = require('../../database/redisConfing');
 
 const insertingCompany = (request, response) => {
     try {
@@ -29,9 +28,6 @@ const insertingCompany = (request, response) => {
             msg: `${error.message}`,
         });
     }
-    // finally {
-    //     connection.end();
-    // }
 };
 
 const consultingCompany = (request, response) => {
@@ -58,9 +54,6 @@ const consultingCompany = (request, response) => {
             msg: `${error.message}`,
         });
     }
-    // finally {
-    //     connection.end();
-    // }
 };
 
 const deleteCompany = async () => {
@@ -82,9 +75,6 @@ const deleteCompany = async () => {
     } catch (error) {
         console.error('Error:', error.message);
     }
-    // finally {
-    //     connection.end();
-    // }
 };
 
 const consultingCompanyTable = async (request, response) => {
@@ -110,9 +100,6 @@ const consultingCompanyTable = async (request, response) => {
             msg: `${error.message}`,
         });
     }
-    // finally {
-    //     connection.end();
-    // }
 };
 
 const consultingIndustryCompanyTable = async (request, response) => {
@@ -138,9 +125,6 @@ const consultingIndustryCompanyTable = async (request, response) => {
             msg: `${error.message}`,
         });
     }
-    // finally {
-    //     connection.end();
-    // }
 };
 
 module.exports = {

@@ -1,6 +1,5 @@
 const nodeMailer = require('nodemailer')
 const { response } = require("express");
-const QRCode = require('easyqrcodejs-nodejs')
 const { assigningDeviceMessageHtml, cancelingDepositMessageHtml,
     capturingDepositMessageHtml, returnConfirmationMessageHtml,
     returnReminderMessageHtml, staffNotificationMessageHtml,

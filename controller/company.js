@@ -1,8 +1,6 @@
 const express = require("express");
 const Company = require("../models/Company");
 
-
-
 const createCompany = async (request, response = express.response) => {
     try {
         const { company_name,
@@ -41,9 +39,9 @@ const createCompany = async (request, response = express.response) => {
                 stripe_customer_id,
                 employees: [{
                     user: employees.at(-1).user,
-                    firstName:employees.at(-1).firstName,
-                    lastName:employees.at(-1).lastName,
-                    status:employees.at(-1).status,
+                    firstName: employees.at(-1).firstName,
+                    lastName: employees.at(-1).lastName,
+                    status: employees.at(-1).status,
                     super_user: employees.at(-1).super_user,
                     role: employees.at(-1).role
                 }],
@@ -71,9 +69,7 @@ const createCompany = async (request, response = express.response) => {
 const updatingCompany = async (request, response = express.response) => {
     try {
         const paramsId = request.params.id
-        console.log("🚀 ~ updatingCompany ~ paramsId:", paramsId)
         let companyInfo = await Company.findById(paramsId)
-        console.log("🚀 ~ updatingCompany ~ companyInfo:", companyInfo)
         if (!companyInfo) {
             response.status(500).json({
                 ok: false,
@@ -112,12 +108,10 @@ const searchingCompany = async (request, response = express.response) => {
                 msg: "No company in record.",
             });
         }
-
         return response.status(201).json({
             ok: true,
             company: companyInfo
         })
-
     } catch (error) {
         console.log(error);
         response.status(500).json({

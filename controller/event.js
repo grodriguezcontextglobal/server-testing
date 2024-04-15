@@ -1,7 +1,6 @@
 const express = require("express");
 const Event = require("../models/Event");
 
-
 const createEvent = async (request, response = express.response) => {
     try {
         let event = new Event(request.body);
@@ -98,6 +97,7 @@ const deleteEvent = async (request, response) => {
                 msg: "Admin user/id do not match",
             });
         }
+        
         response.status(201).json({
             ok: true,
             adminUser,
