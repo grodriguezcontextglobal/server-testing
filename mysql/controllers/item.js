@@ -1,5 +1,6 @@
 const { response, request } = require('express')
 const getConnection = require('../database/config');
+const redis = require('../../cache/config');
 require('dotenv').config()
 const insertingItem = (request, response) => {
     try {
@@ -50,6 +51,7 @@ const consultingItem = async (request, response) => {
         const reference = Object.entries(request.body)
         const query = `select * from item_inv where \`${reference[0][0]}\`=?`;
         const values = [reference[0][1]];
+        const cache = await redis.get(`${reference[0][0]}-${reference[0][1]}`)
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(500).json({
                 ok: false,
@@ -69,7 +71,7 @@ const consultingItem = async (request, response) => {
     }
 }
 
-const deleteItem = async () => {
+const deleteItem = async (request, response) => {
     try {
         const connection = getConnection()
         const query = 'delete from item_inv where item_id=?';
@@ -94,6 +96,7 @@ const consultingItemTable = async (request, response) => {
         const connection = getConnection()
         const query = 'select * from item_inv where company=?;';
         const values = [`${request.body.company}`];
+        const cache = await redis.get(`company-${request.body.company}`)
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(500).json({
                 ok: false,
@@ -156,7 +159,7 @@ const updateItemInTable = async (request, response) => {
         const query = `UPDATE item_inv 
                         SET category_name=?,
                             item_group=?,  
-                            cost=?,  -- Changed to accept numeric value
+                            cost=?,  
                             brand=?,
                             descript_item=?,
                             ownership=?,
@@ -175,7 +178,7 @@ const updateItemInTable = async (request, response) => {
                 ok: false,
                 msg: `${err.message}`,
             });
-            return response.status(201).json({  // Removed unnecessary ? from response.status(201)
+            return response.status(201).json({
                 ok: true,
                 items: result
             });
@@ -233,7 +236,6 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
             item_group,
             company
         } = request.body;
-        console.log("🚀 ~ returningItemToStockWhenEventIsFinished ~ request.body:", request.body)
         const query = ` UPDATE
         item_inv
     SET
@@ -316,7 +318,7 @@ const consultingInventoryTracking = (request, response) => {
         const connection = getConnection()
         const item_id = request.params.id
         const query = `
-        SELECT ii.item_id,ii.serial_number,ii.location, ii.warehouse, ii.category_name, ii.item_group, ii.cost, ii.ownership, iiae.status, iiae.condition, ei.event_name
+        SELECT ii.* , iiae.status, iiae.condition, ei.event_name
         FROM item_inv ii
         LEFT JOIN item_inv_assigned_event iiae ON iiae.item_id = ii.item_id
         LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
