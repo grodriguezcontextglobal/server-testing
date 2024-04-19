@@ -1561,17 +1561,410 @@ const newUserInvitationMessageHtml = (props) => {
 `;
 }
 const customizedEmailMessageHtml = (props) => {
-  return ``
+  return `
+  <html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Devitrak App | Easy way to manage inventory. A good solution for your
+      business no matter the size of your organization.
+    </title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+    </style>
+  </head>
+  <body
+    style="
+      max-width: 768px;
+      min-width: 320px;
+      background-color:#fff;
+      color: #1a202c;
+      font-family: 'Inter', sans-serif;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+      margin: auto;
+      padding: 0;
+    "
+  >
+    <div
+      style="
+        margin-left: auto;
+        margin-right: auto;
+        padding: 2rem;
+        width: 100%;
+        border-radius: 12px;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2.5rem;
+          width: 100%;
+        "
+      >
+        <div style="align-self: flex-start">
+          <p
+            style="
+              text-align: left;
+              width: 100%;
+              color: #475467;
+              font-size: 9px;
+              font-style: normal;
+              font-weight: 500;
+              line-height: 9px;
+            "
+          >
+            Power by
+          </p>
+          <div
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+            <img
+              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
+        </div>
+      </div>
+      <div style="max-width: 768px; min-width: 320px">
+      <h1
+      style="
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 1rem;
+      "
+    >
+      Message from company ${props.company}
+    </h1>
+    <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
+      This email was sent from company ${props.company} related to the event ${props.eventSelected}.
+    </p>
+    <p
+            style="
+              border:1px solid #eaecf0;
+              border-radius: 12px;
+              margin:auto;
+              color: #475467;
+              text-align: left;
+              font-size: 16px;
+              font-style: normal;
+              font-weight: 400;
+              line-height: 24px; /* 150% */
+              padding:12px 8px;
+              text-wrap: pretty
+            "
+          >
+            ${props.message}
+          </p>
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+      Please do not reply this email.
+    </p>
+      </div>
+      </div>
+    </div>
+  </body>
+</html>
+  `
 }
 
 const singleEmailMessageHtml = (props) => {
-  return ``
+  return `
+  <html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Devitrak App | Easy way to manage inventory. A good solution for your
+      business no matter the size of your organization.
+    </title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+    </style>
+  </head>
+  <body
+    style="
+      max-width: 768px;
+      min-width: 320px;
+      background-color:#fff;
+      color: #1a202c;
+      font-family: 'Inter', sans-serif;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+      margin: auto;
+      padding: 0;
+    "
+  >
+    <div
+      style="
+        margin-left: auto;
+        margin-right: auto;
+        padding: 2rem;
+        width: 100%;
+        border-radius: 12px;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2.5rem;
+          width: 100%;
+        "
+      >
+        <div style="align-self: flex-start">
+          <p
+            style="
+              text-align: left;
+              width: 100%;
+              color: #475467;
+              font-size: 9px;
+              font-style: normal;
+              font-weight: 500;
+              line-height: 9px;
+            "
+          >
+            Power by
+          </p>
+          <div
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+            <img
+              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
+        </div>
+      </div>
+      <div style="max-width: 768px; min-width: 320px">
+      <h1
+      style="
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 1rem;
+      "
+    >
+      Message from company ${props.company}
+    </h1>
+    <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
+      This email was sent from company ${props.company} related to the event ${props.eventSelected}.
+    </p>
+    <p
+            style="
+              border:1px solid #eaecf0;
+              border-radius: 12px;
+              margin:auto;
+              color: #475467;
+              text-align: left;
+              font-size: 16px;
+              font-style: normal;
+              font-weight: 400;
+              line-height: 24px; /* 150% */
+              padding:12px 8px;
+              text-wrap: pretty
+            "
+          >
+            ${props.message}
+          </p>
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+      Please do not reply this email.
+    </p>
+      </div>
+      </div>
+    </div>
+  </body>
+</html>
+  `
 }
 
 const returnReminderMessageHtml = ``;
 
 const staffNotificationMessageHtml = (props) => {
-  return ``
+  return `
+  <html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Devitrak App | Easy way to manage inventory. A good solution for your
+      business no matter the size of your organization.
+    </title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+    </style>
+  </head>
+  <body
+    style="
+      max-width: 768px;
+      min-width: 320px;
+      background-color:#fff;
+      color: #1a202c;
+      font-family: 'Inter', sans-serif;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+      margin: auto;
+      padding: 0;
+    "
+  >
+    <div
+      style="
+        margin-left: auto;
+        margin-right: auto;
+        padding: 2rem;
+        width: 100%;
+        border-radius: 12px;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2.5rem;
+          width: 100%;
+        "
+      >
+        <div style="align-self: flex-start">
+          <p
+            style="
+              text-align: left;
+              width: 100%;
+              color: #475467;
+              font-size: 9px;
+              font-style: normal;
+              font-weight: 500;
+              line-height: 9px;
+            "
+          >
+            Power by
+          </p>
+          <div
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+            <img
+              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
+        </div>
+      </div>
+      <div style="max-width: 768px; min-width: 320px">
+      <h1
+      style="
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 1rem;
+      "
+    >
+      Device deleted from company record.
+    </h1>
+    <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
+      This email notification sent from company ${props.company} .
+    </p>
+    <p
+            style="
+              border:1px solid #eaecf0;
+              border-radius: 12px;
+              margin:auto;
+              color: #475467;
+              text-align: left;
+              font-size: 16px;
+              font-style: normal;
+              font-weight: 400;
+              line-height: 24px; /* 150% */
+              padding:12px 8px;
+              text-wrap: pretty
+            "
+          >
+            ${props.message}
+          </p>
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+      Please do not reply this email.
+    </p>
+      </div>
+      </div>
+    </div>
+  </body>
+</html>
+  `
 }
 
 const editingDeviceAdminMessageHtml = (props) => {
