@@ -110,7 +110,7 @@ const consultingEventsPerCompany = async (request, response) => {
             })
         });
     } catch (error) {
-        console.log("🚀 ~ consultingEventsPerCompany ~ error:", error)
+        console.log(error)
         response.status(500).json({
             ok: false,
             msg: error.message
