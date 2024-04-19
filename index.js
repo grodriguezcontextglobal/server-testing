@@ -4,9 +4,6 @@ const cors = require("cors");
 require("dotenv").config();
 const cluster = require('node:cluster')
 const OS = require('node:os');
-const path = require('path')
-const responseTime = require('response-time')
-// const mainRoutes = require("./routes/mainRoutes")
 
 const admin = require("./routes/admin")
 const article = require("./routes/article")
@@ -74,22 +71,17 @@ app.use(cors({
     "Content-Type", "Authorization"
   ],
   maxAge: 84600,
-  // optionsSuccessStatus: 200 || 204,
-  // credentials: true,
   preflightContinue: true,
 
 }))
 
 //public directory
-app.use(express.static(path.join(__dirname, "/public")));
+app.use(express.static("public"));
 
 //Read and body parse
 app.use(express.json({ limit: "1mb" }));
 
-//add response time as header
-app.use(responseTime())
 //routes
-// app.use("/", mainRoutes)
 app.use("/api/auth", auth);
 app.use("/api/stripe", stripe);
 app.use("/api/subscription", subscription);
@@ -117,8 +109,7 @@ app.use("/api/db_staff", staffSQL)
 app.use("/api/db_stripe", stripeSQL)
 app.use("/api/db_record", recordEvent)
 //db_record
-app.listen(process.env.PORT);
-// app.listen(process.env.PORT)
+app.listen(process.env.PORT)
 //create workers
 // if (cluster.isPrimary) {
 //   for (let index = 0; index < numCpu; index++) {

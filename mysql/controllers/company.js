@@ -1,8 +1,6 @@
 require('dotenv').config()
 const { response } = require("express");
 const getConnection = require('../database/config');
-const { clientRedis } = require('../../database/redisConfing');
-
 const insertingCompany = (request, response) => {
     try {
         const connection = getConnection()
