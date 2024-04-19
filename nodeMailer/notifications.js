@@ -271,7 +271,6 @@ const editingDeviceAdminNotification = async (request, response) => {
     }
 }
 
-
 const lostDeviceFeeCollectedNotification = async (request, response) => {
     try {
         const transport = await nodeMailer.createTransport({
@@ -343,7 +342,6 @@ const confirmationLinkNewConsumerNotification = async (request, response) => {
         response.status(500).json("failed")
     }
 }
-
 
 const loginLinkExistingConsumerNotification = async (request, response) => {
 
@@ -455,7 +453,7 @@ const customizedEmailNotification = (request, response) => {
     }
 }
 
-const singleEmailNotitifaction = (request, response) => {
+const singleEmailNotification = (request, response) => {
     try {
         const transport = nodeMailer.createTransport({
             service: "Outlook365",
@@ -491,7 +489,7 @@ const singleEmailNotitifaction = (request, response) => {
     }
 }
 
-const newUserInvitationNotitifaction = (request, response) => {
+const newUserInvitationNotification = (request, response) => {
     try {
         const transport = nodeMailer.createTransport({
             service: "Outlook365",
@@ -526,6 +524,45 @@ const newUserInvitationNotitifaction = (request, response) => {
         response.status(500).json("failed")
     }
 }
+
+const internalNotification = async (request, response) => {
+    try {
+        const transport = nodeMailer.createTransport({
+            service: "Outlook365",
+            host: "smtp.office365.com",
+            port: "587",
+            tls: {
+                ciphers: "SSLv3",
+                rejectUnauthorized: false,
+            },
+            auth: {
+                user: "devitrak.testing@outlook.com",
+                pass: "@dmin.Devitr@k"
+            },
+            tls: {
+                ciphers: 'SSLv3'
+            }
+        })
+        const info = transport.sendMail({
+            from: 'Devitrak Notifications <devitrak.testing@outlook.com>',
+            to: request.body.staff,
+            subject: `Devitrak Notification - ${request.body.subject}`,
+            html: staffNotificationMessageHtml(request.body)
+        })
+
+        response.status(201).json({
+            notification: info.messageId,
+            ok: true
+        })
+    } catch (error) {
+        console.log("🚀 ~ internalNotification ~ error:", error)
+        response.status(500).json({
+            ok: false,
+            message: error.message
+        })
+    }
+}
+
 module.exports = {
     assingDeviceNotification,
     returningDeviceNotification,
@@ -539,6 +576,7 @@ module.exports = {
     linkToResetPassword,
     editingDeviceAdminNotification,
     customizedEmailNotification,
-    singleEmailNotitifaction,
-    newUserInvitationNotitifaction
+    singleEmailNotification,
+    newUserInvitationNotification,
+    internalNotification
 };
