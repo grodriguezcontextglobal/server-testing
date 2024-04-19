@@ -71,7 +71,7 @@ const editArticle = async (request, response) => {
       article: articleEdited
     })
   } catch (error) {
-    console.log("🚀 ~ file: article.js:43 ~ deleteArticle ~ error:", error)
+    console.log(error)
     response.status(500).json({
       ok: false,
       msg: "There was an error in the request. Please try it later"

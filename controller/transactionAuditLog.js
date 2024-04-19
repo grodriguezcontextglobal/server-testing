@@ -28,7 +28,7 @@ const displayTransactionAuditLog = async(request, response) => {
             transactionAuditLog
         })
     } catch (error) {
-        console.log("🚀 ~ file: transactionAuditLog.js:27 ~ displayTransactionAuditLog ~ error:", error)
+        console.log(error)
         response.status(500).json({
             ok:false,
             msg:"Please contact Administrator."

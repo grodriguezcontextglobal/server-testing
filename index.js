@@ -4,7 +4,6 @@ const cors = require("cors");
 require("dotenv").config();
 const cluster = require('node:cluster')
 const OS = require('node:os');
-
 const admin = require("./routes/admin")
 const article = require("./routes/article")
 const auth = require("./routes/auth")
@@ -30,7 +29,7 @@ const stripe = require("./routes/stripe")
 const stripeSQL = require("./mysql/routes/stripe")
 const subscription = require("./routes/subscription")
 const transaction = require("./routes/transaction")
-const transactionAuditLog = require("./routes/transactionAuditLog")
+const transactionAuditLog = require("./routes/transactionAuditLog");
 
 //create express server
 const app = express();
@@ -108,23 +107,20 @@ app.use("/api/db_company", companySQL)
 app.use("/api/db_staff", staffSQL)
 app.use("/api/db_stripe", stripeSQL)
 app.use("/api/db_record", recordEvent)
-//db_record
-app.listen(process.env.PORT)
-//create workers
-// if (cluster.isPrimary) {
-//   for (let index = 0; index < numCpu; index++) {
-//     cluster.fork()
-//   }
-//   cluster.on('exit', (worker, code, signal) => {
-//     cluster.fork()
-//   })
-//   cluster.on('error', (worker, code, signal) => {
-//     cluster.fork()
-//   })
-//   cluster.on('disconnect', (worker, code, signal) => {
-//     cluster.fork()
-//   })
-// } else {
-//   app.listen(process.env.PORT);
-// }
 
+if (cluster.isPrimary) {
+  for (let index = 0; index < numCpu; index++) {
+    cluster.fork()
+  }
+  cluster.on('exit', (worker, code, signal) => {
+    cluster.fork()
+  })
+  cluster.on('error', (worker, code, signal) => {
+    cluster.fork()
+  })
+  cluster.on('disconnect', (worker, code, signal) => {
+    cluster.fork()
+  })
+} else {
+  app.listen(process.env.PORT);
+}

@@ -66,7 +66,7 @@ const companyInformationAccountStripe = async (request, response) => {
     })
 
   } catch (error) {
-    console.log("🚀 ~ companyInformationAccountStripe ~ error:", error)
+    console.log(error)
     response.status(500).json({
       ok: false,
       msg: error.msg
@@ -120,7 +120,7 @@ const stripePaymentIntentCustomized = async (request, response) => {
     });
 
   } catch (error) {
-    console.log("stripe payment intent error", error.message);
+    console.log(error.message);
     response.status(500).json({
       msg: error.message,
     });
@@ -297,7 +297,7 @@ const updateDefaultPaymentMethodInSubscription = async (request, response) => {
       card: paymentMethodUpdated
     })
   } catch (error) {
-    console.log("🚀 ~ file: stripe.js:307 ~ updateDefaultPaymentMethodInSubscription ~ error:", error)
+    console.log(error)
     response.status(error.statusCode ?? 500).json({
       ok: false,
       msg: error.message
@@ -318,7 +318,7 @@ const updateDefaultPaymentMethodInCustomer = async (request, response) => {
       customer: customerUpdated
     })
   } catch (error) {
-    console.log("🚀 ~ file: stripe.js:307 ~ updateDefaultPaymentMethodInSubscription ~ error:", error)
+    console.log(error)
     response.status(error.statusCode ?? 500).json({
       ok: false,
       msg: error.message
@@ -578,9 +578,7 @@ const stripeCompanyAccountFound = async (request, response) => {
 const searchingSubscriptionInStripe = async (request, response) => {
   try {
     const subs_id = request.params.id
-    console.log("🚀 ~ searchingSubscriptionInStripe ~ subs_id:", subs_id)
     const subscriptions = await stripe.subscriptions.retrieve(`${subs_id}`);
-    console.log("🚀 ~ searchingSubscriptionInStripe ~ subscriptions:", subscriptions)
     response.status(201).json({
       ok: true,
       subscriptions
