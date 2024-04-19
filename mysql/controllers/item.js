@@ -1,9 +1,7 @@
 const { response, request } = require('express')
 const getConnection = require('../database/config');
-const { clientRedis } = require('../../database/redisConfing');
 require('dotenv').config()
 
-const cache = clientRedis
 const insertingItem = (request, response) => {
     try {
         const connection = getConnection()
@@ -59,10 +57,6 @@ const consultingItem = async (request, response) => {
                 ok: false,
                 msg: `${err.message}`,
             })
-            console.log("cache", cache.on('connection', () => console.log('inside on connected')))
-            if (cache.on('connection', () => {
-                cache.set(`stock-company:${reference[0][1]}`, JSON.stringify)
-            }))
                 return response.status(201).json({
                     ok: true,
                     items: result

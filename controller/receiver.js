@@ -3,7 +3,6 @@ const { Error } = require("mongoose");
 const ReceiverReturnedStatus = require("../models/ReceiverReturnedStatus");
 const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
-const cache = require("../cache/cache");
 const User = require("../models/User");
 
 const addReceiverToTransaction = async (request, response) => {
@@ -11,7 +10,6 @@ const addReceiverToTransaction = async (request, response) => {
     Receivers.adminuser = request.body.adminUser;
     const receiversAssignedPerUser = new Receivers(request.body);
     await receiversAssignedPerUser.save();
-    cache.set(`${receiversAssignedPerUser.paymentIntent}-${receiversAssignedPerUser.device}`, receiversAssignedPerUser)
     return response.status(201).json({
       ok: true,
       message: "ASSIGNED",
@@ -102,27 +100,13 @@ const udpateReceiverStatus = async (request, response) => {
         new: true,
       }
     );
-    if (cache.has(`${receiverAssigned.paymentIntent}-${device}`)) {
-      const receiverData = cache.get(`${receiverAssigned.paymentIntent}-${device}`)
-      return response.status(201).json({
-        ok: true,
-        id: receiverData.id,
-        user: receiverData.user,
-        paymentIntent: receiverData.paymentIntent,
-        device: receiverData.device,
-      });
-    } else {
-      cache.set(`${receiverAssigned.paymentIntent}-${device}`, receiverUpdated)
       return response.status(201).json({
         ok: true,
         id: receiverUpdated.id,
         user: receiverUpdated.user,
         paymentIntent: receiverUpdated.paymentIntent,
         device: receiverUpdated.device,
-      });
-    }
-
-
+      })
   } catch (error) {
     console.log(error);
     return response.status(500).json({
