@@ -225,7 +225,7 @@ const listOfAssignedReceiverPlusUserInformation = async (request, response) => {
       listOfReceivers: receiversWithUserInfo,
     });
   } catch (error) {
-    console.log("Error fetching receiver information:", error);
+    console.log(error);
     response.status(500).json({
       ok: false,
       msg: "Error fetching receiver information",
@@ -244,7 +244,7 @@ const trackReturnedReceiverWithIssue = async (request, response) => {
       record: trackDevice
     })
   } catch (error) {
-    console.log("🚀 ~ file: receiver.js ~ line 220 ~ trackReturnedReceiverWithIssue ~ error", error)
+    console.log(error)
     response.status(500).json({
       ok: false,
       msg: error.response

@@ -103,7 +103,7 @@ const getListOfAllSavedTransaction = async (request, response) => {
             list: listOfTransactionsSaved
         })
     } catch (error) {
-        console.log("🚀 ~ file: .js:343 ~ getListOfAllSavedTransaction ~ error:", error)
+        console.log(error)
         response.status(500).json({
             ok: false,
             msg: error
@@ -121,10 +121,7 @@ const removeDuplicateEntry = async (request, response) => {
             });
         }
     } catch (error) {
-        console.log(
-            "🚀 ~ file: stripe.js ~ line 159 ~ removeDuplicateEntries ~ error",
-            error
-        );
+        console.log(error);
         response.status(500).json({
             ok: false,
             msg: error,

@@ -24,7 +24,7 @@ const cashReport = async (request, response) => {
             report
         })
     } catch (error) {
-        console.log("🚀 ~ file: event.js:91 ~ eventList ~ error:", error)
+        console.log(error)
         response.status(500).json({
             ok: false,
             msg: "Please contact Administrator"

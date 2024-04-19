@@ -26,7 +26,7 @@ const renderActivity = async (request, response) => {
             activity: findActivity
         })
     } catch (error) {
-        console.log("🚀 ~ file: eventLog.js:25 ~ renderActivity ~ error:", error)
+        console.log(error)
         response.status(500).json({
             ok: false,
             msg: error.message
