@@ -9,7 +9,6 @@ const createAdminUser = async (request, response = express.response) => {
 
   try {
     let adminUser = await AdminUser.findOne({ email });
-
     if (adminUser) {
       return response.status(400).json({
         ok: false,
@@ -23,10 +22,9 @@ const createAdminUser = async (request, response = express.response) => {
     adminUser.password = bcrypt.hashSync(password, salt);
 
     await adminUser.save();
-    
+
     //generate JWT
     const token = await generateJWT(adminUser.id, adminUser.name);
-
     return response.status(201).json({
       ok: true,
       message: "registered",
@@ -72,7 +70,6 @@ const loginUser = async (request, response = express.response) => {
 
     //generate jwt (json web token)
     const token = await generateJWT(adminUser.id, adminUser.name);
-
     return response.status(200).json({
       ok: true,
       entire: adminUser,
@@ -236,7 +233,6 @@ const updatePassword = async (request, response) => {
         new: true,
       }
     );
-
     return response.status(201).json({
       ok: true,
       message: "register",
@@ -249,10 +245,6 @@ const updatePassword = async (request, response) => {
       token,
     });
   } catch (error) {
-    console.log(
-      "🚀 ~ file: admin.js ~ line 178 ~ updatePassword ~ error",
-      error
-    );
     response.status(500).json({
       ok: false,
       msg: error,

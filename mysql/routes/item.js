@@ -29,7 +29,7 @@ router.post('/tracking_item/:id', consultingInventoryTracking)
 //insert new item
 router.post('/new_item', insertingItem)
 
-//insert new item
+//update new item
 router.post('/edit-item', updateItemInTable)
 
 //updating item in inv after being added to event set up
@@ -37,7 +37,9 @@ router.post('/item-out-warehouse', updateItemInWarehouseAfterBeingAddedToEvent)
 
 //updateItemInWarehouseAfterBeingAddedToEvent
 //delete item
-router.delete('/:id', deleteItem)
+router.post('/:id', deleteItem)
 
+//delete item in inventory
+router.post('/delete-item', deleteItem)
 
 module.exports = router;

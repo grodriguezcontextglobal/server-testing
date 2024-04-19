@@ -26,7 +26,7 @@ const notificationLogList = async (request, response) => {
             logList
         })
     } catch (error) {
-        console.log("🚀 ~ file: notificationLog.js:29 ~ notificationLogList ~ error:", error)
+        console.log(error)
         return response.status(500).json({
             ok: false,
             msg: 'Please contact administrator',

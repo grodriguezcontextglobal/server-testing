@@ -1,7 +1,6 @@
 const express = require("express");
 const Event = require("../models/Event");
 
-
 const createEvent = async (request, response = express.response) => {
     try {
         let event = new Event(request.body);
@@ -98,6 +97,7 @@ const deleteEvent = async (request, response) => {
                 msg: "Admin user/id do not match",
             });
         }
+        
         response.status(201).json({
             ok: true,
             adminUser,
@@ -120,7 +120,7 @@ const eventList = async (request, response) => {
             list
         })
     } catch (error) {
-        console.log("🚀 ~ file: event.js:91 ~ eventList ~ error:", error)
+        console.log(error)
         response.status(500).json({
             ok: false,
             msg: "Please contact Administrator"

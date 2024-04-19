@@ -28,7 +28,7 @@ const retrieveImage = async (request, response) => {
             })
         }
     } catch (error) {
-        console.log("🚀 ~ retrieveImage ~ error:", error)
+        console.log(error)
         response.status(500).json({
             ok: false,
             msg: error.message

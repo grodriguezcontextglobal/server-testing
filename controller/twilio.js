@@ -20,10 +20,7 @@ const whatsappNotification = async (request, response) => {
         msg:"Notification sent successfully"
       })
   } catch (error) {
-    console.log(
-      "🚀 ~ file: twilio.js:18 ~ whatsappNotification ~ error",
-      error
-    );
+    console.log(error);
     response.status(500).json({
       ok:false,
       msg:`There was an error at the moment to send the notification, plase try later.`
@@ -47,10 +44,7 @@ const SMSNotification = async (request, response) => {
         msg:"Notification sent successfully"
       })
   } catch (error) {
-    console.log(
-      "🚀 ~ file: twilio.js:18 ~ whatsappNotification ~ error",
-      error
-    );
+    console.log(error);
     response.status(500).json({
       ok:false,
       msg:`There was an error at the moment to send the notification, plase try later.`

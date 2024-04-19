@@ -27,9 +27,6 @@ const insertingCompany = (request, response) => {
             msg: `${error.message}`,
         });
     }
-    // finally {
-    //     connection.end();
-    // }
 };
 
 const consultingCompany = (request, response) => {
@@ -56,9 +53,6 @@ const consultingCompany = (request, response) => {
             msg: `${error.message}`,
         });
     }
-    // finally {
-    //     connection.end();
-    // }
 };
 
 const deleteCompany = async () => {
@@ -80,9 +74,6 @@ const deleteCompany = async () => {
     } catch (error) {
         console.error('Error:', error.message);
     }
-    // finally {
-    //     connection.end();
-    // }
 };
 
 const consultingCompanyTable = async (request, response) => {
@@ -108,9 +99,6 @@ const consultingCompanyTable = async (request, response) => {
             msg: `${error.message}`,
         });
     }
-    // finally {
-    //     connection.end();
-    // }
 };
 
 const consultingIndustryCompanyTable = async (request, response) => {
@@ -136,9 +124,6 @@ const consultingIndustryCompanyTable = async (request, response) => {
             msg: `${error.message}`,
         });
     }
-    // finally {
-    //     connection.end();
-    // }
 };
 
 module.exports = {
