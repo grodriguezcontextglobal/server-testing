@@ -34,6 +34,12 @@ const transactionAuditLog = require("./routes/transactionAuditLog");
 //create express server
 const app = express();
 
+// Disable caching for all routes
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  next();
+});
+
 //check CPU 
 const numCpu = OS.cpus().length
 
