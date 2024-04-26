@@ -557,12 +557,22 @@ const getListOfAllSavedStripeTransaction = async (request, response) => {
 }
 
 const stripeCompanyAccountFound = async (request, response) => {
-  const company = request.params.companyName
-  const companyAccountStripeFound = await StripeCompany.findOne({ companyName: company })
-  response.status(201).json({
-    ok: true,
-    companyAccountStripeFound
-  })
+  try {
+    const companyAccountStripeFound = await StripeCompany.findOne({ companyName: request.body.company })
+    console.log("🚀 ~ stripeCompanyAccountFound ~ companyAccountStripeFound:", companyAccountStripeFound)
+
+    return response.status(201).json({
+      ok: true,
+      companyAccountStripeFound
+    })
+
+  } catch (error) {
+    console.log("🚀 ~ stripeCompanyAccountFound ~ error:", error)
+    return response.status(500).json({
+      ok: false,
+      message: error.message
+    })
+  }
 }
 
 const searchingSubscriptionInStripe = async (request, response) => {
