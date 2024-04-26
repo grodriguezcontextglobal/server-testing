@@ -48,10 +48,10 @@ const insertingItem = (request, response) => {
 const consultingItem = async (request, response) => {
     try {
         const connection = getConnection()
-        const reference = Object.entries(request.body)
-        const query = `select * from item_inv where \`${reference[0][0]}\`=?`;
-        const values = [reference[0][1]];
-        const cache = await redis.get(`${reference[0][0]}-${reference[0][1]}`)
+        const formatting = Object.keys(request.body).map(item => item+'=?')
+        const keys = formatting.toString().replaceAll(",", " AND ")
+        const values = [...Object.values(request.body).map(item => item)]
+        const query = `select * from item_inv where ${keys};`;
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(500).json({
                 ok: false,

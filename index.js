@@ -30,9 +30,17 @@ const stripeSQL = require("./mysql/routes/stripe")
 const subscription = require("./routes/subscription")
 const transaction = require("./routes/transaction")
 const transactionAuditLog = require("./routes/transactionAuditLog");
+const lease = require("./routes/lease");
+const leaseSQL = require("./mysql/routes/lease");
 
 //create express server
 const app = express();
+
+//disable caching for all routes
+app.use((req, res, next) => {
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  next()
+});
 
 //check CPU 
 const numCpu = OS.cpus().length
@@ -99,6 +107,7 @@ app.use("/api/nodemailer", nodeMailer);
 app.use("/api/inventory", inventory);
 app.use("/api/item", item);
 app.use("/api/image", image);
+app.use("/api/lease", lease);
 app.use("/api/db_consumer", consumers)
 app.use("/api/db_event", eventSQL)
 app.use("/api/db_item", itemSQl)
@@ -107,6 +116,7 @@ app.use("/api/db_company", companySQL)
 app.use("/api/db_staff", staffSQL)
 app.use("/api/db_stripe", stripeSQL)
 app.use("/api/db_record", recordEvent)
+app.use("/api/db_lease", leaseSQL)
 
 if (cluster.isPrimary) {
   for (let index = 0; index < numCpu; index++) {

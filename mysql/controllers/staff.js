@@ -36,9 +36,11 @@ const insertingStaffMember = (request, response) => {
 
 const consultingStaffMemberInformation = (request, response) => {
     try {
-        const reference = Object.entries(request.body)
-        const query = `select * from staff_member where \`${reference[0][0]}\`=?`;
-        const values = [`${reference[0][1]}`];
+        const connection = getConnection()
+        const formatting = Object.keys(request.body).map(item => item+'=?')
+        const keys = formatting.toString().replaceAll(",", " AND ")
+        const values = [...Object.values(request.body).map(item => item)]
+        const query = `select * from staff_member where ${keys}`;
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(500).json({
                 ok: false,
