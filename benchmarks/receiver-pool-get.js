@@ -33,4 +33,4 @@ function startBench() {
     }
 }
 
-startBench()
+// startBench()
