@@ -29,4 +29,4 @@ const apiPerformance = async () => {
     }
 }
 
-apiPerformance()
+// apiPerformance()
