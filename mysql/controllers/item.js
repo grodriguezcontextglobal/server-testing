@@ -1,6 +1,5 @@
 const { response, request } = require('express')
 const getConnection = require('../database/config');
-const redis = require('../../cache/config');
 require('dotenv').config()
 const insertingItem = (request, response) => {
     try {
@@ -96,7 +95,6 @@ const consultingItemTable = async (request, response) => {
         const connection = getConnection()
         const query = 'select * from item_inv where company=?;';
         const values = [`${request.body.company}`];
-        const cache = await redis.get(`company-${request.body.company}`)
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(500).json({
                 ok: false,
