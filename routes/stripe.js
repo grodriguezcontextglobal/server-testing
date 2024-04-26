@@ -85,7 +85,7 @@ router.get("/stripe-transactions-saved-list", getListOfAllSavedStripeTransaction
 router.post("/stripe-transactions-saved-list", getListOfAllSavedStripeTransaction)
 
 //finding company stripe account 
-router.get("/company-account-stripe/:companyName", stripeCompanyAccountFound)
+router.post("/company-account-stripe/", stripeCompanyAccountFound)
 
 //retrieve all invoices per subscription
 router.get("/invoices", displayAllPaidInvoicesPerSubscription)
