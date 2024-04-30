@@ -1,6 +1,5 @@
 const { response, request } = require('express')
 const getConnection = require('../database/config');
-const redis = require('../../cache/config');
 require('dotenv').config()
 const insertingNewLease = (request, response) => {
     try {
@@ -68,17 +67,16 @@ const consultingLease = async (request, response) => {
 
 const updateLeaseInfo = async (request, response) => {
     try {
-        const connection = getConnection()
+        const connection = getConnection();
         const { subscription_returned_date, staff_admin_id, company_id, subscription_current_in_use, staff_member_id, device_id, active } = request.body;
+        console.log("🚀 ~ updateLeaseInfo ~ request.body:", request.body);
         const query = `UPDATE lease_info 
-                        SET subscription_returned_date
-                        WHERE staff_admin_id=?
-                        AND company_id=?
-                        AND subscription_current_in_use=?
+                        SET subscription_returned_date=?, subscription_current_in_use=?, active=?
+                        WHERE company_id=?
                         AND staff_member_id=?
-                        AND device_id=?
-                        AND active=?;`;
-        const values = [`${subscription_returned_date}`, staff_admin_id, company_id, subscription_current_in_use, staff_member_id, device_id, active];  // Updated values array
+                        AND staff_admin_id=?
+                        AND device_id=?`;
+        const values = [subscription_returned_date, subscription_current_in_use, active, company_id, staff_member_id,staff_admin_id, device_id];  // Corrected order and added 'active'
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(401).json({
                 ok: false,
@@ -86,7 +84,7 @@ const updateLeaseInfo = async (request, response) => {
             });
             return response.status(201).json({
                 ok: true,
-                items: result
+                items: result.affectedRows  // Use affectedRows to get the number of affected rows
             });
         });
     } catch (error) {
