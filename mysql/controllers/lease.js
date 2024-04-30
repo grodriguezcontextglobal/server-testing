@@ -1,6 +1,5 @@
 const { response, request } = require('express')
 const getConnection = require('../database/config');
-const redis = require('../../cache/config');
 require('dotenv').config()
 const insertingNewLease = (request, response) => {
     try {
