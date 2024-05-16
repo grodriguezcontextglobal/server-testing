@@ -160,11 +160,46 @@ const insertingStaffInEvent = async (request, response) => {
         console.error('Error:', error.message);
     }
 }
+
+const consultingInventoryEvent = (request, response) => {
+    try {
+        const connection = getConnection()
+        const event_id = request.params.id
+        const query = `
+        SELECT ii.* , iiae.status, iiae.condition, ei.event_name
+        FROM item_inv ii
+        LEFT JOIN item_inv_assigned_event iiae ON iiae.item_id = ii.item_id
+        LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
+        WHERE iiae.event_id = ?
+        ORDER by ii.update_at ASC
+        `;
+        const values = [event_id];
+        connection.execute(query, values, function (err, result, fields) {
+            if (err) return response.status(500).json({
+                ok: false,
+                msg: `${err.message}`,
+            });
+
+            return response.status(201).json({
+                ok: true,
+                result
+            });
+        });
+    } catch (error) {
+        console.error('Error:', error.message);
+        response.status(500).json({
+            ok: false,
+            msg: `${error.message}`,
+        });
+    }
+};
+
 module.exports = {
     consultingEventInformation,
     insertingEvent,
     consultingEventTable,
     deleteEvent,
     insertingStaffInEvent,
-    consultingEventsPerCompany
+    consultingEventsPerCompany,
+    consultingInventoryEvent
 }
