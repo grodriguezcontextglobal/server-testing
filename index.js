@@ -36,12 +36,6 @@ const leaseSQL = require("./mysql/routes/lease");
 //create express server
 const app = express();
 
-//disable caching for all routes
-app.use((req, res, next) => {
-  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
-  next()
-});
-
 //check CPU 
 const numCpu = OS.cpus().length
 
@@ -52,15 +46,11 @@ dbConnection();
 app.use(cors({
   origin: (origin, callback) => {
     const ACCEPTED_ORIGIN = [
-      'http://localhost:3000',
       'http://localhost:3791',
       'http://localhost:5522',
-      'http://localhost:5000',
       'http://localhost:5173',
       'https://admin.devitrak.net',
       'https://app.devitrak.net',
-      'https://consumer-testing-app.netlify.app',
-      'https://admin-devitrak-clone.netlify.app',
       'https://admin-testing-dev.netlify.app'
     ]
     if (ACCEPTED_ORIGIN.includes(origin)) {

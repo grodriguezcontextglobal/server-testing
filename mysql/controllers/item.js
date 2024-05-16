@@ -47,7 +47,7 @@ const insertingItem = (request, response) => {
 const consultingItem = async (request, response) => {
     try {
         const connection = getConnection()
-        const formatting = Object.keys(request.body).map(item => item+'=?')
+        const formatting = Object.keys(request.body).map(item => item + '=?')
         const keys = formatting.toString().replaceAll(",", " AND ")
         const values = [...Object.values(request.body).map(item => item)]
         const query = `select * from item_inv where ${keys};`;
@@ -117,8 +117,10 @@ const consultingItemTable = async (request, response) => {
 const consultingItemInWarehouseTable = (request, response) => {
     try {
         const connection = getConnection()
-        const query = 'select * from item_inv where company=? and warehouse =?';
-        const values = [`${request.body.company}`, request.body.warehouse];
+        const formatting = Object.keys(request.body).map(item => item + '=?')
+        const keys = formatting.toString().replaceAll(",", " AND ")
+        const values = [...Object.values(request.body).map(item => item)]
+        const query = `select * from item_inv where ${keys}`;
         connection.execute(query, values, function (err, result, fields) {
             if (err) return response.status(500).json({
                 ok: false,
@@ -234,6 +236,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
             item_group,
             company
         } = request.body;
+        console.log("🚀 ~ returningItemToStockWhenEventIsFinished ~ request.body:", request.body)
         const query = ` UPDATE
         item_inv
     SET
@@ -279,6 +282,7 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
             updated_at,
             serial_number,
             event_id } = request.body;
+            console.log("🚀 ~ itemFinalStatusWhenEventIsFinished ~ request.body:", request.body)
         const query = `
                 UPDATE item_inv_assigned_event iiae
                 JOIN item_inv ii ON iiae.item_id = ii.item_id
@@ -343,6 +347,7 @@ const consultingInventoryTracking = (request, response) => {
         });
     }
 };
+
 
 module.exports = {
     consultingItem,

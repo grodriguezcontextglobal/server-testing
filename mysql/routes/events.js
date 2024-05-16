@@ -9,7 +9,8 @@ const { consultingEventInformation,
     consultingEventTable,
     deleteEvent,
     insertingStaffInEvent,
-    consultingEventsPerCompany } = require("../controllers/events");
+    consultingEventsPerCompany, 
+    consultingInventoryEvent} = require("../controllers/events");
 const { insertingItemInEvent, consultingInventoryInEvent } = require("../controllers/items_events");
 const { returningItemToStockWhenEventIsFinished, itemFinalStatusWhenEventIsFinished } = require("../controllers/item");
 const router = Router();
@@ -40,8 +41,11 @@ router.post('/returning-item', returningItemToStockWhenEventIsFinished)
 
 //set final status of device when event finished
 router.post('/device-final-status', itemFinalStatusWhenEventIsFinished)
+
 //delete event
 router.delete('/:id', deleteEvent)
 
+//consulting all inventory in event
+router.get('/event-inventory/:id', consultingInventoryEvent)
 
 module.exports = router;
