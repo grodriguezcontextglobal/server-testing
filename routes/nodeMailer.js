@@ -1,7 +1,8 @@
 const { Router } = require("express");
 const { assingDeviceNotification, returningDeviceNotification, cancelDepositNotification, captureDepositNotification, earlierReturningNotification,
     eventStaffNotification, lostDeviceFeeCollectedNotification, loginLinkExistingConsumerNotification, linkToResetPassword, editingDeviceAdminNotification,
-    confirmationLinkNewConsumerNotification, customizedEmailNotification, singleEmailNotification, newUserInvitationNotification, internalNotification } = require("../nodeMailer/notifications");
+    confirmationLinkNewConsumerNotification, customizedEmailNotification, singleEmailNotification, newUserInvitationNotification, internalNotification, 
+    eventBeginsReminderNotification} = require("../nodeMailer/notifications");
 const router = Router();
 
 //*email notification to inform about devices assigned to consumer
@@ -48,5 +49,8 @@ router.post('/new_invitation', newUserInvitationNotification)
 
 //*internal notification
 router.post('/internal-single-email-notification', internalNotification)
+
+//*event begins notification
+router.post('/events-begin-reminder', eventBeginsReminderNotification)
 
 module.exports = router;
