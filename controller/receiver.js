@@ -182,6 +182,28 @@ const receiverPoolList = async (request, response) => {
   }
 };
 
+const receiverPoolFoundAndDelete = async (request, response) => {
+  try {
+    const receiversInventory = await ReceiversPool.find(request.body);
+    // if(receiversInventory){
+    //   const deviceDeleted = await ReceiversPool.findByIdAndDelete({id: receiversInventory.id})
+    // }
+    response.status(201).json({
+      ok: true,
+      receiversInventory,
+    });
+  } catch (error) {
+    console.log(
+      "🚀 ~ file: receiver.js ~ line 156 ~ receiverPoolList ~ error",
+      error
+    );
+    response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
 const listOfAssignedReceiver = async (request, response) => {
   try {
     const listOfReceivers = await Receivers.find(request.body);
@@ -312,5 +334,6 @@ module.exports = {
   trackReturnedReceiverWithIssue,
   getListOfReceiverReturnedByIssue,
   updateIssueDevice,
-  listOfAssignedReceiverPlusUserInformation
+  listOfAssignedReceiverPlusUserInformation,
+  receiverPoolFoundAndDelete
 };
