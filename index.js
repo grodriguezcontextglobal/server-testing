@@ -43,34 +43,29 @@ const numCpu = OS.cpus().length
 dbConnection();
 
 //cors
+const ACCEPTED_ORIGINS = [
+  "http://localhost:5522",
+  'https://admin.devitrak.net',
+  'https://app.devitrak.net',
+  'https://admin-testing-dev.netlify.app'
+];
+
 app.use(cors({
   origin: (origin, callback) => {
-    const ACCEPTED_ORIGIN = [
-      'http://localhost:3791',
-      'http://localhost:5522',
-      'http://localhost:5173',
-      'https://admin.devitrak.net',
-      'https://app.devitrak.net',
-      'https://admin-testing-dev.netlify.app'
-    ]
-    if (ACCEPTED_ORIGIN.includes(origin)) {
-      return callback(null, true)
+    if (!origin || ACCEPTED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
     }
-    if (!origin) {
-      return callback(null, true)
-    }
-    return callback(new Error("Not allowed by CORS"))
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
-    'Access-Control-Allow-Methods', 'POST, GET, PUT, PATCH, OPTIONS, DELETE',
-    "Access-Control-Allow-Origin", "*",
-    "Content-Type", "Authorization"
+    "Content-Type", "Authorization", "Access-Control-Allow-Origin", "Access-Control-Allow-Methods"
   ],
-  maxAge: 84600,
-  preflightContinue: true,
-
-}))
+  optionsSuccessStatus: 200, // For legacy browser support
+  preflightContinue: false,
+  maxAge: 84600
+}));
 
 //public directory
 app.use(express.static("public"));
