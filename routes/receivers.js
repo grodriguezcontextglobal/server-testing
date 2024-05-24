@@ -18,6 +18,7 @@ const {
   getListOfReceiverReturnedByIssue,
   updateIssueDevice,
   listOfAssignedReceiverPlusUserInformation,
+  receiverPoolFoundAndDelete,
 } = require("../controller/receiver");
 
 //post receivers per user per transaction
@@ -71,7 +72,7 @@ router.patch("/receivers-pool-update/:id", updatePoolReceivers);
 //update specific value of an issue receiver data
 router.patch("/receiver-returned-issue/:id", updateIssueDevice)
 
-
-
+//find and delete device from pool document
+router.delete("/receiver-pool-device/:id", receiverPoolFoundAndDelete)
 
 module.exports = router;
