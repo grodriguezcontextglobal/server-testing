@@ -50,7 +50,7 @@ const ACCEPTED_ORIGINS = [
   'https://admin-testing-dev.netlify.app'
 ];
 
-app.use(cors({
+const corsOptions = {
   origin: (origin, callback) => {
     if (!origin || ACCEPTED_ORIGINS.includes(origin)) {
       callback(null, true);
@@ -65,8 +65,10 @@ app.use(cors({
   optionsSuccessStatus: 200, // For legacy browser support
   preflightContinue: false,
   maxAge: 84600
-}));
+}
+app.use(cors(corsOptions));
 
+app.options('*', cors(corsOptions))
 //public directory
 app.use(express.static("public"));
 
