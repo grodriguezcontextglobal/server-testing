@@ -62,9 +62,15 @@ const corsOptions = {
   allowedHeaders: [
     "Content-Type", "Authorization", "Access-Control-Allow-Origin", "Access-Control-Allow-Methods"
   ],
-  optionsSuccessStatus: 200, // For legacy browser support
   preflightContinue: false,
-  maxAge: 84600
+  maxAge: 84600,
+  optionsSuccessStatus: (req, res) => {
+    // Define your success status codes here
+    if (req.method === 'OPTIONS' && [200, 201].includes(res.statusCode)) {
+      return true; // Return true for the specified success status codes
+    }
+    return false; // Return false for other status codes
+  }
 }
 app.use(cors(corsOptions));
 
