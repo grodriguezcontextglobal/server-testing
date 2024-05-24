@@ -42,7 +42,7 @@ const numCpu = OS.cpus().length
 //Database
 dbConnection();
 
-//cors
+// CORS configuration
 const ACCEPTED_ORIGINS = [
   "http://localhost:5522",
   'https://admin.devitrak.net',
@@ -60,19 +60,17 @@ const corsOptions = {
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
-    "Content-Type", "Authorization", "Access-Control-Allow-Origin", "Access-Control-Allow-Methods"
+    "Content-Type", "Authorization", "Access-Control-Allow-Origin", "Access-Control-Allow-Methods", "x-token"
   ],
   preflightContinue: false,
   maxAge: 84600,
-  optionsSuccessStatus: (req, res) => {
-    // Define your success status codes here
-    if (req.method === 'OPTIONS' && [200, 201].includes(res.statusCode)) {
-      return true; // Return true for the specified success status codes
-    }
-    return false; // Return false for other status codes
-  }
-}
+  optionsSuccessStatus: 204
+};
+
 app.use(cors(corsOptions));
+
+// Handle pre-flight requests
+app.options('*', cors(corsOptions));
 
 //public directory
 app.use(express.static("public"));
