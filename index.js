@@ -74,7 +74,6 @@ const corsOptions = {
 }
 app.use(cors(corsOptions));
 
-app.options('*', cors(corsOptions))
 //public directory
 app.use(express.static("public"));
 
