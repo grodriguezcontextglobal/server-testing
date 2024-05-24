@@ -9,6 +9,9 @@
   },
   "author": "",
   "license": "ISC",
+  "engines":{
+    "node":"18.18.0"
+  },
   "dependencies": {
     "@planetscale/database": "^1.14.0",
     "bcrypt": "^5.0.1",
