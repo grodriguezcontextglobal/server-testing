@@ -60,11 +60,11 @@ const corsOptions = {
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: [
-    "Content-Type", "Authorization", "Access-Control-Allow-Origin", "Access-Control-Allow-Methods", "x-token"
+    "Content-Type", "Authorization", "x-token"
   ],
-  preflightContinue: false,
+  // preflightContinue: false,
   maxAge: 84600,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 201
 };
 
 app.use(cors(corsOptions));
