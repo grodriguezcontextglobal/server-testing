@@ -1,5 +1,3 @@
-const { response } = require("express")
-
 const assigningDeviceMessageHtml = (props) => {
   return `
 <html lang="en" translate="no">
@@ -101,7 +99,7 @@ const assigningDeviceMessageHtml = (props) => {
             margin-bottom: 1rem;
           "
         >
-          Devices assigned confirmation
+          Devices assigned receipt
         </h1>
         <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
           This email confirms that you have been assigned a set of devices.
@@ -157,30 +155,17 @@ const assigningDeviceMessageHtml = (props) => {
             Open app
           </p>
         </a>
-      <div style="margin-top: 2.5rem">
-        <h2
-          style="
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #101828;
-            margin-bottom: 1rem;
-          "
-        >
-          What to expect
-        </h2>
-        <p style="font-size: 1rem; color: #475467">
-          In the application you will be able to request new devices, review
-          your transactions, request support, and get answers to frequently
-          asked questions. For any specific questions please contact the staff
-          at ${props.company}.
-        </p>
       </div>
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+      This email was sent from an unmonitored account. Do not reply to this email.    </p>
+    </p>
       </div>
       </div>
   </body>
 </html>
-  `
-}
+  `;
+};
 
 const returnConfirmationMessageHtml = (props) => {
   return `
@@ -283,7 +268,7 @@ const returnConfirmationMessageHtml = (props) => {
             margin-bottom: 1rem;
           "
         >
-        Devices returned confirmation
+        Devices returned receipt
         </h1>
         <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
         This email confirms that you have returned all of the devices from transaction detailed below.
@@ -354,30 +339,17 @@ const returnConfirmationMessageHtml = (props) => {
             Open app
           </p>
         </a>
-       <div style="margin-top: 2.5rem">
-        <h2
-          style="
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #101828;
-            margin-bottom: 1rem;
-          "
-        >
-          What to expect
-        </h2>
-        <p style="font-size: 1rem; color: #475467">
-          In the application you will be able to request new devices, review
-          your transactions, request support, and get answers to frequently
-          asked questions. For any specific questions please contact the staff
-          at ${props.company}.
-        </p>
       </div>
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+      This email was sent from an unmonitored account. Do not reply to this email.    </p>
+    </p>
       </div>
     </div>
   </body>
 </html>
 `;
-}
+};
 
 const cancelingDepositMessageHtml = (props) => {
   return `
@@ -533,29 +505,17 @@ const cancelingDepositMessageHtml = (props) => {
               Open app
             </p>
           </a>
-          <div style="margin-top: 2.5rem">
-          <h2
-            style="
-              font-size: 1.25rem;
-              font-weight: 600;
-              color: #101828;
-              margin-bottom: 1rem;
-            "
-          >
-            What to expect
-          </h2>
-          <p style="font-size: 1rem; color: #475467">
-            In the application you will be able to request new devices, review
-            your transactions, request support, and get answers to frequently
-            asked questions. For any specific questions please contact the staff
-            at ${props.company}.
-          </p>
-        </div>       
         </div>
+        <div style="margin-top: 2.5rem">
+        <p style="font-size: 1rem; color: #475467">
+        This email was sent from an unmonitored account. Do not reply to this email.    </p>
+      </p>
+        </div>  
         </div>
     </body>
   </html>
-  `};
+  `;
+};
 
 const capturingDepositMessageHtml = (props) => {
   return `
@@ -711,29 +671,17 @@ const capturingDepositMessageHtml = (props) => {
               Open app
             </p>
           </a>
-        <div style="margin-top: 2.5rem">
-          <h2
-            style="
-              font-size: 1.25rem;
-              font-weight: 600;
-              color: #101828;
-              margin-bottom: 1rem;
-            "
-          >
-            What to expect
-          </h2>
-          <p style="font-size: 1rem; color: #475467">
-            In the application you will be able to request new devices, review
-            your transactions, request support, and get answers to frequently
-            asked questions. For any specific questions please contact the staff
-            at ${props.company}.
-          </p>
-        </div>
+      </div>
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+      This email was sent from an unmonitored account. Do not reply to this email.    </p>
+    </p>
       </div>
       </div>
     </body>
   </html>
-  `};
+  `;
+};
 
 const lostDeviceFeeCollectedMessageHtml = (props) => {
   return `
@@ -892,30 +840,17 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
               Open app
             </p>
           </a>
-          <div style="margin-top: 2.5rem">
-          <h2
-            style="
-              font-size: 1.25rem;
-              font-weight: 600;
-              color: #101828;
-              margin-bottom: 1rem;
-            "
-          >
-            What to expect
-          </h2>
-          <p style="font-size: 1rem; color: #475467">
-            In the application you will be able to request new devices, review
-            your transactions, request support, and get answers to frequently
-            asked questions. For any specific questions please contact the staff
-            at ${props.company}.
-          </p>
-        </div>
+      </div>
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+      This email was sent from an unmonitored account. Do not reply to this email.    </p>
+    </p>
       </div>
      </div>
     </body>
   </html>
 `;
-}
+};
 
 const confirmationNewConsumerAccountMessageHtml = (props) => {
   return `
@@ -1052,31 +987,20 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
             Confirm account
           </p>
         </a>
-        <div style="margin-top: 2.5rem">
-        <h2
-          style="
-            font-size: 1.25rem;
-            font-weight: 600;
-            color: #101828;
-            margin-bottom: 1rem;
-          "
-        >
-          What to expect
-        </h2>
-        <p style="font-size: 1rem; color: #475467">
-          In the application you will be able to request new devices, review
-          your transactions, request support, and get answers to frequently
-          asked questions. For any specific questions please contact the staff
-          at ${props.company}.
-        </p>
       </div>
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+      This email was sent from an unmonitored account. Do not reply to this email.    </p>
+    </p>
       </div>
+
     </div>
   </body>
 </html>
 
 `;
-}
+};
+
 const linkToLoginExistingConsumerMessageHtml = (props) => {
   return `
   <html lang="en" translate="no">
@@ -1212,30 +1136,18 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
               Log in
             </p>
             </a>
-          <div style="margin-top: 2.5rem">
-            <h2
-              style="
-              font-size: 1.25rem;
-              font-weight: 600;
-              color: #101828;
-              margin-bottom: 1rem;
-            "
-            >
-              What to expect
-            </h2>
-            <p style="font-size: 1rem; color: #475467">
-              In the application you will be able to request new devices, review
-              your transactions, request support, and get answers to frequently
-              asked questions. For any specific questions please contact the staff
-              at ${props.company}.
-            </p>
-          </div>
         </div>
+        <div style="margin-top: 2.5rem">
+        <p style="font-size: 1rem; color: #475467">
+        This email was sent from an unmonitored account. Do not reply to this email.    </p>
+      </p>
+        </div>
+  
       </div>
     </body>
   </html>
-  `
-}
+  `;
+};
 
 const linkToResetUserPassword = (props) => {
   return `
@@ -1371,30 +1283,18 @@ const linkToResetUserPassword = (props) => {
                 Reset password
               </p></a
             >
-            <div style="margin-top: 2.5rem">
-              <h2
-                style="
-              font-size: 1.25rem;
-              font-weight: 600;
-              color: #101828;
-              margin-bottom: 1rem;
-            "
-              >
-                What to expect
-              </h2>
-              <p style="font-size: 1rem; color: #475467">
-                In the application you will be able to request new devices, review
-                your transactions, request support, and get answers to frequently
-                asked questions. For any specific questions please contact the staff
-                at ${props.company}.
-              </p>
-            </div>
           </div>
+          <div style="margin-top: 2.5rem">
+          <p style="font-size: 1rem; color: #475467">
+          This email was sent from an unmonitored account. Do not reply to this email.    </p>
+        </p>
+          </div>
+    
         </div>
       </body>
     </ >
-  `
-}
+  `;
+};
 
 const newUserInvitationMessageHtml = (props) => {
   return `
@@ -1497,10 +1397,10 @@ const newUserInvitationMessageHtml = (props) => {
         margin-bottom: 1rem;
       "
     >
-      Invitation to Create an Account with ${props.company}
+      Invitation to create a devitrak account
     </h1>
     <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-      You are invited to create an account with ${props.company}. Please follow the link below to accept the invitation.
+      You are invited to create a devitrak account. Please follow the link below to accept the invitation.
     </p>
     
         <a
@@ -1553,13 +1453,19 @@ const newUserInvitationMessageHtml = (props) => {
         </ol>
       </p>
     </div>
-        
+    <div style="margin-top: 2.5rem">
+    <p style="font-size: 1rem; color: #475467">
+    This email was sent from an unmonitored account. Do not reply to this email.    </p>
+  </p>
+    </div>
+
       </div>
     </div>
   </body>
 </html>
 `;
-}
+};
+
 const customizedEmailMessageHtml = (props) => {
   return `
   <html lang="en" translate="no">
@@ -1661,10 +1567,10 @@ const customizedEmailMessageHtml = (props) => {
         margin-bottom: 1rem;
       "
     >
-      Message from company ${props.company}
+      Message from ${props.company}
     </h1>
     <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-      This email was sent from company ${props.company} related to the event ${props.eventSelected}.
+      This email was sent from ${props.company} related to the event ${props.eventSelected}.
     </p>
     <p
             style="
@@ -1685,15 +1591,15 @@ const customizedEmailMessageHtml = (props) => {
           </p>
       <div style="margin-top: 2.5rem">
       <p style="font-size: 1rem; color: #475467">
-      Please do not reply this email.
+      This email was sent from an unmonitored account. Do not reply to this email.    </p>
     </p>
       </div>
       </div>
     </div>
   </body>
 </html>
-  `
-}
+  `;
+};
 
 const singleEmailMessageHtml = (props) => {
   return `
@@ -1796,10 +1702,10 @@ const singleEmailMessageHtml = (props) => {
         margin-bottom: 1rem;
       "
     >
-      Message from company ${props.company}
+      Message from ${props.company}
     </h1>
     <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-      This email was sent from company ${props.company} related to the event ${props.eventSelected}.
+      This email was sent from ${props.company} related to the event ${props.eventSelected}.
     </p>
     <p
             style="
@@ -1820,17 +1726,14 @@ const singleEmailMessageHtml = (props) => {
           </p>
       <div style="margin-top: 2.5rem">
       <p style="font-size: 1rem; color: #475467">
-      Please do not reply this email.
-    </p>
+      This email was sent from an unmonitored account. Do not reply to this email.    </p>
       </div>
       </div>
     </div>
   </body>
 </html>
-  `
-}
-
-const returnReminderMessageHtml = ``;
+  `;
+};
 
 const staffNotificationMessageHtml = (props) => {
   return `
@@ -1933,10 +1836,10 @@ const staffNotificationMessageHtml = (props) => {
         margin-bottom: 1rem;
       "
     >
-      Device deleted from company record.
+      Device deleted from ${props.company} record.
     </h1>
     <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-      This email notification sent from company ${props.company} .
+      This email notification sent from ${props.company} .
     </p>
     <p
             style="
@@ -1957,15 +1860,16 @@ const staffNotificationMessageHtml = (props) => {
           </p>
       <div style="margin-top: 2.5rem">
       <p style="font-size: 1rem; color: #475467">
-      Please do not reply this email.
+      This email was sent from an unmonitored account. Do not reply to this email.    </p>
     </p>
       </div>
       </div>
     </div>
   </body>
 </html>
-  `
-}
+  `;
+};
+
 const eventBeginsReminderHtmlMessage = (props) => {
   return `
   <html lang="en" translate="no">
@@ -2094,7 +1998,7 @@ const eventBeginsReminderHtmlMessage = (props) => {
         </p>
         <div style="margin-top: 2.5rem">
           <p style="font-size: 1rem; color: #475467">
-            Please do not reply to this email.
+          This email was sent from an unmonitored account. Do not reply to this email.    </p>
           </p>
         </div>
       </div>
@@ -2102,12 +2006,13 @@ const eventBeginsReminderHtmlMessage = (props) => {
   </body>
 </html>
   `;
-}
-
+};
 
 const editingDeviceAdminMessageHtml = (props) => {
   return ``;
 };
+
+const returnReminderMessageHtml = ``;
 
 module.exports = {
   returnConfirmationMessageHtml,
