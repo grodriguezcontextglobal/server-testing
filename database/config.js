@@ -8,7 +8,6 @@ const dbConnection = async () => {
       tlsInsecure: true // For development purposes
     });
     mongoose.set('strictQuery', true); 
-    console.log("Database connected successfully");
   } catch (error) {
     console.log(error);
     throw new Error(`Error in starting connecting with DB ${error.message}`);
