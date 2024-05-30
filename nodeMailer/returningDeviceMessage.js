@@ -1870,6 +1870,197 @@ const staffNotificationMessageHtml = (props) => {
   `;
 };
 
+const staffInternalNotificationMessageHtml = (props) => {
+  return `
+  <html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Devitrak App | Easy way to manage inventory. A good solution for your
+      business no matter the size of your organization.
+    </title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+    </style>
+  </head>
+  <body
+    style="
+      max-width: 768px;
+      min-width: 320px;
+      background-color:#fff;
+      color: #1a202c;
+      font-family: 'Inter', sans-serif;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+      margin: auto;
+      padding: 0;
+    "
+  >
+    <div
+      style="
+        margin-left: auto;
+        margin-right: auto;
+        padding: 2rem;
+        width: 100%;
+        border-radius: 12px;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2.5rem;
+          width: 100%;
+        "
+      >
+        <div style="align-self: flex-start">
+          <p
+            style="
+              text-align: left;
+              width: 100%;
+              color: #475467;
+              font-size: 9px;
+              font-style: normal;
+              font-weight: 500;
+              line-height: 9px;
+            "
+          >
+            Power by
+          </p>
+          <div
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+            <img
+              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
+        </div>
+      </div>
+      <div style="max-width: 768px; min-width: 320px">
+      <h1
+      style="
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 1rem;
+      "
+    >
+      ${props.subject}.
+    </h1>
+    <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
+      This email notification sent from ${props.company} .
+    </p>
+          <p
+          style="
+          margin:auto;
+          color: #475467;
+          text-align: left;
+          font-size: 16px;
+          font-style: normal;
+          font-weight: 400;
+          line-height: 24px; /* 150% */
+          padding:12px 8px;
+          text-wrap: pretty
+        "
+    >
+          Dear ${props.staffMember},
+        </p>
+        <br />
+        <p
+        style="
+        margin:auto;
+        color: #475467;
+        text-align: left;
+        font-size: 16px;
+        font-style: normal;
+        font-weight: 400;
+        line-height: 24px; /* 150% */
+        padding:12px 8px;
+        text-wrap: pretty
+      "
+  >
+          We are pleased to inform you that you have been assigned as a staff
+          member for the upcoming event, ${props.eventInfo.eventName},
+          organized by ${props.company}. The event will take place on
+          ${props.eventInfo.dateBegin} and will be held at
+          ${props.eventInfo.address}. Your role will be integral to the
+          success of this event, and we are confident in your abilities to
+          contribute positively. Further details regarding your specific
+          responsibilities and tasks will be provided soon.
+        </p>
+        <br />
+        <p
+        style="
+        margin:auto;
+        color: #475467;
+        text-align: left;
+        font-size: 16px;
+        font-style: normal;
+        font-weight: 400;
+        line-height: 24px; /* 150% */
+        padding:12px 8px;
+        text-wrap: pretty
+      "
+  >
+          For any questions or additional information, please feel free to
+          contact ${props.contactInfo.name}, who is overseeing the event, at
+          ${props.contactInfo.email}. We look forward to your participation and
+          collaboration.
+        </p>
+        <p
+        style="
+        margin:auto;
+        color: #475467;
+        text-align: left;
+        font-size: 16px;
+        font-style: normal;
+        font-weight: 400;
+        line-height: 24px; /* 150% */
+        padding:12px 8px;
+        text-wrap: pretty
+      "
+  >
+          Best regards
+        </p>
+
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+      This email was sent from an unmonitored account. Do not reply to this email.    </p>
+    </p>
+      </div>
+      </div>
+    </div>
+  </body>
+</html>
+  `;
+};
+
 const eventBeginsReminderHtmlMessage = (props) => {
   return `
   <html lang="en" translate="no">
@@ -2020,6 +2211,7 @@ module.exports = {
   cancelingDepositMessageHtml,
   capturingDepositMessageHtml,
   staffNotificationMessageHtml,
+  staffInternalNotificationMessageHtml,
   editingDeviceAdminMessageHtml,
   lostDeviceFeeCollectedMessageHtml,
   linkToLoginExistingConsumerMessageHtml,
