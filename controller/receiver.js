@@ -121,7 +121,7 @@ const poolReceivers = async (request, response) => {
     await receiversPool.save();
     return response.status(201).json({
       ok: true,
-      receiversPool
+      receiversPool,
     });
   } catch (error) {
     console.log(error);
@@ -141,7 +141,7 @@ const updatePoolReceivers = async (request, response) => {
       });
     }
     const receiverEdited = {
-      ...request.body
+      ...request.body,
     };
     const receiverUpdated = await ReceiversPool.findByIdAndUpdate(
       request.params.id,
@@ -184,13 +184,14 @@ const receiverPoolList = async (request, response) => {
 
 const receiverPoolFoundAndDelete = async (request, response) => {
   try {
-    const receiversInventory = await ReceiversPool.find(request.body);
-    // if(receiversInventory){
-    //   const deviceDeleted = await ReceiversPool.findByIdAndDelete({id: receiversInventory.id})
-    // }
+    console.log(request.params);
+    const deviceDeleted = await ReceiversPool.findByIdAndDelete({
+      _id: request.params.id,
+    });
+    console.log(deviceDeleted);
     response.status(201).json({
       ok: true,
-      receiversInventory,
+      deviceDeleted,
     });
   } catch (error) {
     console.log(
@@ -228,17 +229,17 @@ const listOfAssignedReceiverPlusUserInformation = async (request, response) => {
     const listOfReceivers = await Receivers.find(request.body);
 
     // Extract user emails from the list of receivers
-    const userEmails = listOfReceivers.map(receiver => receiver.user);
+    const userEmails = listOfReceivers.map((receiver) => receiver.user);
 
     // Query the users collection to populate user information
     const usersInfo = await User.find({ email: { $in: userEmails } });
 
     // Merge user information into the list of receivers
-    const receiversWithUserInfo = listOfReceivers.map(receiver => {
-      const userInfo = usersInfo.find(user => user.email === receiver.user);
+    const receiversWithUserInfo = listOfReceivers.map((receiver) => {
+      const userInfo = usersInfo.find((user) => user.email === receiver.user);
       return {
         ...receiver.toObject(),
-        userInfo // Add user information to each receiver object
+        userInfo, // Add user information to each receiver object
       };
     });
 
@@ -256,38 +257,37 @@ const listOfAssignedReceiverPlusUserInformation = async (request, response) => {
   }
 };
 
-
 const trackReturnedReceiverWithIssue = async (request, response) => {
   try {
-    const trackDevice = new ReceiverReturnedStatus(request.body)
-    trackDevice.save()
+    const trackDevice = new ReceiverReturnedStatus(request.body);
+    trackDevice.save();
     response.status(201).json({
       ok: true,
-      record: trackDevice
-    })
+      record: trackDevice,
+    });
   } catch (error) {
-    console.log(error)
+    console.log(error);
     response.status(500).json({
       ok: false,
-      msg: error.response
-    })
+      msg: error.response,
+    });
   }
-}
+};
 
 const getListOfReceiverReturnedByIssue = async (request, response) => {
   try {
-    const trackDevice = await ReceiverReturnedStatus.find(request.body)
+    const trackDevice = await ReceiverReturnedStatus.find(request.body);
     response.status(201).json({
       ok: true,
-      record: trackDevice
-    })
+      record: trackDevice,
+    });
   } catch (error) {
     response.status(500).json({
       ok: false,
-      msg: error.response
-    })
+      msg: error.response,
+    });
   }
-}
+};
 
 const updateIssueDevice = async (request, response) => {
   try {
@@ -299,7 +299,7 @@ const updateIssueDevice = async (request, response) => {
       });
     }
     const updateIssueReceiver = {
-      ...request.body
+      ...request.body,
     };
     const receiverUpdated = await ReceiverReturnedStatus.findByIdAndUpdate(
       request.params.id,
@@ -321,7 +321,6 @@ const updateIssueDevice = async (request, response) => {
   }
 };
 
-
 module.exports = {
   addReceiverToTransaction,
   checkingReceiversAssigned,
@@ -335,5 +334,5 @@ module.exports = {
   getListOfReceiverReturnedByIssue,
   updateIssueDevice,
   listOfAssignedReceiverPlusUserInformation,
-  receiverPoolFoundAndDelete
+  receiverPoolFoundAndDelete,
 };
