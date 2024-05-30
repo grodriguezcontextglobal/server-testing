@@ -86,7 +86,7 @@ const loginUser = async (request, response = express.response) => {
     console.log(error);
     response.status(500).json({
       ok: false,
-      msg: "Please contact Administrater",
+      msg: "Please contact Administrator",
     });
   }
 };

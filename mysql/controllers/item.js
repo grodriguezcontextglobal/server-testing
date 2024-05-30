@@ -236,7 +236,6 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
             item_group,
             company
         } = request.body;
-        console.log("🚀 ~ returningItemToStockWhenEventIsFinished ~ request.body:", request.body)
         const query = ` UPDATE
         item_inv
     SET
