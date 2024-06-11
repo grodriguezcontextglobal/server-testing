@@ -45,6 +45,7 @@ dbConnection();
 // CORS configuration
 const ACCEPTED_ORIGINS = [
   "http://localhost:5522",
+  "http://localhost:3791",
   'https://admin.devitrak.net',
   'https://app.devitrak.net',
   'https://admin-testing-dev.netlify.app'
