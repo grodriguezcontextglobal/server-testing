@@ -784,7 +784,7 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
               margin-bottom: 1rem;
             "
           >
-          Lost device fee
+          Lost device fee receipt
           </h1>
           <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
           This email confirms that $${props.amount} has been charged due to the lost devices from the transaction detailed below.
@@ -808,9 +808,15 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
               <span style="margin: 0.3rem auto; width: 100%; text-align: left">
                 Time: <strong>${props.time}</strong></span
               ><br/>
+              <span style="margin: 0.3rem auto; width: 100%; text-align: left">
+              Amount: <strong>${props.amount}</strong></span
+              ><br/>
               <span style="margin: 0.3rem auto; width: 100%; text-align: left"
                 >Transaction ID: <strong>${props.transaction}</strong></span
               >
+              ><br/>
+              <span style="margin: 0.3rem auto; width: 100%; text-align: left">
+              Device: <strong>${props.device}</strong></span
             </span>
           </p>
           <a
