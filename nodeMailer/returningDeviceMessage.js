@@ -116,16 +116,20 @@ const assigningDeviceMessageHtml = (props) => {
             "
           >
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-aprops.event
-            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-aprops.company
-            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date}</strong></div>
+            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong></p>
+          </div>
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong></p>
+          </div>
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType} | ${props.device.serialNumber}</strong></div>
-
+            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType} | ${props.device.serialNumber}</strong></p>
+          </div>
           </div>
         <a
           href="${props.link}"
@@ -287,15 +291,20 @@ const returnConfirmationMessageHtml = (props) => {
             "
           >
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-aprops.event
-            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-aprops.company
-            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date}</strong></div>
+            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong></p>
+          </div>
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong></p>
+          </div>
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType} | ${props.device.serialNumber}</strong></div>
+            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType} | ${props.device.serialNumber}</strong></p>
+          </div>
           </div>
         <a
           href="${props.link}"
@@ -445,7 +454,7 @@ const cancelingDepositMessageHtml = (props) => {
           <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
           This email confirms that the $${props.amount} deposit has been released and returned to you from the transaction detailed below.
           </p>
-          <div
+        <div
             style="
               width: 100%;
               display: flex;
@@ -455,15 +464,21 @@ const cancelingDepositMessageHtml = (props) => {
               font-size: 1rem;"
             "
           >
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Date: <strong>${props.date}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Time: <strong>${props.time}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType} | ${props.device.serialNumber}</strong></p>
+          </div>
           </div>
           <a
             href="${props.link}"
@@ -776,36 +791,32 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
           </h1>
           <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
           This email confirms that $${props.amount} has been charged due to the lost devices from the transaction detailed below.
-            <span
-              style="
-                width: 100%;
-                display: flex;
-                flex-direction: column;
-                margin: 1.5rem auto 0.5rem;
-              "
-            >
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Event: <strong>${props.event}</strong></span
-              ><br/>
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Company: <strong>${props.company}</strong></span
-              ><br/>
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Date: <strong>${props.date}</strong></span
-              ><br/>
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left">
-                Time: <strong>${props.time}</strong></span
-              ><br/>
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left">
-              Amount: <strong>${props.amount}</strong></span
-              ><br/>
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left"
-                >Transaction ID: <strong>${props.transaction}</strong></span
-              >
-              ><br/>
-              <span style="margin: 0.3rem auto; width: 100%; text-align: left">
-              Device: <strong>${props.device}</strong></span
-            </span>
+        <div
+            style="
+              width: 100%;
+              display: flex;
+              flex-direction: column;
+              margin: 1.5rem auto 0.5rem;
+              color: #475467;
+              font-size: 1rem;"
+            "
+          >
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></p>
+          </div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType} | ${props.device.serialNumber}</strong></p>
+          </div>
+          </div>
           </p>
           <a
             href="${props.link}"
