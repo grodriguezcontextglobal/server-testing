@@ -45,6 +45,13 @@ const UserSchema = Schema({
       unique: false,
     },
   ],
+  groupName: [
+    {
+      type: String,
+      required: false,
+      default: "unknown",
+    },
+  ],
 });
 
 //to return an id instead of _id
