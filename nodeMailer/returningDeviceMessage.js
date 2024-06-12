@@ -115,15 +115,17 @@ const assigningDeviceMessageHtml = (props) => {
               font-size: 1rem;"
             "
           >
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Date: <strong>${props.date}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Time: <strong>${props.time}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-aprops.event
+            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-aprops.company
+            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType} | ${props.device.serialNumber}</strong></div>
+
           </div>
         <a
           href="${props.link}"
@@ -284,30 +286,16 @@ const returnConfirmationMessageHtml = (props) => {
               font-size: 1rem;"
             "
           >
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong>
-            </p>
-            </div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong>
-            </p>
-            </div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Date: <strong>${props.date}</strong>
-            </p>
-            </div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Time: <strong>${props.time}</strong>
-            </p>
-            </div>
-              <br/>
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong>
-            </p>
-            </div>
+            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-aprops.event
+            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-aprops.company
+            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
+            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
+            <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType} | ${props.device.serialNumber}</strong></div>
           </div>
         <a
           href="${props.link}"
