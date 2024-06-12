@@ -292,7 +292,7 @@ const lostDeviceFeeCollectedNotification = async (request, response) => {
     const info = await transport.sendMail({
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
       to: `${request.body.consumer.name} <${request.body.consumer.email}>`,
-      subject: "Lost device fee collected",
+      subject: "Lost device fee payment receipt",
       html: lostDeviceFeeCollectedMessageHtml(request.body),
     });
 
