@@ -23,9 +23,9 @@ const ReceiversPoolSchema = new Schema({
     unique: false,
   },
   activity: {
-    type: String,
+    type: Boolean,
     require: true,
-    default: "No",
+    default: false,
     unique: false,
   },
   comment: {
