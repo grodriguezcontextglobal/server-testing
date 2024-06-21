@@ -1405,7 +1405,7 @@ const newUserInvitationMessageHtml = (props) => {
       Invitation to create a devitrak account
     </h1>
     <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-      You are invited to create a devitrak account. Please follow the link below to accept the invitation.
+      You are invited to create a devitrak account. Please click the button to accept the invitation.
     </p>
     
         <a
@@ -1438,26 +1438,6 @@ const newUserInvitationMessageHtml = (props) => {
             Accept invitation
           </p>
         </a>
-      <div style="margin-top: 2.5rem">
-      <h2
-        style="
-          font-size: 1.25rem;
-          font-weight: 600;
-          color: #101828;
-          margin-bottom: 1rem;
-        "
-      >
-        Instructions to Complete Account Creation
-      </h2>
-      <p style="font-size: 1rem; color: #475467">
-        The next steps to complete the process of creating your account typically involve the following:
-        <ol>
-          <li>Clicking on the verification link sent to your email inbox to be redirected.</li>
-          <li>Entering and confirming a password to secure your account.</li>
-          <li>Upon successful verification, gaining access to your user account and being able to use the platform's features and functionalities.</li>
-        </ol>
-      </p>
-    </div>
     <div style="margin-top: 2.5rem">
     <p style="font-size: 1rem; color: #475467">
     This email was sent from an unmonitored account. Do not reply to this email.    </p>
