@@ -135,6 +135,11 @@ const Company = new Schema({
       },
     },
   ],
+  company_logo:{
+    type:String,
+    required:true,
+    default:""
+  }
 });
 
 Company.method("toJSON", function () {
