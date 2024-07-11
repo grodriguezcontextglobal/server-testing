@@ -2,33 +2,35 @@ const express = require("express");
 const { dbConnection } = require("./database/config");
 const cors = require("cors");
 require("dotenv").config();
-const cluster = require('node:cluster')
-const OS = require('node:os');
-const admin = require("./routes/admin")
-const article = require("./routes/article")
-const auth = require("./routes/auth")
-const cashReport = require("./routes/cashReport")
-const company = require("./routes/company")
-const companySQL = require("./mysql/routes/company")
-const consumerAttendingEvent = require("./mysql/routes/consumerAttendingEvent")
-const consumers = require("./mysql/routes/consumers")
-const event = require("./routes/event")
-const eventLog = require("./routes/eventLog")
-const eventSQL = require("./mysql/routes/events")
-const image = require("./routes/image")
-const inventory = require("./routes/inventory")
-const item = require("./routes/item")
-const itemSQl = require("./mysql/routes/item")
-const nodeMailer = require("./routes/nodeMailer")
-const notificationLog = require("./routes/notificationLog")
-const receivers = require("./routes/receivers")
-const recordEvent = require("./mysql/routes/recordEvent")
-const staff = require("./routes/staff")
-const staffSQL = require("./mysql/routes/staff")
-const stripe = require("./routes/stripe")
-const stripeSQL = require("./mysql/routes/stripe")
-const subscription = require("./routes/subscription")
-const transaction = require("./routes/transaction")
+const statusMonitor = require("express-status-monitor");
+const cluster = require("node:cluster");
+const OS = require("node:os");
+const { rateLimit } = require("express-rate-limit");
+const admin = require("./routes/admin");
+const article = require("./routes/article");
+const auth = require("./routes/auth");
+const cashReport = require("./routes/cashReport");
+const company = require("./routes/company");
+const companySQL = require("./mysql/routes/company");
+const consumerAttendingEvent = require("./mysql/routes/consumerAttendingEvent");
+const consumers = require("./mysql/routes/consumers");
+const event = require("./routes/event");
+const eventLog = require("./routes/eventLog");
+const eventSQL = require("./mysql/routes/events");
+const image = require("./routes/image");
+const inventory = require("./routes/inventory");
+const item = require("./routes/item");
+const itemSQl = require("./mysql/routes/item");
+const nodeMailer = require("./routes/nodeMailer");
+const notificationLog = require("./routes/notificationLog");
+const receivers = require("./routes/receivers");
+const recordEvent = require("./mysql/routes/recordEvent");
+const staff = require("./routes/staff");
+const staffSQL = require("./mysql/routes/staff");
+const stripe = require("./routes/stripe");
+const stripeSQL = require("./mysql/routes/stripe");
+const subscription = require("./routes/subscription");
+const transaction = require("./routes/transaction");
 const transactionAuditLog = require("./routes/transactionAuditLog");
 const lease = require("./routes/lease");
 const leaseSQL = require("./mysql/routes/lease");
@@ -36,8 +38,35 @@ const leaseSQL = require("./mysql/routes/lease");
 //create express server
 const app = express();
 
-//check CPU 
-const numCpu = OS.cpus().length
+app.use(
+  statusMonitor({
+    healthChecks: [
+      {
+        protocol: "http",
+        host: "localhost",
+        path: "/api/auth/users",
+        port: 34001,
+      }, 
+    ],
+  })
+);
+
+// const limiter = rateLimit({
+//   windowMs: 1 * 60 * 1000, // 1 minutes
+//   limit: 100, // Limit each IP to 100 requests per `window` (here, per 1 minutes).
+//   standardHeaders: "draft-7", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
+//   legacyHeaders: false, // Disable the `X-RateLimit-*` headers.
+//   // store: ... , // Redis, Memcached, etc. See below.
+//   store: new RedisStore({
+// 		sendCommand: (...args) => client.sendCommand(args),
+// 	}),
+// });
+
+// // Apply the rate limiting middleware to all requests.
+// app.use(limiter);
+
+//check CPU
+const numCpu = OS.cpus().length;
 
 //Database
 dbConnection();
@@ -46,9 +75,9 @@ dbConnection();
 const ACCEPTED_ORIGINS = [
   "http://localhost:5522",
   "http://localhost:3791",
-  'https://admin.devitrak.net',
-  'https://app.devitrak.net',
-  'https://admin-testing-dev.netlify.app'
+  "https://admin.devitrak.net",
+  "https://app.devitrak.net",
+  "https://admin-testing-dev.netlify.app",
 ];
 
 const corsOptions = {
@@ -56,22 +85,20 @@ const corsOptions = {
     if (!origin || ACCEPTED_ORIGINS.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      callback(new Error("Not allowed by CORS"));
     }
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type", "Authorization", "x-token"
-  ],
+  allowedHeaders: ["Content-Type", "Authorization", "x-token"],
   // preflightContinue: false,
   maxAge: 84600,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
 };
 
 app.use(cors(corsOptions));
 
 // Handle pre-flight requests
-app.options('*', cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 //public directory
 app.use(express.static("public"));
@@ -99,29 +126,29 @@ app.use("/api/inventory", inventory);
 app.use("/api/item", item);
 app.use("/api/image", image);
 app.use("/api/lease", lease);
-app.use("/api/db_consumer", consumers)
-app.use("/api/db_event", eventSQL)
-app.use("/api/db_item", itemSQl)
-app.use("/api/db_consumer_attending_event_record", consumerAttendingEvent)
-app.use("/api/db_company", companySQL)
-app.use("/api/db_staff", staffSQL)
-app.use("/api/db_stripe", stripeSQL)
-app.use("/api/db_record", recordEvent)
-app.use("/api/db_lease", leaseSQL)
+app.use("/api/db_consumer", consumers);
+app.use("/api/db_event", eventSQL);
+app.use("/api/db_item", itemSQl);
+app.use("/api/db_consumer_attending_event_record", consumerAttendingEvent);
+app.use("/api/db_company", companySQL);
+app.use("/api/db_staff", staffSQL);
+app.use("/api/db_stripe", stripeSQL);
+app.use("/api/db_record", recordEvent);
+app.use("/api/db_lease", leaseSQL);
 
 if (cluster.isPrimary) {
   for (let index = 0; index < numCpu; index++) {
-    cluster.fork()
+    cluster.fork();
   }
-  cluster.on('exit', (worker, code, signal) => {
-    cluster.fork()
-  })
-  cluster.on('error', (worker, code, signal) => {
-    cluster.fork()
-  })
-  cluster.on('disconnect', (worker, code, signal) => {
-    cluster.fork()
-  })
+  cluster.on("exit", (worker, code, signal) => {
+    cluster.fork();
+  });
+  cluster.on("error", (worker, code, signal) => {
+    cluster.fork();
+  });
+  cluster.on("disconnect", (worker, code, signal) => {
+    cluster.fork();
+  });
 } else {
   app.listen(process.env.PORT);
 }
