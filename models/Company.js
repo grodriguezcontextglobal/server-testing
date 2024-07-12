@@ -125,7 +125,6 @@ const Company = new Schema({
       },
       preference: {
         type: Object,
-        required: true,
         inventory_location: [
           {
             type: String,
@@ -135,6 +134,16 @@ const Company = new Schema({
       },
     },
   ],
+  company_logo: {
+    type: String,
+    required: false,
+    unique: false,
+  },
+  subscription_mandatory: {
+    type: Boolean,
+    required: true,
+    default: true,
+  },
 });
 
 Company.method("toJSON", function () {
