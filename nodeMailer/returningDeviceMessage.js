@@ -480,34 +480,6 @@ const cancelingDepositMessageHtml = (props) => {
             <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType} | ${props.device.serialNumber}</strong></p>
           </div>
           </div>
-          <a
-            href="${props.link}"
-            target="_blank"
-            style="
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              margin:auto;
-              gap: 8px;
-              align-self: stretch;
-              border-radius: 8px;
-              border: 1px solid #155eef;
-              background: #155eef;
-              box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
-              text-decoration: none;
-            "
-            ><p
-              style="
-                color:#fff;
-                font-size: 16px;
-                font-style: normal;
-                font-weight: 600;
-                line-height: 24px; /* 150% */
-              "
-            >
-              Open app
-            </p>
-          </a>
         </div>
         <div style="margin-top: 2.5rem">
         <p style="font-size: 1rem; color: #475467">
