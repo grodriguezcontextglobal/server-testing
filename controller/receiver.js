@@ -184,11 +184,9 @@ const receiverPoolList = async (request, response) => {
 
 const receiverPoolFoundAndDelete = async (request, response) => {
   try {
-    console.log(request.params);
     const deviceDeleted = await ReceiversPool.findByIdAndDelete({
       _id: request.params.id,
     });
-    console.log(deviceDeleted);
     response.status(201).json({
       ok: true,
       deviceDeleted,
