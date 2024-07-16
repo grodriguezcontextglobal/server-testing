@@ -281,7 +281,6 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
             updated_at,
             serial_number,
             event_id } = request.body;
-            console.log("🚀 ~ itemFinalStatusWhenEventIsFinished ~ request.body:", request.body)
         const query = `
                 UPDATE item_inv_assigned_event iiae
                 JOIN item_inv ii ON iiae.item_id = ii.item_id
