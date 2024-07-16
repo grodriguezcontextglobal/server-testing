@@ -32,10 +32,10 @@ const {
   updateCancelSubscription,
   updateDefaultPaymentMethodInSubscription,
   updateDefaultPaymentMethodInCustomer,
-  findSubscriptionIdBySetUpId
+  findSubscriptionIdBySetUpId,
+  createSubscriptionNoTrialPeriod
 } = require("../controller/stripe");
 const { saveTransaction, saveTransactionAdmin, saveTransactionTemplateForNoRegularUser, getListOfAllSavedTransaction, removeDuplicateEntry } = require("../controller/transaction");
-
 
 //create customer
 router.post("/customer", stripeCustomer);
@@ -57,6 +57,9 @@ router.post("/new-company-account", companyInformationAccountStripe)
 
 //route to create subscription from tiers and make charges monthly/yearly
 router.post("/create-subscriptions", creatingSubscription)
+
+//*create subscription no trail period from tiers and make charges monthly/yearly
+router.post("/create-subscriptions_no_trial", createSubscriptionNoTrialPeriod)
 
 //update payment method in subscription
 router.post("/payment-method/subscriptions/:id", updateDefaultPaymentMethodInSubscription)
