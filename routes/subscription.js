@@ -5,7 +5,7 @@
 
 const { Router } = require("express");
 const { createSubscription, searchSubscription, updateSubscription, populateSubscriptionCompany } = require("../controller/subscription");
-const { searchingSubscriptionInStripe, createSubscriptionNoTrialPeriod } = require("../controller/stripe");
+const { searchingSubscriptionInStripe, createSubscriptionNoTrialPeriod, retrieveSubscriptionID } = require("../controller/stripe");
 const router = Router();
 
 //*create subscription
@@ -29,6 +29,8 @@ router.get('/subscriptions/:id', searchingSubscriptionInStripe)
 //populate company thru subscription
 router.post('/company-subscription', populateSubscriptionCompany)
 
-//populateSubscriptionCompany
+//retrieve subscription thru payment intent id
+router.get('/searching-subscription/subscriptions/:id', retrieveSubscriptionID)
+
 module.exports = router;
   
