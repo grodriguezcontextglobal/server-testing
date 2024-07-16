@@ -161,13 +161,6 @@ const creatingSubscription = async (request, response) => {
       items: [
         {
           price: items[0].price,
-          // price_data: {
-          //   recurring: {
-          //     interval: period,
-          //     interval_count: 1,
-          //     start_date:trialPeriod.getTime()
-          //   },
-          // },
         },
       ],
       cancel_at: endDate.getTime(),
@@ -224,31 +217,43 @@ const createSubscriptionNoTrialPeriod = async (request, response) => {
     // Create a subscription with the specified contract duration
     const subscription = await stripe.subscriptions.create({
       customer: stripeCustomerID,
-      items: items,
+      items: [
+        {
+          price: items[0].price,
+        },
+      ],
       cancel_at: Math.floor(endDate.getTime() / 1000), // Set billing cycle based on contract duration
-      billing_cycle_anchor: period === 'month' ? Math.floor(new Date().getTime() / 1000) : Math.floor(endDate.getTime() / 1000),
-      payment_behavior: 'default_incomplete',
+      billing_cycle_anchor_config:
+        period === "month"
+          ? {
+              day_of_month: endDate.getDate(),
+            }
+          : {
+              month: endDate.getMonth() + 1,
+              day_of_month: endDate.getDate(),
+            },
+      payment_behavior: "default_incomplete",
       payment_settings: {
-        save_default_payment_method: 'on_subscription',
-        payment_method_types: ['card'],
+        save_default_payment_method: "on_subscription",
+        payment_method_types: ["card"],
       },
-      expand: ['latest_invoice.payment_intent'],
+      expand: ["latest_invoice.payment_intent"],
     });
-
     // Prepare the response
     response.status(201).json({
       ok: true,
       subscriptionId: subscription.id,
       clientSecret: subscription.latest_invoice.payment_intent.client_secret,
-      data: subscription
+      data: subscription,
     });
   } catch (error) {
     // Handle any errors
     response.status(500).json({
       ok: false,
-      msg: error.message
+      msg: error.message,
     });
-  }};
+  }
+};
 
 const findSubscriptionIdBySetUpId = async (request, response) => {
   const { setupId } = request.body;
@@ -380,7 +385,6 @@ const cancelSubscriptionCompany = async (request, response) => {
 const displayAllPaidInvoicesPerSubscription = async (request, response) => {
   try {
     const { subscriptionID } = request.body;
-    console.log(subscriptionID);
     const invoices = await stripe.invoices.list({
       limit: 100,
       status: "paid",
@@ -655,6 +659,38 @@ const retrievePaymentIntent = async (request, response) => {
   }
 };
 
+const retrieveSubscriptionID = async (request, response) => {
+  try {
+    // Retrieve the Payment Intent
+    const paymentIntentId = request.params.id;
+    const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+    // Step 2: Check for an associated Invoice ID
+    const invoiceId = paymentIntent.invoice;
+
+    // Check if the Payment Intent is associated with a Subscription
+    if (invoiceId) {
+      // Step 3: Retrieve the Invoice
+      const invoice = await stripe.invoices.retrieve(invoiceId);
+
+      // Step 4: Extract the subscription ID from the Invoice
+      const subscriptionId = invoice.subscription;
+
+      // Retrieve the Subscription
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+      response.status(201).json({
+        ok: true,
+        subscription,
+      });
+    } else {
+      throw new Error("Payment Intent is not associated with a Subscription.");
+    }
+  } catch (error) {
+    response.status(500).json({
+      error,
+    });
+  }
+};
+
 const getListOfAllSavedStripeTransaction = async (request, response) => {
   try {
     const listOfStripeTransactionsSaved = await StripeTransaction.find(
@@ -718,6 +754,7 @@ module.exports = {
   refundStripePaymentIntent,
   removeDuplicateEntries,
   retrievePaymentIntent,
+  retrieveSubscriptionID,
   saveStripeTransaction,
   saveStripeTransactionAdmin,
   saveStripeTransactionTemplateForNoRegularUser,
