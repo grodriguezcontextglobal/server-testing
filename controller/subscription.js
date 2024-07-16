@@ -23,9 +23,9 @@ const updateSubscription = async (request, response) => {
     const { newSubscriptionData } = request.body;
     const subscriptionID = request.params.id;
     // Find the subscription by company name and update it
-    let subscription = await Subscription.findOneAndUpdate(
-      { _id: subscriptionID },
-      { $set: newSubscriptionData },
+    let subscription = await Subscription.findByIdAndUpdate(
+      subscriptionID,
+      newSubscriptionData,
       { new: true } // Return the updated subscription
     );
     if (!subscription) {
@@ -75,8 +75,6 @@ const populateSubscriptionCompany = async (request, response) => {
     // Find the subscription by company name and update it
     let subscription = await Subscription.findOne(request.body);
     let companyInfo = await Company.findOne({ company: request.body });
-    console.log(companyInfo);
-    console.log(subscription);
     if (!subscription) {
       return response.status(404).json({
         ok: false,
