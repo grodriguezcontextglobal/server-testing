@@ -6,6 +6,11 @@ const SubscriptionSchema = new Schema({
         required: true,
         default: "unknown"
     },
+    stripeCompanyID: {
+        type: String,
+        required: true,
+        default: "unknown"
+    },
     record: [{
         subscription_id: {
             type: String,

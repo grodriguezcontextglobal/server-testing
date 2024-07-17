@@ -31,7 +31,8 @@ const {
   displayAllPaidInvoicesPerSubscription,
   updateCancelSubscription,
   updateDefaultPaymentMethodInSubscription,
-  updateDefaultPaymentMethodInCustomer
+  updateDefaultPaymentMethodInCustomer,
+  findSubscriptionIdBySetUpId
 } = require("../controller/stripe");
 const { saveTransaction, saveTransactionAdmin, saveTransactionTemplateForNoRegularUser, getListOfAllSavedTransaction, removeDuplicateEntry } = require("../controller/transaction");
 
@@ -66,8 +67,8 @@ router.post("/payment_methods/:id/attach", updateDefaultPaymentMethodInCustomer)
 //list all payment intent created
 router.get("/payment-intents/search", searchStripeTransaction);
 
-//search payment intent
-router.get("/customers/search", searchCustomerId);
+//search subscription by setup id
+router.post("/setup-search", findSubscriptionIdBySetUpId);
 
 //list all customers created
 router.get("/customers", listAllCustomers);
@@ -89,6 +90,9 @@ router.post("/company-account-stripe/", stripeCompanyAccountFound)
 
 //retrieve all invoices per subscription
 router.get("/invoices", displayAllPaidInvoicesPerSubscription)
+
+//retrieve all invoices per subscription
+router.post("/invoices", displayAllPaidInvoicesPerSubscription)
 
 //update subscription for cancel at the end of period or 
 router.post("/cancel/subscriptions/:id", updateCancelSubscription)
