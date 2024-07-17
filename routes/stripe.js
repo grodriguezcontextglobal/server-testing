@@ -75,7 +75,7 @@ router.get("/customers", listAllCustomers);
 //search customer
 router.get("/customers/search", searchCustomerId);
 
-//retreive paymentIntent
+//retrieve paymentIntent
 router.get("/payment_intents/:id", retrievePaymentIntent);
 
 //get list of stripe transactions saved
