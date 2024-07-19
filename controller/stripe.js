@@ -541,7 +541,7 @@ const saveStripeTransactionAdmin = async (request, response) => {
     console.log(error);
     response.status(500).json({
       ok: false,
-      msg: "Please contact adminitrator",
+      msg: error,
     });
   }
 };
@@ -561,6 +561,7 @@ const captureStripePaymentIntent = async (request, response) => {
     response.status(404).json({
       ok: false,
       msg: "Transaction failed",
+      error: error
     });
   }
 };
@@ -579,6 +580,7 @@ const cancelStripePaymentIntent = async (request, response) => {
     response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
+      error: error
     });
   }
 };

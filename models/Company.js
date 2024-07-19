@@ -134,16 +134,11 @@ const Company = new Schema({
       },
     },
   ],
-  company_logo: {
-    type: String,
-    required: false,
-    unique: false,
-  },
-  subscription_mandatory: {
-    type: Boolean,
-    required: true,
-    default: true,
-  },
+  company_logo:{
+    type:String,
+    required:true,
+    default:""
+  }
 });
 
 Company.method("toJSON", function () {
