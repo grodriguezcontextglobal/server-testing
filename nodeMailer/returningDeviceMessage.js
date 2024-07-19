@@ -477,6 +477,7 @@ const cancelingDepositMessageHtml = (props) => {
             <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></p>
           </div>
           </div>
+          </div>
         </div>
         <div style="margin-top: 2.5rem">
         <p style="font-size: 1rem; color: #475467">

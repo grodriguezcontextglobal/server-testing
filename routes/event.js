@@ -30,7 +30,7 @@ router.get(
   eventList
 );
 
-//display event by paramters
+//display event by parameters
 router.post(
   "/event-list",
   eventList
