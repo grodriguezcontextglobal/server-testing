@@ -16,7 +16,7 @@ const saveTransaction = async (request, response) => {
         console.log(error);
         response.status(500).json({
             ok: false,
-            msg: "Please contact adminitrator",
+            msg: error,
         });
     }
 };
@@ -35,7 +35,7 @@ const saveTransactionAdmin = async (request, response) => {
         console.log(error);
         response.status(500).json({
             ok: false,
-            msg: "Please contact adminitrator",
+            msg: error,
         });
     }
 };
