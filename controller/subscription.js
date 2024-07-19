@@ -76,13 +76,14 @@ const populateSubscriptionCompany = async (request, response) => {
     let subscription = await Subscription.findOne(request.body);
     let companyInfo = await Company.findOne({ company: request.body });
     if (!subscription) {
-      return response.status(404).json({
-        ok: false,
+      return response.status(201).json({
+        ok: ok,
         msg: "Subscription not found",
+        subscription: { subscription, companyInfo }
       });
     }
 
-    response.status(200).json({
+    response.status(201).json({
       ok: true,
       subscription: { subscription, companyInfo },
     });
