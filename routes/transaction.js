@@ -12,6 +12,7 @@ const { saveTransaction,
     getListOfAllSavedTransaction,
     removeDuplicateEntry,
     updateTransaction } = require("../controller/transaction");
+const { retrieveSubscriptionID } = require("../controller/stripe");
 
 //*saving new transaction
 router.post("/save-transaction", saveTransaction)
@@ -30,5 +31,8 @@ router.patch("/update-transaction/:id", updateTransaction)
 
 //*remove duplicate entry in transaction document
 router.delete("/remove-duplicate-transaction/:id", removeDuplicateEntry)
+
+//retrieve subscription thru payment intent id
+router.get('/subscriptions/:id', retrieveSubscriptionID)
 
 module.exports = router;
