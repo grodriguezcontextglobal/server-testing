@@ -42,10 +42,10 @@ app.use(
   statusMonitor({
     healthChecks: [
       {
-        protocol: "http",
-        host: "localhost",
+        protocol: "https",
+        host: "db.devitrak.net",
         path: "/api/auth/users",
-        port: 34001,
+        port: process.env.PORT,
       }, 
     ],
   })
