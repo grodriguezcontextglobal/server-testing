@@ -3,7 +3,7 @@ const { default: mongoose } = require("mongoose");
 const Stripe = require("stripe");
 const StripeCustomer = require("../models/StripeCustomer");
 const StripeTransaction = require("../models/StripeTransaction");
-const Transaction = require("../models/Transaction");
+// const Transaction = require("../models/Transaction");
 const StripeCompany = require("../models/StripeCompany");
 require("dotenv").config();
 
@@ -715,11 +715,6 @@ const stripeCompanyAccountFound = async (request, response) => {
     const companyAccountStripeFound = await StripeCompany.findOne({
       companyName: request.body.company,
     });
-    console.log(
-      "🚀 ~ stripeCompanyAccountFound ~ companyAccountStripeFound:",
-      companyAccountStripeFound
-    );
-
     return response.status(201).json({
       ok: true,
       companyAccountStripeFound,
