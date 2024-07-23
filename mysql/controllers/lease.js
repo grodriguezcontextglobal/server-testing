@@ -4,11 +4,13 @@ require("dotenv").config();
 const insertingNewLease = (request, response) => {
   try {
     const connection = getConnection();
+    const subscription_initial_date = new Date();
+    subscription_initial_date.setMonth(subscription_initial_date.getMonth() + 6)
+    subscription_initial_date.getTime()
     const {
       staff_admin_id,
       company_id,
       subscription_expected_return_data,
-      subscription_initial_date,
       location,
       staff_member_id,
       device_id,
@@ -263,5 +265,5 @@ module.exports = {
   consultingLease,
   consultingConsumerLease,
   updateLeaseInfo,
-  updateConsumerLeaseInfo
+  updateConsumerLeaseInfo,
 };
