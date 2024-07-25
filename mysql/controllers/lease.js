@@ -5,7 +5,6 @@ const insertingNewLease = (request, response) => {
   try {
     const connection = getConnection();
     const subscription_initial_date = new Date();
-    subscription_initial_date.setMonth(subscription_initial_date.getMonth() + 6)
     subscription_initial_date.getTime()
     const {
       staff_admin_id,
