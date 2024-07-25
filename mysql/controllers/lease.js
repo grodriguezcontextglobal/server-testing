@@ -258,6 +258,81 @@ const updateConsumerLeaseInfo = async (request, response) => {
   }
 };
 
+const deleteLeaseInfo = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const {
+      company_id,
+      staff_member_id,
+      device_id,
+    } = request.body;
+    const query = `delete from lease_info 
+                        WHERE company_id=?
+                        AND staff_member_id=?
+                        AND device_id=?`;
+    const values = [
+      company_id,
+      staff_member_id,
+      device_id,
+    ]; // Corrected order and added 'active'
+    connection.execute(query, values, function (err, result, fields) {
+      if (err)
+        return response.status(401).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+      return response.status(201).json({
+        ok: true,
+        items: result.affectedRows, // Use affectedRows to get the number of affected rows
+      });
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+};
+
+const deleteConsumerLeaseInfo = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const {
+      company_id,
+      consumer_member_id,
+      device_id,
+    } = request.body;
+    const query = `delete from lease_customer_info 
+                        WHERE company_id=?
+                        AND consumer_member_id=?
+                        AND device_id=?`;
+    const values = [
+      company_id,
+      consumer_member_id,
+      device_id,
+    ]; // Corrected order and added 'active'
+    connection.execute(query, values, function (err, result, fields) {
+      if (err)
+        return response.status(401).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+      return response.status(201).json({
+        ok: true,
+        items: result.affectedRows, // Use affectedRows to get the number of affected rows
+      });
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+};
+
+
 module.exports = {
   insertingNewLease,
   insertingNewLeaseConsumer,
@@ -265,4 +340,6 @@ module.exports = {
   consultingConsumerLease,
   updateLeaseInfo,
   updateConsumerLeaseInfo,
+  deleteLeaseInfo,
+  deleteConsumerLeaseInfo,
 };
