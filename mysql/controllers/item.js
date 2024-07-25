@@ -192,38 +192,120 @@ const updateItemInTable = async (request, response) => {
     }
 };
 
-
 const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) => {
     try {
-        const connection = getConnection()
-        const { warehouse, item_group, min_serial_number, max_serial_number, company } = request.body;
+      const connection = getConnection();
+      const { warehouse, item_group, startingNumber, quantity, company } = request.body;
 
-        const query = `
-            UPDATE item_inv 
-            SET warehouse = ?, update_at = NOW()
-            WHERE item_group = ? AND serial_number BETWEEN ? AND ? And company = ?`;
-
-        const values = [warehouse, item_group, min_serial_number, max_serial_number, company];
-
-        connection.execute(query, values, function (err, result, fields) {
-            if (err) return response.status(401).json({
-                ok: false,
-                msg: `${err.message}`,
-            });
-            return response.status(201).json({
-                ok: true,
-                msg: 'Items updated successfully in the warehouse',
-                updated_items: result
-            });
+      // Validate request body
+      if (!item_group || !startingNumber || !quantity || !company) {
+        return response.status(400).json({
+          ok: false,
+          msg: "Missing required fields",
         });
-    } catch (error) {
-        console.error('Error:', error.message);
-        response.status(500).json({
+      }
+  
+      // Find the starting index
+      const findIndexQuery = `
+        SELECT item_id, serial_number
+        FROM item_inv
+        WHERE item_group = ? AND company = ?
+        ORDER BY serial_number
+      `;
+      const findIndexValues = [item_group, company];
+      
+      connection.execute(findIndexQuery, findIndexValues, (err, results) => {
+        if (err) {
+          return response.status(500).json({
             ok: false,
-            msg: `${error.message}`,
+            msg: `Database error: ${err.message}`,
+          });
+        }
+  
+        // Find the index of the starting number
+        const startIndex = results.findIndex(item => item.serial_number === startingNumber);
+  
+        if (startIndex === -1) {
+          return response.status(404).json({
+            ok: false,
+            msg: "Starting number not found",
+          });
+        }
+  
+        // Get the items to be updated
+        const itemsToUpdate = results.slice(startIndex, startIndex + Number(quantity));
+  
+        if (itemsToUpdate.length < Number(quantity)) {
+          return response.status(400).json({
+            ok: false,
+            msg: "Not enough items available starting from the given number",
+          });
+        }
+  
+        const updateQuery = `
+          UPDATE item_inv 
+          SET warehouse = ?, update_at = NOW()
+          WHERE item_id IN (?)
+        `;
+  
+        const itemIds = itemsToUpdate.map(item => item.item_id);
+        const updateValues = [warehouse, itemIds];
+  
+        connection.query(updateQuery, updateValues, (err, result) => {
+          if (err) {
+            return response.status(500).json({
+              ok: false,
+              msg: `Database error: ${err.message}`,
+            });
+          }
+  
+          response.status(201).json({
+            ok: true,
+            msg: 'Items updated successfully in the warehouse',
+            updated_items: result.affectedRows,
+          });
         });
+      });
+    } catch (error) {
+      console.error('Error:', error.message);
+      response.status(500).json({
+        ok: false,
+        msg: `Server error: ${error.message}`,
+      });
     }
-};
+  };
+  
+// const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) => {
+//     try {
+//         const connection = getConnection()
+//         const { warehouse, item_group, min_serial_number, max_serial_number, company } = request.body;
+
+//         const query = `
+//             UPDATE item_inv 
+//             SET warehouse = ?, update_at = NOW()
+//             WHERE item_group = ? AND serial_number BETWEEN ? AND ? And company = ?`;
+
+//         const values = [warehouse, item_group, min_serial_number, max_serial_number, company];
+
+//         connection.execute(query, values, function (err, result, fields) {
+//             if (err) return response.status(401).json({
+//                 ok: false,
+//                 msg: `${err.message}`,
+//             });
+//             return response.status(201).json({
+//                 ok: true,
+//                 msg: 'Items updated successfully in the warehouse',
+//                 updated_items: result
+//             });
+//         });
+//     } catch (error) {
+//         console.error('Error:', error.message);
+//         response.status(500).json({
+//             ok: false,
+//             msg: `${error.message}`,
+//         });
+//     }
+// };
 
 const returningItemToStockWhenEventIsFinished = async (request, response) => {
     try {
