@@ -4,56 +4,89 @@ const getConnection = require("../database/config");
 
 const connection = getConnection();
 
-const insertingItemInEvent = (request, response) => {
+const insertingItemInEvent = async (request, response) => {
   try {
     const {
+      startingNumber,
+      quantity,
       event_id,
       item_group,
       category_name,
-      min_serial_number,
-      max_serial_number,
     } = request.body;
 
-    const query = `INSERT INTO item_inv_assigned_event (item_id, event_id)
-            SELECT
-                ii.item_id,
-                ei.event_id
-            FROM
-                item_inv AS ii
-            JOIN
-                event_info AS ei ON ei.event_id = ?
-            WHERE
-                ii.item_group = ?
-                AND ii.category_name = ?
-                AND ii.serial_number BETWEEN ? AND ?`;
+    // Validate request body
+    if (!startingNumber || !quantity || !event_id || !item_group || !category_name) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Missing required fields",
+      });
+    }
 
-    // Create an array of values for the prepared statement
-    const values = [
-      event_id,
-      item_group,
-      category_name,
-      min_serial_number,
-      max_serial_number,
-    ];
+    // Find the starting index
+    const findIndexQuery = `
+      SELECT item_id, serial_number
+      FROM item_inv
+      WHERE item_group = ? AND category_name = ?
+      ORDER BY serial_number
+    `;
 
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
+    const findIndexValues = [item_group, category_name];
+
+    connection.execute(findIndexQuery, findIndexValues, (err, results) => {
+      if (err) {
         return response.status(500).json({
           ok: false,
-          msg: `${err.message}`,
+          msg: `Database error: ${err.message}`,
         });
+      }
 
-      return response.status(201).json({
-        ok: true,
-        msg: "Items inserted successfully into event",
-        inserted_items: result.affectedRows,
+      // Find the index of the starting number
+      const startIndex = results.findIndex(item => item.serial_number === startingNumber);
+
+      if (startIndex === -1) {
+        return response.status(404).json({
+          ok: false,
+          msg: "Starting number not found",
+        });
+      }
+
+      // Get the items to be inserted
+      const itemsToInsert = results.slice(startIndex, startIndex + quantity);
+
+      if (itemsToInsert.length < quantity) {
+        return response.status(400).json({
+          ok: false,
+          msg: "Not enough items available starting from the given number",
+        });
+      }
+
+      const insertQuery = `
+        INSERT INTO item_inv_assigned_event (item_id, event_id)
+        VALUES ?
+      `;
+
+      const insertValues = itemsToInsert.map(item => [item.item_id, event_id]);
+
+      connection.query(insertQuery, [insertValues], (err, result) => {
+        if (err) {
+          return response.status(500).json({
+            ok: false,
+            msg: `Database error: ${err.message}`,
+          });
+        }
+
+        response.status(201).json({
+          ok: true,
+          msg: "Items inserted successfully into event",
+          inserted_items: result.affectedRows,
+        });
       });
     });
   } catch (error) {
     console.error("Error:", error.message);
     response.status(500).json({
       ok: false,
-      msg: `${error.message}`,
+      msg: `Server error: ${error.message}`,
     });
   }
 };
