@@ -26,7 +26,7 @@ const insertingNewLease = (request, response) => {
                         staff_member_id,
                         device_id
                             )
-                        values(?,?,?,?,?,?)`;
+                        values(?,?,?,?,?,?,?)`;
     const values = [
       staff_admin_id,
       company_id,
