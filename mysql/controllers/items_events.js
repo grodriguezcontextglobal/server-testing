@@ -6,16 +6,17 @@ const connection = getConnection();
 
 const insertingItemInEvent = async (request, response) => {
   try {
-    const {
-      startingNumber,
-      quantity,
-      event_id,
-      item_group,
-      category_name,
-    } = request.body;
+    const { startingNumber, quantity, event_id, item_group, category_name } =
+      request.body;
 
     // Validate request body
-    if (!startingNumber || !quantity || !event_id || !item_group || !category_name) {
+    if (
+      !startingNumber ||
+      !quantity ||
+      !event_id ||
+      !item_group ||
+      !category_name
+    ) {
       return response.status(400).json({
         ok: false,
         msg: "Missing required fields",
@@ -41,7 +42,9 @@ const insertingItemInEvent = async (request, response) => {
       }
 
       // Find the index of the starting number
-      const startIndex = results.findIndex(item => item.serial_number === startingNumber);
+      const startIndex = results.findIndex(
+        (item) => item.serial_number === startingNumber
+      );
 
       if (startIndex === -1) {
         return response.status(404).json({
@@ -65,7 +68,10 @@ const insertingItemInEvent = async (request, response) => {
         VALUES ?
       `;
 
-      const insertValues = itemsToInsert.map(item => [item.item_id, event_id]);
+      const insertValues = itemsToInsert.map((item) => [
+        item.item_id,
+        event_id,
+      ]);
 
       connection.query(insertQuery, [insertValues], (err, result) => {
         if (err) {
@@ -91,7 +97,10 @@ const insertingItemInEvent = async (request, response) => {
   }
 };
 
-const deletingItemsInEventAfterDeviceInventoryIsUpdated = (request, response) => {
+const deletingItemsInEventAfterDeviceInventoryIsUpdated = (
+  request,
+  response
+) => {
   try {
     const { event_id, item_group, category_name, serial_number } = request.body;
 
@@ -217,9 +226,74 @@ const consultingInventoryInEvent = (request, response) => {
   }
 };
 
+const consultingRowInItemInvAssignedEventTable = (request, response) => {
+  try {
+    const { item_id, company_assigned_event_id } = request.body;
+    console.log(item_id, company_assigned_event_id);
+    const query = `SELECT ei.*
+FROM event_info ei
+JOIN item_inv_assigned_event iae ON ei.event_id = iae.event_id 
+WHERE iae.item_id = ? 
+  AND ei.company_assigned_event_id = ?;`;
+    const values = [item_id, company_assigned_event_id];
+    connection.execute(query, values, function (err, result, fields) {
+      if (err)
+        return response.status(500).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+
+      return response.status(201).json({
+        ok: true,
+        result,
+      });
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+};
+
+const deletingRecordInItemInvAssignedEventRow = (request, response) => {
+  try {
+    const { event_id, item_id } = request.body;
+
+    const query = `DELETE FROM item_inv_assigned_event WHERE event_id = ? AND item_id = ?;`;
+
+    // Create an array of values for the prepared statement
+    const values = [event_id, item_id];
+
+    connection.execute(query, values, function (err, result) {
+      if (err) {
+        return response.status(500).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+      }
+
+      return response.status(200).json({
+        ok: true,
+        msg: "Items deleted successfully from event",
+        deleted_items: result.affectedRows,
+      });
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+};
+
 module.exports = {
   insertingItemInEvent,
   consultingInventoryCurrentState,
   consultingInventoryInEvent,
   deletingItemsInEventAfterDeviceInventoryIsUpdated,
+  consultingRowInItemInvAssignedEventTable,
+  deletingRecordInItemInvAssignedEventRow,
 };
