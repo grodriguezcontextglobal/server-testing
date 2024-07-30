@@ -124,12 +124,12 @@ const Company = new Schema({
         default: true,
       },
       preference: {
-        type: Object,
         inventory_location: [
           {
             type: String,
             required: false,
           },
+      
         ],
       },
     },
