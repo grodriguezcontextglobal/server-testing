@@ -1,7 +1,5 @@
 const { response, request } = require("express");
 const getConnection = require("../database/config");
-const { createClient } = require("redis");
-const { clientRedis } = require("../../database/cacheMemoryConfig");
 require("dotenv").config();
 
 const insertingItem = (request, response) => {
