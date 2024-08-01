@@ -8,6 +8,7 @@
  const {
    displayAllAdminUser, editOtherAdminUser,
  } = require("../controller/admin");
+const { searchCustomerByParameters } = require("../controller/stripe");
 
  //display all admin users
 router.get("/admin-users", displayAllAdminUser);
@@ -17,4 +18,6 @@ router.post("/admin-users", displayAllAdminUser);
 
  router.patch("/edit-admin/:id", editOtherAdminUser)
  
+ //search stripe customer by parameters
+ router.get('/consumers/search',searchCustomerByParameters)
  module.exports = router;
