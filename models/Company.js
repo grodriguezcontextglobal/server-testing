@@ -45,7 +45,7 @@ const Company = new Schema({
     },
     alternative: {
       type: String,
-      required: true,
+      required: false,
       default: "unknown",
     },
     fax: {
@@ -132,6 +132,11 @@ const Company = new Schema({
       
         ],
       },
+      userId: {
+        type: Schema.Types.ObjectId,
+        ref: "adminUser",
+        required: false,
+      }
     },
   ],
   company_logo: {
