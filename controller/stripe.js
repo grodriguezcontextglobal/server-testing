@@ -561,7 +561,7 @@ const captureStripePaymentIntent = async (request, response) => {
     response.status(404).json({
       ok: false,
       msg: "Transaction failed",
-      error: error
+      error: error,
     });
   }
 };
@@ -580,7 +580,7 @@ const cancelStripePaymentIntent = async (request, response) => {
     response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
-      error: error
+      error: error,
     });
   }
 };
@@ -743,6 +743,31 @@ const searchingSubscriptionInStripe = async (request, response) => {
     });
   }
 };
+
+const searchCustomerByParameters = async (request, response) => {
+  const parameters = request._parsedUrl.query.split("=");
+  const customerEmail = parameters[1].split("&")[0];
+  const customerName = parameters.at(-1);
+  try {
+    const customer = await stripe.customers.search({
+      query: `email:\'${customerEmail}\' AND name:\'${customerName.replaceAll("%20", " ")}\'`,
+    });
+    response.status(201).json({
+      ok: true,
+      customer: customer,
+      customerName: customerName,
+      customerEmail: customerEmail,
+    });
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      error,
+      customerName: customerName,
+      customerEmail: customerEmail,
+    });
+  }
+};
+
 module.exports = {
   cancelStripePaymentIntent,
   captureStripePaymentIntent,
@@ -775,4 +800,5 @@ module.exports = {
   updateDefaultPaymentMethodInCustomer,
   searchingSubscriptionInStripe,
   findSubscriptionIdBySetUpId,
+  searchCustomerByParameters,
 };
