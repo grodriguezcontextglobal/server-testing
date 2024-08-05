@@ -50,7 +50,10 @@ const assingDeviceNotification = async (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -85,7 +88,10 @@ const returningDeviceNotification = async (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -120,7 +126,10 @@ const cancelDepositNotification = async (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -155,7 +164,10 @@ const captureDepositNotification = async (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -192,7 +204,10 @@ const earlierReturningNotification = async (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -229,7 +244,10 @@ const eventStaffNotification = async (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -266,7 +284,10 @@ const editingDeviceAdminNotification = async (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -301,9 +322,13 @@ const lostDeviceFeeCollectedNotification = async (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
+
 const confirmationLinkNewConsumerNotification = async (request, response) => {
   try {
     const transport = nodeMailer.createTransport({
@@ -335,7 +360,10 @@ const confirmationLinkNewConsumerNotification = async (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -370,7 +398,10 @@ const loginLinkExistingConsumerNotification = async (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -406,7 +437,10 @@ const linkToResetPassword = (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -441,7 +475,10 @@ const customizedEmailNotification = (request, response) => {
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
-    response.status(500).json("failed");
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -475,8 +512,11 @@ const singleEmailNotification = (request, response) => {
       ok: true,
     });
   } catch (error) {
-    console.log(`read the following error: ${error.message}`);
-    response.status(500).json("failed");
+    console.log(`read the following error: ${error}`);
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -510,8 +550,11 @@ const newUserInvitationNotification = (request, response) => {
       ok: true,
     });
   } catch (error) {
-    console.log(`read the following error: ${error.message}`);
-    response.status(500).json("failed");
+    console.log(`read the following error: ${error}`);
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 
@@ -629,7 +672,6 @@ const staffInternalNotification = async (request, response) => {
   }
 };
 
-//staffInternalNotificationMessageHtml
 module.exports = {
   assingDeviceNotification,
   returningDeviceNotification,
