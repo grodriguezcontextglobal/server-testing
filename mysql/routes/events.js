@@ -11,7 +11,7 @@ const { consultingEventInformation,
     insertingStaffInEvent,
     consultingEventsPerCompany, 
     consultingInventoryEvent} = require("../controllers/events");
-const { insertingItemInEvent, consultingInventoryInEvent, deletingItemsInEventAfterDeviceInventoryIsUpdated } = require("../controllers/items_events");
+const { insertingItemInEvent, consultingInventoryInEvent, deletingItemsInEventAfterDeviceInventoryIsUpdated, insertingDeviceInEventDirectly } = require("../controllers/items_events");
 const { returningItemToStockWhenEventIsFinished, itemFinalStatusWhenEventIsFinished } = require("../controllers/item");
 const router = Router();
 
@@ -32,6 +32,9 @@ router.post('/event_staff', insertingStaffInEvent)
 
 //insert new devices in event
 router.post('/event_device', insertingItemInEvent)
+
+//insert new devices in event directly
+router.post('/event_device_directly', insertingDeviceInEventDirectly)
 
 //consulting inventory in event
 router.post('/event-inventory/:id', consultingInventoryInEvent)

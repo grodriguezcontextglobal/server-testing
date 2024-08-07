@@ -27,7 +27,7 @@ const insertingItemInEvent = async (request, response) => {
     const findIndexQuery = `
       SELECT item_id, serial_number
       FROM item_inv
-      WHERE item_group = ? AND category_name = ?
+      WHERE item_group = ? AND category_name = ? and serial_number = ?
       ORDER BY serial_number
     `;
 
@@ -45,7 +45,7 @@ const insertingItemInEvent = async (request, response) => {
       const startIndex = results.findIndex(
         (item) => item.serial_number === startingNumber
       );
-
+      console.log(startIndex);
       if (startIndex === -1) {
         return response.status(404).json({
           ok: false,
@@ -55,6 +55,7 @@ const insertingItemInEvent = async (request, response) => {
 
       // Get the items to be inserted
       const itemsToInsert = results.slice(startIndex, startIndex + quantity);
+      console.log("itemsToInsert", itemsToInsert);
 
       if (itemsToInsert.length < quantity) {
         return response.status(400).json({
@@ -72,7 +73,7 @@ const insertingItemInEvent = async (request, response) => {
         item.item_id,
         event_id,
       ]);
-
+      console.log("insertValues", insertValues);
       connection.query(insertQuery, [insertValues], (err, result) => {
         if (err) {
           return response.status(500).json({
@@ -97,6 +98,37 @@ const insertingItemInEvent = async (request, response) => {
   }
 };
 
+const insertingDeviceInEventDirectly = async (request, response) => {
+  try {
+    const { item_id, event_id } = request.body
+    const insertQuery = `
+    INSERT INTO item_inv_assigned_event (item_id, event_id)
+    values(?,?)
+  `;
+const values = [item_id, event_id]
+  connection.query(insertQuery, values, (err, result) => {
+    if (err) {
+      return response.status(500).json({
+        ok: false,
+        msg: `Database error: ${err.message}`,
+      });
+    }
+
+    response.status(201).json({
+      ok: true,
+      msg: "Items inserted successfully into event",
+      inserted_items: result.affectedRows,
+    });
+  });
+
+  } catch (error) {
+    console.log(error)
+    response.status(201).json({
+      ok: false,
+      msg: `error: ${error}`,
+    });
+  }
+};
 const deletingItemsInEventAfterDeviceInventoryIsUpdated = (
   request,
   response
@@ -296,4 +328,5 @@ module.exports = {
   deletingItemsInEventAfterDeviceInventoryIsUpdated,
   consultingRowInItemInvAssignedEventTable,
   deletingRecordInItemInvAssignedEventRow,
+  insertingDeviceInEventDirectly,
 };
