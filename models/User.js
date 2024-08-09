@@ -61,7 +61,7 @@ const UserSchema = Schema({
   event_providers: [
     {
       type: String,
-      required: true,
+      required: false,
     },
   ],
 });
