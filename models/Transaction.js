@@ -33,7 +33,11 @@ const TransactionSchema = new Schema({
         type: Boolean,
         required: true,
         default:true
-    }
+    },
+    company: {
+        type: String,
+        required: true,
+      },    
 });
 
 TransactionSchema.method("toJSON", function () {

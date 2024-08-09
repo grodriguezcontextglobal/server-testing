@@ -52,6 +52,18 @@ const UserSchema = Schema({
       default: "unknown",
     },
   ],
+  company_providers: [
+    {
+      type: String,
+      required: true,
+    },
+  ],
+  event_providers: [
+    {
+      type: String,
+      required: true,
+    },
+  ],
 });
 
 //to return an id instead of _id
