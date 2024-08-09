@@ -4,7 +4,7 @@
  */
 
 const { Router } = require("express");
-const { consultingCompany, consultingCompanyTable, insertingCompany, deleteCompany, consultingIndustryCompanyTable } = require("../controllers/company");
+const { consultingCompany, consultingCompanyTable, insertingCompany, deleteCompany, consultingIndustryCompanyTable, updateCompanyData } = require("../controllers/company");
 const router = Router();
 
 // Check company info
@@ -18,6 +18,9 @@ router.post('/industry', consultingIndustryCompanyTable);
 
 // Insert new company
 router.post('/new_company', insertingCompany);
+
+// update company data
+router.post('/update_company', updateCompanyData);
 
 // Delete company
 router.delete('/:id', deleteCompany);
