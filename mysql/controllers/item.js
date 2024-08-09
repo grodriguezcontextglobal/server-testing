@@ -19,6 +19,7 @@ const insertingItem = (request, response) => {
       location,
       current_location,
       extra_serial_number,
+      company_id,
     } = request.body;
     const query = `
                         insert into item_inv
@@ -35,9 +36,10 @@ const insertingItem = (request, response) => {
                         company, 
                         location,
                         current_location,
-                        extra_serial_number
+                        extra_serial_number,
+                        company_id
                         )
-                        values(?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+                        values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
     const values = [
       `${category_name}`,
       `${item_group}`,
@@ -52,6 +54,7 @@ const insertingItem = (request, response) => {
       `${location}`,
       `${current_location}`,
       `${extra_serial_number}`,
+      company_id,
     ];
     connection.execute(query, values, function (err, result, fields) {
       if (err)
@@ -265,11 +268,11 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
 ) => {
   try {
     const connection = getConnection();
-    const { warehouse, item_group, startingNumber, quantity, company } =
+    const { warehouse, item_group, startingNumber, quantity, company_id } =
       request.body;
 
     // Validate request body
-    if (!item_group || !startingNumber || !quantity || !company) {
+    if (!item_group || !startingNumber || !quantity || !company_id) {
       return response.status(400).json({
         ok: false,
         msg: "Missing required fields",
@@ -280,10 +283,10 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     const findIndexQuery = `
         SELECT item_id, serial_number
         FROM item_inv
-        WHERE item_group = ? AND company = ?
+        WHERE item_group = ? AND company_id = ?
         ORDER BY serial_number
       `;
-    const findIndexValues = [item_group, company];
+    const findIndexValues = [item_group, company_id];
 
     connection.execute(findIndexQuery, findIndexValues, (err, results) => {
       if (err) {
@@ -350,38 +353,6 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     });
   }
 };
-
-// const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) => {
-//     try {
-//         const connection = getConnection()
-//         const { warehouse, item_group, min_serial_number, max_serial_number, company } = request.body;
-
-//         const query = `
-//             UPDATE item_inv
-//             SET warehouse = ?, update_at = NOW()
-//             WHERE item_group = ? AND serial_number BETWEEN ? AND ? And company = ?`;
-
-//         const values = [warehouse, item_group, min_serial_number, max_serial_number, company];
-
-//         connection.execute(query, values, function (err, result, fields) {
-//             if (err) return response.status(401).json({
-//                 ok: false,
-//                 msg: `${err.message}`,
-//             });
-//             return response.status(201).json({
-//                 ok: true,
-//                 msg: 'Items updated successfully in the warehouse',
-//                 updated_items: result
-//             });
-//         });
-//     } catch (error) {
-//         console.error('Error:', error.message);
-//         response.status(500).json({
-//             ok: false,
-//             msg: `${error.message}`,
-//         });
-//     }
-// };
 
 const returningItemToStockWhenEventIsFinished = async (request, response) => {
   try {
@@ -514,3 +485,35 @@ module.exports = {
   returningItemToStockWhenEventIsFinished,
   itemFinalStatusWhenEventIsFinished,
 };
+
+// const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) => {
+//     try {
+//         const connection = getConnection()
+//         const { warehouse, item_group, min_serial_number, max_serial_number, company } = request.body;
+
+//         const query = `
+//             UPDATE item_inv
+//             SET warehouse = ?, update_at = NOW()
+//             WHERE item_group = ? AND serial_number BETWEEN ? AND ? And company = ?`;
+
+//         const values = [warehouse, item_group, min_serial_number, max_serial_number, company];
+
+//         connection.execute(query, values, function (err, result, fields) {
+//             if (err) return response.status(401).json({
+//                 ok: false,
+//                 msg: `${err.message}`,
+//             });
+//             return response.status(201).json({
+//                 ok: true,
+//                 msg: 'Items updated successfully in the warehouse',
+//                 updated_items: result
+//             });
+//         });
+//     } catch (error) {
+//         console.error('Error:', error.message);
+//         response.status(500).json({
+//             ok: false,
+//             msg: `${error.message}`,
+//         });
+//     }
+// };
