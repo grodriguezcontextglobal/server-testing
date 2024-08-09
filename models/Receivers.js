@@ -21,16 +21,22 @@ const ReceiversSchema = new Schema({
     {
       type: String,
       required: true,
-    }],
+    },
+  ],
   provider: [
     {
       type: String,
       required: true,
-    }],
-    timeStamp: {
-      type: Date,
-      required: true
-    }
+    },
+  ],
+  company: {
+    type: String,
+    required: true,
+  },
+  timeStamp: {
+    type: Date,
+    required: true,
+  },
 });
 
 ReceiversSchema.method("toJSON", function () {

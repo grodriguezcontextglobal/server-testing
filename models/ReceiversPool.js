@@ -1,8 +1,7 @@
 const { Schema, model } = require("mongoose");
 
 const ReceiversPoolSchema = new Schema({
-  eventSelected:
-  {
+  eventSelected: {
     type: String,
     required: true,
   },
@@ -34,11 +33,14 @@ const ReceiversPoolSchema = new Schema({
     default: "No comment",
     unique: false,
   },
-  provider:
-  {
+  provider: {
     type: String,
     required: true,
     unique: false,
+  },
+  company: {
+    type: String,
+    required: true,
   },
 });
 
