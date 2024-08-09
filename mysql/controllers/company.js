@@ -126,10 +126,46 @@ const consultingIndustryCompanyTable = async (request, response) => {
     }
 };
 
+const updateCompanyData = async (request, response) => {
+    try {
+        const connection = getConnection();
+        const values = [...Object.values(request.body).map(item => item)];
+        const query = `UPDATE company_info 
+                            SET company_name=?,
+                                street_address=?,
+                                city_address=?,
+                                state_address=?,
+                                zip_address=?,
+                                phone_number=?,
+                                email_company=?,
+                                update_at=NOW()
+                            WHERE company_id=?`;
+        connection.execute(query, values, function (err, result, fields) {
+          if (err) {
+            return response.status(401).json({
+              ok: false,
+              msg: `${err.message}`,
+            });
+          }
+          return response.status(201).json({
+            ok: true,
+            items: result.affectedRows,
+          });
+        });
+    } catch (error) {
+        console.error("Error:", error.message);
+        response.status(500).json({
+          ok: false,
+          msg: `${error.message}`,
+        });
+    }
+};
+
 module.exports = {
     consultingCompany,
     insertingCompany,
     consultingCompanyTable,
     deleteCompany,
-    consultingIndustryCompanyTable
+    consultingIndustryCompanyTable,
+    updateCompanyData,
 };
