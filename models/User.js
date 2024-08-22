@@ -64,6 +64,25 @@ const UserSchema = Schema({
       required: false,
     },
   ],
+  notes: [
+    {
+      company: {
+        type: String,
+        required: true,
+        default: "",
+      },
+      date: {
+        type: Date,
+        required: true,
+        default: new Date().getTime(),
+      },
+      notes: {
+        type: String,
+        required: true,
+        default: "",
+      },
+    },
+  ],
 });
 
 //to return an id instead of _id
