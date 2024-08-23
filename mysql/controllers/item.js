@@ -20,6 +20,7 @@ const insertingItem = (request, response) => {
       current_location,
       extra_serial_number,
       company_id,
+      return_date,
     } = request.body;
     const query = `
                         insert into item_inv
@@ -37,9 +38,10 @@ const insertingItem = (request, response) => {
                         location,
                         current_location,
                         extra_serial_number,
-                        company_id
+                        company_id,
+                        return_date
                         )
-                        values(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
+                        values(?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?)`;
     const values = [
       `${category_name}`,
       `${item_group}`,
@@ -55,6 +57,7 @@ const insertingItem = (request, response) => {
       `${current_location}`,
       `${extra_serial_number}`,
       company_id,
+      `${return_date && return_date}`,
     ];
     connection.execute(query, values, function (err, result, fields) {
       if (err)
@@ -208,23 +211,27 @@ const updateItemInTable = async (request, response) => {
       company,
       location,
       current_location,
+      return_date
     } = request.body;
+
     const query = `UPDATE item_inv 
-                        SET category_name=?,
-                            item_group=?,  
-                            cost=?,  
-                            brand=?,
-                            descript_item=?,
-                            ownership=?,
-                            serial_number=?,
-                            warehouse=?,
-                            status=?,
-                            main_warehouse=?,
-                            update_at=?,
-                            company=?,
-                            location=?,
-                            current_location=?
-                        WHERE item_id=?;`;
+                        SET category_name = ?, 
+                            item_group = ?,  
+                            cost = ?,  
+                            brand = ?, 
+                            descript_item = ?, 
+                            ownership = ?, 
+                            serial_number = ?, 
+                            warehouse = ?, 
+                            status = ?, 
+                            main_warehouse = ?, 
+                            update_at = ?, 
+                            company = ?, 
+                            location = ?, 
+                            current_location = ?, 
+                            return_date = ? 
+                        WHERE item_id = ?`;
+
     const values = [
       category_name,
       item_group,
@@ -240,8 +247,10 @@ const updateItemInTable = async (request, response) => {
       company,
       location,
       current_location,
-      item_id,
-    ]; // Updated values array
+      return_date, // this should be formatted correctly as a string
+      item_id // item_id should be the last parameter in the query
+    ];
+
     connection.execute(query, values, function (err, result, fields) {
       if (err)
         return response.status(401).json({
@@ -364,7 +373,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
       serial_number,
       category_name,
       item_group,
-      company,
+      company_id,
     } = request.body;
     const query = ` UPDATE
         item_inv
@@ -376,7 +385,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
         serial_number =?
         and category_name = ?
         and item_group = ?
-        and company = ?;`;
+        and company_id = ?;`;
     const values = [
       warehouse,
       status,
@@ -384,7 +393,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
       serial_number,
       category_name,
       item_group,
-      company,
+      company_id,
     ];
     connection.execute(query, values, function (err, result, fields) {
       if (err)
@@ -414,7 +423,7 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
     const query = `
                 UPDATE item_inv_assigned_event iiae
                 JOIN item_inv ii ON iiae.item_id = ii.item_id
-                SET iiae.status = ?, iiae.condition = ?, iiae.updated_at = ?
+                SET iiae.status = ?, iiae.condition = ?, iiae.updated_at = ?, active = false
                 WHERE ii.serial_number = ?
                 AND iiae.event_id = ?;
                     `;
@@ -485,35 +494,3 @@ module.exports = {
   returningItemToStockWhenEventIsFinished,
   itemFinalStatusWhenEventIsFinished,
 };
-
-// const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) => {
-//     try {
-//         const connection = getConnection()
-//         const { warehouse, item_group, min_serial_number, max_serial_number, company } = request.body;
-
-//         const query = `
-//             UPDATE item_inv
-//             SET warehouse = ?, update_at = NOW()
-//             WHERE item_group = ? AND serial_number BETWEEN ? AND ? And company = ?`;
-
-//         const values = [warehouse, item_group, min_serial_number, max_serial_number, company];
-
-//         connection.execute(query, values, function (err, result, fields) {
-//             if (err) return response.status(401).json({
-//                 ok: false,
-//                 msg: `${err.message}`,
-//             });
-//             return response.status(201).json({
-//                 ok: true,
-//                 msg: 'Items updated successfully in the warehouse',
-//                 updated_items: result
-//             });
-//         });
-//     } catch (error) {
-//         console.error('Error:', error.message);
-//         response.status(500).json({
-//             ok: false,
-//             msg: `${error.message}`,
-//         });
-//     }
-// };
