@@ -3,12 +3,16 @@ const ReceiverReturnedStatus = require("../models/ReceiverReturnedStatus");
 const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
 const User = require("../models/User");
+const { cache } = require("../cache/cacheInstance");
 
 const addReceiverToTransaction = async (request, response) => {
   try {
     Receivers.adminuser = request.body.adminUser;
     const receiversAssignedPerUser = new Receivers(request.body);
     await receiversAssignedPerUser.save();
+    const cacheKey = `assigned_device_${receiversAssignedPerUser.company}_${receiversAssignedPerUser.eventSelected}_${receiversAssignedPerUser.user}`;
+    cache.del(cacheKey);
+
     return response.status(201).json({
       ok: true,
       message: "ASSIGNED",
@@ -21,7 +25,7 @@ const addReceiverToTransaction = async (request, response) => {
     console.log(error);
     response.status(500).json({
       ok: false,
-      msg: "Please contact Administrater",
+      msg: "Please contact Administrator",
     });
   }
 };
@@ -99,6 +103,9 @@ const udpateReceiverStatus = async (request, response) => {
         new: true,
       }
     );
+    const cacheKey = `assigned_device_${receiverUpdated.company}_${receiverUpdated.eventSelected}_${receiverUpdated.user}`;
+    cache.del(cacheKey);
+
     return response.status(201).json({
       ok: true,
       id: receiverUpdated.id,
@@ -118,6 +125,9 @@ const udpateReceiverStatus = async (request, response) => {
 const poolReceivers = async (request, response) => {
   try {
     const receiversPool = new ReceiversPool(request.body);
+    const cacheKey = `pool_${receiversPool.company}_${receiversPool.eventSelected}`;
+    cache.del(cacheKey);
+
     await receiversPool.save();
     return response.status(201).json({
       ok: true,
@@ -127,7 +137,7 @@ const poolReceivers = async (request, response) => {
     console.log(error);
     response.status(500).json({
       ok: false,
-      msg: "Please contact Administrater",
+      msg: "Please contact Administrator",
     });
   }
 };
@@ -150,9 +160,13 @@ const updatePoolReceivers = async (request, response) => {
         new: true,
       }
     );
+    // Invalidate the cache for this company and event
+    const cacheKey = `pool_${receiverAssigned.company}_${receiverAssigned.eventSelected}`;
+    cache.del(cacheKey);
+
     return response.status(201).json({
       ok: true,
-      receiverUpdated,
+      receiverUpdated:JSON.stringify(receiverUpdated),
     });
   } catch (error) {
     console.log(error);
@@ -164,11 +178,21 @@ const updatePoolReceivers = async (request, response) => {
 };
 
 const receiverPoolList = async (request, response) => {
+  const { company, eventSelected } = request.body;
+  const cacheKey = `pool_${company}_${eventSelected}`;
   try {
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      return response.status(200).json({
+        ok: true,
+        receiversInventory: JSON.parse(cachedData),
+      });
+    }
     const receiversInventory = await ReceiversPool.find(request.body);
+    await cache.set(`${cacheKey}`, JSON.stringify(receiversInventory));
     response.status(201).json({
       ok: true,
-      receiversInventory,
+      receiversInventory: receiversInventory,
     });
   } catch (error) {
     console.log(
@@ -204,11 +228,22 @@ const receiverPoolFoundAndDelete = async (request, response) => {
 };
 
 const listOfAssignedReceiver = async (request, response) => {
+  const cacheKey = `assigned_device_${request.body.company}_${request.body.eventSelected}_${request.body.user}`;
+  // Check if data is in cache
+  const cachedData = cache.get(cacheKey);
+  if (cachedData) {
+    return response.status(200).json({
+      ok: true,
+      listOfReceivers: JSON.parse(cachedData),
+    });
+  }
+
   try {
     const listOfReceivers = await Receivers.find(request.body);
+    await cache.set(`${cacheKey}`, JSON.stringify(listOfReceivers));
     await response.status(201).json({
       ok: true,
-      listOfReceivers,
+      listOfReceivers: listOfReceivers,
     });
   } catch (error) {
     console.log(
