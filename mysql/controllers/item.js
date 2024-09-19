@@ -211,26 +211,27 @@ const updateItemInTable = async (request, response) => {
       company,
       location,
       current_location,
-      return_date
+      return_date,
     } = request.body;
 
-    const query = `UPDATE item_inv 
-                        SET category_name = ?, 
-                            item_group = ?,  
-                            cost = ?,  
-                            brand = ?, 
-                            descript_item = ?, 
-                            ownership = ?, 
-                            serial_number = ?, 
-                            warehouse = ?, 
-                            status = ?, 
-                            main_warehouse = ?, 
-                            update_at = ?, 
-                            company = ?, 
-                            location = ?, 
-                            current_location = ?, 
-                            return_date = ? 
-                        WHERE item_id = ?`;
+    const query = `
+    UPDATE item_inv 
+      SET category_name = ?, 
+      item_group = ?,  
+      cost = ?,  
+      brand = ?, 
+      descript_item = ?, 
+      ownership = ?, 
+      serial_number = ?, 
+      warehouse = ?, 
+      status = ?, 
+      main_warehouse = ?, 
+      update_at = ?, 
+      company = ?, 
+      location = ?, 
+      current_location = ?, 
+      return_date = ? 
+      WHERE item_id = ?`;
 
     const values = [
       category_name,
@@ -248,7 +249,7 @@ const updateItemInTable = async (request, response) => {
       location,
       current_location,
       return_date, // this should be formatted correctly as a string
-      item_id // item_id should be the last parameter in the query
+      item_id, // item_id should be the last parameter in the query
     ];
 
     connection.execute(query, values, function (err, result, fields) {
@@ -259,6 +260,68 @@ const updateItemInTable = async (request, response) => {
         });
       return response.status(201).json({
         ok: true,
+        items: result,
+      });
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+};
+
+const returningLeasedEquipmentToCompany = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const {
+      item_id, // Item ID to identify the item
+      return_date, // New return date
+      enableAssignFeature, // New enableAssignFeature status
+      returnedRentedInfo, // Information to be updated
+    } = request.body;
+
+    console.log(request.body);
+    // SQL Query for updating the item info, ensuring correct values and order
+    const query = `
+      UPDATE item_inv 
+      SET 
+        return_date = ?, 
+        enableAssignFeature = ?, 
+        returnedRentedInfo = ?
+      WHERE item_id = ?`; // 'item_id' used in the WHERE clause
+
+    console.log(query);
+    // Correct values order: [return_date, enableAssignFeature, returnedRentedInfo, item_id]
+    const values = [
+      return_date, // First, return date
+      enableAssignFeature, // Then enableAssignFeature status
+      returnedRentedInfo, // Then the additional info
+      item_id, // Finally, item_id for WHERE clause
+    ];
+    console.log(values);
+    // Execute the query
+    connection.execute(query, values, function (err, result, fields) {
+      if (err) {
+        return response.status(401).json({
+          ok: false,
+          msg: `${err.message}`, // Return error message if query fails
+        });
+      }
+
+      // Check if any rows were updated
+      if (result.changedRows === 0) {
+        return response.status(200).json({
+          ok: true,
+          message: "No changes were made to the item.",
+          items: result,
+        });
+      }
+
+      return response.status(201).json({
+        ok: true,
+        message: "Item updated successfully.",
         items: result,
       });
     });
@@ -493,4 +556,5 @@ module.exports = {
   consultingInventoryTracking,
   returningItemToStockWhenEventIsFinished,
   itemFinalStatusWhenEventIsFinished,
+  returningLeasedEquipmentToCompany,
 };
