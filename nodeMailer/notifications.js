@@ -17,6 +17,7 @@ const {
   newUserInvitationMessageHtml,
   eventBeginsReminderHtmlMessage,
   staffInternalNotificationMessageHtml,
+  itemInfoStaffNotificationMessageHtml,
 } = require("./returningDeviceMessage");
 
 const assingDeviceNotification = async (request, response) => {
@@ -672,6 +673,46 @@ const staffInternalNotification = async (request, response) => {
   }
 };
 
+const itemInfoStaffNotification = async (request, response) => {
+  try {
+    console.log("item info staff notification request body", request.body);
+    const transport = nodeMailer.createTransport({
+      service: "Outlook365",
+      host: "smtp.office365.com",
+      port: "587",
+      tls: {
+        ciphers: "SSLv3",
+        rejectUnauthorized: false,
+      },
+      auth: {
+        user: "devitrak.testing@outlook.com",
+        pass: "@dmin.Devitr@k",
+      },
+      tls: {
+        ciphers: "SSLv3",
+      },
+    });
+    const info = transport.sendMail({
+      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+      to: request.body.staff,
+      subject: `Devitrak Notification - ${request.body.subject}`,
+      html: itemInfoStaffNotificationMessageHtml(request.body),
+    });
+
+    response.status(201).json({
+      notification: info.messageId,
+      ok: true,
+    });
+  } catch (error) {
+    console.log("🚀 ~ internalNotification ~ error:", error);
+    response.status(500).json({
+      ok: false,
+      message: error.message,
+    });
+  }
+};
+
+
 module.exports = {
   assingDeviceNotification,
   returningDeviceNotification,
@@ -690,4 +731,5 @@ module.exports = {
   internalNotification,
   eventBeginsReminderNotification,
   staffInternalNotification,
+  itemInfoStaffNotification
 };
