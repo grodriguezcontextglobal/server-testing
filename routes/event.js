@@ -9,7 +9,8 @@ const {
     createEvent,
     eventList,
     editSubscriptionEvent,
-    editEvent
+    editEvent,
+    searchStaffAllEvents
 } = require("../controller/event");
 
 // create an event
@@ -35,5 +36,8 @@ router.post(
   "/event-list",
   eventList
 );
+
+
+router.post("/staff-all-events", searchStaffAllEvents);
 
 module.exports = router;
