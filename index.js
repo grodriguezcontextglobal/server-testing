@@ -1,11 +1,11 @@
 const express = require("express");
+const compression = require('compression');
 const { dbConnection } = require("./database/config");
 const cors = require("cors");
 require("dotenv").config();
 const statusMonitor = require("express-status-monitor");
 const cluster = require("node:cluster");
 const OS = require("node:os");
-const { rateLimit } = require("express-rate-limit");
 const admin = require("./routes/admin");
 const article = require("./routes/article");
 const auth = require("./routes/auth");
@@ -34,37 +34,6 @@ const transaction = require("./routes/transaction");
 const transactionAuditLog = require("./routes/transactionAuditLog");
 const lease = require("./routes/lease");
 const leaseSQL = require("./mysql/routes/lease");
-
-//create express server
-const app = express();
-
-app.use(
-  statusMonitor({
-    healthChecks: [
-      {
-        protocol: "https",
-        host: "db.devitrak.net",
-        path: "/api/auth/users",
-        port: process.env.PORT,
-      }, 
-    ],
-  })
-);
-
-// const limiter = rateLimit({
-//   windowMs: 1 * 60 * 1000, // 1 minutes
-//   limit: 100, // Limit each IP to 100 requests per `window` (here, per 1 minutes).
-//   standardHeaders: "draft-7", // draft-6: `RateLimit-*` headers; draft-7: combined `RateLimit` header
-//   legacyHeaders: false, // Disable the `X-RateLimit-*` headers.
-//   // store: ... , // Redis, Memcached, etc. See below.
-//   store: new RedisStore({
-// 		sendCommand: (...args) => client.sendCommand(args),
-// 	}),
-// });
-
-// // Apply the rate limiting middleware to all requests.
-// app.use(limiter);
-
 //check CPU
 const numCpu = OS.cpus().length;
 
@@ -94,6 +63,25 @@ const corsOptions = {
   maxAge: 84600,
   optionsSuccessStatus: 200,
 };
+
+//create express server
+const app = express();
+
+// Enable Gzip compression
+app.use(compression());
+
+app.use(
+  statusMonitor({
+    healthChecks: [
+      {
+        protocol: "https",
+        host: "db.devitrak.net",
+        path: "/api/auth/users",
+        port: process.env.PORT,
+      }, 
+    ],
+  })
+);
 
 app.use(cors(corsOptions));
 
