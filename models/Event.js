@@ -7,7 +7,7 @@ const EventSchema = Schema({
   },
   company: {
     type: String,
-    required: true
+    required: true,
   },
   subscription: {
     type: Object,
@@ -25,17 +25,30 @@ const EventSchema = Schema({
     type: Object,
     required: true,
   },
-  deviceSetup: [{
-    type: Object,
+  deviceSetup: [
+    {
+      type: Object,
+      required: true,
+    },
+  ],
+  extraServicesNeeded: {
+    type: Boolean,
     required: true,
-  }],
+    default: false,
+  },
+  extraServices: [
+    {
+      type: Object,
+      required: false,
+    }
+  ],
   active: {
     type: Boolean,
-    required: true
+    required: true,
   },
   qrCodeLink: {
     type: String,
-    required: true
+    required: true,
   },
 });
 
