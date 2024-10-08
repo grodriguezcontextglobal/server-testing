@@ -8,7 +8,6 @@ const StripeTransactionSchema = new Schema({
   paymentIntent: {
     type: String,
     required: true,
-    // unique:true,
   },
   clientSecret: {
     type: String,
@@ -30,6 +29,11 @@ const StripeTransactionSchema = new Schema({
   company: {
     type: String,
     required: true,
+  },
+  type: {
+    type: String,
+    required: true,
+    default: "event",
   },
 });
 
