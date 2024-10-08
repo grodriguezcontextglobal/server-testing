@@ -40,7 +40,7 @@ const EventSchema = Schema({
     {
       type: Object,
       required: false,
-    }
+    },
   ],
   active: {
     type: Boolean,
@@ -49,6 +49,11 @@ const EventSchema = Schema({
   qrCodeLink: {
     type: String,
     required: true,
+  },
+  type: {
+    type: String,
+    required: true,
+    default: "event",
   },
 });
 

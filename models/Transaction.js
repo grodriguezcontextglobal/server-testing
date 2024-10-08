@@ -44,6 +44,11 @@ const TransactionSchema = new Schema({
     type:Number,
     required:true,
     default: new Date().getTime()
+  },
+  type:{
+    type:String,
+    required:true,
+    default: "event"
   }
 });
 
