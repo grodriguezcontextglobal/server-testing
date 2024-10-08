@@ -1,5 +1,7 @@
 const nodeMailer = require("nodemailer");
-const { response } = require("express");
+const sgMail = require("@sendgrid/mail");
+sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
 const {
   assigningDeviceMessageHtml,
   cancelingDepositMessageHtml,
@@ -22,33 +24,21 @@ const {
 
 const assingDeviceNotification = async (request, response) => {
   try {
-    const transport = await nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-
-    const info = await transport.sendMail({
+    const msg = {
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: `${request.body.consumer.name} <${request.body.consumer.email}>`,
+      to: `${request.body.consumer.email}`,
       subject: "Assigned device notification",
       html: assigningDeviceMessageHtml(request.body),
+    };
+
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
 
-    response.status(201).json({
-      notification: info.messageId,
-    });
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -72,9 +62,9 @@ const returningDeviceNotification = async (request, response) => {
         user: "devitrak.testing@outlook.com",
         pass: "@dmin.Devitr@k",
       },
-      tls: {
-        ciphers: "SSLv3",
-      },
+      // tls: {
+      //   ciphers: "SSLv3",
+      // },
     });
 
     const info = await transport.sendMail({
@@ -98,33 +88,21 @@ const returningDeviceNotification = async (request, response) => {
 
 const cancelDepositNotification = async (request, response) => {
   try {
-    const transport = await nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-
-    const info = await transport.sendMail({
+    const msg = {
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: `${request.body.consumer.name} <${request.body.consumer.email}>`,
+      to: `${request.body.consumer.email}>`,
       subject: "Deposit returned notification",
       html: cancelingDepositMessageHtml(request.body),
+    };
+
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
 
-    response.status(201).json({
-      notification: info.messageId,
-    });
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -136,33 +114,21 @@ const cancelDepositNotification = async (request, response) => {
 
 const captureDepositNotification = async (request, response) => {
   try {
-    const transport = await nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-
-    const info = await transport.sendMail({
+    const msg = {
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: `${request.body.consumer.name} <${request.body.consumer.email}>`,
+      to: `${request.body.consumer.email}>`,
       subject: "Deposit captured",
       html: capturingDepositMessageHtml(request.body),
+    };
+
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
 
-    response.status(201).json({
-      notification: info.messageId,
-    });
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -186,9 +152,9 @@ const earlierReturningNotification = async (request, response) => {
         user: "devitrak.testing@outlook.com",
         pass: "@dmin.Devitr@k",
       },
-      tls: {
-        ciphers: "SSLv3",
-      },
+      // tls: {
+      //   ciphers: "SSLv3",
+      // },
     });
 
     const info = await transport.sendMail({
@@ -214,34 +180,19 @@ const earlierReturningNotification = async (request, response) => {
 
 const eventStaffNotification = async (request, response) => {
   try {
-    const transport = await nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-
-    const info = await transport.sendMail({
+    const msg = {
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
       to: request.body.staff,
       subject: "Staff event",
       html: staffNotificationMessageHtml(request.body),
-    });
+    };
 
-    response.status(201).json({
-      notification: info.messageId,
-      acceptedEmails: info.accepted,
-      rejectedEmails: info.rejected,
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
@@ -254,34 +205,19 @@ const eventStaffNotification = async (request, response) => {
 
 const editingDeviceAdminNotification = async (request, response) => {
   try {
-    const transport = await nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-
-    const info = await transport.sendMail({
+    const msg = {
+      to: `${request.body.contactAdminEmail}`,
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: request.body.contactAdminEmail,
       subject: "Device edited notification",
       html: editingDeviceAdminMessageHtml(request.body),
-    });
+    };
 
-    response.status(201).json({
-      notification: info.messageId,
-      acceptedEmails: info.accepted,
-      rejectedEmails: info.rejected,
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
@@ -294,33 +230,21 @@ const editingDeviceAdminNotification = async (request, response) => {
 
 const lostDeviceFeeCollectedNotification = async (request, response) => {
   try {
-    const transport = await nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-
-    const info = await transport.sendMail({
+    const msg = {
+      to: `${request.body.consumer.email}`,
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: `${request.body.consumer.name} <${request.body.consumer.email}>`,
       subject: "Lost device fee payment receipt",
       html: lostDeviceFeeCollectedMessageHtml(request.body),
+    };
+
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
 
-    response.status(201).json({
-      notification: info.messageId,
-    });
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -332,33 +256,21 @@ const lostDeviceFeeCollectedNotification = async (request, response) => {
 
 const confirmationLinkNewConsumerNotification = async (request, response) => {
   try {
-    const transport = nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-
-    const info = await transport.sendMail({
+    const msg = {
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: `${request.body.consumer.name} <${request.body.consumer.email}>`,
+      to: `${request.body.consumer.email}`,
       subject: "Confirmation link account",
       html: confirmationNewConsumerAccountMessageHtml(request.body),
+    };
+
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
 
-    response.status(201).json({
-      notification: info.messageId,
-    });
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -370,32 +282,19 @@ const confirmationLinkNewConsumerNotification = async (request, response) => {
 
 const loginLinkExistingConsumerNotification = async (request, response) => {
   try {
-    const transport = nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-
-    const info = await transport.sendMail({
+    const msg = {
+      to: `${request.body.consumer.email}`,
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: `${request.body.consumer.name} <${request.body.consumer.email}>`,
       subject: "Link to login",
       html: linkToLoginExistingConsumerMessageHtml(request.body),
-    });
+    };
 
-    response.status(201).json({
-      notification: info.messageId,
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
@@ -405,74 +304,42 @@ const loginLinkExistingConsumerNotification = async (request, response) => {
     });
   }
 };
-
-const linkToResetPassword = (request, response) => {
+const linkToResetPassword = async (request, response) => {
   try {
-    const transport = nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-    const userName = `${request.body.adminUser.firstName} ${request.body.adminUser.lastName}`;
-    const info = transport.sendMail({
+    const msg = {
+      to: `${request.body.contactInfo.email}`,
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: `${userName} <${request.body.contactInfo.email}>`,
-      subject: "Link to reset password",
+      subject: "Devitrak Notification - Reset Password Link",
       html: linkToResetUserPassword(request.body),
-    });
+    };
 
-    response.status(201).json({
-      notification: info.messageId,
-      ok: true,
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
+    console.error("Error fetching access token:", error.response.data);
   }
 };
 
 const customizedEmailNotification = (request, response) => {
   try {
-    const transport = nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-    const info = transport.sendMail({
+    const msg = {
+      to: `${request.body.consumersList}`,
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: request.body.consumersList,
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: customizedEmailMessageHtml(request.body),
-    });
+    };
 
-    response.status(201).json({
-      notification: info.messageId,
-      ok: true,
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
@@ -485,32 +352,19 @@ const customizedEmailNotification = (request, response) => {
 
 const singleEmailNotification = (request, response) => {
   try {
-    const transport = nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-    const info = transport.sendMail({
-      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+    const msg = {
       to: request.body.consumer,
+      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: singleEmailMessageHtml(request.body),
-    });
+    };
 
-    response.status(201).json({
-      notification: info.messageId,
-      ok: true,
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);
@@ -523,33 +377,21 @@ const singleEmailNotification = (request, response) => {
 
 const newUserInvitationNotification = (request, response) => {
   try {
-    const transport = nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-    const info = transport.sendMail({
-      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+    const msg = {
       to: request.body.consumer,
+      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: newUserInvitationMessageHtml(request.body),
+    };
+
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
 
-    response.status(201).json({
-      notification: info.messageId,
-      ok: true,
-    });
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -561,33 +403,21 @@ const newUserInvitationNotification = (request, response) => {
 
 const internalNotification = async (request, response) => {
   try {
-    const transport = nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-    const info = transport.sendMail({
-      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+    const msg = {
       to: request.body.staff,
+      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: staffNotificationMessageHtml(request.body),
+    };
+
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
 
-    response.status(201).json({
-      notification: info.messageId,
-      ok: true,
-    });
   } catch (error) {
     console.log("🚀 ~ internalNotification ~ error:", error);
     response.status(500).json({
@@ -599,32 +429,19 @@ const internalNotification = async (request, response) => {
 
 const eventBeginsReminderNotification = async (request, response) => {
   try {
-    const transport = nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-    const info = transport.sendMail({
-      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+    const msg = {
       to: request.body.staff,
+      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: eventBeginsReminderHtmlMessage(request.body),
-    });
+    };
 
-    response.status(201).json({
-      notification: info.messageId,
-      ok: true,
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
   } catch (error) {
     console.log("🚀 ~ internalNotification ~ error:", error);
@@ -637,32 +454,19 @@ const eventBeginsReminderNotification = async (request, response) => {
 
 const staffInternalNotification = async (request, response) => {
   try {
-    const transport = nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-    const info = transport.sendMail({
-      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+    const msg = {
       to: request.body.staff,
+      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: staffInternalNotificationMessageHtml(request.body),
-    });
+    };
 
-    response.status(201).json({
-      notification: info.messageId,
-      ok: true,
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
   } catch (error) {
     console.log("🚀 ~ internalNotification ~ error:", error);
@@ -675,33 +479,19 @@ const staffInternalNotification = async (request, response) => {
 
 const itemInfoStaffNotification = async (request, response) => {
   try {
-    console.log("item info staff notification request body", request.body);
-    const transport = nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      tls: {
-        ciphers: "SSLv3",
-      },
-    });
-    const info = transport.sendMail({
+    const msg = {
       from: "Devitrak Notifications <devitrak.testing@outlook.com>",
       to: request.body.staff,
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: itemInfoStaffNotificationMessageHtml(request.body),
-    });
+    };
 
-    response.status(201).json({
-      notification: info.messageId,
-      ok: true,
+    sgMail.send(msg).then(() => {
+      console.log("Email sent");
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
   } catch (error) {
     console.log("🚀 ~ internalNotification ~ error:", error);
@@ -711,7 +501,6 @@ const itemInfoStaffNotification = async (request, response) => {
     });
   }
 };
-
 
 module.exports = {
   assingDeviceNotification,
@@ -731,5 +520,5 @@ module.exports = {
   internalNotification,
   eventBeginsReminderNotification,
   staffInternalNotification,
-  itemInfoStaffNotification
+  itemInfoStaffNotification,
 };
