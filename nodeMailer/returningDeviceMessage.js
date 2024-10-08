@@ -179,168 +179,130 @@ const returnConfirmationMessageHtml = (props) => {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>
-      Devitrak App | Easy way to manage inventory. A good solution for your
-      business no matter the size of your organization.
-    </title>
+    <title>Devices Returned Receipt</title>
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 24px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        font-size: 14px;
+      }
+
+      th, td {
+        padding: 12px;
+        border: 1px solid #e0e0e0;
+        text-align: left;
+      }
+
+      th {
+        background-color: #f2f2f2;
+        font-weight: 600;
+        color: #475467;
+      }
+
+      a {
+        display: block;
+        text-align: center;
+        margin: 20px auto;
+        padding: 10px 20px;
+        color: #fff;
+        background-color: #155eef;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .footer {
+        font-size: 12px;
+        color: #475467;
+        text-align: center;
+        margin-top: 40px;
+      }
+
+      /* Responsive Design */
+      @media only screen and (max-width: 600px) {
+        h1 {
+          font-size: 20px;
+        }
+
+        p, th, td {
+          font-size: 12px;
+        }
+
+        a {
+          font-size: 14px;
+          padding: 8px 16px;
+        }
+      }
     </style>
   </head>
-  <body
-    style="
-      max-width: 768px;
-      min-width: 320px;
-      background-color:#fff;
-      color: #1a202c;
-      font-family: 'Inter', sans-serif;
-      -webkit-text-size-adjust: 100%;
-      -ms-text-size-adjust: 100%;
-      margin: auto;
-      padding: 0;
-    "
-  >
-    <div
-      style="
-        margin-left: auto;
-        margin-right: auto;
-        padding: 2rem;
-        width: 100%;
-        border-radius: 12px;
-      "
-    >
-      <div
-        style="
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 2.5rem;
-          width: 100%;
-        "
-      >
-        <div style="align-self: flex-start">
-          <p
-            style="
-              text-align: left;
-              width: 100%;
-              color: #475467;
-              font-size: 9px;
-              font-style: normal;
-              font-weight: 500;
-              line-height: 9px;
-            "
-          >
-            Power by
-          </p>
-          <div
-            style="
-              display: flex;
-              justify-content: flex-end;
-              align-items: center;
-              margin-top: 2.5px;
-            "
-          >
-            <img
-              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
-              alt="devitrak-logo"
-              style="
-                object-fit: contain;
-                object-position: 50% 50%;
-                align-self: flex-start;
-                display: flex;
-                align-items: center;
-              "
-            />
-            <img
-              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
-              alt="devitrak-name"
-              style="
-                object-fit: contain;
-                object-position: 50% 50%;
-                align-self: flex-start;
-                display: flex;
-                align-items: center;
-              "
-            />
-          </div>
-        </div>
-      </div>
-      <div style="max-width: 768px; min-width: 320px">
-        <h1
-          style="
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #101828;
-            margin-bottom: 1rem;
-          "
-        >
-        Devices returned receipt
-        </h1>
-        <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-        This email confirms that you have returned all of the devices from transaction detailed below.
-          
-        </p>
-        <div
-            style="
-              width: 100%;
-              display: flex;
-              flex-direction: column;
-              margin: 1.5rem auto 0.5rem;
-              color: #475467;
-              font-size: 1rem;"
-            "
-          >
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong></p>
-          </div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong></p>
-          </div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date}</strong></p>
-          </div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></p>
-          </div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType} | ${props.device.serialNumber}</strong></p>
-          </div>
-          </div>
-        <a
-          href="${props.link}"
-          target="_blank"
-          style="
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            align-self: stretch;
-            border-radius: 8px;
-            border: 1px solid #155eef;
-            background: #155eef;
-            margin:auto;box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
-            text-decoration: none;
-          "
-          ><p
-            style="
-              margin:auto;
-              color:#fff;
-              text-align: center;
-              font-size: 16px;
-              font-style: normal;
-              font-weight: 600;
-              line-height: 24px; /* 150% */
-              padding:8px 12px;
-            "
-          >
-            Open app
-          </p>
-        </a>
-      </div>
-      <div style="margin-top: 2.5rem">
-      <p style="font-size: 1rem; color: #475467">
-      This email was sent from an unmonitored account. Do not reply to this email.    </p>
-    </p>
+  <body>
+    <div class="container">
+      <h1>Devices Returned Receipt</h1>
+      <p>
+        Dear ${props.adminUser.firstName} ${props.adminUser.lastName}, this email confirms that all devices have been returned successfully from the transaction below.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Status</th>
+            <th>Transaction ID</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${props.devices.map(device => `
+            <tr>
+              <td>${device.deviceType}</td>
+              <td>${device.status ? "In-use":"Returned"}</td>
+              <td>${device.transactionId}</td>
+              <td>${device.date}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <a href="${props.link}" target="_blank">Open App</a>
+
+      <div class="footer">
+        <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
       </div>
     </div>
   </body>
@@ -1085,24 +1047,23 @@ const linkToResetUserPassword = (props) => {
           @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
         </style>
       </head>
-      <body
+<body
         style="
         background-color:#fff;
         color: #1a202c;
         font-family: 'Inter', sans-serif;
         -webkit-text-size-adjust: 100%;
         -ms-text-size-adjust: 100%;
-        margin: auto;
+        margin: 0 auto;
         padding: 0;
+        width: 320px;
       "
       >
         <div
           style="
           margin-left: auto;
           margin-right: auto;
-          padding: 2rem;
-          max-width: 768px;
-          min-width: 320px;
+          padding: 0;
           border-radius: 12px;
         "
         >
@@ -1178,19 +1139,19 @@ const linkToResetUserPassword = (props) => {
             </p>
 
             <a
-              href="${props.linkToResetPassword}"
+              href={{props.linkToResetPassword}}
               target="_blank"
               style="
               display: flex;
               justify-content: center;
               align-items: center;
-              gap: 8px;
               align-self: stretch;
               border-radius: 8px;
               border: 1px solid #155eef;
               background: #155eef;
               box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
               text-decoration: none;
+              width:90%;
             "
             >
               <p
@@ -1206,15 +1167,15 @@ const linkToResetUserPassword = (props) => {
               </p></a
             >
           </div>
-          <div style="margin-top: 2.5rem">
-          <p style="font-size: 1rem; color: #475467">
+          <div style="margin-top: 2.5rem; width:95%; padding:0">
+          <p style="font-size: 1rem; color: #475467; text-wrap: pretty;">
           This email was sent from an unmonitored account. Do not reply to this email.    </p>
         </p>
           </div>
     
         </div>
-      </body>
-    </ >
+      </body>    
+      </html>
   `;
 };
 
