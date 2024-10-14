@@ -402,6 +402,28 @@ const displayAllPaidInvoicesPerSubscription = async (request, response) => {
   }
 };
 
+const updatePaymentMethodFromAdminDashboard = async (request, response) => {
+  try {
+    const { paymentIntentId, newPaymentMethodID } = request.body;
+    console.log(paymentIntentId, newPaymentMethodID);
+    const paymentIntentUpdated = await stripe.paymentIntents.update(
+      paymentIntentId,
+      {
+        payment_method: newPaymentMethodID,
+      }
+    );
+    console.log(paymentIntentUpdated);
+    response.status(201).json({
+      ok: true,
+      paymentIntentUpdated,
+    });
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
 const updateDefaultPaymentMethodInSubscription = async (request, response) => {
   try {
     const newPaymentMethodID = request.body;
@@ -478,7 +500,7 @@ const listAllPaymentIntents = async (request, response) => {
 
 const listAllCustomers = async (request, response) => {
   try {
-    const stripeCustomerSaved = await StripeCustomer.find();
+    const stripeCustomerSaved = await StripeCustomer.find(request.body);
     response.status(201).json({
       ok: true,
       stripeCustomerSaved,
@@ -715,6 +737,7 @@ const stripeCompanyAccountFound = async (request, response) => {
     const companyAccountStripeFound = await StripeCompany.findOne({
       companyName: request.body.company,
     });
+    
     return response.status(201).json({
       ok: true,
       companyAccountStripeFound,
@@ -798,6 +821,7 @@ module.exports = {
   updateCancelSubscription,
   updateDefaultPaymentMethodInSubscription,
   updateDefaultPaymentMethodInCustomer,
+  updatePaymentMethodFromAdminDashboard,
   searchingSubscriptionInStripe,
   findSubscriptionIdBySetUpId,
   searchCustomerByParameters,
