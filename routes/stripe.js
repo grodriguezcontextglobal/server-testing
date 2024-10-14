@@ -33,7 +33,8 @@ const {
   updateDefaultPaymentMethodInSubscription,
   updateDefaultPaymentMethodInCustomer,
   findSubscriptionIdBySetUpId,
-  createSubscriptionNoTrialPeriod
+  createSubscriptionNoTrialPeriod,
+  updatePaymentMethodFromAdminDashboard
 } = require("../controller/stripe");
 const { saveTransaction, saveTransactionAdmin, saveTransactionTemplateForNoRegularUser, getListOfAllSavedTransaction, removeDuplicateEntry } = require("../controller/transaction");
 
@@ -67,6 +68,9 @@ router.post("/payment-method/subscriptions/:id", updateDefaultPaymentMethodInSub
 //update payment method in customer
 router.post("/payment_methods/:id/attach", updateDefaultPaymentMethodInCustomer)
 
+//update payment method in customer
+router.post("/payment_intents/:id/update-payment-method", updatePaymentMethodFromAdminDashboard)
+
 //list all payment intent created
 router.get("/payment-intents/search", searchStripeTransaction);
 
@@ -75,6 +79,9 @@ router.post("/setup-search", findSubscriptionIdBySetUpId);
 
 //list all customers created
 router.get("/customers", listAllCustomers);
+
+//list all customers created
+router.post("/customers", listAllCustomers);
 
 //search customer
 router.get("/customers/search", searchCustomerId);
