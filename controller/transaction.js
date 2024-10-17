@@ -111,6 +111,24 @@ const getListOfAllSavedTransaction = async (request, response) => {
     }
 }
 
+const updateMultipleDocuments = async (request, response) => {
+    try {
+        console.log(request.body)
+        const updateDocuments = await Transaction.find(request.body.find).updateMany(request.body.update)
+        response.status(201).json({
+            ok: true,
+            list: updateDocuments
+        })
+    } catch (error) {
+        console.log(error)
+        response.status(500).json({
+            ok: false,
+            msg: error
+        })
+    }
+}
+
+
 const removeDuplicateEntry = async (request, response) => {
     try {
         const duplicateEnrty = await Transaction.findByIdAndDelete(request.params.id);
@@ -134,6 +152,7 @@ module.exports = {
     saveTransactionAdmin,
     saveTransactionTemplateForNoRegularUser,
     getListOfAllSavedTransaction,
+    updateMultipleDocuments,
     removeDuplicateEntry,
     updateTransaction,
 };
