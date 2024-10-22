@@ -34,12 +34,30 @@ const {
   updateDefaultPaymentMethodInCustomer,
   findSubscriptionIdBySetUpId,
   createSubscriptionNoTrialPeriod,
-  updatePaymentMethodFromAdminDashboard
+  updatePaymentMethodFromAdminDashboard,
+  stripeAccountCreate,
+  stripeAccountSession,
+  stripeAccountLink,
 } = require("../controller/stripe");
-const { saveTransaction, saveTransactionAdmin, saveTransactionTemplateForNoRegularUser, getListOfAllSavedTransaction, removeDuplicateEntry } = require("../controller/transaction");
+const {
+  saveTransaction,
+  saveTransactionAdmin,
+  saveTransactionTemplateForNoRegularUser,
+  getListOfAllSavedTransaction,
+  removeDuplicateEntry,
+} = require("../controller/transaction");
 
 //create customer
 router.post("/customer", stripeCustomer);
+
+//create account
+router.post("/accounts", stripeAccountCreate);
+
+//router account link
+router.post("/account_link", stripeAccountLink);
+
+//create account session
+router.post("/account_session", stripeAccountSession);
 
 //create payment intent
 router.post("/create-payment-intent", stripePaymentIntent);
@@ -54,22 +72,31 @@ router.post(
 );
 
 //create new company customer for subscriptions
-router.post("/new-company-account", companyInformationAccountStripe)
+router.post("/new-company-account", companyInformationAccountStripe);
 
 //route to create subscription from tiers and make charges monthly/yearly
-router.post("/create-subscriptions", creatingSubscription)
+router.post("/create-subscriptions", creatingSubscription);
 
 //*create subscription no trail period from tiers and make charges monthly/yearly
-router.post("/create-subscriptions_no_trial", createSubscriptionNoTrialPeriod)
+router.post("/create-subscriptions_no_trial", createSubscriptionNoTrialPeriod);
 
 //update payment method in subscription
-router.post("/payment-method/subscriptions/:id", updateDefaultPaymentMethodInSubscription)
+router.post(
+  "/payment-method/subscriptions/:id",
+  updateDefaultPaymentMethodInSubscription
+);
 
 //update payment method in customer
-router.post("/payment_methods/:id/attach", updateDefaultPaymentMethodInCustomer)
+router.post(
+  "/payment_methods/:id/attach",
+  updateDefaultPaymentMethodInCustomer
+);
 
 //update payment method in customer
-router.post("/payment_intents/:id/update-payment-method", updatePaymentMethodFromAdminDashboard)
+router.post(
+  "/payment_intents/:id/update-payment-method",
+  updatePaymentMethodFromAdminDashboard
+);
 
 //list all payment intent created
 router.get("/payment-intents/search", searchStripeTransaction);
@@ -90,22 +117,28 @@ router.get("/customers/search", searchCustomerId);
 router.get("/payment_intents/:id", retrievePaymentIntent);
 
 //get list of stripe transactions saved
-router.get("/stripe-transactions-saved-list", getListOfAllSavedStripeTransaction)
+router.get(
+  "/stripe-transactions-saved-list",
+  getListOfAllSavedStripeTransaction
+);
 
 //get saved stripe transaction by query
-router.post("/stripe-transactions-saved-list", getListOfAllSavedStripeTransaction)
+router.post(
+  "/stripe-transactions-saved-list",
+  getListOfAllSavedStripeTransaction
+);
 
-//finding company stripe account 
-router.post("/company-account-stripe/", stripeCompanyAccountFound)
+//finding company stripe account
+router.post("/company-account-stripe/", stripeCompanyAccountFound);
 
 //retrieve all invoices per subscription
-router.get("/invoices", displayAllPaidInvoicesPerSubscription)
+router.get("/invoices", displayAllPaidInvoicesPerSubscription);
 
 //retrieve all invoices per subscription
-router.post("/invoices", displayAllPaidInvoicesPerSubscription)
+router.post("/invoices", displayAllPaidInvoicesPerSubscription);
 
-//update subscription for cancel at the end of period or 
-router.post("/cancel/subscriptions/:id", updateCancelSubscription)
+//update subscription for cancel at the end of period or
+router.post("/cancel/subscriptions/:id", updateCancelSubscription);
 
 //save object {device, paymentIntentId, clientSecret} in database
 router.post("/stripe-transaction", saveStripeTransaction);
@@ -133,27 +166,30 @@ router.delete("/remove-duplicate/:id", removeDuplicateEntries);
 
 //!new route for transaction model fro new design
 //*saving new transaction
-router.post("/save-transaction", saveTransaction)
+router.post("/save-transaction", saveTransaction);
 
 //*saving new transaction
-router.post("/save-transaction-admin-dashboard", saveTransactionAdmin)
+router.post("/save-transaction-admin-dashboard", saveTransactionAdmin);
 
 //*saving new transaction
-router.post("/save-transaction-template-no-regular-user", saveTransactionTemplateForNoRegularUser)
+router.post(
+  "/save-transaction-template-no-regular-user",
+  saveTransactionTemplateForNoRegularUser
+);
 
 //*saving new transaction
-router.get("/transaction", getListOfAllSavedTransaction)
+router.get("/transaction", getListOfAllSavedTransaction);
 
 //*remove duplicate entry in transaction document
-router.delete("/removing/:id", removeDuplicateEntry)
+router.delete("/removing/:id", removeDuplicateEntry);
 
 //search subscription information
-router.get('/subscriptions/:id', searchSubscriptions)
+router.get("/subscriptions/:id", searchSubscriptions);
 
 //updating stored subscription
-router.patch("/updating-subscription/:id", updateSubcriptionInCompanyAccount)
+router.patch("/updating-subscription/:id", updateSubcriptionInCompanyAccount);
 
 //cancel subscription
-router.delete("/subscriptions/:id", cancelSubscriptionCompany)
+router.delete("/subscriptions/:id", cancelSubscriptionCompany);
 
 module.exports = router;
