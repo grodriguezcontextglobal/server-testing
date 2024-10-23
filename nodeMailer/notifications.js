@@ -1,6 +1,6 @@
 const nodeMailer = require("nodemailer");
 const sgMail = require("@sendgrid/mail");
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+sgMail.setApiKey(process.env.SENDGRID_API_KEY_LIMITED);
 
 const {
   assigningDeviceMessageHtml,
@@ -20,8 +20,9 @@ const {
   eventBeginsReminderHtmlMessage,
   staffInternalNotificationMessageHtml,
   itemInfoStaffNotificationMessageHtml,
+  eventLinkEventHtml,
+  serviceChargeInvoiceEmailHtml,
 } = require("./returningDeviceMessage");
-
 const assingDeviceNotification = async (request, response) => {
   try {
     const msg = {
@@ -38,7 +39,6 @@ const assingDeviceNotification = async (request, response) => {
         ok: true,
       });
     });
-
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -102,7 +102,6 @@ const cancelDepositNotification = async (request, response) => {
         ok: true,
       });
     });
-
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -128,7 +127,6 @@ const captureDepositNotification = async (request, response) => {
         ok: true,
       });
     });
-
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -244,7 +242,6 @@ const lostDeviceFeeCollectedNotification = async (request, response) => {
         ok: true,
       });
     });
-
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -270,7 +267,6 @@ const confirmationLinkNewConsumerNotification = async (request, response) => {
         ok: true,
       });
     });
-
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -350,17 +346,17 @@ const customizedEmailNotification = (request, response) => {
   }
 };
 
-const singleEmailNotification = (request, response) => {
+const singleEmailNotification = async (request, response) => {
   try {
     const msg = {
       to: request.body.consumer,
-      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+      from: "devitrak.testing@outlook.com",
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: singleEmailMessageHtml(request.body),
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
+      console.log(msg);
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -391,7 +387,6 @@ const newUserInvitationNotification = (request, response) => {
         ok: true,
       });
     });
-
   } catch (error) {
     console.log(`read the following error: ${error}`);
     response.status(500).json({
@@ -417,7 +412,6 @@ const internalNotification = async (request, response) => {
         ok: true,
       });
     });
-
   } catch (error) {
     console.log("🚀 ~ internalNotification ~ error:", error);
     response.status(500).json({
@@ -502,6 +496,55 @@ const itemInfoStaffNotification = async (request, response) => {
   }
 };
 
+const eventLinkEvent = async (request, response) => {
+  try {
+    const msg = {
+      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+      to: request.body.list,
+      subject: `Devitrak Notification - Event Link.`,
+      html: eventLinkEventHtml(request.body),
+    };
+
+    sgMail.send(msg).then(() => {
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
+    });
+  } catch (error) {
+    console.log("🚀 ~ internalNotification ~ error:", error);
+    response.status(500).json({
+      ok: false,
+      message: error.message,
+    });
+  }
+};
+
+const chargeInvoice = async (request, response) => {
+  try {
+    const msg = {
+      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+      to: request.body.email,
+      subject: `Devitrak Notification - Payment confirmation.`,
+      html: serviceChargeInvoiceEmailHtml(request.body),
+    };
+
+    sgMail.send(msg).then(() => {
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
+    });
+  } catch (error) {
+    console.log("🚀 ~ internalNotification ~ error:", error);
+    response.status(500).json({
+      ok: false,
+      message: error.message,
+    });
+  }
+};
+
+
 module.exports = {
   assingDeviceNotification,
   returningDeviceNotification,
@@ -521,4 +564,6 @@ module.exports = {
   eventBeginsReminderNotification,
   staffInternalNotification,
   itemInfoStaffNotification,
+  eventLinkEvent,
+  chargeInvoice,
 };
