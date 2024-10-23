@@ -275,7 +275,9 @@ const returnConfirmationMessageHtml = (props) => {
     <div class="container">
       <h1>Devices Returned Receipt</h1>
       <p>
-        Dear ${props.adminUser.firstName} ${props.adminUser.lastName}, this email confirms that all devices have been returned successfully from the transaction below.
+        Dear ${props.adminUser.firstName} ${
+    props.adminUser.lastName
+  }, this email confirms that all devices have been returned successfully from the transaction below.
       </p>
 
       <table>
@@ -288,14 +290,18 @@ const returnConfirmationMessageHtml = (props) => {
           </tr>
         </thead>
         <tbody>
-          ${props.devices.map(device => `
+          ${props.devices
+            .map(
+              (device) => `
             <tr>
               <td>${device.deviceType}</td>
-              <td>${device.status ? "In-use":"Returned"}</td>
+              <td>${device.status ? "In-use" : "Returned"}</td>
               <td>${device.transactionId}</td>
               <td>${device.date}</td>
             </tr>
-          `).join('')}
+          `
+            )
+            .join("")}
         </tbody>
       </table>
 
@@ -2373,6 +2379,413 @@ const itemInfoStaffNotificationMessageHtml = (props) => {
   </html>
     `;
 };
+
+const eventLinkEventHtml = (props) => {
+  return `
+<!DOCTYPE html>
+<html lang="en-US" translate="no">
+<head>
+  <meta charset="UTF-8" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="canonical" href="https://admin.devitrak.net/" />
+  <meta
+    property="og:title"
+    content="Devitrak - Event and Inventory Management App"
+  />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://admin.devitrak.net/" />
+  <meta property="og:image" content="./src/assets/devitrak-logo-white.svg" />
+  <meta
+    property="og:description"
+    content="
+    Devitrak App: Your Ultimate Inventory Management Solution. Safeguard your devices with ease and efficiency. Streamline inventory control, track assets, and optimize operations. Simplify event logistics with our powerful admin application."
+  />
+  <meta name="theme-color" content="#1976d2" />
+  <meta
+    http-equiv="Cache-Control"
+    content="private, must-revalidate, proxy-revalidate, max-age=0"
+  />
+  <meta
+    name="keywords"
+    content="inventory management, asset tracking, device management, inventory control, event logistics, admin application, operations optimization, inventory solution, Devitrak app, inventory software, device tracking, event management, inventory automation, event inventory management, asset control, device safeguarding, streamline operations, inventory tracking, asset monitoring, inventory optimization, event admin tools"
+  />
+  <meta
+    name="description"
+    content="Devitrak App: Your Ultimate Inventory Management Solution. Safeguard your devices with ease and efficiency. Streamline inventory control, track assets, and optimize operations. Simplify event logistics with our powerful admin application."
+  />
+  <link
+    rel="icon"
+    type="image/svg+xml"
+    href="./src/assets/devitrak-logo-white.svg"
+  />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>
+    Devitrak App | Discover Our Latest Features - See How We Simplify Inventory Management!
+  </title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+  </style>
+  <script type="module">
+    import 'https://cdn.jsdelivr.net/npm/lite-youtube-embed@0.1.0/dist/lite-youtube.js';
+  </script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lite-youtube-embed@0.1.0/dist/lite-youtube.css" />
+</head>
+<body
+  style="
+    max-width: 768px;
+    min-width: 320px;
+    background-color: #fff;
+    color: #1a202c;
+    font-family: 'Inter', sans-serif;
+    -webkit-text-size-adjust: 100%;
+    -ms-text-size-adjust: 100%;
+    margin: auto;
+    padding: 0;
+  "
+>
+  <div
+    style="
+      margin-left: auto;
+      margin-right: auto;
+      padding: 2rem;
+      width: 100%;
+      border-radius: 12px;
+    "
+  >
+    <div
+      style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2.5rem;
+        width: 100%;
+      "
+    >
+      <div style="align-self: flex-start">
+        <p
+          style="
+            text-align: left;
+            width: 100%;
+            color: #475467;
+            font-size: 9px;
+            font-style: normal;
+            font-weight: 500;
+            line-height: 9px;
+          "
+        >
+          Powered by
+        </p>
+        <div
+          style="
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            margin-top: 2.5px;
+          "
+        >
+          <img
+            src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+            alt="devitrak-logo"
+            style="
+              object-fit: contain;
+              object-position: 50% 50%;
+              align-self: flex-start;
+              display: flex;
+              align-items: center;
+            "
+          />
+          <img
+            src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+            alt="devitrak-name"
+            style="
+              object-fit: contain;
+              object-position: 50% 50%;
+              align-self: flex-start;
+              display: flex;
+              align-items: center;
+            "
+          />
+        </div>
+      </div>
+    </div>
+    <div style="max-width: 768px; min-width: 320px">
+      <h1
+        style="
+          font-size: 1.5rem;
+          font-weight: 600;
+          color: #101828;
+          margin-bottom: 1rem;
+        "
+      >
+        Introducing Our Latest Features to Simplify Inventory Management
+      </h1>
+      <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
+        We're thrilled to share the latest update from ${props.company} that makes managing inventory simpler and more efficient than ever!
+      </p>
+      <div
+        style="
+          text-align: center;
+          margin: 1.5rem 0;
+        "
+      >
+        <lite-youtube
+          videoid="${props.videoId}"
+          style="border-radius: 8px;"
+        ></lite-youtube>
+      </div>
+      <p
+        style="
+          margin: auto;
+          color: #475467;
+          text-align: left;
+          font-size: 16px;
+          font-style: normal;
+          font-weight: 400;
+          line-height: 24px; /* 150% */
+          padding: 12px 8px;
+          text-wrap: pretty;
+        "
+      >
+        See it in action and discover how our new features can help streamline your business processes and reduce the hassle of inventory management.
+      </p>
+      <div
+        style="
+          text-align: center;
+          margin: 2rem 0;
+        "
+      >
+        <a
+          href="${props.buttonLink}"
+          style="
+            text-decoration: none;
+            padding: 12px 24px;
+            background-color: #1a73e8;
+            color: #ffffff;
+            font-weight: 600;
+            border-radius: 8px;
+          "
+          >
+          Learn More
+        </a>
+      </div>
+      <p
+        style="
+          margin: auto;
+          color: #475467;
+          text-align: left;
+          font-size: 16px;
+          font-style: normal;
+          font-weight: 400;
+          line-height: 24px; /* 150% */
+          padding: 12px 8px;
+          text-wrap: pretty;
+        "
+      >
+        For any questions or additional information, please feel free to contact ${props.contactInfo.staff} at ${props.contactInfo.email}.
+      </p>
+      <p
+        style="
+          margin: auto;
+          color: #475467;
+          text-align: left;
+          font-size: 16px;
+          font-style: normal;
+          font-weight: 400;
+          line-height: 24px; /* 150% */
+          padding: 12px 8px;
+          text-wrap: pretty;
+        "
+      >
+        Best regards,
+      </p>
+      <div style="margin-top: 2.5rem">
+        <p style="font-size: 1rem; color: #475467">
+          This email was sent from an unmonitored account. Do not reply to this email.
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+};
+
+const serviceChargeInvoiceEmailHtml = (props) => {
+  return `
+   <html lang="en" translate="no">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Payment Confirmation - Devitrak</title>
+    <style>
+        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+    </style>
+</head>
+<body
+    style="
+        background-color: #fff;
+        color: #1a202c;
+        font-family: 'Inter', sans-serif;
+        -webkit-text-size-adjust: 100%;
+        -ms-text-size-adjust: 100%;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+    "
+>
+    <div
+        style="
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        "
+    >
+        <div
+            style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 30px;
+            "
+        >
+            <div style="flex: 1">
+                <p
+                    style="
+                        text-align: left;
+                        color: #475467;
+                        font-size: 10px;
+                        font-weight: 500;
+                    "
+                >
+                    Powered by
+                </p>
+                <div
+                    style="
+                        display: flex;
+                        align-items: center;
+                        margin-top: 5px;
+                    "
+                >
+                    <img
+                        src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+                        alt="Devitrak Logo"
+                        style="
+                            height: 24px;
+                            object-fit: contain;
+                            margin-right: 5px;
+                        "
+                    />
+                    <img
+                        src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+                        alt="Devitrak Name"
+                        style="
+                            height: 24px;
+                            object-fit: contain;
+                        "
+                    />
+                </div>
+            </div>
+        </div>
+        <div>
+            <h1
+                style="
+                    font-size: 1.5rem;
+                    font-weight: 600;
+                    color: #101828;
+                    margin-bottom: 20px;
+                "
+            >
+                Payment Confirmation
+            </h1>
+            <p
+                style="
+                    font-size: 1rem;
+                    color: #475467;
+                    margin-bottom: 15px;
+                "
+            >
+                We are pleased to confirm that your payment of <strong>${props.amount}</strong> has been successfully processed on <strong>${props.date}</strong>.
+            </p>
+            <p style="font-size: 1rem; color: #475467; margin-bottom: 15px;">
+                Below, you'll find the details of your payment for your records:
+            </p>
+            <div
+                style="
+                    border: 1px solid #e0e0e0;
+                    padding: 15px;
+                    border-radius: 8px;
+                    margin-bottom: 20px;
+                "
+            >
+                <p
+                    style="
+                        font-size: 1rem;
+                        font-weight: 600;
+                        color: #101828;
+                        margin-bottom: 10px;
+                    "
+                >
+                    Payment Details
+                </p>
+                <p
+                    style="font-size: 0.95rem; color: #475467; margin-bottom: 10px;"
+                >
+                    Confirmation Code: <strong>${props.paymentIntent}</strong>
+                </p>
+                <p
+                    style="font-size: 0.95rem; color: #475467; margin-bottom: 10px;"
+                >
+                    Name: <strong>${props.customer}</strong>
+                </p>
+                <p
+                    style="font-size: 0.95rem; color: #475467; margin-bottom: 10px;"
+                >
+                    Payment Method: <strong style="text-transform: uppercase;">${props.method.last4} ${props.method.brand}</strong>
+                </p>
+                <p
+                    style="font-size: 0.95rem; color: #475467; margin-bottom: 10px;"
+                >
+                    Charge Applied: <strong>${props.service}</strong>
+                </p>
+            </div>
+            <p
+                style="font-size: 1rem; color: #475467; margin-bottom: 20px;"
+            >
+                Please keep this email for your personal records.
+            </p>
+        </div>
+        <div
+            style="
+                border-top: 1px solid #e0e0e0;
+                padding-top: 20px;
+                margin-top: 30px;
+            "
+        >
+            <p
+                style="
+                    font-size: 0.875rem;
+                    color: #475467;
+                    line-height: 1.5;
+                    text-align: center;
+                "
+            >
+                This email was sent from an unmonitored account. Please do not reply to this email.
+            </p>
+        </div>
+    </div>
+</body>
+</html>
+
+`}
+
 module.exports = {
   returnConfirmationMessageHtml,
   assigningDeviceMessageHtml,
@@ -2392,4 +2805,6 @@ module.exports = {
   eventBeginsReminderHtmlMessage,
   reportBugMessageHtml,
   itemInfoStaffNotificationMessageHtml,
+  eventLinkEventHtml,
+  serviceChargeInvoiceEmailHtml,
 };
