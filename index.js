@@ -34,6 +34,8 @@ const transaction = require("./routes/transaction");
 const transactionAuditLog = require("./routes/transactionAuditLog");
 const lease = require("./routes/lease");
 const leaseSQL = require("./mysql/routes/lease");
+const cloudinaryImageUpload = require("./cloudinary/connection");
+
 //check CPU
 const numCpu = OS.cpus().length;
 
@@ -47,6 +49,7 @@ const ACCEPTED_ORIGINS = [
   "https://admin.devitrak.net",
   "https://app.devitrak.net",
   "https://admin-testing-dev.netlify.app",
+  "https://login.microsoftonline.com/"
 ];
 
 const corsOptions = {
@@ -123,6 +126,7 @@ app.use("/api/db_staff", staffSQL);
 app.use("/api/db_stripe", stripeSQL);
 app.use("/api/db_record", recordEvent);
 app.use("/api/db_lease", leaseSQL);
+app.use("/api/cloudinary", cloudinaryImageUpload);
 
 if (cluster.isPrimary) {
   for (let index = 0; index < numCpu; index++) {
