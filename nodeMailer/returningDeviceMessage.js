@@ -2388,231 +2388,111 @@ const eventLinkEventHtml = (props) => {
   <meta charset="UTF-8" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
-    rel="stylesheet"
-  />
-  <link rel="canonical" href="https://admin.devitrak.net/" />
-  <meta
-    property="og:title"
-    content="Devitrak - Event and Inventory Management App"
-  />
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://admin.devitrak.net/" />
-  <meta property="og:image" content="./src/assets/devitrak-logo-white.svg" />
-  <meta
-    property="og:description"
-    content="
-    Devitrak App: Your Ultimate Inventory Management Solution. Safeguard your devices with ease and efficiency. Streamline inventory control, track assets, and optimize operations. Simplify event logistics with our powerful admin application."
-  />
-  <meta name="theme-color" content="#1976d2" />
-  <meta
-    http-equiv="Cache-Control"
-    content="private, must-revalidate, proxy-revalidate, max-age=0"
-  />
-  <meta
-    name="keywords"
-    content="inventory management, asset tracking, device management, inventory control, event logistics, admin application, operations optimization, inventory solution, Devitrak app, inventory software, device tracking, event management, inventory automation, event inventory management, asset control, device safeguarding, streamline operations, inventory tracking, asset monitoring, inventory optimization, event admin tools"
-  />
-  <meta
-    name="description"
-    content="Devitrak App: Your Ultimate Inventory Management Solution. Safeguard your devices with ease and efficiency. Streamline inventory control, track assets, and optimize operations. Simplify event logistics with our powerful admin application."
-  />
-  <link
-    rel="icon"
-    type="image/svg+xml"
-    href="./src/assets/devitrak-logo-white.svg"
-  />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>
-    Devitrak App | Discover Our Latest Features - See How We Simplify Inventory Management!
-  </title>
-  <style>
-    @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
-  </style>
-  <script type="module">
-    import 'https://cdn.jsdelivr.net/npm/lite-youtube-embed@0.1.0/dist/lite-youtube.js';
-  </script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lite-youtube-embed@0.1.0/dist/lite-youtube.css" />
+  <title>Get Started with the Devitrak Consumer App!</title>
+    <style>
+        * {
+            padding:0;
+            margin:0;
+            }
+    </style>
 </head>
 <body
   style="
-    max-width: 768px;
-    min-width: 320px;
+    width: 320px;
     background-color: #fff;
     color: #1a202c;
     font-family: 'Inter', sans-serif;
     -webkit-text-size-adjust: 100%;
     -ms-text-size-adjust: 100%;
-    margin: auto;
+    margin: 0 auto;
     padding: 0;
   "
 >
   <div
     style="
-      margin-left: auto;
-      margin-right: auto;
-      padding: 2rem;
+      <!--margin-left: auto;-->
+      <!--margin-right: auto;-->
+      padding: 2rem 0;
       width: 100%;
       border-radius: 12px;
     "
   >
+    <div style="align-self: flex-start">
+      <p
+        style="
+          text-align: left;
+          color: #475467;
+          font-size: 9px;
+          font-weight: 500;
+          line-height: 9px;
+        "
+      >
+        Powered by Devitrak
+      </p>
+      <img src="https://i.ibb.co/WHcvqrG/devitrak-logo.png" alt="devitrak-logo"/>
+      <img src="https://i.ibb.co/HDpZ60p/devitrak-name.png" alt="devitrak-name"/>
+    </div>
+
+    <h3 style="font-size: 1.5rem; font-weight: 600; color: #101828; margin-bottom: 1rem;text-wrap:balance">
+      Get Started with the Devitrak Consumer App!
+    </h3>
+    <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem;text-wrap:balance">
+      The Devitrak Consumer App allows event participants to reserve and manage devices before the event starts (${props.eventName}). 
+      Simply access the event link, explore available devices, and make your requests with ease.
+    </p>
+
+    <!-- Video Thumbnail with Link -->
     <div
       style="
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 2.5rem;
-        width: 100%;
+        text-align: center;
+        margin: 1.5rem 0;
       "
     >
-      <div style="align-self: flex-start">
-        <p
-          style="
-            text-align: left;
-            width: 100%;
-            color: #475467;
-            font-size: 9px;
-            font-style: normal;
-            font-weight: 500;
-            line-height: 9px;
-          "
-        >
-          Powered by
-        </p>
-        <div
-          style="
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            margin-top: 2.5px;
-          "
-        >
-          <img
-            src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
-            alt="devitrak-logo"
-            style="
-              object-fit: contain;
-              object-position: 50% 50%;
-              align-self: flex-start;
-              display: flex;
-              align-items: center;
-            "
-          />
-          <img
-            src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
-            alt="devitrak-name"
-            style="
-              object-fit: contain;
-              object-position: 50% 50%;
-              align-self: flex-start;
-              display: flex;
-              align-items: center;
-            "
-          />
-        </div>
-      </div>
+      <a href="https://www.youtube.com/watch?v=yyqPQpfMdY0" target="_blank" style="text-decoration: none;">
+        <img
+          src="https://img.youtube.com/vi/yyqPQpfMdY0/0.jpg"
+          alt="Watch our Devitrak Consumer App overview video on YouTube"
+          style="border-radius: 8px;width:100px; height100px;;"
+        />
+      </a>
+      <p style="font-size: 0.9rem; color: #475467;text-wrap:balance">Click the image above to watch an introduction to the app.</p>
     </div>
-    <div style="max-width: 768px; min-width: 320px">
-      <h1
+
+    <p style="font-size: 16px; color: #475467; text-wrap:balance padding: 12px 8px;">
+      See how our app can simplify your experience and give you control over device management at events.
+    </p>
+
+    <!-- Access Event Link Button -->
+    <div style="text-align: center; margin: 2rem 0;">
+      <a
+        href="${props.buttonLink}"
         style="
-          font-size: 1.5rem;
+          display: inline-block;
+          text-decoration: none;
+          padding: 12px 24px;
+          background-color: #1a73e8;
+          color: #ffffff;
           font-weight: 600;
-          color: #101828;
-          margin-bottom: 1rem;
+          border-radius: 8px;
+          width:fit-content
         "
       >
-        Introducing Our Latest Features to Simplify Inventory Management
-      </h1>
-      <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-        We're thrilled to share the latest update from ${props.company} that makes managing inventory simpler and more efficient than ever!
-      </p>
-      <div
-        style="
-          text-align: center;
-          margin: 1.5rem 0;
-        "
-      >
-        <lite-youtube
-          videoid="${props.videoId}"
-          style="border-radius: 8px;"
-        ></lite-youtube>
-      </div>
-      <p
-        style="
-          margin: auto;
-          color: #475467;
-          text-align: left;
-          font-size: 16px;
-          font-style: normal;
-          font-weight: 400;
-          line-height: 24px; /* 150% */
-          padding: 12px 8px;
-          text-wrap: pretty;
-        "
-      >
-        See it in action and discover how our new features can help streamline your business processes and reduce the hassle of inventory management.
-      </p>
-      <div
-        style="
-          text-align: center;
-          margin: 2rem 0;
-        "
-      >
-        <a
-          href="${props.buttonLink}"
-          style="
-            text-decoration: none;
-            padding: 12px 24px;
-            background-color: #1a73e8;
-            color: #ffffff;
-            font-weight: 600;
-            border-radius: 8px;
-          "
-          >
-          Learn More
-        </a>
-      </div>
-      <p
-        style="
-          margin: auto;
-          color: #475467;
-          text-align: left;
-          font-size: 16px;
-          font-style: normal;
-          font-weight: 400;
-          line-height: 24px; /* 150% */
-          padding: 12px 8px;
-          text-wrap: pretty;
-        "
-      >
-        For any questions or additional information, please feel free to contact ${props.contactInfo.staff} at ${props.contactInfo.email}.
-      </p>
-      <p
-        style="
-          margin: auto;
-          color: #475467;
-          text-align: left;
-          font-size: 16px;
-          font-style: normal;
-          font-weight: 400;
-          line-height: 24px; /* 150% */
-          padding: 12px 8px;
-          text-wrap: pretty;
-        "
-      >
-        Best regards,
-      </p>
-      <div style="margin-top: 2.5rem">
-        <p style="font-size: 1rem; color: #475467">
-          This email was sent from an unmonitored account. Do not reply to this email.
-        </p>
-      </div>
+        Access Event Link
+      </a>
     </div>
+
+    <p style="font-size: 16px; color: #475467; text-align: left; padding: 12px 8px;text-wrap:balance">
+      For questions or additional help, contact ${props.contactInfo.staff} at ${props.contactInfo.email}.
+    </p>
+
+    <p style="font-size: 1rem; color: #475467; margin-top: 2.5rem;text-wrap:balance;">
+      This email was sent from an unmonitored account. Do not reply to this email.
+    </p>
   </div>
 </body>
-</html>
-  `;
+</html>  `;
 };
 
 const serviceChargeInvoiceEmailHtml = (props) => {
@@ -2784,7 +2664,8 @@ const serviceChargeInvoiceEmailHtml = (props) => {
 </body>
 </html>
 
-`}
+`;
+};
 
 module.exports = {
   returnConfirmationMessageHtml,
