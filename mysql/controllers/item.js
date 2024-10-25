@@ -80,6 +80,118 @@ const insertingItem = (request, response) => {
   }
 };
 
+const insertBulkItem = (request, response) => {
+  try {
+    const connection = getConnection();
+    console.log(request.body)
+    const {
+      category_name,
+      item_group,
+      cost,
+      brand,
+      descript_item,
+      ownership,
+      main_warehouse,
+      warehouse,
+      company,
+      location,
+      current_location,
+      extra_serial_number,
+      company_id,
+      return_date,
+      min_serial_number,
+      max_serial_number,
+    } = request.body;
+
+    if (!min_serial_number || !max_serial_number) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Minimum and maximum serial numbers are required.",
+      });
+    }
+
+    // Generate serial numbers from min_serial_number to max_serial_number
+    const serialNumbers = [];
+    let currentSerial = parseInt(min_serial_number, 10);
+    const maxSerial = parseInt(max_serial_number, 10);
+
+    while (currentSerial <= maxSerial) {
+      serialNumbers.push(
+        currentSerial.toString().padStart(min_serial_number.length, "0")
+      );
+      currentSerial++;
+    }
+
+    if (serialNumbers.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "No serial numbers generated.",
+      });
+    }
+
+    const query = `
+      INSERT INTO item_inv
+      (
+        category_name, 
+        item_group, 
+        cost, 
+        brand,
+        descript_item, 
+        ownership, 
+        main_warehouse,
+        serial_number, 
+        warehouse, 
+        company, 
+        location,
+        current_location,
+        extra_serial_number,
+        company_id,
+        return_date
+      )
+      VALUES ?
+    `;
+
+    // Prepare an array of value arrays, each sub-array representing a row to be inserted
+    const values = serialNumbers.map((serial_number) => [
+      category_name,
+      item_group,
+      cost,
+      brand,
+      descript_item,
+      ownership,
+      main_warehouse,
+      serial_number,
+      warehouse,
+      company,
+      location,
+      current_location,
+      extra_serial_number,
+      company_id,
+      return_date || null,
+    ]);
+
+    connection.query(query, [values], function (err, result) {
+      if (err) {
+        return response.status(500).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+      }
+
+      return response.status(201).json({
+        ok: true,
+        item: result,
+      });
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+};
+
 const consultingItem = async (request, response) => {
   try {
     const connection = getConnection();
@@ -282,7 +394,6 @@ const returningLeasedEquipmentToCompany = async (request, response) => {
       returnedRentedInfo, // Information to be updated
     } = request.body;
 
-    console.log(request.body);
     // SQL Query for updating the item info, ensuring correct values and order
     const query = `
       UPDATE item_inv 
@@ -292,7 +403,6 @@ const returningLeasedEquipmentToCompany = async (request, response) => {
         returnedRentedInfo = ?
       WHERE item_id = ?`; // 'item_id' used in the WHERE clause
 
-    console.log(query);
     // Correct values order: [return_date, enableAssignFeature, returnedRentedInfo, item_id]
     const values = [
       return_date, // First, return date
@@ -300,7 +410,6 @@ const returningLeasedEquipmentToCompany = async (request, response) => {
       returnedRentedInfo, // Then the additional info
       item_id, // Finally, item_id for WHERE clause
     ];
-    console.log(values);
     // Execute the query
     connection.execute(query, values, function (err, result, fields) {
       if (err) {
@@ -309,7 +418,6 @@ const returningLeasedEquipmentToCompany = async (request, response) => {
           msg: `${err.message}`, // Return error message if query fails
         });
       }
-
       // Check if any rows were updated
       if (result.changedRows === 0) {
         return response.status(200).json({
@@ -556,4 +664,5 @@ module.exports = {
   returningItemToStockWhenEventIsFinished,
   itemFinalStatusWhenEventIsFinished,
   returningLeasedEquipmentToCompany,
+  insertBulkItem,
 };
