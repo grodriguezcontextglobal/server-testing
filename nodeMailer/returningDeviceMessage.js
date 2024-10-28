@@ -2450,9 +2450,9 @@ const eventLinkEventHtml = (props) => {
         margin: 1.5rem 0;
       "
     >
-      <a href="https://www.youtube.com/watch?v=yyqPQpfMdY0" target="_blank" style="text-decoration: none;">
+      <a href="https://res.cloudinary.com/dpdzkhh07/image/upload/v1730138049/giphy_pbroif.gif" target="_blank" style="text-decoration: none;">
         <img
-          src="https://img.youtube.com/vi/yyqPQpfMdY0/0.jpg"
+          src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1730138049/giphy_pbroif.gif"
           alt="Watch our Devitrak Consumer App overview video on YouTube"
           style="border-radius: 8px;width:100px; height100px;;"
         />
