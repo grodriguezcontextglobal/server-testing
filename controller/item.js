@@ -1,6 +1,5 @@
 const express = require("express");
 const Item = require("../models/Item");
-const _ = require('lodash')
 const createItem = async (request, response = express.response) => {
     try {
         let item = new Item(request.body);
