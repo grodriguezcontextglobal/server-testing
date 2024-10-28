@@ -23,6 +23,10 @@ const TransactionSchema = new Schema({
     type: String,
     required: true,
   },
+  event_id: {
+    type: String,
+    required: true,
+  },
   provider: {
     type: String,
     required: true,
