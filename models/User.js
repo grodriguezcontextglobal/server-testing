@@ -83,6 +83,10 @@ const UserSchema = Schema({
       },
     },
   ],
+  profile_picture: {
+    type: String,
+    required: false,
+  },
 });
 
 //to return an id instead of _id
