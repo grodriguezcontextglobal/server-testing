@@ -6,7 +6,8 @@ const { assingDeviceNotification, returningDeviceNotification, cancelDepositNoti
     staffInternalNotification,
     itemInfoStaffNotification,
     chargeInvoice,
-    eventLinkEvent} = require("../nodeMailer/notifications");
+    eventLinkEvent,
+    refundInvoice} = require("../nodeMailer/notifications");
 const router = Router();
 
 //*email notification to inform about devices assigned to consumer
@@ -67,6 +68,8 @@ router.post("/leased-equip-staff-notification", itemInfoStaffNotification);
 router.post('/invoice-notification', chargeInvoice)
 ///staff_internal_notification
 
+//redunf confirmation invoice email notification
+router.post('/refund-notification', refundInvoice)
 //payment confirmation invoice email notification
 router.post('/send-consumer-app-instructions', eventLinkEvent)
 
