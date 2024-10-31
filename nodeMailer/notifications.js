@@ -22,6 +22,7 @@ const {
   itemInfoStaffNotificationMessageHtml,
   eventLinkEventHtml,
   serviceChargeInvoiceEmailHtml,
+  serviceRefundConfirmationEmailHtml,
 } = require("./returningDeviceMessage");
 const assingDeviceNotification = async (request, response) => {
   try {
@@ -543,7 +544,29 @@ const chargeInvoice = async (request, response) => {
     });
   }
 };
+const refundInvoice = async (request, response) => {
+  try {
+    const msg = {
+      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+      to: request.body.email,
+      subject: `Devitrak Notification - Refund confirmation.`,
+      html: serviceRefundConfirmationEmailHtml(request.body),
+    };
 
+    sgMail.send(msg).then(() => {
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
+    });
+  } catch (error) {
+    console.log("🚀 ~ internalNotification ~ error:", error);
+    response.status(500).json({
+      ok: false,
+      message: error.message,
+    });
+  }
+};
 
 module.exports = {
   assingDeviceNotification,
@@ -566,4 +589,5 @@ module.exports = {
   itemInfoStaffNotification,
   eventLinkEvent,
   chargeInvoice,
+  refundInvoice,
 };

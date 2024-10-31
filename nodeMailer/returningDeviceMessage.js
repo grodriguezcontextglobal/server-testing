@@ -2667,6 +2667,105 @@ const serviceChargeInvoiceEmailHtml = (props) => {
 `;
 };
 
+const serviceRefundConfirmationEmailHtml = (props) => {
+  return `
+<html lang="en" translate="no">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Refund Confirmation - Devitrak</title>
+    <style>
+        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+        body {
+            background-color: #fff;
+            color: #1a202c;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            width: 100%;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .header {
+            text-align: right;
+            color: #475467;
+            font-size: 0.575rem;
+            margin: 20px 0;
+        } 
+        
+        .footer {
+            text-align: center;
+            color: #475467;
+            font-size: 0.875rem;
+            margin: 20px 0;
+        }
+        .footer {
+            border-top: 1px solid #e0e0e0;
+            padding-top: 20px;
+        }
+        .content {
+            color: #475467;
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+        .title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #101828;
+            margin-bottom: 20px;
+        }
+        .details-box {
+            border: 1px solid #e0e0e0;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        .details-box p {
+            font-size: 0.95rem;
+            color: #475467;
+            margin-bottom: 10px;
+        }
+        .details-box .heading {
+            font-weight: 600;
+            color: #101828;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <p>Powered by</p>
+            <img src="https://i.ibb.co/WHcvqrG/devitrak-logo.png" alt="Devitrak Logo" />
+            <img src="https://i.ibb.co/HDpZ60p/devitrak-name.png" alt="Devitrak Name" />
+        </div>
+        <div class="content">
+            <h1 class="title">Refund Confirmation</h1>
+            <p>We are pleased to confirm that the amount of <strong>$${props.amount}</strong> has been successfully refunded on <strong>${props.date}</strong>.</p>
+            <p>Below, you'll find the details of your refund for your records:</p>
+            <div class="details-box">
+                <p class="heading">Refund Details</p>
+                <p>Confirmation Code: <strong>${props.paymentIntent}</strong></p>
+                <p>Name: <strong>${props.customer}</strong></p>
+                <p>Refund Amount: <strong>$${props.amount}</strong></p>
+            </div>
+            <p>Please keep this email for your personal records.</p>
+        </div>
+        <div class="footer">
+            <p>This email was sent from an unmonitored account. Please do not reply to this email.</p>
+        </div>
+    </div>
+</body>
+</html>
+`;
+};
+
 module.exports = {
   returnConfirmationMessageHtml,
   assigningDeviceMessageHtml,
@@ -2688,4 +2787,5 @@ module.exports = {
   itemInfoStaffNotificationMessageHtml,
   eventLinkEventHtml,
   serviceChargeInvoiceEmailHtml,
+  serviceRefundConfirmationEmailHtml,
 };
