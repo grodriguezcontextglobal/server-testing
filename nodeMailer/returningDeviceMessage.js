@@ -2592,7 +2592,7 @@ const serviceChargeInvoiceEmailHtml = (props) => {
                     margin-bottom: 15px;
                 "
             >
-                We are pleased to confirm that your payment of <strong>${props.amount}</strong> has been successfully processed on <strong>${props.date}</strong>.
+                We are pleased to confirm that your payment of <strong>$${props.amount}</strong> has been successfully processed on <strong>${props.date}</strong>.
             </p>
             <p style="font-size: 1rem; color: #475467; margin-bottom: 15px;">
                 Below, you'll find the details of your payment for your records:
