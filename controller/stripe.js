@@ -160,7 +160,7 @@ const stripeAccountCreate = async (request, response) => {
       settings: {
         payouts: {
           schedule: {
-            interval: schedule.interval,
+            interval: schedule.interval, //
             delay_days: schedule.interval !== "manual" ? "weekly" : "minimum",
           },
         },
@@ -807,8 +807,9 @@ const cancelStripePaymentIntent = async (request, response) => {
 
 const refundStripePaymentIntent = async (request, response) => {
   try {
+    const { paymentIntent } = request.body;
     const refund = await stripe.refunds.create({
-      payment_intent: `pi_3MQMDTJAluu3aB960pdOekJF`,
+      payment_intent: paymentIntent,
     });
     response.status(201).json({
       ok: true,
