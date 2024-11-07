@@ -171,7 +171,7 @@ const stripeAccountCreate = async (request, response) => {
 
     response.status(201).json({
       ok: true,
-      account: account //.id,
+      account: account, //.id,
     });
   } catch (error) {
     console.error(
@@ -187,8 +187,8 @@ const stripeAccountLink = async (request, response) => {
     const { connectedAccountId, origin } = request.body;
     const accountLink = await stripe.accountLinks.create({
       account: connectedAccountId,
-      refresh_url: `${origin}/refresh`,
-      return_url: `${origin}/refresh`,
+      refresh_url: `${origin}/reauth`,
+      return_url: `${origin}/return`,
       type: "account_onboarding",
       collection_options: {
         fields: "eventually_due",
@@ -213,6 +213,9 @@ const stripeAccountSession = async (request, response) => {
     const accountSession = await stripe.accountSessions.create({
       account: connectedAccountId,
       components: {
+        payment_details: {
+          enabled: true,
+        },
         payments: {
           enabled: true,
           features: {
@@ -220,6 +223,15 @@ const stripeAccountSession = async (request, response) => {
             dispute_management: true,
             capture_payments: true,
           },
+        },
+        account_management: {
+          enabled: true,
+        },
+        notification_banner: {
+          enabled: true,
+        },
+        payouts_list: {
+          enabled: true,
         },
       },
     });
