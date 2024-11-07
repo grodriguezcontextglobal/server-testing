@@ -46,40 +46,42 @@ const stripeCustomer = async (request, response) => {
 
 const stripeAccountCreate = async (request, response) => {
   try {
-    const {
-      business_type,
-      business_profile,
-      company,
-      individual,
-      email,
-      country,
-      settings,
-    } = request.body;
+    // const {
+    //   business_type,
+    //   business_profile,
+    //   company,
+    //   individual,
+    //   email,
+    //   country,
+    //   settings,
+    // } = request.body;
 
-    const { address, name, phone, registration_number, tax_id } = company;
-    const {
-      address: individualAddress,
-      dob,
-      email: individualEmail,
-      first_name,
-      last_name,
-      phone: individualPhone,
-      id_number,
-      relationship,
-      ssn_last_4,
-    } = individual;
+    // const { address, name, phone, registration_number, tax_id } = company;
+    // const {
+    //   address: individualAddress,
+    //   dob,
+    //   email: individualEmail,
+    //   first_name,
+    //   last_name,
+    //   phone: individualPhone,
+    //   id_number,
+    //   relationship,
+    //   ssn_last_4,
+    // } = individual;
 
-    const {
-      annual_revenue,
-      name: business_profile_name,
-      mcc,
-      product_description,
-      support_email,
-      support_phone,
-      support_url,
-    } = business_profile;
+    // const {
+    //   annual_revenue,
+    //   name: business_profile_name,
+    //   mcc,
+    //   product_description,
+    //   support_email,
+    //   support_phone,
+    //   support_url,
+    // } = business_profile;
 
-    const { schedule } = settings.payouts;
+    // const { schedule } = settings.payouts;
+
+    const { email, country } = request.body;
     const account = await stripe.accounts.create({
       country: country,
       email: email,
@@ -103,73 +105,73 @@ const stripeAccountCreate = async (request, response) => {
           requested: true,
         },
       },
-      business_type: business_type,
-      company: {
-        address: {
-          country: address.country,
-          city: address.city,
-          line1: address.line1,
-          line2: address.line2,
-          postal_code: address.postal_code,
-          state: address.state,
-        },
-        name: name,
-        phone: phone,
-        registration_number: registration_number,
-        tax_id: tax_id,
-      },
-      individual: {
-        address: {
-          country: individualAddress.country,
-          city: individualAddress.city,
-          line1: individualAddress.line1,
-          line2: individualAddress.line2,
-          postal_code: individualAddress.postal_code,
-          state: individualAddress.state,
-        },
-        dob: {
-          day: dob.day,
-          month: dob.month,
-          year: dob.year,
-        },
-        email: individualEmail,
-        first_name: first_name,
-        last_name: last_name,
-        phone: individualPhone,
-        id_number: id_number,
-        relationship: {
-          director: relationship.director,
-          owner: relationship.owner,
-          executive: relationship.executive,
-        },
-        ssn_last_4: ssn_last_4,
-      },
-      business_profile: {
-        annual_revenue: {
-          amount: annual_revenue.amount,
-          currency: annual_revenue.currency,
-          fiscal_year_end: annual_revenue.fiscal_year_end, //ISO 8601 format. 2023-12-31
-        },
-        name: business_profile_name,
-        mcc: mcc,
-        product_description: product_description,
-        support_email: support_email,
-        support_phone: support_phone,
-        url: support_url,
-      },
-      settings: {
-        payouts: {
-          schedule: {
-            interval: schedule.interval, //
-            delay_days: schedule.interval !== "manual" ? "weekly" : "minimum",
-          },
-        },
-      },
+      // business_type: business_type,
+      // company: {
+      //   address: {
+      //     country: address.country,
+      //     city: address.city,
+      //     line1: address.line1,
+      //     line2: address.line2,
+      //     postal_code: address.postal_code,
+      //     state: address.state,
+      //   },
+      //   name: name,
+      //   phone: phone,
+      //   registration_number: registration_number,
+      //   tax_id: tax_id,
+      // },
+      // individual: {
+      //   address: {
+      //     country: individualAddress.country,
+      //     city: individualAddress.city,
+      //     line1: individualAddress.line1,
+      //     line2: individualAddress.line2,
+      //     postal_code: individualAddress.postal_code,
+      //     state: individualAddress.state,
+      //   },
+      //   dob: {
+      //     day: dob.day,
+      //     month: dob.month,
+      //     year: dob.year,
+      //   },
+      //   email: individualEmail,
+      //   first_name: first_name,
+      //   last_name: last_name,
+      //   phone: individualPhone,
+      //   id_number: id_number,
+      //   relationship: {
+      //     director: relationship.director,
+      //     owner: relationship.owner,
+      //     executive: relationship.executive,
+      //   },
+      //   ssn_last_4: ssn_last_4,
+      // },
+      // business_profile: {
+      //   annual_revenue: {
+      //     amount: annual_revenue.amount,
+      //     currency: annual_revenue.currency,
+      //     fiscal_year_end: annual_revenue.fiscal_year_end, //ISO 8601 format. 2023-12-31
+      //   },
+      //   name: business_profile_name,
+      //   mcc: mcc,
+      //   product_description: product_description,
+      //   support_email: support_email,
+      //   support_phone: support_phone,
+      //   url: support_url,
+      // },
+      // settings: {
+      //   payouts: {
+      //     schedule: {
+      //       interval: schedule.interval, //
+      //       delay_days: schedule.interval !== "manual" ? "weekly" : "minimum",
+      //     },
+      //   },
+      // },
     });
 
     response.status(201).json({
       ok: true,
-      account: account.id,
+      account: account //.id,
     });
   } catch (error) {
     console.error(
@@ -182,11 +184,11 @@ const stripeAccountCreate = async (request, response) => {
 
 const stripeAccountLink = async (request, response) => {
   try {
-    const { connectedAccountId } = request.body;
+    const { connectedAccountId, origin } = request.body;
     const accountLink = await stripe.accountLinks.create({
       account: connectedAccountId,
-      refresh_url: "https://example.com/refresh",
-      return_url: "https://example.com/return",
+      refresh_url: `${origin}/refresh`,
+      return_url: `${origin}/refresh`,
       type: "account_onboarding",
       collection_options: {
         fields: "eventually_due",
