@@ -43,7 +43,7 @@
     "pm2": "^5.3.1",
     "rate-limit-redis": "^4.2.0",
     "redis": "^4.6.15",
-    "stripe": "^10.7.0"
+    "stripe": "^17.3.1"
   },
   "devDependencies": {
     "jsdoc": "^4.0.0",
