@@ -129,20 +129,24 @@ const Company = new Schema({
             type: String,
             required: false,
           },
-      
         ],
       },
       userId: {
         type: Schema.Types.ObjectId,
-        ref: "adminUser",
+        ref: "AdminUser",
         required: false,
-      }
+      },
     },
   ],
   company_logo: {
     type: String,
     required: false,
     default: "",
+  },
+  stripe_connected_account: {
+    type: Object,
+    required: false,
+    default: {},
   },
 });
 
