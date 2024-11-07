@@ -57,7 +57,7 @@ router.post("/accounts", stripeAccountCreate);
 router.post("/account_link", stripeAccountLink);
 
 //create account session
-router.post("/account_session", stripeAccountSession);
+router.post("/account_sessions", stripeAccountSession);
 
 //create payment intent
 router.post("/create-payment-intent", stripePaymentIntent);
