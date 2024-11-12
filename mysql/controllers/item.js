@@ -83,7 +83,6 @@ const insertingItem = (request, response) => {
 const insertBulkItem = (request, response) => {
   try {
     const connection = getConnection();
-    console.log(request.body)
     const {
       category_name,
       item_group,
@@ -101,6 +100,7 @@ const insertBulkItem = (request, response) => {
       return_date,
       min_serial_number,
       max_serial_number,
+      enableAssignFeature,
     } = request.body;
 
     if (!min_serial_number || !max_serial_number) {
@@ -146,7 +146,8 @@ const insertBulkItem = (request, response) => {
         current_location,
         extra_serial_number,
         company_id,
-        return_date
+        return_date,
+        enableAssignFeature
       )
       VALUES ?
     `;
@@ -168,6 +169,7 @@ const insertBulkItem = (request, response) => {
       extra_serial_number,
       company_id,
       return_date || null,
+      enableAssignFeature,
     ]);
 
     connection.query(query, [values], function (err, result) {
@@ -184,13 +186,13 @@ const insertBulkItem = (request, response) => {
       });
     });
   } catch (error) {
-    console.error("Error:", error.message);
     response.status(500).json({
       ok: false,
       msg: `${error.message}`,
     });
   }
 };
+
 
 const consultingItem = async (request, response) => {
   try {
