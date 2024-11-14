@@ -193,7 +193,6 @@ const insertBulkItem = (request, response) => {
   }
 };
 
-
 const consultingItem = async (request, response) => {
   try {
     const connection = getConnection();
@@ -540,7 +539,6 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
   try {
     const connection = getConnection();
     const {
-      warehouse,
       status,
       update_at,
       serial_number,
@@ -551,7 +549,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
     const query = ` UPDATE
         item_inv
     SET
-        warehouse =?,
+        warehouse = 1,
         status =?,
         update_at =?
     WHERE
@@ -560,7 +558,6 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
         and item_group = ?
         and company_id = ?;`;
     const values = [
-      warehouse,
       status,
       update_at,
       serial_number,
@@ -654,6 +651,54 @@ const consultingInventoryTracking = (request, response) => {
   }
 };
 
+const searchingInventoryTracking = (request, response) => {
+  try {
+    const connection = getConnection();
+    const searchValue = request.body.searchValue;
+    const query = `
+    SELECT *
+    FROM item_inv
+    WHERE category_name LIKE ?
+    OR item_group LIKE ?
+    OR serial_number LIKE ?
+    OR warehouse LIKE ?
+    OR descript_item LIKE ?
+    OR status LIKE ?
+    OR location LIKE ?
+    OR brand LIKE ?
+    AND company_id = ?
+    ORDER BY serial_number ASC;
+    `;
+    const values = [
+      `%${searchValue}%`,
+      `%${searchValue}%`,
+      `%${searchValue}%`,
+      `%${searchValue}%`,
+      `%${searchValue}%`,
+      `%${searchValue}%`,
+      `%${searchValue}%`,
+      `%${searchValue}%`,
+      request.body.company_id,
+    ];
+    connection.execute(query, values, function (err, result, fields) {
+      if (err)
+        return response.status(500).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+      return response.status(201).json({
+        ok: true,
+        result,
+      });
+    });
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: `Error: ${error.message}`,
+      error,
+    });
+  }
+};
 module.exports = {
   consultingItem,
   insertingItem,
@@ -667,4 +712,5 @@ module.exports = {
   itemFinalStatusWhenEventIsFinished,
   returningLeasedEquipmentToCompany,
   insertBulkItem,
+  searchingInventoryTracking,
 };
