@@ -654,11 +654,14 @@ const consultingInventoryTracking = (request, response) => {
 const searchingInventoryTracking = (request, response) => {
   try {
     const connection = getConnection();
-    const searchValue = request.body.searchValue;
+    const { searchValue, company_id } = request.body;
+    console.log(request.body);
     const query = `
     SELECT *
     FROM item_inv
-    WHERE category_name LIKE ?
+    WHERE company_id = ?
+    AND (
+    category_name LIKE ?
     OR item_group LIKE ?
     OR serial_number LIKE ?
     OR warehouse LIKE ?
@@ -666,10 +669,11 @@ const searchingInventoryTracking = (request, response) => {
     OR status LIKE ?
     OR location LIKE ?
     OR brand LIKE ?
-    AND company_id = ?
+    )
     ORDER BY serial_number ASC;
     `;
     const values = [
+      company_id,
       `%${searchValue}%`,
       `%${searchValue}%`,
       `%${searchValue}%`,
@@ -678,8 +682,8 @@ const searchingInventoryTracking = (request, response) => {
       `%${searchValue}%`,
       `%${searchValue}%`,
       `%${searchValue}%`,
-      request.body.company_id,
     ];
+    console.log(values);
     connection.execute(query, values, function (err, result, fields) {
       if (err)
         return response.status(500).json({
