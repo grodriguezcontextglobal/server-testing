@@ -206,6 +206,45 @@ const consultingInventoryCurrentState = (request, response) => {
   }
 };
 
+const checkingInventoryCurrentState = (request, response) => {
+  try {
+    const params = request._parsedOriginalUrl.query;
+    const splitting = params.split("&");
+    const formatting = splitting.map((item) => item.split("=")[0] + "=?");
+    const keys = formatting.toString().replaceAll(",", " AND ");
+    const query = `
+            SELECT ii.item_id,ii.serial_number,ii.warehouse, ii.category_name, ii.item_group, ii.cost, ii.ownership, iiae.status, iiae.condition, ei.event_name
+            FROM item_inv ii
+            LEFT JOIN (
+                SELECT item_id, MAX(created_at) AS max_created_at
+                FROM item_inv_assigned_event
+                GROUP BY item_id
+            ) max_iiae ON ii.item_id = max_iiae.item_id
+            LEFT JOIN item_inv_assigned_event iiae ON ii.item_id = iiae.item_id AND max_iiae.max_created_at = iiae.created_at
+            LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
+            WHERE ii.${keys};`;
+            const values = [...splitting.map((item) => item.split("=")[1])];
+            connection.execute(query, values, function (err, result, fields) {
+      if (err)
+        return response.status(500).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+
+      return response.status(201).json({
+        ok: true,
+        result,
+      });
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+
+}
 const consultingInventoryInEvent = (request, response) => {
   try {
     const event_id = request.params.id;
@@ -324,4 +363,5 @@ module.exports = {
   consultingRowInItemInvAssignedEventTable,
   deletingRecordInItemInvAssignedEventRow,
   insertingDeviceInEventDirectly,
+  checkingInventoryCurrentState,
 };
