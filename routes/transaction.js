@@ -5,7 +5,6 @@
 
 const { Router } = require("express");
 const router = Router();
-const { validateJWT } = require("../middlewares/validate-jwt");
 const {
   saveTransaction,
   saveTransactionAdmin,
@@ -14,6 +13,7 @@ const {
   removeDuplicateEntry,
   updateTransaction,
   updateMultipleDocuments,
+  gettingListOfSavedTransaction,
 } = require("../controller/transaction");
 const { retrieveSubscriptionID } = require("../controller/stripe");
 
@@ -31,6 +31,9 @@ router.post(
 
 //*saving new transaction
 router.post("/transaction", getListOfAllSavedTransaction);
+
+//getting list of all saved transaction
+router.get("/transaction", gettingListOfSavedTransaction);
 
 //*update transaction
 router.patch("/update-transaction/:id", updateTransaction);

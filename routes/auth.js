@@ -12,6 +12,7 @@ const {
   checkUser,
   editUser,
   showAllUsers,
+  getListOfUsers,
 } = require("../controller/auth");
 const validateFields = require("../middlewares/validate-field");
 
@@ -23,6 +24,9 @@ router.post("/user-query", showAllUsers)
 
 //render user information by queries
 router.post("/users", showAllUsers)
+
+//get list of user based on params and also cached result
+router.get('/user-query', getListOfUsers)
 
 //create new user
 router.post(
@@ -41,10 +45,11 @@ router.post(
 //edit user
 router.patch("/:id", editUser);
 
-//retreive consumer information
+//retrieve consumer information
 router.get("/:id", getUser);
 
 //check existing user
 router.post("/",check("email", "Email is mandatory").isEmail(), checkUser); 
+
 
 module.exports = router;
