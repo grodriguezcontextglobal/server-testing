@@ -34,7 +34,6 @@ const assingDeviceNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -97,7 +96,6 @@ const cancelDepositNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -122,7 +120,6 @@ const captureDepositNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -187,7 +184,6 @@ const eventStaffNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -212,7 +208,6 @@ const editingDeviceAdminNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -237,7 +232,6 @@ const lostDeviceFeeCollectedNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -262,7 +256,6 @@ const confirmationLinkNewConsumerNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -287,7 +280,6 @@ const loginLinkExistingConsumerNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -311,7 +303,6 @@ const linkToResetPassword = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -332,7 +323,6 @@ const customizedEmailNotification = (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -357,7 +347,6 @@ const singleEmailNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log(msg);
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -382,7 +371,6 @@ const newUserInvitationNotification = (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -407,7 +395,6 @@ const internalNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -432,7 +419,6 @@ const eventBeginsReminderNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -457,7 +443,6 @@ const staffInternalNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -482,7 +467,6 @@ const itemInfoStaffNotification = async (request, response) => {
     };
 
     sgMail.send(msg).then(() => {
-      console.log("Email sent");
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
