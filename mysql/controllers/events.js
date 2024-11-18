@@ -1,17 +1,19 @@
 const { response, request } = require("express");
 const { createConnection } = require("mysql2");
+const getConnection = require('../database/config')
 require("dotenv").config();
+const connection = getConnection();
 
-const connection = createConnection({
-  connectionLimit: 100,
-  host: "aws.connect.psdb.cloud",
-  user: "lypzlon9pede4sd8l2sx",
-  password: "pscale_pw_fFRrYmw5LhxWIT9mPLlRol7l4E9mJuLKfEws2r3kcNx",
-  database: "devitrak_db",
-  ssl: {
-    rejectUnauthorized: false,
-  },
-});
+// createConnection({
+//   connectionLimit: 100,
+//   host: "aws.connect.psdb.cloud",
+//   user: "lypzlon9pede4sd8l2sx",
+//   password: "pscale_pw_fFRrYmw5LhxWIT9mPLlRol7l4E9mJuLKfEws2r3kcNx",
+//   database: "devitrak_db",
+//   ssl: {
+//     rejectUnauthorized: false,
+//   },
+// })
 
 const insertingEvent = (request, response) => {
   try {
@@ -227,6 +229,38 @@ const consultingInventoryEvent = (request, response) => {
   }
 };
 
+const updateStatusItemBasedOnEvent = async (request, response) => {
+  const { event_id, update_at, status } = request.body;
+  let errorRef = [];
+  let itemRef = [];
+  const ref = Object.entries(status);
+  for (let [key, value] of ref) {
+    for (let item of value) {
+      const query = `
+            UPDATE item_inv_assigned_event iiae
+            JOIN item_inv ii ON iiae.item_id = ii.item_id
+            SET iiae.status = ?, iiae.condition = ?, iiae.updated_at = ?, active = false
+            WHERE ii.serial_number = ?
+            AND iiae.event_id = ?;
+          `;
+      const values = [key, key, update_at, item.device, event_id];
+      connection.execute(query, values, function (err, result, fields) {
+        if (err) {
+          errorRef.push({ item: item.device, error: err });
+        } else {
+          itemRef.push({ item: item.device, status: key });
+        }
+      });
+    }
+  }
+  response.status(200).json({
+    ok: true,
+    msg: "updateStatusItemBasedOnEvent",
+    error: errorRef,
+    item: itemRef,
+  });
+};
+
 module.exports = {
   consultingEventInformation,
   insertingEvent,
@@ -235,4 +269,5 @@ module.exports = {
   insertingStaffInEvent,
   consultingEventsPerCompany,
   consultingInventoryEvent,
+  updateStatusItemBasedOnEvent,
 };
