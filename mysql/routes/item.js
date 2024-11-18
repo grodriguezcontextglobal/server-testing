@@ -14,11 +14,15 @@ const {
   consultingItemInWarehouseTable,
   updateItemInWarehouseAfterBeingAddedToEvent,
   insertBulkItem,
+  searchingInventoryTracking,
+  checkingItem,
+  searchingGetInventoryTracking,
 } = require("../controllers/item");
 const {
   consultingInventoryCurrentState,
   consultingInventoryInEvent,
   consultingRowInItemInvAssignedEventTable,
+  checkingInventoryCurrentState,
 } = require("../controllers/items_events");
 const router = Router();
 
@@ -64,5 +68,17 @@ router.post(
   "/consulting-row-item-assigned-event",
   consultingRowInItemInvAssignedEventTable
 );
+
+//searching function
+router.post("/search-inventory", searchingInventoryTracking);
+
+//searching inventory
+router.get("/search-inventory", searchingGetInventoryTracking);
+
+//get item info
+router.get("/check-item", checkingItem);
+
+//get current inventory state
+router.get("/check-inventory", checkingInventoryCurrentState);
 
 module.exports = router;
