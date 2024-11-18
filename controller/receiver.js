@@ -3,6 +3,7 @@ const ReceiverReturnedStatus = require("../models/ReceiverReturnedStatus");
 const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
 const User = require("../models/User");
+const { clientRedis } = require("../database/cacheMemoryConfig");
 
 const addReceiverToTransaction = async (request, response) => {
   try {
@@ -133,8 +134,54 @@ const poolReceivers = async (request, response) => {
     });
   }
 };
+
+const getListOfItemsInEventPool = async (request, response) => {
+  try {
+    const cache_connection = await clientRedis();
+    const params = request._parsedUrl.query;
+    const eventID = new URLSearchParams(params).get("eventSelected");
+    const companyID = new URLSearchParams(params).get("company");
+    const cachedList = await cache_connection.get(
+      `eventSelected=${eventID}&company=${companyID}`
+    );
+    if (cachedList && !cachedList) {
+      await cache_connection.quit()
+      response.status(200).json({
+        cached: true,
+        ok: true,
+        receiversInventory: JSON.parse(cachedList),
+      });
+    } else {
+      const formatting = [...params.split("&")];
+      let check = formatting.reduce(
+        (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
+        {}
+      );
+      if (check.eventSelected) {
+        check.eventSelected = eventID;
+      }
+      const items = await ReceiversPool.find(check);
+      cache_connection.set(
+        `eventSelected=${eventID}&company=${companyID}`,
+        JSON.stringify(items)
+      );
+      await cache_connection.quit();
+      return response.status(200).json({
+        ok: true,
+        receiversInventory: items,
+      });
+    }
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: "Please contact Administrator",
+    });
+  }
+};
 const updatePoolReceivers = async (request, response) => {
   try {
+    const cache_connection = await clientRedis();
     const receiverAssigned = await ReceiversPool.findById(request.params.id);
     if (!receiverAssigned) {
       return response.status(404).json({
@@ -145,6 +192,10 @@ const updatePoolReceivers = async (request, response) => {
     const receiverEdited = {
       ...request.body,
     };
+    cache_connection.del(
+      `eventSelected=${receiverEdited.eventSelected}&company=${receiverEdited.company}`
+    );
+    await cache_connection.quit();
     const receiverUpdated = await ReceiversPool.findByIdAndUpdate(
       request.params.id,
       receiverEdited,
@@ -154,7 +205,7 @@ const updatePoolReceivers = async (request, response) => {
     );
     return response.status(201).json({
       ok: true,
-      receiverUpdated:JSON.stringify(receiverUpdated),
+      receiverUpdated: JSON.stringify(receiverUpdated),
     });
   } catch (error) {
     console.log(error);
@@ -186,9 +237,14 @@ const receiverPoolList = async (request, response) => {
 
 const receiverPoolFoundAndDelete = async (request, response) => {
   try {
+    const cache_connection = await clientRedis();
     const deviceDeleted = await ReceiversPool.findByIdAndDelete({
       _id: request.params.id,
     });
+    cache_connection.del(
+      `eventSelected=${deviceDeleted.eventSelected}&company=${deviceDeleted.company}`
+    );
+    cache_connection.quit();
     response.status(201).json({
       ok: true,
       deviceDeleted,
@@ -327,6 +383,7 @@ module.exports = {
   checkingReceiversExistInDatabase,
   udpateReceiverStatus,
   poolReceivers,
+  getListOfItemsInEventPool,
   updatePoolReceivers,
   receiverPoolList,
   listOfAssignedReceiver,
