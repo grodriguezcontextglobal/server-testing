@@ -10,7 +10,8 @@ const { consultingEventInformation,
     deleteEvent,
     insertingStaffInEvent,
     consultingEventsPerCompany, 
-    consultingInventoryEvent} = require("../controllers/events");
+    consultingInventoryEvent,
+    updateStatusItemBasedOnEvent} = require("../controllers/events");
 const { insertingItemInEvent, consultingInventoryInEvent, deletingItemsInEventAfterDeviceInventoryIsUpdated, insertingDeviceInEventDirectly } = require("../controllers/items_events");
 const { returningItemToStockWhenEventIsFinished, itemFinalStatusWhenEventIsFinished } = require("../controllers/item");
 const router = Router();
@@ -53,5 +54,8 @@ router.get('/event-inventory/:id', consultingInventoryEvent)
 
 //consulting all inventory in event
 router.post('/remove-item-inventory-event', deletingItemsInEventAfterDeviceInventoryIsUpdated)
+
+//update status of item based on event
+router.post('/update-status-item-based-on-event', updateStatusItemBasedOnEvent)
 
 module.exports = router;
