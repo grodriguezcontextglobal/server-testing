@@ -1,10 +1,12 @@
 const { response, request } = require("express");
 const getConnection = require("../database/config");
+const { clientRedis } = require("../../database/cacheMemoryConfig");
 require("dotenv").config();
 
-const insertingItem = (request, response) => {
+const insertingItem = async (request, response) => {
   try {
     const connection = getConnection();
+    const cache_connection = await clientRedis();
     const {
       category_name,
       item_group,
@@ -39,9 +41,10 @@ const insertingItem = (request, response) => {
                         current_location,
                         extra_serial_number,
                         company_id,
-                        return_date
+                        return_date,
+                        enableAssignFeature
                         )
-                        values(?,?,?,?,?,?,?,?,?,?,?,?,?,?, ?)`;
+                        values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
     const values = [
       `${category_name}`,
       `${item_group}`,
@@ -58,6 +61,7 @@ const insertingItem = (request, response) => {
       `${extra_serial_number}`,
       company_id,
       `${return_date && return_date}`,
+      true,
     ];
     connection.execute(query, values, function (err, result, fields) {
       if (err)
@@ -65,7 +69,13 @@ const insertingItem = (request, response) => {
           ok: false,
           msg: `${err.message}`,
         });
-
+      cache_connection.del(
+        `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
+      );
+      cache_connection.del(
+        `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
+      );
+      cache_connection.quit();
       return response.status(201).json({
         ok: true,
         item: result,
@@ -80,9 +90,10 @@ const insertingItem = (request, response) => {
   }
 };
 
-const insertBulkItem = (request, response) => {
+const insertBulkItem = async (request, response) => {
   try {
     const connection = getConnection();
+    const cache_connection = await clientRedis();
     const {
       category_name,
       item_group,
@@ -179,6 +190,9 @@ const insertBulkItem = (request, response) => {
           msg: `${err.message}`,
         });
       }
+      cache_connection.del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
+      cache_connection.del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
+      cache_connection.quit();
 
       return response.status(201).json({
         ok: true,
@@ -308,6 +322,8 @@ const consultingItemInWarehouseTable = (request, response) => {
 const updateItemInTable = async (request, response) => {
   try {
     const connection = getConnection();
+    const cache_connection = await clientRedis();
+
     const {
       item_id,
       category_name,
@@ -329,12 +345,12 @@ const updateItemInTable = async (request, response) => {
 
     const query = `
     UPDATE item_inv 
-      SET category_name = ?, 
-      item_group = ?,  
-      cost = ?,  
-      brand = ?, 
-      descript_item = ?, 
-      ownership = ?, 
+    SET category_name = ?, 
+    item_group = ?,  
+    cost = ?,  
+    brand = ?, 
+    descript_item = ?, 
+    ownership = ?, 
       serial_number = ?, 
       warehouse = ?, 
       status = ?, 
@@ -371,6 +387,7 @@ const updateItemInTable = async (request, response) => {
           ok: false,
           msg: `${err.message}`,
         });
+        cache_connection.quit();
       return response.status(201).json({
         ok: true,
         items: result,
@@ -397,12 +414,12 @@ const returningLeasedEquipmentToCompany = async (request, response) => {
 
     // SQL Query for updating the item info, ensuring correct values and order
     const query = `
-      UPDATE item_inv 
-      SET 
-        return_date = ?, 
-        enableAssignFeature = ?, 
-        returnedRentedInfo = ?
-      WHERE item_id = ?`; // 'item_id' used in the WHERE clause
+    UPDATE item_inv 
+    SET 
+    return_date = ?, 
+    enableAssignFeature = ?, 
+    returnedRentedInfo = ?
+    WHERE item_id = ?`; // 'item_id' used in the WHERE clause
 
     // Correct values order: [return_date, enableAssignFeature, returnedRentedInfo, item_id]
     const values = [
@@ -448,9 +465,14 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
   response
 ) => {
   try {
+    const cache_connection = await clientRedis();
     const connection = getConnection();
     const { warehouse, item_group, startingNumber, quantity, company_id } =
       request.body;
+    cache_connection.del(
+      `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
+    );
+    cache_connection.quit();
 
     // Validate request body
     if (!item_group || !startingNumber || !quantity || !company_id) {
@@ -462,11 +484,11 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
 
     // Find the starting index
     const findIndexQuery = `
-        SELECT item_id, serial_number
-        FROM item_inv
-        WHERE item_group = ? AND company_id = ?
-        ORDER BY serial_number
-      `;
+    SELECT item_id, serial_number
+    FROM item_inv
+    WHERE item_group = ? AND company_id = ?
+    ORDER BY serial_number
+    `;
     const findIndexValues = [item_group, company_id];
 
     connection.execute(findIndexQuery, findIndexValues, (err, results) => {
@@ -503,10 +525,10 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
       }
 
       const updateQuery = `
-          UPDATE item_inv 
-          SET warehouse = ?, update_at = NOW()
+      UPDATE item_inv 
+      SET warehouse = ?, update_at = NOW()
           WHERE item_id IN (?)
-        `;
+          `;
 
       const itemIds = itemsToUpdate.map((item) => item.item_id);
       const updateValues = [warehouse, itemIds];
@@ -538,6 +560,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
 const returningItemToStockWhenEventIsFinished = async (request, response) => {
   try {
     const connection = getConnection();
+    const cache_connection = await clientRedis();
     const {
       status,
       update_at,
@@ -547,16 +570,16 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
       company_id,
     } = request.body;
     const query = ` UPDATE
-        item_inv
+    item_inv
     SET
         warehouse = 1,
         status =?,
         update_at =?
     WHERE
-        serial_number =?
-        and category_name = ?
-        and item_group = ?
-        and company_id = ?;`;
+    serial_number =?
+    and category_name = ?
+    and item_group = ?
+    and company_id = ?;`;
     const values = [
       status,
       update_at,
@@ -571,6 +594,14 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
           ok: false,
           msg: `${err.message}`,
         });
+      cache_connection.del(
+        `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
+      );
+      cache_connection.del(
+        `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
+      );
+      cache_connection.quit();
+
       return response?.status(201)?.json({
         ok: true,
         items: result,
@@ -591,9 +622,9 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
     const { status, condition, updated_at, serial_number, event_id } =
       request.body;
     const query = `
-                UPDATE item_inv_assigned_event iiae
-                JOIN item_inv ii ON iiae.item_id = ii.item_id
-                SET iiae.status = ?, iiae.condition = ?, iiae.updated_at = ?, active = false
+    UPDATE item_inv_assigned_event iiae
+    JOIN item_inv ii ON iiae.item_id = ii.item_id
+    SET iiae.status = ?, iiae.condition = ?, iiae.updated_at = ?, active = false
                 WHERE ii.serial_number = ?
                 AND iiae.event_id = ?;
                     `;
@@ -623,10 +654,43 @@ const consultingInventoryTracking = (request, response) => {
     const connection = getConnection();
     const item_id = request.params.id;
     const query = `
-        SELECT ii.* , iiae.status, iiae.condition, ei.*
-        FROM item_inv ii
-        LEFT JOIN item_inv_assigned_event iiae ON iiae.item_id = ii.item_id
-        LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
+    SELECT ii.* , iiae.status, iiae.condition, ei.*
+    FROM item_inv ii
+    LEFT JOIN item_inv_assigned_event iiae ON iiae.item_id = ii.item_id
+    LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
+    WHERE ii.item_id = ?
+    ORDER by iiae.event_id DESC
+    `;
+    const values = [item_id];
+    connection.execute(query, values, function (err, result, fields) {
+      if (err)
+        return response.status(500).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+      return response.status(201).json({
+        ok: true,
+        result,
+      });
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+};
+
+const checkingInventoryCurrentState = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const item_id = request.params.id;
+    const query = `
+    SELECT ii.* , iiae.status, iiae.condition, ei.*
+    FROM item_inv ii
+    LEFT JOIN item_inv_assigned_event iiae ON iiae.item_id = ii.item_id
+    LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
         WHERE ii.item_id = ?
         ORDER by iiae.event_id DESC
         `;
@@ -651,27 +715,69 @@ const consultingInventoryTracking = (request, response) => {
   }
 };
 
+const checkingItem = async (request, response) => {
+  try {
+    //company_id=122&warehouse=true&enableAssignFeature=1
+    const cache_connection = await clientRedis();
+    const params = request._parsedUrl.query;
+    const checkingInMemory = await cache_connection.get(`${params}`);
+    if (checkingInMemory) {
+      return response.status(201).json({
+        ok: true,
+        items: JSON.parse(checkingInMemory),
+      });
+    } else {
+      const splitting = params.split("&");
+      const formatting = splitting.map((item) => item.split("=")[0] + "=?");
+      const keys = formatting.toString().replaceAll(",", " AND ");
+      const values = [...splitting.map((item) => item.split("=")[1])];
+      const query = `select * from item_inv where ${keys};`;
+      const connection = getConnection();
+      connection.execute(query, values, function (err, result, fields) {
+        if (err)
+          return response.status(500).json({
+            ok: false,
+            msg: `${err.message}`,
+          });
+        cache_connection.set(`${params}`, JSON.stringify(result));
+        cache_connection.expire(`${params}`, 60);
+        cache_connection.quit();
+
+        return response.status(201).json({
+          ok: true,
+          items: result,
+        });
+      });
+    }
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+};
+
 const searchingInventoryTracking = (request, response) => {
   try {
     const connection = getConnection();
     const { searchValue, company_id } = request.body;
-    console.log(request.body);
     const query = `
     SELECT *
     FROM item_inv
     WHERE company_id = ?
     AND (
-    category_name LIKE ?
-    OR item_group LIKE ?
-    OR serial_number LIKE ?
-    OR warehouse LIKE ?
-    OR descript_item LIKE ?
-    OR status LIKE ?
-    OR location LIKE ?
-    OR brand LIKE ?
-    )
-    ORDER BY serial_number ASC;
-    `;
+      category_name LIKE ?
+      OR item_group LIKE ?
+      OR serial_number LIKE ?
+      OR warehouse LIKE ?
+      OR descript_item LIKE ?
+      OR status LIKE ?
+      OR location LIKE ?
+      OR brand LIKE ?
+      )
+      ORDER BY serial_number ASC;
+      `;
     const values = [
       company_id,
       `%${searchValue}%`,
@@ -683,7 +789,6 @@ const searchingInventoryTracking = (request, response) => {
       `%${searchValue}%`,
       `%${searchValue}%`,
     ];
-    console.log(values);
     connection.execute(query, values, function (err, result, fields) {
       if (err)
         return response.status(500).json({
@@ -703,6 +808,60 @@ const searchingInventoryTracking = (request, response) => {
     });
   }
 };
+
+const searchingGetInventoryTracking = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const params = request._parsedUrl.query;
+    const splitting = params.split("&");
+    const query = `
+    SELECT *
+    FROM item_inv
+    WHERE company_id = ?
+    AND (
+      category_name LIKE ?
+      OR item_group LIKE ?
+      OR serial_number LIKE ?
+      OR warehouse LIKE ?
+      OR descript_item LIKE ?
+      OR status LIKE ?
+      OR location LIKE ?
+      OR brand LIKE ?
+      )
+      ORDER BY serial_number ASC;
+      `;
+    const searchingValue = [...splitting.map((item) => item.split("=")[1])];
+    const values = [
+      searchingValue[0],
+      `%${searchingValue[1]}%`,
+      `%${searchingValue[1]}%`,
+      `%${searchingValue[1]}%`,
+      `%${searchingValue[1]}%`,
+      `%${searchingValue[1]}%`,
+      `%${searchingValue[1]}%`,
+      `%${searchingValue[1]}%`,
+      `%${searchingValue[1]}%`,
+    ];
+    connection.execute(query, values, function (err, result, fields) {
+      if (err)
+        return response.status(500).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+      return response.status(201).json({
+        ok: true,
+        result,
+      });
+    });
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: `Error: ${error.message}`,
+      error,
+    });
+  }
+};
+
 module.exports = {
   consultingItem,
   insertingItem,
@@ -717,4 +876,7 @@ module.exports = {
   returningLeasedEquipmentToCompany,
   insertBulkItem,
   searchingInventoryTracking,
+  checkingItem,
+  checkingInventoryCurrentState,
+  searchingGetInventoryTracking,
 };

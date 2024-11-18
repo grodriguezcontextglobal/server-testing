@@ -1,6 +1,6 @@
-const { response } = require("express");
 const User = require("../models/User");
 const { generateJWT } = require("../helpers/jwt");
+const { clientRedis } = require("../database/cacheMemoryConfig");
 
 const showAllUsers = async (request, response) => {
   try {
@@ -18,10 +18,45 @@ const showAllUsers = async (request, response) => {
   }
 };
 
+const getListOfUsers = async (request, response = response) => {
+  try {
+    const cache_connection = await clientRedis();
+    const params = request._parsedUrl.query;
+    const cachedList = await cache_connection.get(`${params}`);
+    if (cachedList) {
+      await cache_connection.quit()
+      response.status(200).json({
+        cached: true,
+        ok: true,
+        users: JSON.parse(cachedList),
+      });
+    } else {
+      const formatting = [...params.split("&")];
+      const check = formatting.reduce(
+        (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
+        {}
+      );
+      const users = await User.find(check);
+      cache_connection.set(`${params}`, JSON.stringify(users));
+      cache_connection.quit();
+      return response.status(200).json({
+        ok: true,
+        users,
+      });
+    }
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
 const getUser = async (request, response = response) => {
   const userId = request.params.id;
   try {
-    const user = await User.findById(userId); 
+    const user = await User.findById(userId);
     if (!user) {
       return response.status(404).json({
         ok: false,
@@ -72,8 +107,9 @@ const checkUser = async (request, response = response) => {
 };
 
 const newUser = async (request, response = response) => {
-  const { email, phoneNumber } = request.body;
   try {
+    const cache_connection = await clientRedis();
+    const { email } = request.body;
     let user = await User.findOne({ email });
     //generate JWT
     if (user) {
@@ -82,11 +118,16 @@ const newUser = async (request, response = response) => {
         msg: "Email is registered already",
       });
     }
-
     user = new User(request.body);
     const userCreated = await user.save();
     //generate JWT
     const token = await generateJWT(user.id, user.name);
+    cache_connection.del(
+      `event_providers=${userCreated.event_providers.at(
+        -1
+      )}&company_providers=${userCreated.company_providers.at(-1)}`
+    );
+    await cache_connection.quit();
 
     response.status(201).json({
       ok: true,
@@ -112,11 +153,12 @@ const newUser = async (request, response = response) => {
 };
 
 const editUser = async (request, response = response) => {
-  const userId = request.params.id;
-
   try {
+    const cache_connection = await clientRedis();
+
+    const userId = request.params.id;
     const user = await User.findById(userId);
-if (!user) {
+    if (!user) {
       return response.status(404).json({
         ok: false,
         msg: "User/id do not match",
@@ -129,11 +171,15 @@ if (!user) {
     //generate JWT
     const token = await generateJWT(user.id, user.name);
 
-
     const userUpdated = await User.findByIdAndUpdate(userId, userEdited, {
       new: true,
     }); //3 parameters user id, new user and how it will be returned as new event
-
+    cache_connection.del(
+      `event_id=${userEdited.event_providers.at(
+        -1
+      )}&company=${userEdited.company_providers.at(-1)}`
+    );
+    await cache_connection.quit();
 
     return response.json({
       ok: true,
@@ -155,12 +201,11 @@ if (!user) {
   }
 };
 
-
-
 module.exports = {
   showAllUsers,
   newUser,
   editUser,
   getUser,
+  getListOfUsers,
   checkUser,
 };
