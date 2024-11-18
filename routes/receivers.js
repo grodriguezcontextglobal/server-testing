@@ -19,6 +19,7 @@ const {
   updateIssueDevice,
   listOfAssignedReceiverPlusUserInformation,
   receiverPoolFoundAndDelete,
+  getListOfItemsInEventPool,
 } = require("../controller/receiver");
 
 //post receivers per user per transaction
@@ -47,6 +48,9 @@ router.patch("/receiver-returned-issue/:id", updateIssueDevice)
 
 //render all device in pool
 router.post("/receiver-pool-list", receiverPoolList);
+
+//render list of items in event pool
+router.get("/receiver-pool-list", getListOfItemsInEventPool)
 
 //render list of all assigned receiver
 router.post("/receiver-assigned-list",listOfAssignedReceiver)
