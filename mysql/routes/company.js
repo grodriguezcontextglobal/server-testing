@@ -5,7 +5,7 @@
 
 const { Router } = require("express");
 const { consultingCompany, consultingCompanyTable, insertingCompany, deleteCompany, consultingIndustryCompanyTable, updateCompanyData, updateGroupItems } = require("../controllers/company");
-const { returningLeasedEquipmentToCompany, searchingInventoryTracking } = require("../controllers/item");
+const { returningLeasedEquipmentToCompany, searchingInventoryTracking, searchingGetInventoryTracking } = require("../controllers/item");
 const router = Router();
 
 // Check company info
@@ -33,5 +33,8 @@ router.post('/update-group-items', updateGroupItems);
 
 //searching function
 router.post("/search-inventory", searchingInventoryTracking);
+
+//searching function
+router.get('/search-inventory', searchingGetInventoryTracking)
 
 module.exports = router;
