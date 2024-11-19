@@ -1,16 +1,32 @@
+// redisClient.js
 const { createClient } = require("redis");
 
-const clientRedis = async () => {
-  const connecting = createClient({
-    password: "4EOcn5AV1zVQA2ab675qWQKTLG5AMeHx",
-    socket: {
-      host: "redis-19013.c61.us-east-1-3.ec2.redns.redis-cloud.com",
-      port: 19013,
-    },
-  });
-  await connecting.connect();
+// Create a Redis client instance
+let client;
 
-  return connecting;
+const clientRedis = async () => {
+  if (!client) {
+    client = createClient({
+      password: "4EOcn5AV1zVQA2ab675qWQKTLG5AMeHx",
+      socket: {
+        host: "redis-19013.c61.us-east-1-3.ec2.redns.redis-cloud.com",
+        port: 19013,
+      },
+      disableOfflineQueue: false,
+    });
+    await client.connect();
+
+    // Log if connected successfully
+    client.on("connect", () => {
+      console.log("Connected to Redis");
+    });
+
+    // Handle errors
+    client.on("error", (err) => {
+      console.error("Redis error:", err);
+    });
+  }
+  return client;
 };
 
 module.exports = {
