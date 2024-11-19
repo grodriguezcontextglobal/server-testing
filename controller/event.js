@@ -1,10 +1,13 @@
 const express = require("express");
 const Event = require("../models/Event");
+const { clientRedis } = require("../database/cacheMemoryConfig");
 
 const createEvent = async (request, response = express.response) => {
   try {
+    const cache_connection = await clientRedis();
     let event = new Event(request.body);
     await event.save();
+    cache_connection.del(`company=${event.company}&type=${event.type}`);
     return response.status(201).json({
       ok: true,
       event,
@@ -19,8 +22,9 @@ const createEvent = async (request, response = express.response) => {
 };
 
 const editEvent = async (request, response = response) => {
-  const eventId = request.params.id;
   try {
+    const cache_connection = await clientRedis();
+    const eventId = request.params.id;
     const eventToFind = await Event.findById(eventId);
     if (!eventToFind) {
       return response.status(404).json({
@@ -38,6 +42,9 @@ const editEvent = async (request, response = response) => {
       {
         new: true,
       }
+    );
+    cache_connection.del(
+      `company=${eventStaffToEdit.company}&type=${eventStaffToEdit.type}`
     );
     return response.json({
       ok: true,
@@ -128,6 +135,44 @@ const eventList = async (request, response) => {
   }
 };
 
+const gettingEventListPerCompany = async (request, response) => {
+  try {
+    const cache_connection = await clientRedis();
+    const params = request._parsedUrl.query;
+    const companyName = new URLSearchParams(params).get("company");
+    const typeEvent = new URLSearchParams(params).get("type");
+    const cachedEvents = await cache_connection.get(
+      `company=${companyName}&type=${typeEvent}`
+    );
+    if (cachedEvents) {
+      cache_connection.del(`company=${companyName}&type=${typeEvent}`);
+      cache_connection.del(`company=${companyName}`);
+      return response.status(201).json({
+        cached: true,
+        ok: true,
+        list: JSON.parse(cachedEvents),
+      });
+    } else {
+      let list = await Event.find({ company: companyName, type: typeEvent });
+      cache_connection.set(
+        `company=${companyName}&type=${typeEvent}`,
+        JSON.stringify(list)
+      );
+      cache_connection.expire(`company=${companyName}&type=${typeEvent}`, 60);
+      response.status(201).json({
+        cached: false,
+        ok: true,
+        list,
+      });
+    }
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: "Please contact Administrator",
+    });
+  }
+};
 const searchStaffAllEvents = async (request, response) => {
   const { email } = request.body; // Extract email from request
 
@@ -152,4 +197,5 @@ module.exports = {
   eventList,
   editEvent,
   searchStaffAllEvents,
+  gettingEventListPerCompany,
 };
