@@ -52,6 +52,7 @@ const checkingReceiversAssigned = async (request, response) => {
     });
   }
 };
+
 const checkingReceiversExistInDatabase = async (request, response) => {
   const { device } = request.body;
 
@@ -165,7 +166,7 @@ const getListOfItemsInEventPool = async (request, response) => {
         `eventSelected=${eventID}&company=${companyID}`,
         JSON.stringify(items)
       );
-      await cache_connection.quit();
+      // await cache_connection.quit();
       return response.status(200).json({
         ok: true,
         receiversInventory: items,
@@ -195,7 +196,7 @@ const updatePoolReceivers = async (request, response) => {
     cache_connection.del(
       `eventSelected=${receiverEdited.eventSelected}&company=${receiverEdited.company}`
     );
-    await cache_connection.quit();
+    // await cache_connection.quit();
     const receiverUpdated = await ReceiversPool.findByIdAndUpdate(
       request.params.id,
       receiverEdited,
@@ -244,7 +245,7 @@ const receiverPoolFoundAndDelete = async (request, response) => {
     cache_connection.del(
       `eventSelected=${deviceDeleted.eventSelected}&company=${deviceDeleted.company}`
     );
-    cache_connection.quit();
+    // await cache_connection.quit();
     response.status(201).json({
       ok: true,
       deviceDeleted,
