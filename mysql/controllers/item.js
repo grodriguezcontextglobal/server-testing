@@ -75,7 +75,7 @@ const insertingItem = async (request, response) => {
       cache_connection.del(
         `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
       );
-      cache_connection.quit();
+      // cache_connection.quit();
       return response.status(201).json({
         ok: true,
         item: result,
@@ -192,7 +192,7 @@ const insertBulkItem = async (request, response) => {
       }
       cache_connection.del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
       cache_connection.del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
-      cache_connection.quit();
+      // cache_connection.quit();
 
       return response.status(201).json({
         ok: true,
@@ -387,7 +387,7 @@ const updateItemInTable = async (request, response) => {
           ok: false,
           msg: `${err.message}`,
         });
-        cache_connection.quit();
+        // cache_connection.quit();
       return response.status(201).json({
         ok: true,
         items: result,
@@ -472,7 +472,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     cache_connection.del(
       `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
     );
-    cache_connection.quit();
+    // cache_connection.quit();
 
     // Validate request body
     if (!item_group || !startingNumber || !quantity || !company_id) {
@@ -600,7 +600,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
       cache_connection.del(
         `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
       );
-      cache_connection.quit();
+      // cache_connection.quit();
 
       return response?.status(201)?.json({
         ok: true,
@@ -741,7 +741,7 @@ const checkingItem = async (request, response) => {
           });
         cache_connection.set(`${params}`, JSON.stringify(result));
         cache_connection.expire(`${params}`, 60);
-        cache_connection.quit();
+        // cache_connection.quit();
 
         return response.status(201).json({
           ok: true,

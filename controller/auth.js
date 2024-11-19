@@ -38,7 +38,7 @@ const getListOfUsers = async (request, response = response) => {
       );
       const users = await User.find(check);
       cache_connection.set(`${params}`, JSON.stringify(users));
-      cache_connection.quit();
+      // cache_connection.quit();
       return response.status(200).json({
         ok: true,
         users,
@@ -127,7 +127,7 @@ const newUser = async (request, response = response) => {
         -1
       )}&company_providers=${userCreated.company_providers.at(-1)}`
     );
-    await cache_connection.quit();
+    // await cache_connection.quit();
 
     response.status(201).json({
       ok: true,
@@ -179,7 +179,7 @@ const editUser = async (request, response = response) => {
         -1
       )}&company=${userEdited.company_providers.at(-1)}`
     );
-    await cache_connection.quit();
+    // await cache_connection.quit();
 
     return response.json({
       ok: true,
