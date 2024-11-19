@@ -1,5 +1,6 @@
 const express = require("express");
 const Company = require("../models/Company");
+const { clientRedis } = require("../database/cacheMemoryConfig");
 
 const createCompany = async (request, response = express.response) => {
   try {
@@ -124,6 +125,50 @@ const searchingCompany = async (request, response = express.response) => {
   }
 };
 
+const searchingGetCompanyInfo = async (
+  request,
+  response = express.response
+) => {
+  try {
+    const cache_connection = await clientRedis();
+    const params = request._parsedUrl.query;
+    const companyID = new URLSearchParams(params).get("_id");
+    if (companyID) {
+      const companyInMemory = await cache_connection.get(`company_id=${companyID}`);
+      return response.status(201).json({
+        cached:true,
+        ok: true,
+        company: JSON.parse(companyInMemory),
+      });
+    } else {
+      let companyInfo = await Company.findById(companyID);
+      if (!companyInfo) {
+        response.status(500).json({
+          cached:false,
+          ok: false,
+          msg: "No company in record.",
+        });
+      }
+      cache_connection.set(
+        `company_id=${companyID}`,
+        JSON.stringify(companyInfo)
+      );
+      cache_connection.expire(`company_id=${companyID}`, 60);
+      return response.status(201).json({
+        cached:false,
+        ok: true,
+        company: companyInfo,
+      });
+    }
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: "Please contact Administrator",
+    });
+  }
+};
+
 const getCompanyList = async (request, response = express.response) => {
   try {
     let companyInfo = await Company.find();
@@ -152,4 +197,5 @@ module.exports = {
   searchingCompany,
   getCompanyList,
   updatingCompany,
+  searchingGetCompanyInfo,
 };
