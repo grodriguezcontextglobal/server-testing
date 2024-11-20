@@ -146,7 +146,6 @@ const getListOfItemsInEventPool = async (request, response) => {
       `eventSelected=${eventID}&company=${companyID}`
     );
     if (cachedList && !cachedList) {
-      await cache_connection.quit()
       response.status(200).json({
         cached: true,
         ok: true,
@@ -166,7 +165,10 @@ const getListOfItemsInEventPool = async (request, response) => {
         `eventSelected=${eventID}&company=${companyID}`,
         JSON.stringify(items)
       );
-      // await cache_connection.quit();
+      cache_connection.expire(
+        `eventSelected=${eventID}&company=${companyID}`,
+        180
+      );
       return response.status(200).json({
         ok: true,
         receiversInventory: items,
@@ -196,7 +198,6 @@ const updatePoolReceivers = async (request, response) => {
     cache_connection.del(
       `eventSelected=${receiverEdited.eventSelected}&company=${receiverEdited.company}`
     );
-    // await cache_connection.quit();
     const receiverUpdated = await ReceiversPool.findByIdAndUpdate(
       request.params.id,
       receiverEdited,
@@ -245,7 +246,6 @@ const receiverPoolFoundAndDelete = async (request, response) => {
     cache_connection.del(
       `eventSelected=${deviceDeleted.eventSelected}&company=${deviceDeleted.company}`
     );
-    // await cache_connection.quit();
     response.status(201).json({
       ok: true,
       deviceDeleted,
