@@ -10,7 +10,8 @@ const {
     eventList,
     editSubscriptionEvent,
     editEvent,
-    searchStaffAllEvents
+    searchStaffAllEvents,
+    gettingEventListPerCompany
 } = require("../controller/event");
 
 // create an event
@@ -37,6 +38,8 @@ router.post(
   eventList
 );
 
+//event list per company
+router.get('/event-list-per-company', gettingEventListPerCompany)
 
 router.post("/staff-all-events", searchStaffAllEvents);
 
