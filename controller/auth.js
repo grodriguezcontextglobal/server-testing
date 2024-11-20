@@ -22,9 +22,11 @@ const getListOfUsers = async (request, response = response) => {
   try {
     const cache_connection = await clientRedis();
     const params = request._parsedUrl.query;
-    const cachedList = await cache_connection.get(`${params}`);
+    const eventID = new URLSearchParams(params).get('event_providers');
+    const companyID = new URLSearchParams(params).get('company_providers');
+    
+    const cachedList = await cache_connection.get(`event=${eventID}&company=${companyID}`)
     if (cachedList) {
-      await cache_connection.quit()
       response.status(200).json({
         cached: true,
         ok: true,
@@ -37,15 +39,14 @@ const getListOfUsers = async (request, response = response) => {
         {}
       );
       const users = await User.find(check);
-      cache_connection.set(`${params}`, JSON.stringify(users));
-      // cache_connection.quit();
+      cache_connection.set(`event=${eventID}&company=${companyID}`, JSON.stringify(users));
+      cache_connection.expire(`event=${eventID}&company=${companyID}`, 180);
       return response.status(200).json({
         ok: true,
         users,
       });
     }
   } catch (error) {
-    console.log(error);
     response.status(500).json({
       ok: false,
       msg: error,
@@ -127,7 +128,6 @@ const newUser = async (request, response = response) => {
         -1
       )}&company_providers=${userCreated.company_providers.at(-1)}`
     );
-    // await cache_connection.quit();
 
     response.status(201).json({
       ok: true,
@@ -155,7 +155,6 @@ const newUser = async (request, response = response) => {
 const editUser = async (request, response = response) => {
   try {
     const cache_connection = await clientRedis();
-
     const userId = request.params.id;
     const user = await User.findById(userId);
     if (!user) {
@@ -179,7 +178,6 @@ const editUser = async (request, response = response) => {
         -1
       )}&company=${userEdited.company_providers.at(-1)}`
     );
-    // await cache_connection.quit();
 
     return response.json({
       ok: true,
