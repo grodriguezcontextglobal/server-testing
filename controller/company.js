@@ -153,7 +153,7 @@ const searchingGetCompanyInfo = async (
         `company_id=${companyID}`,
         JSON.stringify(companyInfo)
       );
-      cache_connection.expire(`company_id=${companyID}`, 60);
+      cache_connection.expire(`company_id=${companyID}`, 180);
       return response.status(201).json({
         cached:false,
         ok: true,

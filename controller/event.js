@@ -158,7 +158,7 @@ const gettingEventListPerCompany = async (request, response) => {
         `company=${companyName}&type=${typeEvent}`,
         JSON.stringify(list)
       );
-      cache_connection.expire(`company=${companyName}&type=${typeEvent}`, 60);
+      cache_connection.expire(`company=${companyName}&type=${typeEvent}`, 180);
       response.status(201).json({
         cached: false,
         ok: true,

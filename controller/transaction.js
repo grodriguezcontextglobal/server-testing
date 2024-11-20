@@ -12,7 +12,6 @@ const saveTransaction = async (request, response) => {
     cache_connection.del(
       `event_id=${event_id}&company=${company}&consumerInfo.id=${consumerInfo.id}`
     );
-    // cache_connection.quit();
 
     const transaction = new Transaction(request.body);
     const transactionSaved = await transaction.save();
@@ -37,7 +36,6 @@ const saveTransactionAdmin = async (request, response) => {
     cache_connection.del(
       `event_id=${event_id}&company=${company}&consumerInfo.id=${consumerInfo.id}`
     );
-    // cache_connection.quit();
 
     const transaction = new Transaction(request.body);
     const transactionSaved = await transaction.save();
@@ -62,7 +60,6 @@ const saveTransactionTemplateForNoRegularUser = async (request, response) => {
     cache_connection.del(
       `event_id=${event_id}&company=${company}&consumerInfo.id=${consumerInfo.id}`
     );
-    // cache_connection.quit();
     const Transaction = new Transaction(request.body);
     const TransactionSaved = await Transaction.save();
     response.status(201).json({
@@ -105,7 +102,6 @@ const updateTransaction = async (request, response) => {
     cache_connection.del(
       `event_id=${event_id}&company=${company}&consumerInfo.id=${consumerInfo.id}`
     );
-    // cache_connection.quit();
     return response.status(201).json({
       ok: true,
       transaction: updatedTransaction,
@@ -156,7 +152,10 @@ const gettingListOfSavedTransaction = async (request, response) => {
         `${params}`,
         JSON.stringify(listOfTransactionsSaved)
       );
-      // cache_connection.quit();
+      cache_connection.expire(
+        `${params}`,
+        60
+      );
       response.status(201).json({
         ok: true,
         list: listOfTransactionsSaved,
