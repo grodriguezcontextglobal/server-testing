@@ -24,6 +24,7 @@ const {
   serviceChargeInvoiceEmailHtml,
   serviceRefundConfirmationEmailHtml,
 } = require("./returningDeviceMessage");
+const User = require("../models/User");
 const assingDeviceNotification = async (request, response) => {
   try {
     const msg = {
@@ -317,7 +318,7 @@ const customizedEmailNotification = (request, response) => {
   try {
     const msg = {
       to: `${request.body.consumersList}`,
-      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+      from: "devitrak.testing@outlook.com",
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: customizedEmailMessageHtml(request.body),
     };
@@ -552,6 +553,38 @@ const refundInvoice = async (request, response) => {
   }
 };
 
+const massiveEventCustomerNotification = async (request, response) => {
+  try {
+    const { eventID, eventSelected, subject } = request.body;
+    const consumerEventList = await User.find(
+      {
+        event_providers: eventID,
+      },
+      "email"
+    ).lean();
+    if (consumerEventList.length > 0) {
+      const msg = {
+        from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+        to: [...consumerEventList],
+        subject: `Event ${eventSelected} - ${subject}`,
+        html: customizedEmailMessageHtml(request.body),
+      };
+      sgMail.sendMultiple(msg).then(() => {
+        response.status(201).json({
+          notification: `Email sent to ${consumerEventList.length} consumers`,
+          ok: true,
+        });
+      });
+    } else {
+      response.status(201).json({
+        notification: `No email sent to any consumers`,
+        ok: true,
+      });
+    }
+  } catch (error) {
+    console.log(error);
+  }
+};
 module.exports = {
   assingDeviceNotification,
   returningDeviceNotification,
@@ -574,4 +607,5 @@ module.exports = {
   eventLinkEvent,
   chargeInvoice,
   refundInvoice,
+  massiveEventCustomerNotification,
 };
