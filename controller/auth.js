@@ -173,10 +173,11 @@ const editUser = async (request, response = response) => {
     const userUpdated = await User.findByIdAndUpdate(userId, userEdited, {
       new: true,
     }); //3 parameters user id, new user and how it will be returned as new event
+
     cache_connection.del(
-      `event_id=${userEdited.event_providers.at(
+      `event=${userUpdated.event_providers.at(
         -1
-      )}&company=${userEdited.company_providers.at(-1)}`
+      )}&company=${userUpdated.company_providers.at(-1)}`
     );
 
     return response.json({
