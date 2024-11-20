@@ -34,7 +34,9 @@ const transaction = require("./routes/transaction");
 const transactionAuditLog = require("./routes/transactionAuditLog");
 const lease = require("./routes/lease");
 const leaseSQL = require("./mysql/routes/lease");
+const cache_route = require("./routes/cache_route");
 const cloudinaryImageUpload = require("./cloudinary/connection");
+// const responseTime = require('response-time');
 
 //check CPU
 const numCpu = OS.cpus().length;
@@ -69,6 +71,9 @@ const corsOptions = {
 
 //create express server
 const app = express();
+
+// //response time
+// app.use(responseTime())
 
 // Enable Gzip compression
 app.use(compression());
@@ -127,6 +132,7 @@ app.use("/api/db_stripe", stripeSQL);
 app.use("/api/db_record", recordEvent);
 app.use("/api/db_lease", leaseSQL);
 app.use("/api/cloudinary", cloudinaryImageUpload);
+app.use("/api/cache_update", cache_route);
 
 if (cluster.isPrimary) {
   for (let index = 0; index < numCpu; index++) {
