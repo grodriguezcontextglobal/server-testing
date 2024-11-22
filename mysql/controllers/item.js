@@ -75,7 +75,6 @@ const insertingItem = async (request, response) => {
       cache_connection.del(
         `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
       );
-      // cache_connection.quit();
       return response.status(201).json({
         ok: true,
         item: result,
@@ -192,7 +191,6 @@ const insertBulkItem = async (request, response) => {
       }
       cache_connection.del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
       cache_connection.del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
-      // cache_connection.quit();
 
       return response.status(201).json({
         ok: true,
@@ -323,7 +321,6 @@ const updateItemInTable = async (request, response) => {
   try {
     const connection = getConnection();
     const cache_connection = await clientRedis();
-
     const {
       item_id,
       category_name,
@@ -380,6 +377,8 @@ const updateItemInTable = async (request, response) => {
       return_date, // this should be formatted correctly as a string
       item_id, // item_id should be the last parameter in the query
     ];
+    // cache_connection.del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
+    // cache_connection.del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
 
     connection.execute(query, values, function (err, result, fields) {
       if (err)
@@ -387,7 +386,6 @@ const updateItemInTable = async (request, response) => {
           ok: false,
           msg: `${err.message}`,
         });
-        // cache_connection.quit();
       return response.status(201).json({
         ok: true,
         items: result,
@@ -472,7 +470,6 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     cache_connection.del(
       `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
     );
-    // cache_connection.quit();
 
     // Validate request body
     if (!item_group || !startingNumber || !quantity || !company_id) {
@@ -600,7 +597,6 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
       cache_connection.del(
         `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
       );
-      // cache_connection.quit();
 
       return response?.status(201)?.json({
         ok: true,
@@ -741,7 +737,6 @@ const checkingItem = async (request, response) => {
           });
         cache_connection.set(`${params}`, JSON.stringify(result));
         cache_connection.expire(`${params}`, 60);
-        // cache_connection.quit();
 
         return response.status(201).json({
           ok: true,
