@@ -55,6 +55,11 @@ const EventSchema = Schema({
     required: true,
     default: "event",
   },
+  show: {
+    type: Boolean,
+    required: true,
+    default: true,
+  },
 });
 
 EventSchema.method("toJSON", function () {
