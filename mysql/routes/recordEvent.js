@@ -5,12 +5,15 @@
  */
 
 const { Router } = require("express");
-const { insertingRecordInEvent } = require("../controllers/recordEvent");
+const { insertingRecordInEvent, insertingRecordInEventRefactored } = require("../controllers/recordEvent");
 const { consultingRowInItemInvAssignedEventTable, deletingRecordInItemInvAssignedEventRow } = require("../controllers/items_events");
 const router = Router();
 
 //check item info
 router.post("/inserting-record", insertingRecordInEvent)
+
+//add item info for event record refactored
+router.post("/inserting-record-refactored", insertingRecordInEventRefactored)
 
 //checking retrieve event info
 router.post("/checking", consultingRowInItemInvAssignedEventTable)
