@@ -189,8 +189,12 @@ const insertBulkItem = async (request, response) => {
           msg: `${err.message}`,
         });
       }
-      cache_connection.del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
-      cache_connection.del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
+      cache_connection.del(
+        `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
+      );
+      cache_connection.del(
+        `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
+      );
 
       return response.status(201).json({
         ok: true,
@@ -611,6 +615,95 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
     });
   }
 };
+const returningItemToStockWhenEventIsFinishedRefactored = async (
+  request,
+  response
+) => {
+  try {
+    let resultAffectedRows = [];
+    const connection = getConnection();
+    const cache_connection = await clientRedis();
+    const {
+      groupingDevicesFromNoSQL,
+      allInventoryOfEvent,
+      companyId,
+      update_at,
+    } = request.body;
+    const company_id = companyId;
+    const groupingDevicesFromNoSQLParsed = JSON.parse(groupingDevicesFromNoSQL);
+    const allInventoryOfEventParsed = JSON.parse(allInventoryOfEvent);
+    const query = ` UPDATE
+                    item_inv
+                    SET
+                    warehouse = 1,
+                    status =?,
+                    update_at =?
+                    WHERE
+                    serial_number =?
+                    and category_name = ?
+                    and item_group = ?
+                    and company_id = ?;`;
+    for (let data of allInventoryOfEventParsed) {
+      if (groupingDevicesFromNoSQLParsed[data.serial_number]) {
+        const values = [
+          groupingDevicesFromNoSQLParsed[data.serial_number].at(-1).status,
+          update_at,
+          data.serial_number,
+          data.category_name,
+          data.item_group,
+          company_id,
+        ];
+        connection.execute(query, values, function (err, result, fields) {
+          if (err) {
+            return response.status(401).json({
+              ok: false,
+              msg: `${err.message}`,
+            });
+          }
+          resultAffectedRows = [...resultAffectedRows, result.affectedRows];
+        });
+      } else {
+        const values = [
+          data.status,
+          update_at,
+          data.serial_number,
+          data.category_name,
+          data.item_group,
+          company_id,
+        ];
+        connection.execute(query, values, function (err, result, fields) {
+          if (err) {
+            return response.status(401).json({
+              ok: false,
+              msg: `${err.message}`,
+            });
+          }
+          console.log(
+            "returningItemToStockWhenEventIsFinishedRefactored affected row",
+            result.affectedRows
+          );
+          resultAffectedRows = [...resultAffectedRows, result.affectedRows];
+        });
+      }
+    }
+    cache_connection.del(
+      `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
+    );
+    cache_connection.del(
+      `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
+    );
+    return response.status(201)?.json({
+      ok: true,
+      // items: result,
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+};
 
 const itemFinalStatusWhenEventIsFinished = async (request, response) => {
   try {
@@ -645,6 +738,82 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
   }
 };
 
+const itemFinalStatusWhenEventIsFinishedRefactored = async (
+  request,
+  response
+) => {
+  try {
+    const connection = getConnection();
+    let finalResult = [];
+    const {
+      groupingDevicesFromNoSQL,
+      allInventoryOfEvent,
+      eventId,
+      update_at,
+    } = request.body;
+    const groupingDevicesFromNoSQLParsed = JSON.parse(groupingDevicesFromNoSQL);
+    const allInventoryOfEventParsed = JSON.parse(allInventoryOfEvent);
+    const event_id = eventId;
+    const updated_at = update_at;
+    const query = `
+    UPDATE item_inv_assigned_event iiae
+    JOIN item_inv ii ON iiae.item_id = ii.item_id
+    SET iiae.status = ?, iiae.condition = ?, iiae.updated_at = ?, active = false
+                WHERE ii.serial_number = ?
+                AND iiae.event_id = ?;
+                    `;
+    for (let data of allInventoryOfEventParsed) {
+      if (groupingDevicesFromNoSQLParsed[data.serial_number]) {
+        const values = [
+          groupingDevicesFromNoSQLParsed[data.serial_number].at(-1).status,
+          groupingDevicesFromNoSQLParsed[data.serial_number].at(-1).status,
+          updated_at,
+          data.serial_number,
+          event_id,
+        ];
+        connection.execute(query, values, function (err, result, fields) {
+          if (err) {
+            console.log("error in item final status", err);
+            return response.status(401).json({
+              ok: false,
+              msg: `${err.message}`,
+            });
+          }
+          finalResult = [...finalResult, result];
+        });
+      } else {
+        const values = [
+          data.status,
+          data.condition,
+          updated_at,
+          data.serial_number,
+          event_id,
+        ];
+        connection.execute(query, values, function (err, result, fields) {
+          if (err)
+            return response.status(401).json({
+              ok: false,
+              msg: `${err.message}`,
+            });
+          console.log("affected row", result.affectedRows);
+
+          finalResult = [...finalResult, result];
+        });
+      }
+    }
+    console.log("final result", finalResult);
+    return response.status(201)?.json({
+      ok: true,
+      // items: finalResult,
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
+  }
+};
 const consultingInventoryTracking = (request, response) => {
   try {
     const connection = getConnection();
@@ -857,6 +1026,126 @@ const searchingGetInventoryTracking = async (request, response) => {
   }
 };
 
+const fragmentData = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const params = request._parsedUrl.query;
+    const company_id = new URLSearchParams(params).get("company_id");
+    const offset = parseInt(new URLSearchParams(params).get("offset"), 10);
+    const limit = parseInt(new URLSearchParams(params).get("limit"), 10);
+    const cache_connection = await clientRedis();
+    const cachedData = await cache_connection.get(
+      `inventory_${company_id}_${offset}_${limit}`
+    );
+
+    if (cachedData) {
+      const responseTemplate = {
+        ok: true,
+        items: JSON.parse(cachedData),
+        cached: true,
+      };
+      return response.send(JSON.stringify(responseTemplate));
+    }
+
+    const query = `
+      SELECT * FROM item_inv
+      WHERE company_id = ?
+      ORDER BY item_id ASC
+      LIMIT ?
+      OFFSET ?
+    `;
+
+    const values = [company_id, limit, offset];
+    connection.execute(query, values, function (err, result, fields) {
+      if (err) {
+        return response.status(500).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+      }
+
+      cache_connection.set(
+        `inventory_${company_id}_${offset}_${limit}`,
+        JSON.stringify(result)
+      );
+      cache_connection.expire(
+        `inventory_${company_id}_${offset}_${limit}`,
+        120
+      );
+
+      return response.status(201).json({
+        ok: true,
+        items: result,
+      });
+    });
+  } catch (error) {
+    const responseTemplate = {
+      ok: false,
+      msg: `Error: ${error.message}`,
+      error,
+      codeStatus: 500,
+    };
+    response.send(JSON.stringify(responseTemplate));
+  }
+};
+
+const gettingDataFromLocationOption = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const params = request._parsedUrl.query;
+    const company_id = new URLSearchParams(params).get("company_id");
+    const cache_connection = await clientRedis();
+    const cachedData = await cache_connection.get(`inventory_${company_id}`);
+    if (cachedData) {
+      const responseTemplate = {
+        ok: true,
+        items: JSON.parse(cachedData),
+        cached: true,
+      };
+      return response.send(JSON.stringify(responseTemplate));
+    }
+    // Query to get count by location and count of items where warehouse is true
+    const query = `
+      SELECT location, COUNT(location) as total_count, 
+             SUM(CASE WHEN warehouse = false and enableAssignFeature = true THEN 1 ELSE 0 END) as warehouse_true_count
+      FROM item_inv 
+      WHERE company_id = ?
+      GROUP BY location
+      ORDER BY location ASC
+    `;
+
+    const values = [company_id];
+
+    // Execute the query
+    connection.execute(query, values, function (err, result, fields) {
+      if (err) {
+        return response.status(500).json({
+          ok: false,
+          msg: `${err.message}`,
+        });
+      }
+      // Cache the data
+      cache_connection.set(`inventory_${company_id}`, JSON.stringify(result));
+      cache_connection.expire(`inventory_${company_id}`, 120);
+
+      // Send the response
+      return response.status(201).json({
+        ok: true,
+        items: result,
+        cached: false,
+      });
+    });
+  } catch (error) {
+    const responseTemplate = {
+      ok: false,
+      msg: `Error: ${error.message}`,
+      error,
+      codeStatus: 500,
+    };
+    response.send(JSON.stringify(responseTemplate));
+  }
+};
+
 module.exports = {
   consultingItem,
   insertingItem,
@@ -874,4 +1163,8 @@ module.exports = {
   checkingItem,
   checkingInventoryCurrentState,
   searchingGetInventoryTracking,
+  fragmentData,
+  gettingDataFromLocationOption,
+  returningItemToStockWhenEventIsFinishedRefactored,
+  itemFinalStatusWhenEventIsFinishedRefactored,
 };
