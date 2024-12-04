@@ -119,6 +119,65 @@ const udpateReceiverStatus = async (request, response) => {
   }
 };
 
+const updateBulkItemsInTransaction = async (request, response) => {
+  const { timeStamp, device } = request.body;
+  try {
+    for (let item of device) {
+      await Receivers.findByIdAndUpdate(
+        item.key,
+        {
+          "device.status": false,
+          timeStamp: timeStamp,
+        },
+        {
+          new: true,
+        }
+      );
+    }
+    return response.status(201).json({
+      ok: true,
+    });
+  } catch (error) {
+    console.log(error);
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const updateBulkItemsInPool = async (request, response) => {
+  const { device, company, activity, eventSelected } = request.body;
+  try {
+    for (let item of device) {
+      await ReceiversPool.findOneAndUpdate(
+        {
+          company,
+          activity: true,
+          eventSelected: eventSelected,
+          type: item.deviceType,
+          device: item.serialNumber,
+        },
+        {
+          activity,
+        },
+        {
+          new: true,
+        }
+      );
+    }
+    return response.status(201).json({
+      ok: true,
+    });
+  } catch (error) {
+    console.log(error);
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
 const poolReceivers = async (request, response) => {
   try {
     const receiversPool = new ReceiversPool(request.body);
@@ -281,6 +340,7 @@ const listOfAssignedReceiver = async (request, response) => {
     });
   }
 };
+
 const listOfAssignedReceiverPlusUserInformation = async (request, response) => {
   try {
     const listOfReceivers = await Receivers.find(request.body);
@@ -393,4 +453,6 @@ module.exports = {
   updateIssueDevice,
   listOfAssignedReceiverPlusUserInformation,
   receiverPoolFoundAndDelete,
+  updateBulkItemsInTransaction,
+  updateBulkItemsInPool,
 };
