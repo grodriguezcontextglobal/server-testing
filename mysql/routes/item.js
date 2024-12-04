@@ -17,6 +17,9 @@ const {
   searchingInventoryTracking,
   checkingItem,
   searchingGetInventoryTracking,
+  fragmentData,
+  gettingDataFromLocationOption,
+  returningItemToStockWhenEventIsFinishedRefactored,
 } = require("../controllers/item");
 const {
   consultingInventoryCurrentState,
@@ -80,5 +83,18 @@ router.get("/check-item", checkingItem);
 
 //get current inventory state
 router.get("/check-inventory", checkingInventoryCurrentState);
+
+//get fragment data
+router.get("/fragment-data", fragmentData);
+
+//get location and count data
+router.get("/location-count", gettingDataFromLocationOption);
+
+//returning item to stock after event finished (refactored)
+router.post(
+  "/returning-item-refactored",
+  returningItemToStockWhenEventIsFinishedRefactored
+);
+
 
 module.exports = router;

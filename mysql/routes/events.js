@@ -4,58 +4,84 @@
  */
 
 const { Router } = require("express");
-const { consultingEventInformation,
-    insertingEvent,
-    consultingEventTable,
-    deleteEvent,
-    insertingStaffInEvent,
-    consultingEventsPerCompany, 
-    consultingInventoryEvent,
-    updateStatusItemBasedOnEvent} = require("../controllers/events");
-const { insertingItemInEvent, consultingInventoryInEvent, deletingItemsInEventAfterDeviceInventoryIsUpdated, insertingDeviceInEventDirectly } = require("../controllers/items_events");
-const { returningItemToStockWhenEventIsFinished, itemFinalStatusWhenEventIsFinished } = require("../controllers/item");
+const {
+  consultingEventInformation,
+  insertingEvent,
+  consultingEventTable,
+  deleteEvent,
+  insertingStaffInEvent,
+  consultingEventsPerCompany,
+  consultingInventoryEvent,
+  updateStatusItemBasedOnEvent,
+} = require("../controllers/events");
+const {
+  insertingItemInEvent,
+  consultingInventoryInEvent,
+  deletingItemsInEventAfterDeviceInventoryIsUpdated,
+  insertingDeviceInEventDirectly,
+} = require("../controllers/items_events");
+const {
+  returningItemToStockWhenEventIsFinished,
+  itemFinalStatusWhenEventIsFinished,
+  returningItemToStockWhenEventIsFinishedRefactored,
+  itemFinalStatusWhenEventIsFinishedRefactored,
+} = require("../controllers/item");
 const router = Router();
 
 //check event info
-router.post("/consulting-event", consultingEventInformation)
+router.post("/consulting-event", consultingEventInformation);
 
 //consulting event
-router.post('/events_information', consultingEventTable)
+router.post("/events_information", consultingEventTable);
 
 //consulting all events per company
-router.post('/events_company', consultingEventsPerCompany)
+router.post("/events_company", consultingEventsPerCompany);
 
 //insert new event
-router.post('/new_event', insertingEvent)
+router.post("/new_event", insertingEvent);
 
 //insert new staff in event
-router.post('/event_staff', insertingStaffInEvent)
+router.post("/event_staff", insertingStaffInEvent);
 
 //insert new devices in event
-router.post('/event_device', insertingItemInEvent)
+router.post("/event_device", insertingItemInEvent);
 
 //insert new devices in event directly
-router.post('/event_device_directly', insertingDeviceInEventDirectly)
+router.post("/event_device_directly", insertingDeviceInEventDirectly);
 
 //consulting inventory in event
-router.post('/event-inventory/:id', consultingInventoryInEvent)
+router.post("/event-inventory/:id", consultingInventoryInEvent);
 
 //returning item to stock after event finished
-router.post('/returning-item', returningItemToStockWhenEventIsFinished)
+router.post("/returning-item", returningItemToStockWhenEventIsFinished);
+
+//returning item to stock after event finished (refactored)
+router.post(
+  "/returning-item-refactored",
+  returningItemToStockWhenEventIsFinishedRefactored
+);
 
 //set final status of device when event finished
-router.post('/device-final-status', itemFinalStatusWhenEventIsFinished)
+router.post("/device-final-status", itemFinalStatusWhenEventIsFinished);
 
+//set final status of device when event finished (refactored)
+router.post(
+  "/device-final-status-refactored",
+  itemFinalStatusWhenEventIsFinishedRefactored
+);
 //delete event
-router.delete('/:id', deleteEvent)
+router.delete("/:id", deleteEvent);
 
 //consulting all inventory in event
-router.get('/event-inventory/:id', consultingInventoryEvent)
+router.get("/event-inventory/:id", consultingInventoryEvent);
 
 //consulting all inventory in event
-router.post('/remove-item-inventory-event', deletingItemsInEventAfterDeviceInventoryIsUpdated)
+router.post(
+  "/remove-item-inventory-event",
+  deletingItemsInEventAfterDeviceInventoryIsUpdated
+);
 
 //update status of item based on event
-router.post('/update-status-item-based-on-event', updateStatusItemBasedOnEvent)
+router.post("/update-status-item-based-on-event", updateStatusItemBasedOnEvent);
 
 module.exports = router;
