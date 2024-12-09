@@ -22,6 +22,9 @@ const {
   getListOfItemsInEventPool,
   updateBulkItemsInTransaction,
   updateBulkItemsInPool,
+  poolReceiversBulk,
+  updateBulkItemDataInPool,
+  createBulkItemTransactionInUser,
 } = require("../controller/receiver");
 
 //post receivers per user per transaction
@@ -32,6 +35,9 @@ router.post("/receiver-assigned", checkingReceiversAssigned);
 
 //add receivers to pool
 router.post("/receivers-pool", poolReceivers);
+
+//add multiple receivers to pool
+router.post("/receivers-pool-bulk", poolReceiversBulk);
 
 //track receiver returned by issue
 router.post("/receiver-returned-issue", trackReturnedReceiverWithIssue);
@@ -44,6 +50,10 @@ router.patch("/receiver-update/:id", udpateReceiverStatus);
 
 //update specific value of receiver data in pool
 router.patch("/receivers-pool-update/:id", updatePoolReceivers);
+
+//update specific value of receiver data in pool
+router.patch("/receivers-pool-update-bulk", updateBulkItemDataInPool);
+
 
 //update specific value of an issue receiver data
 router.patch("/receiver-returned-issue/:id", updateIssueDevice);
@@ -93,4 +103,7 @@ router.patch("/update-bulk-items-in-transaction", updateBulkItemsInTransaction);
 //update specific value of multiple items in pool
 router.patch("/update-bulk-items-in-pool", updateBulkItemsInPool);
 
+
+//create bulk item transaction in user
+router.post("/create-bulk-item-transaction-in-user", createBulkItemTransactionInUser);
 module.exports = router;
