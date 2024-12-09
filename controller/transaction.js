@@ -6,7 +6,6 @@ require("dotenv").config();
 
 const saveTransaction = async (request, response) => {
   try {
-    // event_id=6712d08f807dd7ac37f8ed8d&company=66cdf26906fd8fd5e9b13ef2&consumerInfo.id=671ab5d88757ebec2c530900
     const cache_connection = await clientRedis();
     const { event_id, company, consumerInfo } = request.body;
     cache_connection.del(
@@ -79,6 +78,7 @@ const saveTransactionTemplateForNoRegularUser = async (request, response) => {
 const updateTransaction = async (request, response) => {
   // const { id, active } = request.body;
   try {
+    const cache_connection = await clientRedis();
     const id = request.params.id;
     const transaction = await Transaction.findById(id);
     if (!transaction) {
@@ -91,13 +91,12 @@ const updateTransaction = async (request, response) => {
       ...request.body,
     };
     const updatedTransaction = await Transaction.findByIdAndUpdate(
-      transaction,
+      transaction._id,
       transactionEdited,
       {
         new: true,
       }
     );
-    const cache_connection = await clientRedis();
     const { event_id, company, consumerInfo } = transactionEdited;
     cache_connection.del(
       `event_id=${event_id}&company=${company}&consumerInfo.id=${consumerInfo.id}`
@@ -190,6 +189,22 @@ const updateMultipleDocuments = async (request, response) => {
 
 const removeDuplicateEntry = async (request, response) => {
   try {
+    const cache_connection = await clientRedis();
+    const documentClearUpCache = await Transaction.findById(request.params.id);
+    if (documentClearUpCache) {
+      cache_connection.del(
+        `event_id=${documentClearUpCache.event_id}&company=${documentClearUpCache.company}&consumerInfo.id=${documentClearUpCache.consumerInfo.id}`
+      );
+      const duplicateEnrty = await Transaction.findByIdAndDelete(
+        request.params.id
+      );
+      if (duplicateEnrty) {
+        response.status(201).json({
+          ok: true,
+          msg: `duplicate entry id ${request.params.id} removed from transaction document`,
+        });
+      }
+    }
     const duplicateEnrty = await Transaction.findByIdAndDelete(
       request.params.id
     );
