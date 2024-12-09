@@ -381,15 +381,13 @@ const updateItemInTable = async (request, response) => {
       return_date, // this should be formatted correctly as a string
       item_id, // item_id should be the last parameter in the query
     ];
-    // cache_connection.del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
-    // cache_connection.del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
-
+    
     connection.execute(query, values, function (err, result, fields) {
       if (err)
         return response.status(401).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
+      ok: false,
+      msg: `${err.message}`,
+    });
       return response.status(201).json({
         ok: true,
         items: result,
@@ -635,7 +633,7 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
     const query = ` UPDATE
                     item_inv
                     SET
-                    warehouse = 1,
+                    warehouse = true,
                     status =?,
                     update_at =?
                     WHERE
@@ -801,7 +799,6 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
         });
       }
     }
-    console.log("final result", finalResult);
     return response.status(201)?.json({
       ok: true,
       // items: finalResult,
@@ -888,6 +885,7 @@ const checkingItem = async (request, response) => {
     const checkingInMemory = await cache_connection.get(`${params}`);
     if (checkingInMemory) {
       return response.status(201).json({
+        cached:true,
         ok: true,
         items: JSON.parse(checkingInMemory),
       });
@@ -906,8 +904,8 @@ const checkingItem = async (request, response) => {
           });
         cache_connection.set(`${params}`, JSON.stringify(result));
         cache_connection.expire(`${params}`, 60);
-
         return response.status(201).json({
+          cached:false,
           ok: true,
           items: result,
         });
