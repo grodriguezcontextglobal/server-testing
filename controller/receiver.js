@@ -1,4 +1,4 @@
-const { response } = require("express");
+const { response, request } = require("express");
 const ReceiverReturnedStatus = require("../models/ReceiverReturnedStatus");
 const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
@@ -149,14 +149,15 @@ const updateBulkItemsInTransaction = async (request, response) => {
 const updateBulkItemsInPool = async (request, response) => {
   const { device, company, activity, eventSelected } = request.body;
   try {
+    const cache_connection = await clientRedis();
     for (let item of device) {
-      await ReceiversPool.findOneAndUpdate(
+    const itemFound = await ReceiversPool.findOneAndUpdate(
         {
           company,
-          activity: true,
+          activity: !activity,
           eventSelected: eventSelected,
-          type: item.deviceType,
-          device: item.serialNumber,
+          type: item.deviceType ?? item.type,
+          device: item.serialNumber ?? item.device,
         },
         {
           activity,
@@ -166,6 +167,7 @@ const updateBulkItemsInPool = async (request, response) => {
         }
       );
     }
+    cache_connection.del(`eventSelected=${eventSelected}&company=${company}`);
     return response.status(201).json({
       ok: true,
     });
@@ -185,6 +187,46 @@ const poolReceivers = async (request, response) => {
     return response.status(201).json({
       ok: true,
       receiversPool,
+    });
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({
+      ok: false,
+      msg: "Please contact Administrator",
+    });
+  }
+};
+
+const poolReceiversBulk = async (request, response) => {
+  try {
+    const {
+      deviceList,
+      status,
+      activity,
+      comment,
+      eventSelected,
+      provider,
+      type,
+      company,
+    } = request.body;
+
+    const list = JSON.parse(deviceList);
+    const receiversPoolData = list.map((item) => ({
+      device: item.serial_number,
+      status,
+      activity,
+      comment,
+      eventSelected,
+      provider,
+      type,
+      company,
+    }));
+
+    const savedItems = await ReceiversPool.insertMany(receiversPoolData);
+
+    return response.status(201).json({
+      ok: true,
+      receiversPool: savedItems,
     });
   } catch (error) {
     console.log(error);
@@ -241,6 +283,7 @@ const getListOfItemsInEventPool = async (request, response) => {
     });
   }
 };
+
 const updatePoolReceivers = async (request, response) => {
   try {
     const cache_connection = await clientRedis();
@@ -438,6 +481,137 @@ const updateIssueDevice = async (request, response) => {
   }
 };
 
+const updateBulkItemDataInPool = async (request, response) => {
+  try {
+    const cache_connection = await clientRedis();
+    const { startingSerialNumber, deviceData, qty } = request.body;
+    const devices = JSON.parse(deviceData);
+    const dataIndex = devices.findIndex(
+      (item) => item.device === startingSerialNumber
+    );
+    if (dataIndex === -1) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Starting serial number not found in device data.",
+      });
+    }
+    const data = devices.slice(dataIndex, dataIndex + Number(qty));
+    // const ids = data.map((item) => item.id);
+
+    const dataPoolItems = await ReceiversPool.find({
+      company: data[0].company,
+      activity: false,
+      eventSelected: data[0].eventSelected,
+      type: data[0].type,
+      device: { $in: data.map((item) => item.device) },
+    });
+
+    const updateData = dataPoolItems.map((item) => {
+      return {
+        id: `${item._id}`,
+        type: item.type,
+        device: item.device,
+        status: request.body.status,
+        activity: request.body.activity,
+        provider: item.provider,
+        eventSelected: item.eventSelected,
+        company: item.company,
+        comment: request.body.comment,
+      };
+    });
+
+    // Prepare bulk update operations
+    const bulkOperations = updateData.map((item) => ({
+      updateOne: {
+        filter: { _id: item.id },
+        update: {
+          $set: {
+            status: item.status,
+            activity: true,
+            comment: item.comment,
+          },
+        },
+      },
+    }));
+
+    // Perform bulk updates
+    const result = await ReceiversPool.bulkWrite(bulkOperations);
+
+    cache_connection.del(
+      `eventSelected=${data[0].eventSelected}&company=${data[0].company}`
+    );
+    return response.status(201).json({
+      ok: true,
+      msg: `Total items updated successfully: ${result.modifiedCount}`,
+      totalAssigned: result.modifiedCount,
+    });
+  } catch (error) {
+    console.error("updateBulkItemDataInPool error:", error);
+    return response.status(500).json({
+      ok: false,
+      msg: "Internal server error.",
+      error: error.message,
+    });
+  }
+};
+
+const createBulkItemTransactionInUser = async (request, response) => {
+  try {
+    const {
+      serialNumbers,
+      deviceType,
+      status,
+      paymentIntent,
+      company,
+      user,
+      eventSelected,
+      provider,
+      event_id,
+      timestamp,
+      startingNumber,
+      qty,
+    } = request.body;
+    const index = JSON.parse(serialNumbers).findIndex(
+      (item) => item.device === startingNumber
+    );
+    const data = JSON.parse(serialNumbers).slice(index, index + qty);
+    const template = data.map((item) => {
+      return {
+        paymentIntent,
+        device: {
+          deviceType,
+          serialNumber: item.device,
+          status,
+        },
+        company,
+        user,
+        eventSelected,
+        provider,
+        timeStamp: timestamp,
+        event_id,
+      };
+    });
+    console.log("template", template);
+    const bulkInsertedData = await Receivers.insertMany(template);
+    console.log("bulkInsertedData", bulkInsertedData);
+    response.status(201).json({
+      ok: true,
+      msg: `Items assigned successfully. Total items: ${bulkInsertedData.length}`,
+      data: bulkInsertedData,
+      device: bulkInsertedData.map((item) => item.device),
+      paymentIntent: paymentIntent,
+      receiversAssignedPerUser: bulkInsertedData,
+      date: new Date(),
+    });
+  } catch (error) {
+    console.log("createBulkItemTransactionInUser", error);
+    return response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
 module.exports = {
   addReceiverToTransaction,
   checkingReceiversAssigned,
@@ -455,4 +629,7 @@ module.exports = {
   receiverPoolFoundAndDelete,
   updateBulkItemsInTransaction,
   updateBulkItemsInPool,
+  poolReceiversBulk,
+  updateBulkItemDataInPool,
+  createBulkItemTransactionInUser,
 };
