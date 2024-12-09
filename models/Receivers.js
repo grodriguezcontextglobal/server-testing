@@ -37,6 +37,11 @@ const ReceiversSchema = new Schema({
     type: Date,
     required: true,
   },
+  event_id:{
+    type: String,
+    required: false,
+    default: "",
+  }
 });
 
 ReceiversSchema.method("toJSON", function () {
