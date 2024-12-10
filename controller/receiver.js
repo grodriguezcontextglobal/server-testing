@@ -151,7 +151,7 @@ const updateBulkItemsInPool = async (request, response) => {
   try {
     const cache_connection = await clientRedis();
     for (let item of device) {
-    const itemFound = await ReceiversPool.findOneAndUpdate(
+    await ReceiversPool.findOneAndUpdate(
         {
           company,
           activity: !activity,
@@ -568,13 +568,9 @@ const createBulkItemTransactionInUser = async (request, response) => {
       provider,
       event_id,
       timestamp,
-      startingNumber,
-      qty,
     } = request.body;
-    const index = JSON.parse(serialNumbers).findIndex(
-      (item) => item.device === startingNumber
-    );
-    const data = JSON.parse(serialNumbers).slice(index, index + qty);
+    // const index = JSON.parse(serialNumbers)
+    const data = JSON.parse(serialNumbers) //.slice(index, index + qty);
     const template = data.map((item) => {
       return {
         paymentIntent,
@@ -593,7 +589,6 @@ const createBulkItemTransactionInUser = async (request, response) => {
     });
     console.log("template", template);
     const bulkInsertedData = await Receivers.insertMany(template);
-    console.log("bulkInsertedData", bulkInsertedData);
     response.status(201).json({
       ok: true,
       msg: `Items assigned successfully. Total items: ${bulkInsertedData.length}`,
