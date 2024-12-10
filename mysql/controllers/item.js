@@ -282,7 +282,7 @@ const consultingItemTable = async (request, response) => {
   }
 };
 
-const consultingItemInWarehouseTable = (request, response) => {
+const consultingItemInWarehouseTable = async (request, response) => {
   try {
     const connection = getConnection();
     const formatting = Object.keys(request.body).map((item) => item + "=?");
@@ -297,21 +297,21 @@ const consultingItemInWarehouseTable = (request, response) => {
         });
       return response.status(201).json({
         ok: true,
-        items: result,
+        items: JSON.stringify(result),
       });
     });
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
+    // connection.execute(query, values, function (err, result, fields) {
+    //   if (err)
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
 
-      return response?.status(201)?.json({
-        ok: true,
-        items: result,
-      });
-    });
+    //   return response?.status(201)?.json({
+    //     ok: true,
+    //     items: result,
+    //   });
+    // });
   } catch (error) {
     console.error("Error:", error.message);
     response.status(500).json({
