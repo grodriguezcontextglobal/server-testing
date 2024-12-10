@@ -78,9 +78,11 @@ const saveTransactionTemplateForNoRegularUser = async (request, response) => {
 const updateTransaction = async (request, response) => {
   // const { id, active } = request.body;
   try {
-    const cache_connection = await clientRedis();
+    // const cache_connection = await clientRedis();
     const id = request.params.id;
+    // console.log(id);
     const transaction = await Transaction.findById(id);
+    // console.log(transaction);
     if (!transaction) {
       return response.status(404).json({
         ok: false,
@@ -90,6 +92,7 @@ const updateTransaction = async (request, response) => {
     const transactionEdited = {
       ...request.body,
     };
+    // console.log(transactionEdited);
     const updatedTransaction = await Transaction.findByIdAndUpdate(
       transaction._id,
       transactionEdited,
@@ -97,10 +100,13 @@ const updateTransaction = async (request, response) => {
         new: true,
       }
     );
-    const { event_id, company, consumerInfo } = transactionEdited;
-    cache_connection.del(
-      `event_id=${event_id}&company=${company}&consumerInfo.id=${consumerInfo.id}`
-    );
+    // console.log(updatedTransaction);
+    // const consumerInfoId =
+    //   transactionEdited.consumerInfo.id ?? transactionEdited.consumerInfo.uid;
+    // console.log(consumerInfoId);
+    // await cache_connection.del(
+    //   `event_id=${transactionEdited.event_id}&company=${transactionEdited.company}&consumerInfo.id=${consumerInfoId}`
+    // );
     return response.status(201).json({
       ok: true,
       transaction: updatedTransaction,
@@ -151,10 +157,7 @@ const gettingListOfSavedTransaction = async (request, response) => {
         `${params}`,
         JSON.stringify(listOfTransactionsSaved)
       );
-      cache_connection.expire(
-        `${params}`,
-        60
-      );
+      cache_connection.expire(`${params}`, 60);
       response.status(201).json({
         ok: true,
         list: listOfTransactionsSaved,
