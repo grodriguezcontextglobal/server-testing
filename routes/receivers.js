@@ -25,6 +25,9 @@ const {
   poolReceiversBulk,
   updateBulkItemDataInPool,
   createBulkItemTransactionInUser,
+  removingItemFromTransaction,
+  returnAllItemsInTransactionInPool,
+  updateBulkItemsInTransactionPerUserAtOnce,
 } = require("../controller/receiver");
 
 //post receivers per user per transaction
@@ -103,7 +106,16 @@ router.patch("/update-bulk-items-in-transaction", updateBulkItemsInTransaction);
 //update specific value of multiple items in pool
 router.patch("/update-bulk-items-in-pool", updateBulkItemsInPool);
 
-
 //create bulk item transaction in user
 router.post("/create-bulk-item-transaction-in-user", createBulkItemTransactionInUser);
+
+//removing transaction
+router.delete("/remove-transaction/:id", removingItemFromTransaction);
+
+//update multiple items in pool with device.serialNumber props
+router.patch("/transaction-return-all-items-in-pool", returnAllItemsInTransactionInPool);
+
+//update multiple items in transaction with device.serialNumber props
+router.patch("/transaction-all-items-returned-at-once", updateBulkItemsInTransactionPerUserAtOnce);
+
 module.exports = router;
