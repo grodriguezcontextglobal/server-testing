@@ -13,6 +13,7 @@ const {
     searchStaffAllEvents,
     gettingEventListPerCompany
 } = require("../controller/event");
+const { getListOfUsersAndTransactionsPerEvent } = require("../controller/auth");
 
 // create an event
 router.post("/create-event", createEvent);
@@ -42,5 +43,8 @@ router.post(
 router.get('/event-list-per-company', gettingEventListPerCompany)
 
 router.post("/staff-all-events", searchStaffAllEvents);
+
+//all consumers and transactions per event
+router.get("/all-users-and-transactions-per-event", getListOfUsersAndTransactionsPerEvent);
 
 module.exports = router;
