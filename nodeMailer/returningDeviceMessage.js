@@ -2496,6 +2496,12 @@ const eventLinkEventHtml = (props) => {
 };
 
 const serviceChargeInvoiceEmailHtml = (props) => {
+  // <p
+  //     style="font-size: 0.95rem; color: #475467; margin-bottom: 10px;"
+  // >
+  //     Payment Method: <strong style="text-transform: uppercase;">${props.method.last4} ${props.method.brand}</strong>
+  // </p>
+
   return `
    <html lang="en" translate="no">
 <head>
@@ -2624,11 +2630,6 @@ const serviceChargeInvoiceEmailHtml = (props) => {
                     style="font-size: 0.95rem; color: #475467; margin-bottom: 10px;"
                 >
                     Name: <strong>${props.customer}</strong>
-                </p>
-                <p
-                    style="font-size: 0.95rem; color: #475467; margin-bottom: 10px;"
-                >
-                    Payment Method: <strong style="text-transform: uppercase;">${props.method.last4} ${props.method.brand}</strong>
                 </p>
                 <p
                     style="font-size: 0.95rem; color: #475467; margin-bottom: 10px;"
