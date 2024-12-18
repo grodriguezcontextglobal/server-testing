@@ -1,6 +1,9 @@
 const User = require("../models/User");
+const Event = require("../models/Event");
+const Receivers = require("../models/Receivers");
 const { generateJWT } = require("../helpers/jwt");
 const { clientRedis } = require("../database/cacheMemoryConfig");
+const { groupBy } = require("lodash");
 
 const showAllUsers = async (request, response) => {
   try {
@@ -22,10 +25,12 @@ const getListOfUsers = async (request, response = response) => {
   try {
     const cache_connection = await clientRedis();
     const params = request._parsedUrl.query;
-    const eventID = new URLSearchParams(params).get('event_providers');
-    const companyID = new URLSearchParams(params).get('company_providers');
-    
-    const cachedList = await cache_connection.get(`event=${eventID}&company=${companyID}`)
+    const eventID = new URLSearchParams(params).get("event_providers");
+    const companyID = new URLSearchParams(params).get("company_providers");
+
+    const cachedList = await cache_connection.get(
+      `event=${eventID}&company=${companyID}`
+    );
     if (cachedList) {
       response.status(200).json({
         cached: true,
@@ -39,7 +44,10 @@ const getListOfUsers = async (request, response = response) => {
         {}
       );
       const users = await User.find(check);
-      cache_connection.set(`event=${eventID}&company=${companyID}`, JSON.stringify(users));
+      cache_connection.set(
+        `event=${eventID}&company=${companyID}`,
+        JSON.stringify(users)
+      );
       cache_connection.expire(`event=${eventID}&company=${companyID}`, 180);
       return response.status(200).json({
         ok: true,
@@ -123,10 +131,15 @@ const newUser = async (request, response = response) => {
     const userCreated = await user.save();
     //generate JWT
     const token = await generateJWT(user.id, user.name);
-    cache_connection.del(
+    await cache_connection.del(
       `event_providers=${userCreated.event_providers.at(
         -1
       )}&company_providers=${userCreated.company_providers.at(-1)}`
+    );
+    await cache_connection.del(
+      `event=${userCreated.event_providers.at(
+        -1
+      )}&company=${userCreated.company_providers.at(-1)}`
     );
 
     response.status(201).json({
@@ -173,11 +186,15 @@ const editUser = async (request, response = response) => {
     const userUpdated = await User.findByIdAndUpdate(userId, userEdited, {
       new: true,
     }); //3 parameters user id, new user and how it will be returned as new event
-
     cache_connection.del(
       `event=${userUpdated.event_providers.at(
         -1
       )}&company=${userUpdated.company_providers.at(-1)}`
+    );
+    await cache_connection.del(
+      `event_providers=${userUpdated.event_providers.at(
+        -1
+      )}&company_providers=${userUpdated.company_providers.at(-1)}`
     );
 
     return response.json({
@@ -200,6 +217,89 @@ const editUser = async (request, response = response) => {
   }
 };
 
+const getListOfUsersAndTransactionsPerEvent = async (request, response) => {
+  try {
+    const cache_connection = await clientRedis();
+    const params = request._parsedUrl.query;
+    const eventID = new URLSearchParams(params).get("event_providers");
+    const companyID = new URLSearchParams(params).get("company_providers");
+    // const cachedList = await cache_connection.get(
+    //   `event=${eventID}&company=${companyID}`
+    // );
+    // if (cachedList) {
+    //   response.status(200).json({
+    //     cached: true,
+    //     ok: true,
+    //     users: JSON.stringify(cachedList),
+    //   });
+    // } else {
+      const formatting = [...params.split("&")];
+      const check = formatting.reduce(
+        (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
+        {}
+      );
+      const eventInfo = await Event.findOne({ _id: eventID });
+      const users = await User.find(check);
+      let result = [];
+      for (let user of users) {
+        const transactions = await Receivers.find({
+          user: user.email,
+          eventSelected: eventInfo.eventInfoDetail.eventName,
+          company: companyID,
+        });
+
+        let groupingByActiveTransaction = {};
+        if (transactions.length > 0) {
+          groupingByActiveTransaction = groupBy(transactions, "device.status");
+        }
+        //status means if user has active transaction or not
+        //status = 0 means user has no transaction
+        //status = 1 means user has active transaction
+        //status = 2 means user has no active transaction
+        //status = 3 means user has inactive transaction
+        let status = 0;
+        if (
+          groupingByActiveTransaction[true] &&
+          groupingByActiveTransaction[false]
+        ) {
+          status = 1;
+        } else if (
+          groupingByActiveTransaction[true] &&
+          !groupingByActiveTransaction[false]
+        ) {
+          status = 2;
+        } else if (
+          !groupingByActiveTransaction[true] &&
+          groupingByActiveTransaction[false]
+        ) {
+          status = 3;
+        }
+        result.push({
+          user: user,
+          transactions: status,
+        });
+      }
+      // cache_connection.set(
+      //   `event=${eventID}&company=${companyID}`,
+      //   JSON.stringify(users)
+      // );
+      // cache_connection.expire(`event=${eventID}&company=${companyID}`, 180);
+
+      response.status(200).json({
+        ok: true,
+        msg: "Success",
+        data: JSON.stringify(result),
+      });
+    // }
+  } catch (error) {
+    console.log(error);
+    return response.status(500).json({
+      ok: false,
+      msg: "Contact Administrator",
+      error: error,
+    });
+  }
+};
 module.exports = {
   showAllUsers,
   newUser,
@@ -207,4 +307,5 @@ module.exports = {
   getUser,
   getListOfUsers,
   checkUser,
+  getListOfUsersAndTransactionsPerEvent,
 };
