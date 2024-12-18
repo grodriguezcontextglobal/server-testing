@@ -1,6 +1,6 @@
 const nodeMailer = require("nodemailer");
 const sgMail = require("@sendgrid/mail");
-sgMail.setApiKey(process.env.SENDGRID_API_KEY_LIMITED);
+sgMail.setApiKey(process.env.SENDGRID_API_KEY_PAID);
 
 const {
   assigningDeviceMessageHtml,
