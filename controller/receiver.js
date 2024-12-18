@@ -151,7 +151,7 @@ const updateBulkItemsInPool = async (request, response) => {
   try {
     const cache_connection = await clientRedis();
     for (let item of device) {
-    await ReceiversPool.findOneAndUpdate(
+      await ReceiversPool.findOneAndUpdate(
         {
           company,
           activity: !activity,
@@ -555,6 +555,67 @@ const updateBulkItemDataInPool = async (request, response) => {
   }
 };
 
+const returnAllItemsInTransactionInPool = async (request, response) => {
+  const { device, company, activity, eventSelected } = request.body;
+  try {
+    const cache_connection = await clientRedis();
+    for (let item of device) {
+      const c = await ReceiversPool.findOneAndUpdate(
+        {
+          company,
+          activity: !activity,
+          eventSelected: eventSelected,
+          type: item.device.deviceType,
+          device: item.device.serialNumber ?? item.device,
+        },
+        {
+          activity,
+        },
+        {
+          new: true,
+        }
+      );
+    }
+    cache_connection.del(`eventSelected=${eventSelected}&company=${company}`);
+    return response.status(201).json({
+      ok: true,
+    });
+  } catch (error) {
+    console.log(error);
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const updateBulkItemsInTransactionPerUserAtOnce = async (request, response) => {
+  const { timeStamp, device } = request.body;
+  try {
+    for (let item of device) {
+      const c = await Receivers.findByIdAndUpdate(
+        item.id,
+        {
+          "device.status": false,
+          timeStamp: timeStamp,
+        },
+        {
+          new: true,
+        }
+      );
+    }
+    return response.status(201).json({
+      ok: true,
+    });
+  } catch (error) {
+    console.log(error);
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
 const createBulkItemTransactionInUser = async (request, response) => {
   try {
     const {
@@ -570,7 +631,7 @@ const createBulkItemTransactionInUser = async (request, response) => {
       timestamp,
     } = request.body;
     // const index = JSON.parse(serialNumbers)
-    const data = JSON.parse(serialNumbers) //.slice(index, index + qty);
+    const data = JSON.parse(serialNumbers); //.slice(index, index + qty);
     const template = data.map((item) => {
       return {
         paymentIntent,
@@ -607,6 +668,28 @@ const createBulkItemTransactionInUser = async (request, response) => {
   }
 };
 
+const removingItemFromTransaction = async (request, response) => {
+  try {
+    const cache_connection = await clientRedis();
+    const transactionId = request.params.id;
+    const foundItem = await Receivers.findByIdAndDelete(transactionId);
+    cache_connection.del(
+      `eventSelected=${foundItem.eventSelected}&company=${foundItem.company}`
+    );
+    return response.status(200).json({
+      ok: true,
+      msg: "Item removed from transaction",
+      response: foundItem,
+    });
+  } catch (error) {
+    console.log("removingItemFromTransaction", error);
+    return response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
 module.exports = {
   addReceiverToTransaction,
   checkingReceiversAssigned,
@@ -627,4 +710,7 @@ module.exports = {
   poolReceiversBulk,
   updateBulkItemDataInPool,
   createBulkItemTransactionInUser,
+  removingItemFromTransaction,
+  returnAllItemsInTransactionInPool,
+  updateBulkItemsInTransactionPerUserAtOnce,
 };
