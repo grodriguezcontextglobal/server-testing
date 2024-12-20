@@ -11,7 +11,8 @@ const {
     editSubscriptionEvent,
     editEvent,
     searchStaffAllEvents,
-    gettingEventListPerCompany
+    gettingEventListPerCompany,
+    eventStaffDetailInfo
 } = require("../controller/event");
 const { getListOfUsersAndTransactionsPerEvent } = require("../controller/auth");
 
@@ -46,5 +47,8 @@ router.post("/staff-all-events", searchStaffAllEvents);
 
 //all consumers and transactions per event
 router.get("/all-users-and-transactions-per-event", getListOfUsersAndTransactionsPerEvent);
+
+//retrieve staff info in detail of an event
+router.get('/event-staff-detail/:id', eventStaffDetailInfo)
 
 module.exports = router;

@@ -1,6 +1,7 @@
 const express = require("express");
 const Event = require("../models/Event");
 const { clientRedis } = require("../database/cacheMemoryConfig");
+const AdminUser = require("../models/AdminUser");
 
 const createEvent = async (request, response = express.response) => {
   try {
@@ -14,7 +15,7 @@ const createEvent = async (request, response = express.response) => {
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
@@ -46,6 +47,7 @@ const editEvent = async (request, response = response) => {
     cache_connection.del(
       `company=${eventStaffToEdit.company}&type=${eventStaffToEdit.type}`
     );
+    cache_connection.del(`event_staff_info=${eventStaffToEdit.id}`);
     return response.json({
       ok: true,
       event: staffEventEdited,
@@ -72,7 +74,6 @@ const editSubscriptionEvent = async (request, response = response) => {
     const subscriptionEventInfoToEdit = {
       ...request.body,
     };
-    //generate JWT
 
     const subscriptionEventEdited = await Event.findByIdAndUpdate(
       eventId,
@@ -96,7 +97,7 @@ const editSubscriptionEvent = async (request, response = response) => {
 
 const deleteEvent = async (request, response) => {
   try {
-    const adminUserId = await request.params.id;
+    const adminUserId = request.params.id;
     const adminUser = await AdminUser.findByIdAndDelete(adminUserId);
     if (!adminUser) {
       return response.status(404).json({
@@ -105,14 +106,14 @@ const deleteEvent = async (request, response) => {
       });
     }
 
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       adminUser,
       msg: "admin user deleted",
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -122,13 +123,13 @@ const deleteEvent = async (request, response) => {
 const eventList = async (request, response) => {
   try {
     let list = await Event.find(request.body);
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       list,
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
@@ -159,7 +160,7 @@ const gettingEventListPerCompany = async (request, response) => {
         JSON.stringify(list)
       );
       cache_connection.expire(`company=${companyName}&type=${typeEvent}`, 180);
-      response.status(201).json({
+      return response.status(201).json({
         cached: false,
         ok: true,
         list,
@@ -167,30 +168,73 @@ const gettingEventListPerCompany = async (request, response) => {
     }
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
   }
 };
+
 const searchStaffAllEvents = async (request, response) => {
-  const { email } = request.body; // Extract email from request
+  const { email } = request.body;
 
   try {
-    // Query to find all documents where email exists in adminUser or headsetAttendees
     const events = await Event.find({
       $or: [
-        { "staff.adminUser.email": email }, // Search in adminUser email field
-        { "staff.headsetAttendees.email": email }, // Search in headsetAttendees email field
+        { "staff.adminUser.email": email },
+        { "staff.headsetAttendees.email": email },
       ],
     });
 
-    // Return all events, including those that may not have the email
-    response.status(200).json({ ok: true, events });
+    return response.status(200).json({ ok: true, events });
   } catch (error) {
-    response.status(500).json({ ok: false, message: error.message });
+    return response.status(500).json({ ok: false, message: error.message });
   }
 };
+
+const eventStaffDetailInfo = async (request, response) => {
+  try {
+    const cache_connection = await clientRedis();
+    const eventId = request.params.id;
+    const cachedEventStaffInfo = await cache_connection.get(
+      `event_staff_info=${eventId}`
+    );
+    if (cachedEventStaffInfo) {
+      return response.status(201).json({
+        ok: true,
+        cached: true,
+        staff: cachedEventStaffInfo,
+      });
+    }
+    const eventInfo = await Event.findById(eventId);
+    const staffEventInfo = [
+      ...eventInfo.staff.adminUser,
+      ...eventInfo.staff.headsetAttendees,
+    ];
+    const result = [];
+    for (const staff of staffEventInfo) {
+      const extraInfo = await AdminUser.findOne({ email: staff.email });
+      result.push({
+        staff,
+        photo: extraInfo.imageProfile,
+        phone: extraInfo.phone,
+        admin_id: extraInfo.id,
+      });
+    }
+    cache_connection.set(`event_staff_info=${eventId}`, JSON.stringify(result));
+    return response.status(201).json({
+      ok: true,
+      staff: JSON.stringify(result),
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+      error,
+    });
+  }
+};
+
 module.exports = {
   createEvent,
   editSubscriptionEvent,
@@ -198,4 +242,5 @@ module.exports = {
   editEvent,
   searchStaffAllEvents,
   gettingEventListPerCompany,
+  eventStaffDetailInfo,
 };
