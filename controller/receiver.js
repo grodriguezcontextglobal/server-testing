@@ -21,7 +21,7 @@ const addReceiverToTransaction = async (request, response) => {
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
@@ -46,7 +46,7 @@ const checkingReceiversAssigned = async (request, response) => {
     }
   } catch (error) {
     console.log(error);
-    response.status(501).json({
+    return response.status(501).json({
       ok: false,
       msg: error,
     });
@@ -75,7 +75,7 @@ const checkingReceiversExistInDatabase = async (request, response) => {
     }
   } catch (error) {
     console.log(error);
-    response.status(501).json({
+    return response.status(501).json({
       ok: false,
       msg: error,
     });
@@ -190,7 +190,7 @@ const poolReceivers = async (request, response) => {
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
@@ -230,7 +230,7 @@ const poolReceiversBulk = async (request, response) => {
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
@@ -247,7 +247,7 @@ const getListOfItemsInEventPool = async (request, response) => {
       `eventSelected=${eventID}&company=${companyID}`
     );
     if (cachedList && !cachedList) {
-      response.status(200).json({
+      return response.status(200).json({
         cached: true,
         ok: true,
         receiversInventory: JSON.parse(cachedList),
@@ -277,7 +277,7 @@ const getListOfItemsInEventPool = async (request, response) => {
     }
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
@@ -323,7 +323,7 @@ const updatePoolReceivers = async (request, response) => {
 const receiverPoolList = async (request, response) => {
   try {
     const receiversInventory = await ReceiversPool.find(request.body);
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       receiversInventory: receiversInventory,
     });
@@ -332,7 +332,7 @@ const receiverPoolList = async (request, response) => {
       "🚀 ~ file: receiver.js ~ line 156 ~ receiverPoolList ~ error",
       error
     );
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -348,7 +348,7 @@ const receiverPoolFoundAndDelete = async (request, response) => {
     cache_connection.del(
       `eventSelected=${deviceDeleted.eventSelected}&company=${deviceDeleted.company}`
     );
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       deviceDeleted,
     });
@@ -357,7 +357,7 @@ const receiverPoolFoundAndDelete = async (request, response) => {
       "🚀 ~ file: receiver.js ~ line 156 ~ receiverPoolList ~ error",
       error
     );
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -367,7 +367,7 @@ const receiverPoolFoundAndDelete = async (request, response) => {
 const listOfAssignedReceiver = async (request, response) => {
   try {
     const listOfReceivers = await Receivers.find(request.body);
-    await response.status(201).json({
+    return response.status(201).json({
       ok: true,
       listOfReceivers: listOfReceivers,
     });
@@ -376,8 +376,7 @@ const listOfAssignedReceiver = async (request, response) => {
       "🚀 ~ file: receiver.js ~ line 205 ~ listOfAssignedReceiver ~ error",
       error
     );
-
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -388,28 +387,24 @@ const listOfAssignedReceiverPlusUserInformation = async (request, response) => {
   try {
     const listOfReceivers = await Receivers.find(request.body);
 
-    // Extract user emails from the list of receivers
     const userEmails = listOfReceivers.map((receiver) => receiver.user);
-
-    // Query the users collection to populate user information
     const usersInfo = await User.find({ email: { $in: userEmails } });
 
-    // Merge user information into the list of receivers
     const receiversWithUserInfo = listOfReceivers.map((receiver) => {
       const userInfo = usersInfo.find((user) => user.email === receiver.user);
       return {
         ...receiver.toObject(),
-        userInfo, // Add user information to each receiver object
+        userInfo,
       };
     });
 
-    response.status(200).json({
+    return response.status(200).json({
       ok: true,
       listOfReceivers: receiversWithUserInfo,
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Error fetching receiver information",
       error: error.message,
@@ -421,13 +416,13 @@ const trackReturnedReceiverWithIssue = async (request, response) => {
   try {
     const trackDevice = new ReceiverReturnedStatus(request.body);
     trackDevice.save();
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       record: trackDevice,
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error.response,
     });
@@ -437,12 +432,12 @@ const trackReturnedReceiverWithIssue = async (request, response) => {
 const getListOfReceiverReturnedByIssue = async (request, response) => {
   try {
     const trackDevice = await ReceiverReturnedStatus.find(request.body);
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       record: trackDevice,
     });
   } catch (error) {
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error.response,
     });
@@ -496,7 +491,6 @@ const updateBulkItemDataInPool = async (request, response) => {
       });
     }
     const data = devices.slice(dataIndex, dataIndex + Number(qty));
-    // const ids = data.map((item) => item.id);
 
     const dataPoolItems = await ReceiversPool.find({
       company: data[0].company,
@@ -520,7 +514,6 @@ const updateBulkItemDataInPool = async (request, response) => {
       };
     });
 
-    // Prepare bulk update operations
     const bulkOperations = updateData.map((item) => ({
       updateOne: {
         filter: { _id: item.id },
@@ -534,7 +527,6 @@ const updateBulkItemDataInPool = async (request, response) => {
       },
     }));
 
-    // Perform bulk updates
     const result = await ReceiversPool.bulkWrite(bulkOperations);
 
     cache_connection.del(
@@ -560,7 +552,7 @@ const returnAllItemsInTransactionInPool = async (request, response) => {
   try {
     const cache_connection = await clientRedis();
     for (let item of device) {
-      const c = await ReceiversPool.findOneAndUpdate(
+      await ReceiversPool.findOneAndUpdate(
         {
           company,
           activity: !activity,
@@ -593,7 +585,7 @@ const updateBulkItemsInTransactionPerUserAtOnce = async (request, response) => {
   const { timeStamp, device } = request.body;
   try {
     for (let item of device) {
-      const c = await Receivers.findByIdAndUpdate(
+      await Receivers.findByIdAndUpdate(
         item.id,
         {
           "device.status": false,
@@ -630,8 +622,7 @@ const createBulkItemTransactionInUser = async (request, response) => {
       event_id,
       timestamp,
     } = request.body;
-    // const index = JSON.parse(serialNumbers)
-    const data = JSON.parse(serialNumbers); //.slice(index, index + qty);
+    const data = JSON.parse(serialNumbers);
     const template = data.map((item) => {
       return {
         paymentIntent,
@@ -648,9 +639,8 @@ const createBulkItemTransactionInUser = async (request, response) => {
         event_id,
       };
     });
-    console.log("template", template);
     const bulkInsertedData = await Receivers.insertMany(template);
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       msg: `Items assigned successfully. Total items: ${bulkInsertedData.length}`,
       data: bulkInsertedData,

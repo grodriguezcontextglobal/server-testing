@@ -14,14 +14,14 @@ const saveTransaction = async (request, response) => {
 
     const transaction = new Transaction(request.body);
     const transactionSaved = await transaction.save();
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       msg: "Transaction saved",
       transaction: transactionSaved,
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -38,14 +38,14 @@ const saveTransactionAdmin = async (request, response) => {
 
     const transaction = new Transaction(request.body);
     const transactionSaved = await transaction.save();
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       msg: "Transaction saved",
       transaction: transactionSaved,
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -61,14 +61,14 @@ const saveTransactionTemplateForNoRegularUser = async (request, response) => {
     );
     const Transaction = new Transaction(request.body);
     const TransactionSaved = await Transaction.save();
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       msg: "Transaction saved",
       Transaction: TransactionSaved,
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact administrator",
     });
@@ -76,13 +76,9 @@ const saveTransactionTemplateForNoRegularUser = async (request, response) => {
 };
 
 const updateTransaction = async (request, response) => {
-  // const { id, active } = request.body;
   try {
-    // const cache_connection = await clientRedis();
     const id = request.params.id;
-    // console.log(id);
     const transaction = await Transaction.findById(id);
-    // console.log(transaction);
     if (!transaction) {
       return response.status(404).json({
         ok: false,
@@ -92,7 +88,6 @@ const updateTransaction = async (request, response) => {
     const transactionEdited = {
       ...request.body,
     };
-    // console.log(transactionEdited);
     const updatedTransaction = await Transaction.findByIdAndUpdate(
       transaction._id,
       transactionEdited,
@@ -100,13 +95,6 @@ const updateTransaction = async (request, response) => {
         new: true,
       }
     );
-    // console.log(updatedTransaction);
-    // const consumerInfoId =
-    //   transactionEdited.consumerInfo.id ?? transactionEdited.consumerInfo.uid;
-    // console.log(consumerInfoId);
-    // await cache_connection.del(
-    //   `event_id=${transactionEdited.event_id}&company=${transactionEdited.company}&consumerInfo.id=${consumerInfoId}`
-    // );
     return response.status(201).json({
       ok: true,
       transaction: updatedTransaction,
@@ -123,13 +111,13 @@ const updateTransaction = async (request, response) => {
 const getListOfAllSavedTransaction = async (request, response) => {
   try {
     const listOfTransactionsSaved = await Transaction.find(request.body);
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       list: listOfTransactionsSaved,
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -158,14 +146,14 @@ const gettingListOfSavedTransaction = async (request, response) => {
         JSON.stringify(listOfTransactionsSaved)
       );
       cache_connection.expire(`${params}`, 60);
-      response.status(201).json({
+      return response.status(201).json({
         ok: true,
         list: listOfTransactionsSaved,
       });
     }
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -177,13 +165,13 @@ const updateMultipleDocuments = async (request, response) => {
     const updateDocuments = await Transaction.find(
       request.body.find
     ).updateMany(request.body.update);
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       list: updateDocuments,
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -198,28 +186,28 @@ const removeDuplicateEntry = async (request, response) => {
       cache_connection.del(
         `event_id=${documentClearUpCache.event_id}&company=${documentClearUpCache.company}&consumerInfo.id=${documentClearUpCache.consumerInfo.id}`
       );
-      const duplicateEnrty = await Transaction.findByIdAndDelete(
+      const duplicateEntry = await Transaction.findByIdAndDelete(
         request.params.id
       );
-      if (duplicateEnrty) {
-        response.status(201).json({
+      if (duplicateEntry) {
+        return response.status(201).json({
           ok: true,
-          msg: `duplicate entry id ${request.params.id} removed from transaction document`,
+          msg: `Duplicate entry ID ${request.params.id} removed from transaction document`,
         });
       }
     }
-    const duplicateEnrty = await Transaction.findByIdAndDelete(
+    const duplicateEntry = await Transaction.findByIdAndDelete(
       request.params.id
     );
-    if (duplicateEnrty) {
-      response.status(201).json({
+    if (duplicateEntry) {
+      return response.status(201).json({
         ok: true,
-        msg: `duplicate entry id ${request.params.id} removed from transaction document`,
+        msg: `Duplicate entry ID ${request.params.id} removed from transaction document`,
       });
     }
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
