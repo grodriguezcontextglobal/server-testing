@@ -40,9 +40,9 @@ const createAdminUser = async (request, response = express.response) => {
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
-      msg: "Please contact Administrater",
+      msg: "Please contact Administrator",
     });
   }
 };
@@ -84,7 +84,7 @@ const loginUser = async (request, response = express.response) => {
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
@@ -176,7 +176,7 @@ const deleteAdminUser = async (request, response) => {
         msg: "Admin user/id do not match",
       });
     }
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       adminUser,
       msg: "admin user deleted",
@@ -196,7 +196,7 @@ const renewToken = async (request, response = express.response) => {
   //genrate a new jwt and return it in this request
   const token = await generateJWT(uid, name);
 
-  response.json({
+  return response.json({
     ok: true,
     name,
     uid,
@@ -256,12 +256,12 @@ const showAllUsers = async (request, response) => {
   const stripeTransactions = await StripeTransaction.find(request.body).populate("user");
 
   try {
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       stripeTransactions,
     });
   } catch (error) {
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -272,12 +272,12 @@ const showStaffs = async (request, response) => {
   const staff = await AdminUser.find(request.body);
 
   try {
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       staff,
     });
   } catch (error) {
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -288,13 +288,13 @@ const displayAllAdminUser = async (request, response) => {
   try {
     const adminUsers = await AdminUser.find(request.body);
 
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       adminUsers,
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -320,7 +320,7 @@ const articleSetup = async (request, response) => {
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error,
     });
@@ -330,18 +330,35 @@ const articleSetup = async (request, response) => {
 const displayArticles = async (request, response) => {
   try {
     const articles = await Article.find();
-    response.status(201).json({
+    return response.status(201).json({
       ok: true,
       articles,
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: error.response.data,
     });
   }
 };
+
+const checkStatus = async (request, response) => {
+  try {
+    const email = request.params.email
+    const checkOnlineStatus = await AdminUser.findOne({ email: email })
+    return response.status(201).json({
+      ok: true,
+      online: checkOnlineStatus.online
+    })
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+      error
+    })
+  }
+}
 module.exports = {
   renewToken,
   loginUser,
@@ -355,4 +372,5 @@ module.exports = {
   displayAllAdminUser,
   articleSetup,
   displayArticles,
+  checkStatus,
 };
