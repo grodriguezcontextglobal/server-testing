@@ -64,7 +64,7 @@ const createCompany = async (request, response = express.response) => {
     }
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
@@ -74,13 +74,11 @@ const createCompany = async (request, response = express.response) => {
 const updatingCompany = async (request, response = express.response) => {
   try {
     const cache_connection = await clientRedis();
-    await cache_connection.del(
-      `_id=${request.params.id}`
-    );
+    await cache_connection.del(`_id=${request.params.id}`);
     const paramsId = request.params.id;
     let companyInfo = await Company.findById(paramsId);
     if (!companyInfo) {
-      response.status(500).json({
+      return response.status(500).json({
         ok: false,
         msg: "No company in record.",
       });
@@ -101,17 +99,18 @@ const updatingCompany = async (request, response = express.response) => {
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
   }
 };
+
 const searchingCompany = async (request, response = express.response) => {
   try {
     let companyInfo = await Company.find(request.body);
     if (!companyInfo) {
-      response.status(500).json({
+      return response.status(500).json({
         ok: false,
         msg: "No company in record.",
       });
@@ -122,7 +121,7 @@ const searchingCompany = async (request, response = express.response) => {
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
@@ -138,17 +137,19 @@ const searchingGetCompanyInfo = async (
     const params = request._parsedUrl.query;
     const companyID = new URLSearchParams(params).get("_id");
     if (companyID) {
-      const companyInMemory = await cache_connection.get(`company_id=${companyID}`);
+      const companyInMemory = await cache_connection.get(
+        `company_id=${companyID}`
+      );
       return response.status(201).json({
-        cached:true,
+        cached: true,
         ok: true,
         company: JSON.parse(companyInMemory),
       });
     } else {
       let companyInfo = await Company.findById(companyID);
       if (!companyInfo) {
-        response.status(500).json({
-          cached:false,
+        return response.status(500).json({
+          cached: false,
           ok: false,
           msg: "No company in record.",
         });
@@ -159,14 +160,14 @@ const searchingGetCompanyInfo = async (
       );
       cache_connection.expire(`company_id=${companyID}`, 180);
       return response.status(201).json({
-        cached:false,
+        cached: false,
         ok: true,
         company: companyInfo,
       });
     }
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
@@ -177,7 +178,7 @@ const getCompanyList = async (request, response = express.response) => {
   try {
     let companyInfo = await Company.find();
     if (!companyInfo) {
-      response.status(500).json({
+      return response.status(500).json({
         ok: false,
         msg: "No company in record.",
       });
@@ -189,7 +190,7 @@ const getCompanyList = async (request, response = express.response) => {
     });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
     });
