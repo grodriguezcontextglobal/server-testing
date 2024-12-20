@@ -3,7 +3,7 @@ const compression = require('compression');
 const { dbConnection } = require("./database/config");
 const cors = require("cors");
 require("dotenv").config();
-const statusMonitor = require("express-status-monitor");
+// const statusMonitor = require("express-status-monitor");
 const cluster = require("node:cluster");
 const OS = require("node:os");
 const admin = require("./routes/admin");
@@ -78,18 +78,18 @@ const app = express();
 // Enable Gzip compression
 app.use(compression());
 
-app.use(
-  statusMonitor({
-    healthChecks: [
-      {
-        protocol: "https",
-        host: "db.devitrak.net",
-        path: "/api/auth/users",
-        port: process.env.PORT,
-      }, 
-    ],
-  })
-);
+// app.use(
+//   statusMonitor({
+//     healthChecks: [
+//       {
+//         protocol: "https",
+//         host: "db.devitrak.net",
+//         path: "/api/auth/users",
+//         port: process.env.PORT,
+//       }, 
+//     ],
+//   })
+// );
 
 app.use(cors(corsOptions));
 
