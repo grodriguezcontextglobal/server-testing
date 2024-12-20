@@ -15,6 +15,7 @@ const {
   deleteAdminUser,
   updatePassword,
   editOtherAdminUser,
+  checkStatus,
 } = require("../controller/admin");
 const {
   addReceiverToTransaction,
@@ -80,5 +81,8 @@ router.post("/receiver-assignation", addReceiverToTransaction);
 
 //check paymentIntent was used for receivers
 router.get("/receiver-assigned", checkingReceiversAssigned);
+
+//check user online status
+router.get('/check-online-status/:email', checkStatus)
 
 module.exports = router;
