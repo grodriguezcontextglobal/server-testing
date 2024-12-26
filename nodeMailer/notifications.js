@@ -51,32 +51,17 @@ const assingDeviceNotification = async (request, response) => {
 
 const returningDeviceNotification = async (request, response) => {
   try {
-    const transport = await nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "devitrak.testing@outlook.com",
-        pass: "@dmin.Devitr@k",
-      },
-      // tls: {
-      //   ciphers: "SSLv3",
-      // },
-    });
-
-    const info = await transport.sendMail({
-      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: `${request.body.consumer.name} <${request.body.consumer.email}>`,
+    const info = {
+      from: "devitrak.testing@outlook.com",
+      to: `${request.body.consumer.firstName} ${request.body.consumer.lastName} <${request.body.consumer.email}>`,
       subject: "Returned device notification",
       html: returnConfirmationMessageHtml(request.body),
-    });
-
-    response.status(201).json({
-      notification: info.messageId,
+    };
+    return sgMail.send(info).then(() => {
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
     });
   } catch (error) {
     console.log(`read the following error: ${error}`);

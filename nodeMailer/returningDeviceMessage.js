@@ -247,6 +247,14 @@ const returnConfirmationMessageHtml = (props) => {
         font-weight: 600;
       }
 
+            .qr-code {
+        font-size: 12px;
+        color: #475467;
+        text-align: center;
+        margin-top: 40px;
+      }
+
+
       .footer {
         font-size: 12px;
         color: #475467;
@@ -275,8 +283,8 @@ const returnConfirmationMessageHtml = (props) => {
     <div class="container">
       <h1>Devices Returned Receipt</h1>
       <p>
-        Dear ${props.adminUser.firstName} ${
-    props.adminUser.lastName
+        Dear ${props.consumer.firstName} ${
+    props.consumer.lastName
   }, this email confirms that all devices have been returned successfully from the transaction below.
       </p>
 
@@ -284,9 +292,10 @@ const returnConfirmationMessageHtml = (props) => {
         <thead>
           <tr>
             <th>Device</th>
-            <th>Status</th>
+            <th>Serial number</th>
             <th>Transaction ID</th>
             <th>Date</th>
+            <th>Staff collector</th>
           </tr>
         </thead>
         <tbody>
@@ -294,10 +303,11 @@ const returnConfirmationMessageHtml = (props) => {
             .map(
               (device) => `
             <tr>
-              <td>${device.deviceType}</td>
-              <td>${device.status ? "In-use" : "Returned"}</td>
-              <td>${device.transactionId}</td>
-              <td>${device.date}</td>
+              <td>${device.device.deviceType}</td>
+              <td>${device.device.serialNumber}</td>
+              <td>${device.paymentIntent}</td>
+              <td>${new Date().toLocaleDateString()}</td>
+              <td>${props.admin}</td>
             </tr>
           `
             )
@@ -307,6 +317,8 @@ const returnConfirmationMessageHtml = (props) => {
 
       <a href="${props.link}" target="_blank">Open App</a>
 
+      <div class="qr-code">
+      </div>
       <div class="footer">
         <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
       </div>
