@@ -48,29 +48,23 @@ const insertingCompany = (request, response) => {
   }
 };
 
-const consultingCompany = (request, response) => {
-  try {
-    const connection = getConnection();
-    const reference = Object.entries(request.body); //method to pass any key value to search
-    const query = `select * from company_info where \`${reference[0][0]}\`=?`;
-    const values = [reference[0][1]];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
+const consultingCompany = async (request, response) => {
+  const connection = getConnection();
+  const reference = Object.entries(request.body);
+  const query = `SELECT * FROM company_info WHERE \`${reference[0][0]}\` = ?`;
+  const values = [reference[0][1]];
 
-      return response.status(201).json({
-        ok: true,
-        company: result,
-      });
+  try {
+    const [result] = await connection.promise().execute(query, values);
+    return response.status(200).json({
+      ok: true,
+      company: result,
     });
-  } catch (error) {
-    console.error("Error:", error.message);
-    response.status(500).json({
+  } catch (err) {
+    console.error("Error:", err.message);
+    return response.status(500).json({
       ok: false,
-      msg: `${error.message}`,
+      msg: err.message,
     });
   }
 };
@@ -102,17 +96,18 @@ const consultingCompanyTable = async (request, response) => {
     const connection = getConnection();
     const query = "select * from company_info;";
     const values = [];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-
-      return response?.status(201)?.json({
-        ok: true,
-        companies: result,
+    const [error, result] = await connection.promise().execute(query, values);
+    // connection.execute(query, values, function (err, result, fields) {
+    if (error)
+      return response.status(500).json({
+        ok: false,
+        msg: `${error.message}`,
       });
+
+    //   });
+    return response?.status(201)?.json({
+      ok: true,
+      companies: result,
     });
   } catch (error) {
     console.error("Error:", error.message);
@@ -128,17 +123,18 @@ const consultingIndustryCompanyTable = async (request, response) => {
     const connection = getConnection();
     const query = "select industry from company_info;";
     const values = [];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-
-      return response?.status(201)?.json({
-        ok: true,
-        industry: result,
+    const [error, result] = await connection.promise().execute(query, values);
+    // connection.execute(query, values, function (err, result, fields) {
+    // });
+    if (error)
+      return response.status(500).json({
+        ok: false,
+        msg: `${error.message}`,
       });
+
+    return response?.status(201)?.json({
+      ok: true,
+      industry: result,
     });
   } catch (error) {
     console.error("Error:", error.message);
@@ -163,17 +159,18 @@ const updateCompanyData = async (request, response) => {
                                 email_company=?,
                                 update_at=NOW()
                             WHERE company_id=?`;
-    connection.execute(query, values, function (err, result, fields) {
-      if (err) {
-        return response.status(401).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      }
-      return response.status(201).json({
-        ok: true,
-        items: result.affectedRows,
+    const [err, result] = await connection.promise().execute(query, values);
+    // connection.execute(query, values, function (err, result, fields) {
+    // });
+    if (err) {
+      return response.status(401).json({
+        ok: false,
+        msg: `${err.message}`,
       });
+    }
+    return response.status(201).json({
+      ok: true,
+      items: result.affectedRows,
     });
   } catch (error) {
     console.error("Error:", error.message);

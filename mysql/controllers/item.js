@@ -4,87 +4,85 @@ const { clientRedis } = require("../../database/cacheMemoryConfig");
 require("dotenv").config();
 
 const insertingItem = async (request, response) => {
-  try {
-    const connection = getConnection();
-    const cache_connection = await clientRedis();
-    const {
-      category_name,
-      item_group,
-      cost,
+  const connection = getConnection();
+  const cache_connection = await clientRedis();
+  const {
+    category_name,
+    item_group,
+    cost,
+    brand,
+    descript_item,
+    ownership,
+    main_warehouse,
+    serial_number,
+    warehouse,
+    company,
+    location,
+    current_location,
+    extra_serial_number,
+    company_id,
+    return_date,
+  } = request.body;
+
+  const query = `
+    INSERT INTO item_inv (
+      category_name, 
+      item_group, 
+      cost, 
       brand,
-      descript_item,
-      ownership,
+      descript_item, 
+      ownership, 
       main_warehouse,
-      serial_number,
-      warehouse,
-      company,
+      serial_number, 
+      warehouse, 
+      company, 
       location,
       current_location,
       extra_serial_number,
       company_id,
       return_date,
-    } = request.body;
-    const query = `
-                        insert into item_inv
-                        (
-                        category_name, 
-                        item_group, 
-                        cost, 
-                        brand,
-                        descript_item, 
-                        ownership, 
-                        main_warehouse,
-                        serial_number, 
-                        warehouse, 
-                        company, 
-                        location,
-                        current_location,
-                        extra_serial_number,
-                        company_id,
-                        return_date,
-                        enableAssignFeature
-                        )
-                        values(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`;
-    const values = [
-      `${category_name}`,
-      `${item_group}`,
-      `${cost}`,
-      `${brand}`,
-      `${descript_item}`,
-      `${ownership}`,
-      `${main_warehouse}`,
-      `${serial_number}`,
-      warehouse,
-      `${company}`,
-      `${location}`,
-      `${current_location}`,
-      `${extra_serial_number}`,
-      company_id,
-      `${return_date && return_date}`,
-      true,
-    ];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      cache_connection.del(
-        `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
-      );
-      cache_connection.del(
-        `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
-      );
-      return response.status(201).json({
-        ok: true,
-        item: result,
-      });
+      enableAssignFeature
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `;
+
+  const values = [
+    category_name,
+    item_group,
+    cost,
+    brand,
+    descript_item,
+    ownership,
+    main_warehouse,
+    serial_number,
+    warehouse,
+    company,
+    location,
+    current_location,
+    extra_serial_number,
+    company_id,
+    return_date || null,
+    true,
+  ];
+
+  try {
+    const [result] = await connection.promise().execute(query, values);
+
+    await cache_connection.del(
+      `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
+    );
+    await cache_connection.del(
+      `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
+    );
+
+    return response.status(201).json({
+      ok: true,
+      item: result,
     });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
-      msg: `${error.message}`,
+      msg: error.message,
     });
   }
 };
@@ -181,25 +179,19 @@ const insertBulkItem = async (request, response) => {
       return_date || null,
       enableAssignFeature,
     ]);
+    const [result] = await connection.promise().query(query, [values]);
+    // connection.query(query, [values], function (err, result) {
+    // });
+    cache_connection.del(
+      `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
+    );
+    cache_connection.del(
+      `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
+    );
 
-    connection.query(query, [values], function (err, result) {
-      if (err) {
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      }
-      cache_connection.del(
-        `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
-      );
-      cache_connection.del(
-        `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
-      );
-
-      return response.status(201).json({
-        ok: true,
-        item: result,
-      });
+    return response.status(201).json({
+      ok: true,
+      item: result,
     });
   } catch (error) {
     response.status(500).json({
@@ -212,26 +204,21 @@ const insertBulkItem = async (request, response) => {
 const consultingItem = async (request, response) => {
   try {
     const connection = getConnection();
-    const formatting = Object.keys(request.body).map((item) => item + "=?");
-    const keys = formatting.toString().replaceAll(",", " AND ");
-    const values = [...Object.values(request.body).map((item) => item)];
-    const query = `select * from item_inv where ${keys};`;
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      return response.status(201).json({
-        ok: true,
-        items: result,
-      });
+    const formatting = Object.keys(request.body)
+      .map((item) => `${item}=?`)
+      .join(" AND ");
+    const values = Object.values(request.body);
+    const query = `SELECT * FROM item_inv WHERE ${formatting};`;
+    const [result] = await connection.promise().execute(query, values);
+    return response.status(201).json({
+      ok: true,
+      items: result,
     });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
-      msg: `${error.message}`,
+      msg: error.message,
     });
   }
 };
@@ -239,45 +226,37 @@ const consultingItem = async (request, response) => {
 const deleteItem = async (request, response) => {
   try {
     const connection = getConnection();
-    const query = "delete from item_inv where item_id=?";
+    const query = "DELETE FROM item_inv WHERE item_id=?";
     const values = [request.body.item_id];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      return response?.status(201)?.json({
-        ok: true,
-        item_deleted: result,
-      });
+    const [result] = await connection.promise().execute(query, values);
+    return response.status(201).json({
+      ok: true,
+      item_deleted: result,
     });
   } catch (error) {
     console.error("Error:", error.message);
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
   }
 };
 
 const consultingItemTable = async (request, response) => {
   try {
     const connection = getConnection();
-    const query = "select * from item_inv where company=?;";
-    const values = [`${request.body.company}`];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      return response.status(201).json({
-        ok: true,
-        items: result,
-      });
+    const query = "SELECT * FROM item_inv WHERE company=?;";
+    const values = [request.body.company];
+    const [result] = await connection.promise().execute(query, values);
+    return response.status(201).json({
+      ok: true,
+      items: result,
     });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
-      msg: `${error.message}`,
+      msg: error.message,
     });
   }
 };
@@ -285,38 +264,21 @@ const consultingItemTable = async (request, response) => {
 const consultingItemInWarehouseTable = async (request, response) => {
   try {
     const connection = getConnection();
-    const formatting = Object.keys(request.body).map((item) => item + "=?");
-    const keys = formatting.toString().replaceAll(",", " AND ");
-    const values = [...Object.values(request.body).map((item) => item)];
-    const query = `select * from item_inv where ${keys}`;
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      return response.status(201).json({
-        ok: true,
-        items: JSON.stringify(result),
-      });
+    const formatting = Object.keys(request.body)
+      .map((item) => `${item}=?`)
+      .join(" AND ");
+    const values = Object.values(request.body);
+    const query = `SELECT * FROM item_inv WHERE ${formatting};`;
+    const [result] = await connection.promise().execute(query, values);
+    return response.status(201).json({
+      ok: true,
+      items: result,
     });
-    // connection.execute(query, values, function (err, result, fields) {
-    //   if (err)
-    //     return response.status(500).json({
-    //       ok: false,
-    //       msg: `${err.message}`,
-    //     });
-
-    //   return response?.status(201)?.json({
-    //     ok: true,
-    //     items: result,
-    //   });
-    // });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
-      msg: `${error.message}`,
+      msg: error.message,
     });
   }
 };
@@ -324,7 +286,6 @@ const consultingItemInWarehouseTable = async (request, response) => {
 const updateItemInTable = async (request, response) => {
   try {
     const connection = getConnection();
-    const cache_connection = await clientRedis();
     const {
       item_id,
       category_name,
@@ -345,23 +306,24 @@ const updateItemInTable = async (request, response) => {
     } = request.body;
 
     const query = `
-    UPDATE item_inv 
-    SET category_name = ?, 
-    item_group = ?,  
-    cost = ?,  
-    brand = ?, 
-    descript_item = ?, 
-    ownership = ?, 
-      serial_number = ?, 
-      warehouse = ?, 
-      status = ?, 
-      main_warehouse = ?, 
-      update_at = ?, 
-      company = ?, 
-      location = ?, 
-      current_location = ?, 
-      return_date = ? 
-      WHERE item_id = ?`;
+      UPDATE item_inv 
+      SET category_name = ?, 
+          item_group = ?,  
+          cost = ?,  
+          brand = ?, 
+          descript_item = ?, 
+          ownership = ?, 
+          serial_number = ?, 
+          warehouse = ?, 
+          status = ?, 
+          main_warehouse = ?, 
+          update_at = ?, 
+          company = ?, 
+          location = ?, 
+          current_location = ?, 
+          return_date = ? 
+      WHERE item_id = ?;
+    `;
 
     const values = [
       category_name,
@@ -378,26 +340,20 @@ const updateItemInTable = async (request, response) => {
       company,
       location,
       current_location,
-      return_date, // this should be formatted correctly as a string
-      item_id, // item_id should be the last parameter in the query
+      return_date,
+      item_id,
     ];
-    
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(401).json({
-      ok: false,
-      msg: `${err.message}`,
-    });
-      return response.status(201).json({
-        ok: true,
-        items: result,
-      });
+
+    const [result] = await connection.promise().execute(query, values);
+    return response.status(201).json({
+      ok: true,
+      items: result,
     });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
-      msg: `${error.message}`,
+      msg: error.message,
     });
   }
 };
@@ -587,23 +543,24 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
       item_group,
       company_id,
     ];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(401).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      cache_connection.del(
-        `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
-      );
-      cache_connection.del(
-        `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
-      );
+    const [result] = await connection.promise().execute(query, values);
+    // , function (err, result, fields) {
+    //   if (err)
+    //     return response.status(401).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
+    //   });
+    cache_connection.del(
+      `company_id=${company_id}&warehouse=true&enableAssignFeature=1`
+    );
+    cache_connection.del(
+      `company_id=${company_id}&warehouse=false&enableAssignFeature=1`
+    );
 
-      return response?.status(201)?.json({
-        ok: true,
-        items: result,
-      });
+    return response?.status(201)?.json({
+      ok: true,
+      items: result,
     });
   } catch (error) {
     console.error("Error:", error.message);
@@ -613,6 +570,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
     });
   }
 };
+
 const returningItemToStockWhenEventIsFinishedRefactored = async (
   request,
   response
@@ -651,15 +609,16 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
           data.item_group,
           company_id,
         ];
-        connection.execute(query, values, function (err, result, fields) {
-          if (err) {
-            return response.status(401).json({
-              ok: false,
-              msg: `${err.message}`,
-            });
-          }
-          resultAffectedRows = [...resultAffectedRows, result.affectedRows];
-        });
+        const [result] = await connection.promise().execute(query, values);
+        //  , function (err, result, fields) {
+        //     if (err) {
+        //       return response.status(401).json({
+        //         ok: false,
+        //         msg: `${err.message}`,
+        //       });
+        //     }
+        //   });
+        resultAffectedRows = [...resultAffectedRows, result.affectedRows];
       } else {
         const values = [
           data.status,
@@ -669,19 +628,19 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
           data.item_group,
           company_id,
         ];
-        connection.execute(query, values, function (err, result, fields) {
-          if (err) {
-            return response.status(401).json({
-              ok: false,
-              msg: `${err.message}`,
-            });
-          }
-          console.log(
-            "returningItemToStockWhenEventIsFinishedRefactored affected row",
-            result.affectedRows
-          );
-          resultAffectedRows = [...resultAffectedRows, result.affectedRows];
-        });
+        const [result] = await connection.promise().execute(query, values);
+        // if (err) {
+        //     return response.status(401).json({
+        //       ok: false,
+        //       msg: `${err.message}`,
+        //     });
+        //   }
+        //   console.log(
+        //     "returningItemToStockWhenEventIsFinishedRefactored affected row",
+        //     result.affectedRows
+        //   );
+        // });
+        resultAffectedRows = [...resultAffectedRows, result.affectedRows];
       }
     }
     cache_connection.del(
@@ -716,16 +675,17 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
                 AND iiae.event_id = ?;
                     `;
     const values = [status, condition, updated_at, serial_number, event_id];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(401).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      return response?.status(201)?.json({
-        ok: true,
-        items: result,
-      });
+    const [result] = await connection.promise().execute(query, values);
+    // , function (err, result, fields) {
+    // if (err)
+    //   return response.status(401).json({
+    //     ok: false,
+    //     msg: `${err.message}`,
+    //   });
+    // });
+    return response?.status(201)?.json({
+      ok: true,
+      items: result,
     });
   } catch (error) {
     console.error("Error:", error.message);
@@ -769,16 +729,17 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
           data.serial_number,
           event_id,
         ];
-        connection.execute(query, values, function (err, result, fields) {
-          if (err) {
-            console.log("error in item final status", err);
-            return response.status(401).json({
-              ok: false,
-              msg: `${err.message}`,
-            });
-          }
-          finalResult = [...finalResult, result];
-        });
+        const [result] = await connection.promise().execute(query, values);
+        // , function (err, result, fields) {
+        //   if (err) {
+        //     console.log("error in item final status", err);
+        //     return response.status(401).json({
+        //       ok: false,
+        //       msg: `${err.message}`,
+        //     });
+        //   }
+        // });
+        finalResult = [...finalResult, result];
       } else {
         const values = [
           data.status,
@@ -787,16 +748,17 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
           data.serial_number,
           event_id,
         ];
-        connection.execute(query, values, function (err, result, fields) {
-          if (err)
-            return response.status(401).json({
-              ok: false,
-              msg: `${err.message}`,
-            });
-          console.log("affected row", result.affectedRows);
+        const [result] = await connection.promise().execute(query, values);
+        // , function (err, result, fields) {
+        //   if (err)
+        //     return response.status(401).json({
+        //       ok: false,
+        //       msg: `${err.message}`,
+        //     });
+        //   console.log("affected row", result.affectedRows);
 
-          finalResult = [...finalResult, result];
-        });
+        // });
+        finalResult = [...finalResult, result];
       }
     }
     return response.status(201)?.json({
@@ -811,7 +773,8 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
     });
   }
 };
-const consultingInventoryTracking = (request, response) => {
+
+const consultingInventoryTracking = async (request, response) => {
   try {
     const connection = getConnection();
     const item_id = request.params.id;
@@ -824,16 +787,17 @@ const consultingInventoryTracking = (request, response) => {
     ORDER by iiae.event_id DESC
     `;
     const values = [item_id];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      return response.status(201).json({
-        ok: true,
-        result,
-      });
+    const [result] = await connection.promise().execute(query, values);
+    // , function (err, result, fields) {
+    //   if (err)
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
+    //   });
+    return response.status(201).json({
+      ok: true,
+      result,
     });
   } catch (error) {
     console.error("Error:", error.message);
@@ -846,7 +810,7 @@ const consultingInventoryTracking = (request, response) => {
 
 const checkingInventoryCurrentState = async (request, response) => {
   try {
-    const connection = getConnection();
+    const connection = await getConnection();
     const item_id = request.params.id;
     const query = `
     SELECT ii.* , iiae.status, iiae.condition, ei.*
@@ -857,16 +821,17 @@ const checkingInventoryCurrentState = async (request, response) => {
         ORDER by iiae.event_id DESC
         `;
     const values = [item_id];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      return response.status(201).json({
-        ok: true,
-        result,
-      });
+    const [result] = await connection.promise().execute(query, values);
+    // , function (err, result, fields) {
+    //   if (err)
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
+    //   });
+    return response.status(201).json({
+      ok: true,
+      result,
     });
   } catch (error) {
     console.error("Error:", error.message);
@@ -885,7 +850,7 @@ const checkingItem = async (request, response) => {
     const checkingInMemory = await cache_connection.get(`${params}`);
     if (checkingInMemory) {
       return response.status(201).json({
-        cached:true,
+        cached: true,
         ok: true,
         items: JSON.parse(checkingInMemory),
       });
@@ -896,19 +861,20 @@ const checkingItem = async (request, response) => {
       const values = [...splitting.map((item) => item.split("=")[1])];
       const query = `select * from item_inv where ${keys};`;
       const connection = getConnection();
-      connection.execute(query, values, function (err, result, fields) {
-        if (err)
-          return response.status(500).json({
-            ok: false,
-            msg: `${err.message}`,
-          });
-        cache_connection.set(`${params}`, JSON.stringify(result));
-        cache_connection.expire(`${params}`, 60);
-        return response.status(201).json({
-          cached:false,
-          ok: true,
-          items: result,
-        });
+      const [result] = await connection.promise().execute(query, values);
+      // , function (err, result, fields) {
+      //   if (err)
+      //     return response.status(500).json({
+      //       ok: false,
+      //       msg: `${err.message}`,
+      //     });
+      //   });
+      cache_connection.set(`${params}`, JSON.stringify(result));
+      cache_connection.expire(`${params}`, 60);
+      return response.status(201).json({
+        cached: false,
+        ok: true,
+        items: result,
       });
     }
   } catch (error) {
@@ -920,10 +886,11 @@ const checkingItem = async (request, response) => {
   }
 };
 
-const searchingInventoryTracking = (request, response) => {
+const searchingInventoryTracking = async (request, response) => {
   try {
     const connection = getConnection();
     const { searchValue, company_id } = request.body;
+    console.log(request.body)
     const query = `
     SELECT *
     FROM item_inv
@@ -951,16 +918,18 @@ const searchingInventoryTracking = (request, response) => {
       `%${searchValue}%`,
       `%${searchValue}%`,
     ];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      return response.status(201).json({
-        ok: true,
-        result,
-      });
+    const [result] = await connection.promise().execute(query, values);
+    console.log(result)
+    // , function (err, result, fields) {
+    //   if (err)
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
+    //   });
+    return response.status(201).json({
+      ok: true,
+      result,
     });
   } catch (error) {
     response.status(500).json({
@@ -975,6 +944,8 @@ const searchingGetInventoryTracking = async (request, response) => {
   try {
     const connection = getConnection();
     const params = request._parsedUrl.query;
+    console.log(params)
+
     const splitting = params.split("&");
     const query = `
     SELECT *
@@ -1004,16 +975,18 @@ const searchingGetInventoryTracking = async (request, response) => {
       `%${searchingValue[1]}%`,
       `%${searchingValue[1]}%`,
     ];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      return response.status(201).json({
-        ok: true,
-        result,
-      });
+    const [result] = await connection.promise().execute(query, values);
+    console.log(result)
+    // , function (err, result, fields) {
+    // if (err)
+    //   return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
+    //   });
+    return response.status(201).json({
+      ok: true,
+      result,
     });
   } catch (error) {
     response.status(500).json({
@@ -1054,27 +1027,25 @@ const fragmentData = async (request, response) => {
     `;
 
     const values = [company_id, limit, offset];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err) {
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      }
+    const [result] = await connection.promise().execute(query, values);
+    //   , function (err, result, fields) {
+    //   if (err) {
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
+    //   }
 
-      cache_connection.set(
-        `inventory_${company_id}_${offset}_${limit}`,
-        JSON.stringify(result)
-      );
-      cache_connection.expire(
-        `inventory_${company_id}_${offset}_${limit}`,
-        120
-      );
+    // });
+    cache_connection.set(
+      `inventory_${company_id}_${offset}_${limit}`,
+      JSON.stringify(result)
+    );
+    cache_connection.expire(`inventory_${company_id}_${offset}_${limit}`, 120);
 
-      return response.status(201).json({
-        ok: true,
-        items: result,
-      });
+    return response.status(201).json({
+      ok: true,
+      items: result,
     });
   } catch (error) {
     const responseTemplate = {
@@ -1115,23 +1086,24 @@ const gettingDataFromLocationOption = async (request, response) => {
     const values = [company_id];
 
     // Execute the query
-    connection.execute(query, values, function (err, result, fields) {
-      if (err) {
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      }
-      // Cache the data
-      cache_connection.set(`inventory_${company_id}`, JSON.stringify(result));
-      cache_connection.expire(`inventory_${company_id}`, 120);
+    const [result] = await connection.promise().execute(query, values);
+    //   , function (err, result, fields) {
+    //   if (err) {
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
+    //   }
 
-      // Send the response
-      return response.status(201).json({
-        ok: true,
-        items: result,
-        cached: false,
-      });
+    //   // Send the response
+    // });
+    // Cache the data
+    cache_connection.set(`inventory_${company_id}`, JSON.stringify(result));
+    cache_connection.expire(`inventory_${company_id}`);
+    return response.status(201).json({
+      ok: true,
+      items: result,
+      cached: false,
     });
   } catch (error) {
     const responseTemplate = {
