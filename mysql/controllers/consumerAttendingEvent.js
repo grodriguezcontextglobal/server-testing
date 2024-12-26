@@ -5,21 +5,22 @@ const getConnection = require('../database/config');
 
 const connection = getConnection()
 
-const insertingConsumerAttendingEvent = (request, response) => {
+const insertingConsumerAttendingEvent = async(request, response) => {
     try {
         const { consumer_attending_id, event_attended_id } = request.body;
         const query = 'insert into consumer_attending_event (consumer_attending_id,event_attended_id) values(?,?)';
         const values = [consumer_attending_id, event_attended_id];
-        connection.execute(query, values, function (err, result, fields) {
-            if (err) return response.status(500).json({
-                ok: false,
-                msg: `${err.message}`,
-            });
+        const [result] = await connection.promise().execute(query, values)
+        // , function (err, result, fields) {
+        //     if (err) return response.status(500).json({
+        //         ok: false,
+        //         msg: `${err.message}`,
+        //     });
 
-            return response.status(201).json({
-                ok: true,
-                customer: result
-            });
+        // });
+        return response.status(201).json({
+            ok: true,
+            customer: result
         });
     } catch (error) {
         console.error('Error:', error.message);
