@@ -307,7 +307,9 @@ const returnConfirmationMessageHtml = (props) => {
               <td>${device.device.serialNumber}</td>
               <td>${device.paymentIntent}</td>
               <td>${new Date().toLocaleDateString()}</td>
-              <td>${props.admin}</td>
+              <td><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">${
+                props.admin
+              }</p></td>
             </tr>
           `
             )
@@ -315,7 +317,9 @@ const returnConfirmationMessageHtml = (props) => {
         </tbody>
       </table>
 
-      <a href="${props.link}" target="_blank">Open App</a>
+      <a href="${
+        props.link
+      }" target="_blank"><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">Open App</p></a>
 
       <div class="qr-code">
       </div>
