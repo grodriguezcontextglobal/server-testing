@@ -246,11 +246,11 @@ const getListOfItemsInEventPool = async (request, response) => {
     const cachedList = await cache_connection.get(
       `eventSelected=${eventID}&company=${companyID}`
     );
-    if (cachedList && !cachedList) {
+    if (cachedList) {
       return response.status(200).json({
         cached: true,
         ok: true,
-        receiversInventory: JSON.parse(cachedList),
+        receiversInventory: cachedList //JSON.parse(cachedList),
       });
     } else {
       const formatting = [...params.split("&")];
@@ -272,7 +272,8 @@ const getListOfItemsInEventPool = async (request, response) => {
       );
       return response.status(200).json({
         ok: true,
-        receiversInventory: items,
+        cached: false,  
+        receiversInventory: JSON.stringify(items),
       });
     }
   } catch (error) {
