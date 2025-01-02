@@ -1,6 +1,7 @@
 const { response, request } = require("express");
 const getConnection = require("../database/config");
 const { clientRedis } = require("../../database/cacheMemoryConfig");
+const { remove } = require("lodash");
 require("dotenv").config();
 
 const insertingItem = async (request, response) => {
@@ -22,6 +23,8 @@ const insertingItem = async (request, response) => {
     extra_serial_number,
     company_id,
     return_date,
+    container,
+    containerSpotLimit,
   } = request.body;
 
   const query = `
@@ -41,8 +44,10 @@ const insertingItem = async (request, response) => {
       extra_serial_number,
       company_id,
       return_date,
+      container,
+      containerSpotLimit,
       enableAssignFeature
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   const values = [
@@ -61,6 +66,8 @@ const insertingItem = async (request, response) => {
     extra_serial_number,
     company_id,
     return_date || null,
+    container,
+    containerSpotLimit,
     true,
   ];
 
@@ -109,6 +116,8 @@ const insertBulkItem = async (request, response) => {
       min_serial_number,
       max_serial_number,
       enableAssignFeature,
+      container,
+      containerSpotLimit,
     } = request.body;
 
     if (!min_serial_number || !max_serial_number) {
@@ -155,7 +164,9 @@ const insertBulkItem = async (request, response) => {
         extra_serial_number,
         company_id,
         return_date,
-        enableAssignFeature
+        enableAssignFeature,
+        container,
+        containerSpotLimit
       )
       VALUES ?
     `;
@@ -178,6 +189,8 @@ const insertBulkItem = async (request, response) => {
       company_id,
       return_date || null,
       enableAssignFeature,
+      container,
+      containerSpotLimit,
     ]);
     const [result] = await connection.promise().query(query, [values]);
     // connection.query(query, [values], function (err, result) {
@@ -890,7 +903,6 @@ const searchingInventoryTracking = async (request, response) => {
   try {
     const connection = getConnection();
     const { searchValue, company_id } = request.body;
-    console.log(request.body)
     const query = `
     SELECT *
     FROM item_inv
@@ -919,7 +931,6 @@ const searchingInventoryTracking = async (request, response) => {
       `%${searchValue}%`,
     ];
     const [result] = await connection.promise().execute(query, values);
-    console.log(result)
     // , function (err, result, fields) {
     //   if (err)
     //     return response.status(500).json({
@@ -944,8 +955,6 @@ const searchingGetInventoryTracking = async (request, response) => {
   try {
     const connection = getConnection();
     const params = request._parsedUrl.query;
-    console.log(params)
-
     const splitting = params.split("&");
     const query = `
     SELECT *
@@ -976,7 +985,6 @@ const searchingGetInventoryTracking = async (request, response) => {
       `%${searchingValue[1]}%`,
     ];
     const [result] = await connection.promise().execute(query, values);
-    console.log(result)
     // , function (err, result, fields) {
     // if (err)
     //   return response.status(500).json({
@@ -1116,6 +1124,155 @@ const gettingDataFromLocationOption = async (request, response) => {
   }
 };
 
+const checkInventoryCompanyExists = async (request, response) => {
+  try {
+    const params = request._parsedUrl.query;
+    const company_id = new URLSearchParams(params).get("company_id");
+    const connection = getConnection();
+    const cache_connection = await clientRedis();
+    const cachedData = await cache_connection.get(
+      `company_${company_id}_inventory_counting`
+    );
+    if (cachedData) {
+      cache_connection.del(`company_${company_id}_inventory_counting`);
+      return response.json({
+        statusCode: 200,
+        ok: true,
+        items: cachedData,
+        cached: true,
+      });
+    }
+    const query = `
+      SELECT COUNT(*)
+      FROM item_inv
+      WHERE company_id = ?
+    `;
+    const values = [company_id];
+    const [result] = await connection.promise().execute(query, values);
+    await cache_connection.set(
+      `company_${company_id}_inventory_counting`,
+      JSON.stringify(result)
+    );
+    return response.json({
+      statusCode: 200,
+      cached: false,
+      ok: true,
+      items: JSON.stringify(result),
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const containerItemsDetails = async (props) => {
+  try {
+    const connection = getConnection();
+    //removing items from container
+    const removingItems =
+      typeof props.remove === "string"
+        ? JSON.parse(props.remove)
+        : props.remove;
+    for (let item of removingItems) {
+      const query = `
+      UPDATE item_inv
+      SET container_id = ?,
+      isItInContainer = ?,
+      display_item = ?
+      WHERE item_id = ?;
+      `;
+      const values = [null, 0, 1, item.item_id];
+      await connection.promise().execute(query, values);
+    }
+    //adding new items to container
+    const data =
+      typeof props.data === "string" ? JSON.parse(props.data) : props.data;
+    for (let item of data) {
+      const query = `
+      UPDATE item_inv
+      SET container_id = ?,
+      isItInContainer = ?,
+      display_item = ?
+      WHERE item_id = ?;
+    `;
+      const values = [props.container_id, 1, 0, item.item_id];
+      await connection.promise().execute(query, values);
+    }
+  } catch (error) {
+    console.error("Error:", error);
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const updateContentInContainerItem = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const { item_id, container_items, ref } = request.body;
+    const query = `
+      UPDATE item_inv
+      SET container_items = ?
+      WHERE item_id = ?;
+    `;
+
+    const values = [container_items, item_id];
+    const [result] = await connection.promise().execute(query, values);
+    await containerItemsDetails({
+      data: container_items,
+      container_id: item_id,
+      remove: ref,
+    });
+    return response.status(201).json({
+      ok: true,
+      items: result,
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const updateItemInTableAfterBeingAddedToEventFromContainer = async (
+  request,
+  response
+) => {
+  try {
+    const connection = getConnection();
+    const { refDatabase, warehouse } = request.body;
+    const database =
+      typeof refDatabase === "string" ? JSON.parse(refDatabase) : refDatabase;
+    for (let item of database) {
+      const query = `
+        UPDATE item_inv 
+        SET warehouse = ? 
+        WHERE item_id = ?;
+      `;
+
+      const values = [warehouse, item.item_id];
+
+      await connection.promise().execute(query, values);
+    }
+    return response.status(201).json({
+      ok: true,
+      msg:"Items updated successfully in the warehouse",
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
 module.exports = {
   consultingItem,
   insertingItem,
@@ -1137,4 +1294,7 @@ module.exports = {
   gettingDataFromLocationOption,
   returningItemToStockWhenEventIsFinishedRefactored,
   itemFinalStatusWhenEventIsFinishedRefactored,
+  checkInventoryCompanyExists,
+  updateContentInContainerItem,
+  updateItemInTableAfterBeingAddedToEventFromContainer,
 };
