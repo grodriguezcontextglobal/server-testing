@@ -19,12 +19,14 @@ const {
   consultingInventoryInEvent,
   deletingItemsInEventAfterDeviceInventoryIsUpdated,
   insertingDeviceInEventDirectly,
+  insertingDeviceInEventDirectlyFromContainer,
 } = require("../controllers/items_events");
 const {
   returningItemToStockWhenEventIsFinished,
   itemFinalStatusWhenEventIsFinished,
   returningItemToStockWhenEventIsFinishedRefactored,
   itemFinalStatusWhenEventIsFinishedRefactored,
+  updateItemInTableAfterBeingAddedToEventFromContainer,
 } = require("../controllers/item");
 const router = Router();
 
@@ -83,5 +85,11 @@ router.post(
 
 //update status of item based on event
 router.post("/update-status-item-based-on-event", updateStatusItemBasedOnEvent);
+
+//update item in table after being added to event from container
+router.post("/update-item-in-table-after-being-added-to-event-from-container", updateItemInTableAfterBeingAddedToEventFromContainer);
+
+//inserting items in event from container item
+router.post('/inserting-items-in-event-from-container', insertingDeviceInEventDirectlyFromContainer);
 
 module.exports = router;
