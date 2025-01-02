@@ -52,7 +52,10 @@ const insertingItemInEvent = async (request, response) => {
       }
 
       // Get the items to be inserted
-      const itemsToInsert = results.slice(startIndex, startIndex + parseInt(quantity));
+      const itemsToInsert = results.slice(
+        startIndex,
+        startIndex + parseInt(quantity)
+      );
 
       if (itemsToInsert.length < quantity) {
         return response.status(400).json({
@@ -223,8 +226,8 @@ const checkingInventoryCurrentState = (request, response) => {
             LEFT JOIN item_inv_assigned_event iiae ON ii.item_id = iiae.item_id AND max_iiae.max_created_at = iiae.created_at
             LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
             WHERE ii.${keys};`;
-            const values = [...splitting.map((item) => item.split("=")[1])];
-            connection.execute(query, values, function (err, result, fields) {
+    const values = [...splitting.map((item) => item.split("=")[1])];
+    connection.execute(query, values, function (err, result, fields) {
       if (err)
         return response.status(500).json({
           ok: false,
@@ -243,8 +246,7 @@ const checkingInventoryCurrentState = (request, response) => {
       msg: `${error.message}`,
     });
   }
-
-}
+};
 const consultingInventoryInEvent = (request, response) => {
   try {
     const event_id = request.params.id;
@@ -355,6 +357,42 @@ const deletingRecordInItemInvAssignedEventRow = (request, response) => {
   }
 };
 
+const insertingDeviceInEventDirectlyFromContainer = async (
+  request,
+  response
+) => {
+  try {
+    const { refDatabase, event_id } = request.body;
+    const database =
+      typeof refDatabase === "string" ? JSON.parse(refDatabase) : refDatabase;
+    for (let item of database) {
+      const insertQuery = `
+      INSERT INTO item_inv_assigned_event (item_id, event_id)
+      values(?,?)
+    `;
+      const values = [item.item_id, event_id];
+      connection.query(insertQuery, values, (err, result) => {
+        if (err) {
+          return response.status(500).json({
+            ok: false,
+            msg: `Database error: ${err.message}`,
+          });
+        }
+      });
+    }
+    response.status(201).json({
+      ok: true,
+      msg: "Items inserted successfully into event",
+    });
+  } catch (error) {
+    console.log(error);
+    response.status(201).json({
+      ok: false,
+      msg: `error: ${error}`,
+    });
+  }
+};
+
 module.exports = {
   insertingItemInEvent,
   consultingInventoryCurrentState,
@@ -364,4 +402,5 @@ module.exports = {
   deletingRecordInItemInvAssignedEventRow,
   insertingDeviceInEventDirectly,
   checkingInventoryCurrentState,
+  insertingDeviceInEventDirectlyFromContainer,
 };
