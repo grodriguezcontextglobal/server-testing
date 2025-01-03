@@ -244,13 +244,13 @@ const getListOfItemsInEventPool = async (request, response) => {
     const cachedList = await cache_connection.get(
       `eventSelected=${eventID}&company=${companyID}`
     );
-    if (cachedList && cachedList.length > 5) {
-      return response.status(200).json({
-        cached: true,
-        ok: true,
-        receiversInventory: cachedList, //JSON.parse(cachedList),
-      });
-    } else {
+    // if (cachedList && cachedList.length > 5) {
+    //   return response.status(200).json({
+    //     cached: true,
+    //     ok: true,
+    //     receiversInventory: cachedList, //JSON.parse(cachedList),
+    //   });
+    // } else {
       const formatting = [...params.split("&")];
       let check = formatting.reduce(
         (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
@@ -273,7 +273,7 @@ const getListOfItemsInEventPool = async (request, response) => {
         cached: false,
         receiversInventory: JSON.stringify(items),
       });
-    }
+    // }
   } catch (error) {
     console.log(error);
     return response.status(500).json({
