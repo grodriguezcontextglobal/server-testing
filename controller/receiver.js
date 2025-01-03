@@ -167,7 +167,16 @@ const updateBulkItemsInPool = async (request, response) => {
         }
       );
     }
-    cache_connection.del(`eventSelected=${eventSelected}&company=${company}`);
+    const event = await Event.find({
+      company: company,
+      "eventInfoDetail.eventName": eventSelected,
+      active: true,
+    });
+    if (event.length === 0) {
+      cache_connection.del(`eventSelected=${eventSelected}&company=${company}`);
+    } else {
+      cache_connection.del(`eventSelected=${event.id}&company=${company}`);
+    }
     return response.status(201).json({
       ok: true,
     });
@@ -209,7 +218,6 @@ const poolReceiversBulk = async (request, response) => {
       type,
       company,
     } = request.body;
-
     const list = JSON.parse(deviceList);
     const receiversPoolData = list.map((item) => ({
       device: item.serial_number,
@@ -250,7 +258,7 @@ const getListOfItemsInEventPool = async (request, response) => {
       return response.status(200).json({
         cached: true,
         ok: true,
-        receiversInventory: cachedList //JSON.parse(cachedList),
+        receiversInventory: cachedList, //JSON.parse(cachedList),
       });
     } else {
       const formatting = [...params.split("&")];
@@ -272,7 +280,7 @@ const getListOfItemsInEventPool = async (request, response) => {
       );
       return response.status(200).json({
         ok: true,
-        cached: false,  
+        cached: false,
         receiversInventory: JSON.stringify(items),
       });
     }
@@ -298,8 +306,13 @@ const updatePoolReceivers = async (request, response) => {
     const receiverEdited = {
       ...request.body,
     };
+    const event = await Event.find({
+      company: receiverEdited.company,
+      "eventInfoDetail.eventName": receiverEdited.eventSelected,
+      active: true,
+    });
     cache_connection.del(
-      `eventSelected=${receiverEdited.eventSelected}&company=${receiverEdited.company}`
+      `eventSelected=${event.id}&company=${receiverEdited.company}`
     );
     const receiverUpdated = await ReceiversPool.findByIdAndUpdate(
       request.params.id,
@@ -346,9 +359,20 @@ const receiverPoolFoundAndDelete = async (request, response) => {
     const deviceDeleted = await ReceiversPool.findByIdAndDelete({
       _id: request.params.id,
     });
-    cache_connection.del(
-      `eventSelected=${deviceDeleted.eventSelected}&company=${deviceDeleted.company}`
-    );
+    const event = await Event.find({
+      company: deviceDeleted.company,
+      "eventInfoDetail.eventName": deviceDeleted.eventSelected,
+      active: true,
+    });
+    if (event.length === 0) {
+      cache_connection.del(
+        `eventSelected=${deviceDeleted.eventSelected}&company=${deviceDeleted.company}`
+      );
+    } else {
+      cache_connection.del(
+        `eventSelected=${event.id}&company=${deviceDeleted.company}`
+      );
+    }
     return response.status(201).json({
       ok: true,
       deviceDeleted,
@@ -529,10 +553,20 @@ const updateBulkItemDataInPool = async (request, response) => {
     }));
 
     const result = await ReceiversPool.bulkWrite(bulkOperations);
-
-    cache_connection.del(
-      `eventSelected=${data[0].eventSelected}&company=${data[0].company}`
-    );
+    const event = await Event.find({
+      company: deviceDeleted.company,
+      "eventInfoDetail.eventName": deviceDeleted.eventSelected,
+      active: true,
+    });
+    if (event.length === 0) {
+      cache_connection.del(
+        `eventSelected=${data[0].eventSelected}&company=${data[0].company}`
+      );
+    } else {
+      cache_connection.del(
+        `eventSelected=${event.id}&company=${data[0].company}`
+      );
+    }
     return response.status(201).json({
       ok: true,
       msg: `Total items updated successfully: ${result.modifiedCount}`,
@@ -569,7 +603,17 @@ const returnAllItemsInTransactionInPool = async (request, response) => {
         }
       );
     }
-    cache_connection.del(`eventSelected=${eventSelected}&company=${company}`);
+    const event = await Event.find({
+      company: deviceDeleted.company,
+      "eventInfoDetail.eventName": deviceDeleted.eventSelected,
+      active: true,
+    });
+    if (event.length === 0) {
+      cache_connection.del(`eventSelected=${eventSelected}&company=${company}`);
+    } else {
+      cache_connection.del(`eventSelected=${event.id}&company=${company}`);
+    }
+
     return response.status(201).json({
       ok: true,
     });
@@ -664,9 +708,20 @@ const removingItemFromTransaction = async (request, response) => {
     const cache_connection = await clientRedis();
     const transactionId = request.params.id;
     const foundItem = await Receivers.findByIdAndDelete(transactionId);
-    cache_connection.del(
-      `eventSelected=${foundItem.eventSelected}&company=${foundItem.company}`
-    );
+    const event = await Event.find({
+      company: foundItem.company,
+      "eventInfoDetail.eventName": foundItem.eventSelected,
+      active: true,
+    });
+    if (event.length === 0) {
+      cache_connection.del(
+        `eventSelected=${foundItem.eventSelected}&company=${foundItem.company}`
+      );
+    } else {
+      cache_connection.del(
+        `eventSelected=${event.id}&company=${foundItem.company}`
+      );
+    }
     return response.status(200).json({
       ok: true,
       msg: "Item removed from transaction",
