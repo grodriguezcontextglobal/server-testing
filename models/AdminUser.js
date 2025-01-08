@@ -43,60 +43,64 @@ const AdminUserSchema = new Schema({
   company: {
     type: String,
     required: true,
+    default: "",
   },
   imageProfile: {
     type: String,
+    default: "",
   },
   emailNotifications: {
     type: Object,
     default: {
       newsAndUpdates: false,
       tipsAndTutorials: false,
-      userResearch: false
-    }
+      userResearch: false,
+    },
   },
   dailySummaries: {
     type: String,
-    default: "do not notify me"
+    default: "do not notify me",
   },
   eventReminder: {
     type: String,
-    default: "do not notify me"
+    default: "do not notify me",
   },
   subscriptionRenewals: {
     type: String,
-    default: "do not notify me"
+    default: "do not notify me",
   },
   online: {
     type: Boolean,
-    default: false
+    default: false,
   },
   super_user: {
     type: Boolean,
-    default: false
+    default: false,
   },
   multipleCompanies: {
     type: Boolean,
-    default: false
+    default: false,
   },
-  companiesAssigned:[{
-    company: {
-      type: String,
-      required: true,
+  companiesAssigned: [
+    {
+      company: {
+        type: String,
+        required: true,
+      },
+      active: {
+        type: Boolean,
+        default: true,
+      },
+      super_user: {
+        type: Boolean,
+        default: false,
+      },
+      role: {
+        type: String,
+        default: "Editor",
+      },
     },
-    active: {
-      type: Boolean,
-      default: true,
-    },
-    super_user: {
-      type: Boolean,
-      default: false
-    },
-    role: {
-      type: String,
-      default: "Editor",
-    },
-  }]
+  ],
 });
 
 AdminUserSchema.method("toJSON", function () {
