@@ -200,6 +200,7 @@ const eventStaffDetailInfo = async (request, response) => {
       `event_staff_info=${eventId}`
     );
     if (cachedEventStaffInfo) {
+      cache_connection.del(`event_staff_info=${eventId}`);
       return response.status(201).json({
         ok: true,
         cached: true,
@@ -214,14 +215,24 @@ const eventStaffDetailInfo = async (request, response) => {
     const result = [];
     for (const staff of staffEventInfo) {
       const extraInfo = await AdminUser.findOne({ email: staff.email });
-      result.push({
-        staff,
-        photo: extraInfo.imageProfile,
-        phone: extraInfo.phone,
-        admin_id: extraInfo.id,
-      });
+      if (extraInfo) {
+        result.push({
+          staff,
+          photo: extraInfo.imageProfile,
+          phone: extraInfo.phone,
+          admin_id: extraInfo.id,
+        });
+      } else {
+        result.push({
+          staff,
+          photo: null,
+          phone: "",
+          admin_id: null,
+        });
+      }
     }
     cache_connection.set(`event_staff_info=${eventId}`, JSON.stringify(result));
+    cache_connection.expire(`event_staff_info=${eventId}`, 180);
     return response.status(201).json({
       ok: true,
       staff: JSON.stringify(result),
