@@ -27,14 +27,13 @@ const {
 const User = require("../models/User");
 const assingDeviceNotification = async (request, response) => {
   try {
-    const msg = {
-      from: "Devitrak Notifications <devitrak.testing@outlook.com>",
-      to: `${request.body.consumer.email}`,
-      subject: "Assigned device notification",
+    const info = {
+      from: "devitrak.testing@outlook.com",
+      to: `${request.body.consumer.firstName} ${request.body.consumer.lastName} <${request.body.consumer.email}>`,
+      subject: "Returned device notification",
       html: assigningDeviceMessageHtml(request.body),
     };
-
-    sgMail.send(msg).then(() => {
+    return sgMail.send(info).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
