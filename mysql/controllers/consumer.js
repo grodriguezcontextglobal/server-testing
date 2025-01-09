@@ -21,15 +21,16 @@ const insertingCustomer = async (request, response) => {
       `${first_name}`,
       `${last_name}`,
       `${email}`,
-      `${phone_number}`,
+      `${phone_number ?? '000-000-0000'}`,
     ];
-    const [err, result] = await connection.promise().execute(query, values); // connection.execute(query, values, function (err, result, fields) {
+    const [result] = await connection.promise().execute(query, values); 
+    // connection.execute(query, values, function (err, result, fields) {
     // });
-    if (err)
-      return response.status(500).json({
-        ok: false,
-        msg: `${err.message}`,
-      });
+    // if (err)
+    //   return response.status(500).json({
+    //     ok: false,
+    //     msg: `${err.message}`,
+    //   });
 
     return response.status(201).json({
       ok: true,
