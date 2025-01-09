@@ -317,7 +317,7 @@ const updatePoolReceivers = async (request, response) => {
 
 const receiverPoolList = async (request, response) => {
   try {
-    const receiversInventory = await ReceiversPool.find(request.body);
+    const receiversInventory = await ReceiversPool.find(request.body).sort({device: 1});
     return response.status(201).json({
       ok: true,
       receiversInventory: receiversInventory,
