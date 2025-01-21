@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const AdminUser = require("../models/AdminUser");
 const { generateJWT } = require("../helpers/jwt");
 const StripeTransaction = require("../models/StripeTransaction");
+const { clientRedis } = require("../database/cacheMemoryConfig");
 
 const createAdminUser = async (request, response = express.response) => {
   const { email, password } = request.body;
@@ -345,10 +346,23 @@ const displayArticles = async (request, response) => {
 
 const checkStatus = async (request, response) => {
   try {
+    const cache_connection = await clientRedis();
     const email = request.params.email
+    const cachedStatus = await cache_connection.get(`admin_status=${email}`)
+    if (cachedStatus) {
+      cache_connection.del(`admin_status=${email}`)
+      return response.status(201).json({
+        ok: true,
+        cached: true,
+        online: JSON.parse(cachedStatus)
+      })
+    }
     const checkOnlineStatus = await AdminUser.findOne({ email: email })
+    cache_connection.set(`admin_status=${email}`, JSON.stringify(checkOnlineStatus.online))
+    cache_connection.expire(`admin_status=${email}`, 180)
     return response.status(201).json({
       ok: true,
+      cached: false,
       online: checkOnlineStatus.online
     })
   } catch (error) {
