@@ -3,6 +3,8 @@ const { default: mongoose } = require("mongoose");
 const Transaction = require("../models/Transaction");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 require("dotenv").config();
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const saveTransaction = async (request, response) => {
   try {
@@ -214,6 +216,43 @@ const removeDuplicateEntry = async (request, response) => {
   }
 };
 
+const checkingAndReleasingDepositTransactions = async (request, response) => {
+  try {
+    const { eventSelected, company } = request.body;
+    const findingTransactions = await Transaction.find({
+      eventSelected,
+      company,
+      active: true,
+      paymentIntent: { $exists: true },
+      $expr: { $gt: [{ $strLenCP: "$paymentIntent" }, 15] },
+    });
+    let counting = [];
+    if (findingTransactions.length > 0) {
+      for (let item of findingTransactions) {
+        if (!item.paymentIntent.includes("cash")) {
+          const paymentIntent = await stripe.paymentIntents.retrieve(
+            `${item.paymentIntent}`
+          );
+          if (paymentIntent.status === "requires_capture") {
+            counting.push(paymentIntent);
+            //!here needs to be the logic to release the transaction in stripe by passing the payment intent id in cancel function
+          }
+        }
+      }
+    }
+    return response.status(201).json({
+      ok: true,
+      msg: "Transactions found",
+      transactions: findingTransactions,
+      paymentIntents: counting,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
 module.exports = {
   saveTransaction,
   saveTransactionAdmin,
@@ -223,4 +262,5 @@ module.exports = {
   removeDuplicateEntry,
   updateTransaction,
   gettingListOfSavedTransaction,
+  checkingAndReleasingDepositTransactions,
 };
