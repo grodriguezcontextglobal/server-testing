@@ -14,6 +14,7 @@ const {
   updateTransaction,
   updateMultipleDocuments,
   gettingListOfSavedTransaction,
+  checkingAndReleasingDepositTransactions,
 } = require("../controller/transaction");
 const { retrieveSubscriptionID } = require("../controller/stripe");
 
@@ -46,5 +47,8 @@ router.get("/subscriptions/:id", retrieveSubscriptionID);
 
 //update multiple documents at once
 router.post("/update-multiple-documents", updateMultipleDocuments);
+
+//check payment intent and release deposit transactions if still pending
+router.post("/check-and-release-deposit-transactions", checkingAndReleasingDepositTransactions);
 
 module.exports = router;
