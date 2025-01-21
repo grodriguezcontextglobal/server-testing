@@ -269,7 +269,7 @@ const returnConfirmationMessageHtml = (props) => {
       <p>
         Dear ${props.consumer.firstName} ${
     props.consumer.lastName
-  }, this email confirms that all devices have been returned successfully from the transaction below.
+  }, this email confirms that all devices shown have been returned successfully from the transaction below.
       </p>
 
       <table>
@@ -289,6 +289,7 @@ const returnConfirmationMessageHtml = (props) => {
             <tr>
               <td>${device.device.deviceType}</td>
               <td>${device.device.serialNumber}</td>
+              <td>${device.device.status ? "In-use" : "Returned"}</td>
               <td>${device.paymentIntent}</td>
               <td>${new Date().toLocaleDateString()}</td>
               <td><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">${
@@ -2779,6 +2780,183 @@ const serviceRefundConfirmationEmailHtml = (props) => {
 `;
 };
 
+const deviceReportPerTransactionMessageHtml = (props) => {
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Devices Report Per Transaction/Consumer</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 24px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        font-size: 14px;
+      }
+
+      th, td {
+        padding: 12px;
+        border: 1px solid #e0e0e0;
+        text-align: left;
+      }
+
+      th {
+        background-color: #f2f2f2;
+        font-weight: 600;
+        color: #475467;
+      }
+
+      a {
+        display: block;
+        text-align: center;
+        margin: 20px auto;
+        padding: 10px 20px;
+        color: #fff;
+        background-color: #155eef;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+            .qr-code {
+        font-size: 12px;
+        color: #475467;
+        text-align: center;
+        margin-top: 40px;
+      }
+
+
+      .footer {
+        font-size: 12px;
+        color: #475467;
+        text-align: center;
+        margin-top: 40px;
+      }
+
+      .text-success {
+        color: #155eef;
+        font-weight: bold;
+        padding:5px;
+        background-color:#fff;
+      }
+
+      .text-danger {
+        color: #ff0000;
+        font-weight: bold;
+        padding:5px;
+        background-color:#fff;
+      }
+
+      /* Responsive Design */
+      @media only screen and (max-width: 600px) {
+        h1 {
+          font-size: 20px;
+        }
+
+        p, th, td {
+          font-size: 12px;
+        }
+
+        a {
+          font-size: 14px;
+          padding: 8px 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Devices Report Per Transaction</h1>
+      <p>
+        Dear ${props.consumer.firstName} ${
+    props.consumer.lastName
+  }, this email confirms that all devices shown have been assigned successfully to the transaction below.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>Serial number</th>
+            <th>Status</th>
+            <th>Transaction ID</th>
+            <th>Date</th>
+            <th>Staff collector</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${props.devices
+            .map(
+              (device) => `
+            <tr>
+              <td>${device.device.deviceType}</td>
+              <td>${device.device.serialNumber}</td>
+              <td class="${
+                device.device.status ? "text-danger" : "text-success"
+              }">${device.device.status ? "In-use" : "Returned"}</td>
+              <td>${device.paymentIntent}</td>
+              <td>${new Date().toLocaleDateString()}</td>
+              <td><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">${
+                props.admin
+              }</p></td>
+            </tr>
+          `
+            )
+            .join("")}
+        </tbody>
+      </table>
+
+      <a href="${
+        props.link
+      }" target="_blank"><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">Open App</p></a>
+
+      <div class="qr-code">
+      </div>
+      <div class="footer">
+        <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
+      </div>
+    </div>
+  </body>
+</html>
+`;
+};
+
 module.exports = {
   returnConfirmationMessageHtml,
   assigningDeviceMessageHtml,
@@ -2801,4 +2979,5 @@ module.exports = {
   eventLinkEventHtml,
   serviceChargeInvoiceEmailHtml,
   serviceRefundConfirmationEmailHtml,
+  deviceReportPerTransactionMessageHtml,
 };
