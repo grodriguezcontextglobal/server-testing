@@ -1158,7 +1158,7 @@ const linkToResetUserPassword = (props) => {
             </p>
 
             <a
-              href={{props.linkToResetPassword}}
+              href={props.linkToResetPassword}
               target="_blank"
               style="
               display: flex;
