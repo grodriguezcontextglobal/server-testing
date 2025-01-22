@@ -1,4 +1,16 @@
 const assigningDeviceMessageHtml = (props) => {
+  const rendering = (props) => {
+    if (typeof props === "string") {
+      return props;
+    } else {
+      if (props) {
+        return "In-use";
+      } else {
+        return "Returned";
+      }
+    }
+  };
+
   return `
 <html lang="en" translate="no">
   <head>
@@ -106,6 +118,63 @@ const assigningDeviceMessageHtml = (props) => {
   </head>
   <body>
     <div class="container">
+                  <div
+            style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            width: 100%;
+          "
+          >
+            <div style="align-self: flex-start">
+              <p
+                style="
+                text-align: left;
+                width: 100%;
+                color: #475467;
+                font-size: 9px;
+                font-style: normal;
+                font-weight: 500;
+                line-height: 9px;
+              "
+              >
+                Power by
+              </p>
+              <div
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
+            </div>
+          </div>
+
       <h1>Devices Assignment Receipt</h1>
       <p>
         Dear ${props.consumer.firstName} ${
@@ -120,7 +189,6 @@ const assigningDeviceMessageHtml = (props) => {
             <th>Serial number</th>
             <th>Transaction ID</th>
             <th>Date</th>
-            <th>Staff (email)</th>
           </tr>
         </thead>
         <tbody>
@@ -132,9 +200,6 @@ const assigningDeviceMessageHtml = (props) => {
               <td>${device.serialNumber}</td>
               <td>${device.paymentIntent}</td>
               <td>${new Date().toLocaleDateString()}</td>
-              <td><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">${
-                props.admin
-              }</p></td>
             </tr>
           `
             )
@@ -158,6 +223,18 @@ const assigningDeviceMessageHtml = (props) => {
 };
 
 const returnConfirmationMessageHtml = (props) => {
+  const rendering = (props) => {
+    if (typeof props === "string") {
+      return props;
+    } else {
+      if (props) {
+        return "In-use";
+      } else {
+        return "Returned";
+      }
+    }
+  };
+
   return `
 <html lang="en" translate="no">
   <head>
@@ -265,6 +342,63 @@ const returnConfirmationMessageHtml = (props) => {
   </head>
   <body>
     <div class="container">
+                  <div
+            style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            width: 100%;
+          "
+          >
+            <div style="align-self: flex-start">
+              <p
+                style="
+                text-align: left;
+                width: 100%;
+                color: #475467;
+                font-size: 9px;
+                font-style: normal;
+                font-weight: 500;
+                line-height: 9px;
+              "
+              >
+                Power by
+              </p>
+              <div
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
+            </div>
+          </div>
+
       <h1>Devices Returned Receipt</h1>
       <p>
         Dear ${props.consumer.firstName} ${
@@ -279,7 +413,6 @@ const returnConfirmationMessageHtml = (props) => {
             <th>Serial number</th>
             <th>Transaction ID</th>
             <th>Date</th>
-            <th>Staff collector</th>
           </tr>
         </thead>
         <tbody>
@@ -289,12 +422,9 @@ const returnConfirmationMessageHtml = (props) => {
             <tr>
               <td>${device.device.deviceType}</td>
               <td>${device.device.serialNumber}</td>
-              <td>${device.device.status ? "In-use" : "Returned"}</td>
+              <td>${rendering(device.device.status)}</td>
               <td>${device.paymentIntent}</td>
               <td>${new Date().toLocaleDateString()}</td>
-              <td><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">${
-                props.admin
-              }</p></td>
             </tr>
           `
             )
@@ -385,7 +515,7 @@ const cancelingDepositMessageHtml = (props) => {
               "
             >
               <img
-                src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                 alt="devitrak-logo"
                 style="
                   object-fit: contain;
@@ -396,7 +526,7 @@ const cancelingDepositMessageHtml = (props) => {
                 "
               />
               <img
-                src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                 alt="devitrak-name"
                 style="
                   object-fit: contain;
@@ -527,7 +657,7 @@ const capturingDepositMessageHtml = (props) => {
               "
             >
               <img
-                src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                 alt="devitrak-logo"
                 style="
                   object-fit: contain;
@@ -538,7 +668,7 @@ const capturingDepositMessageHtml = (props) => {
                 "
               />
               <img
-                src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                 alt="devitrak-name"
                 style="
                   object-fit: contain;
@@ -665,7 +795,7 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
               "
             >
               <img
-                src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                 alt="devitrak-logo"
                 style="
                   object-fit: contain;
@@ -676,7 +806,7 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
                 "
               />
               <img
-                src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                 alt="devitrak-name"
                 style="
                   object-fit: contain;
@@ -821,7 +951,7 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
             "
           >
             <img
-              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -832,7 +962,7 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
               "
             />
             <img
-              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -970,7 +1100,7 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
               "
             >
               <img
-                src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                 alt="devitrak-logo"
                 style="
                   object-fit: contain;
@@ -981,7 +1111,7 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
                 "
               />
               <img
-                src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                 alt="devitrak-name"
                 style="
                   object-fit: contain;
@@ -1118,7 +1248,7 @@ const linkToResetUserPassword = (props) => {
             "
           >
             <img
-              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1129,7 +1259,7 @@ const linkToResetUserPassword = (props) => {
               "
             />
             <img
-              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -1158,7 +1288,7 @@ const linkToResetUserPassword = (props) => {
             </p>
 
             <a
-              href={props.linkToResetPassword}
+              href=${props.linkToResetPassword}
               target="_blank"
               style="
               display: flex;
@@ -1180,6 +1310,8 @@ const linkToResetUserPassword = (props) => {
                 font-style: normal;
                 font-weight: 600;
                 line-height: 24px;
+                text-align: center;
+                width: 100%;
               "
               >
                 Reset password
@@ -1266,7 +1398,7 @@ const newUserInvitationMessageHtml = (props) => {
             "
           >
             <img
-              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1277,7 +1409,7 @@ const newUserInvitationMessageHtml = (props) => {
               "
             />
             <img
-              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -1416,7 +1548,7 @@ const customizedEmailMessageHtml = (props) => {
             "
           >
             <img
-              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1427,7 +1559,7 @@ const customizedEmailMessageHtml = (props) => {
               "
             />
             <img
-              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -1551,7 +1683,7 @@ const singleEmailMessageHtml = (props) => {
             "
           >
             <img
-              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1562,7 +1694,7 @@ const singleEmailMessageHtml = (props) => {
               "
             />
             <img
-              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -1685,7 +1817,7 @@ const staffNotificationMessageHtml = (props) => {
             "
           >
             <img
-              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1696,7 +1828,7 @@ const staffNotificationMessageHtml = (props) => {
               "
             />
             <img
-              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -1820,7 +1952,7 @@ const staffInternalNotificationMessageHtml = (props) => {
             "
           >
             <img
-              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1831,7 +1963,7 @@ const staffInternalNotificationMessageHtml = (props) => {
               "
             />
             <img
-              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -2011,7 +2143,7 @@ const eventBeginsReminderHtmlMessage = (props) => {
             "
           >
             <img
-              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -2022,7 +2154,7 @@ const eventBeginsReminderHtmlMessage = (props) => {
               "
             />
             <img
-              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -2157,7 +2289,7 @@ const reportBugMessageHtml = (props) => {
             "
           >
             <img
-              src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -2168,7 +2300,7 @@ const reportBugMessageHtml = (props) => {
               "
             />
             <img
-              src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -2295,7 +2427,7 @@ const itemInfoStaffNotificationMessageHtml = (props) => {
               "
             >
               <img
-                src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                 alt="devitrak-logo"
                 style="
                   object-fit: contain;
@@ -2306,7 +2438,7 @@ const itemInfoStaffNotificationMessageHtml = (props) => {
                 "
               />
               <img
-                src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                 alt="devitrak-name"
                 style="
                   object-fit: contain;
@@ -2444,8 +2576,8 @@ const eventLinkEventHtml = (props) => {
       >
         Powered by Devitrak
       </p>
-      <img src="https://i.ibb.co/WHcvqrG/devitrak-logo.png" alt="devitrak-logo"/>
-      <img src="https://i.ibb.co/HDpZ60p/devitrak-name.png" alt="devitrak-name"/>
+      <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo"/>
+      <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-name"/>
     </div>
 
     <h3 style="font-size: 1.5rem; font-weight: 600; color: #101828; margin-bottom: 1rem;text-wrap:balance">
@@ -2574,7 +2706,7 @@ const serviceChargeInvoiceEmailHtml = (props) => {
                     "
                 >
                     <img
-                        src="https://i.ibb.co/WHcvqrG/devitrak-logo.png"
+                        src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                         alt="Devitrak Logo"
                         style="
                             height: 24px;
@@ -2583,7 +2715,7 @@ const serviceChargeInvoiceEmailHtml = (props) => {
                         "
                     />
                     <img
-                        src="https://i.ibb.co/HDpZ60p/devitrak-name.png"
+                        src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
                         alt="Devitrak Name"
                         style="
                             height: 24px;
@@ -2756,8 +2888,8 @@ const serviceRefundConfirmationEmailHtml = (props) => {
     <div class="container">
         <div class="header">
             <p>Powered by</p>
-            <img src="https://i.ibb.co/WHcvqrG/devitrak-logo.png" alt="Devitrak Logo" />
-            <img src="https://i.ibb.co/HDpZ60p/devitrak-name.png" alt="Devitrak Name" />
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="Devitrak Logo" />
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="Devitrak Name" />
         </div>
         <div class="content">
             <h1 class="title">Refund Confirmation</h1>
@@ -2781,6 +2913,17 @@ const serviceRefundConfirmationEmailHtml = (props) => {
 };
 
 const deviceReportPerTransactionMessageHtml = (props) => {
+  const rendering = (props) => {
+    if (typeof props === "string") {
+      return props;
+    } else {
+      if (props) {
+        return "In-use";
+      } else {
+        return "Returned";
+      }
+    }
+  };
   return `
 <html lang="en" translate="no">
   <head>
@@ -2902,6 +3045,63 @@ const deviceReportPerTransactionMessageHtml = (props) => {
   </head>
   <body>
     <div class="container">
+              <div
+            style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            width: 100%;
+          "
+          >
+            <div style="align-self: flex-start">
+              <p
+                style="
+                text-align: left;
+                width: 100%;
+                color: #475467;
+                font-size: 9px;
+                font-style: normal;
+                font-weight: 500;
+                line-height: 9px;
+              "
+              >
+                Power by
+              </p>
+              <div
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
+            </div>
+          </div>
+
       <h1>Devices Report Per Transaction</h1>
       <p>
         Dear ${props.consumer.firstName} ${
@@ -2917,7 +3117,6 @@ const deviceReportPerTransactionMessageHtml = (props) => {
             <th>Status</th>
             <th>Transaction ID</th>
             <th>Date</th>
-            <th>Staff collector</th>
           </tr>
         </thead>
         <tbody>
@@ -2929,12 +3128,9 @@ const deviceReportPerTransactionMessageHtml = (props) => {
               <td>${device.device.serialNumber}</td>
               <td class="${
                 device.device.status ? "text-danger" : "text-success"
-              }">${device.device.status ? "In-use" : "Returned"}</td>
+              }">${rendering(device.device.status)}</td>
               <td>${device.paymentIntent}</td>
               <td>${new Date().toLocaleDateString()}</td>
-              <td><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">${
-                props.admin
-              }</p></td>
             </tr>
           `
             )
