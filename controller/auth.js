@@ -276,6 +276,51 @@ const getListOfUsersAndTransactionsPerEvent = async (request, response) => {
   }
 };
 
+const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
+  try {
+    const { companyID } = request.params;
+    const usersList = await User.find({
+      company_providers: { $in: [companyID] },
+    }).lean();
+    const leaseConsumersList = await Event.find({
+      company_id: companyID,
+      type: "lease",
+    }).count();
+     let result = {
+      inactiveTransactions: 0,
+      activeTransactions: 0,
+      total: 0,
+      usersList: JSON.stringify(usersList),
+      totalConsumersFromEvents: usersList.length,
+      lease: leaseConsumersList,
+    };
+    for (let user of usersList) {
+      const inactiveTransactions = await Receivers.find({
+        user: user.email,
+        company: companyID,
+        "device.status": false,
+      }).count();
+      const activeTransactions = await Receivers.find({
+        user: user.email,
+        company: companyID,
+        "device.status": true,
+      }).count();
+      result.inactiveTransactions += inactiveTransactions;
+      result.activeTransactions += activeTransactions;
+      result.total += inactiveTransactions + activeTransactions;
+    }
+    return response.status(200).json({
+      ok: true,
+      result,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: "Contact Administrator",
+      error: error,
+    });
+  }
+};
 module.exports = {
   showAllUsers,
   newUser,
@@ -284,4 +329,5 @@ module.exports = {
   getListOfUsers,
   checkUser,
   getListOfUsersAndTransactionsPerEvent,
+  getAllConsumersBasedOnAllEventsPerCompany,
 };
