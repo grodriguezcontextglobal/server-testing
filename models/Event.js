@@ -60,6 +60,11 @@ const EventSchema = Schema({
     required: true,
     default: true,
   },
+  company_id: {
+    type: String,
+    required: true,
+    default: null,
+  },
 });
 
 EventSchema.method("toJSON", function () {
