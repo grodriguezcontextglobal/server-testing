@@ -13,6 +13,7 @@ const {
   editUser,
   showAllUsers,
   getListOfUsers,
+  getAllConsumersBasedOnAllEventsPerCompany,
 } = require("../controller/auth");
 const validateFields = require("../middlewares/validate-field");
 
@@ -51,5 +52,7 @@ router.get("/:id", getUser);
 //check existing user
 router.post("/",check("email", "Email is mandatory").isEmail(), checkUser); 
 
+//get all consumers based on all events per company
+router.get("/all-consumers-based-on-all-events-per-company/:companyID", getAllConsumersBasedOnAllEventsPerCompany);
 
 module.exports = router;
