@@ -322,6 +322,21 @@ const returnConfirmationMessageHtml = (props) => {
         text-align: center;
         margin-top: 40px;
       }
+      
+      .text-success {
+        color: #155eef;
+        font-weight: bold;
+        padding:5px;
+        background-color:#fff;
+      }
+
+      .text-danger {
+        color: #ff0000;
+        font-weight: bold;
+        padding:5px;
+        background-color:#fff;
+      }
+
 
       /* Responsive Design */
       @media only screen and (max-width: 600px) {
@@ -409,8 +424,9 @@ const returnConfirmationMessageHtml = (props) => {
       <table>
         <thead>
           <tr>
-            <th>Device</th>
+            <th>Device type</th>
             <th>Serial number</th>
+            <th>Device status</th>
             <th>Transaction ID</th>
             <th>Date</th>
           </tr>
@@ -422,7 +438,9 @@ const returnConfirmationMessageHtml = (props) => {
             <tr>
               <td>${device.device.deviceType}</td>
               <td>${device.device.serialNumber}</td>
-              <td>${rendering(device.device.status)}</td>
+              <td class="${
+                device.device.status ? "text-danger" : "text-success"
+              }">${rendering(device.device.status)}</td>
               <td>${device.paymentIntent}</td>
               <td>${new Date().toLocaleDateString()}</td>
             </tr>
