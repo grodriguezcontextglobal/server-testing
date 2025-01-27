@@ -4,6 +4,7 @@ const Receivers = require("../models/Receivers");
 const { generateJWT } = require("../helpers/jwt");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const { groupBy } = require("lodash");
+const mongoose = require("mongoose");
 
 const showAllUsers = async (request, response) => {
   try {
@@ -286,11 +287,12 @@ const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
       company_id: companyID,
       type: "lease",
     }).count();
-     let result = {
+    let result = {
       inactiveTransactions: 0,
       activeTransactions: 0,
       total: 0,
-      usersList: JSON.stringify(usersList),
+      totalConsumers: usersList.length,
+      usersList: [],
       totalConsumersFromEvents: usersList.length,
       lease: leaseConsumersList,
     };
@@ -305,19 +307,32 @@ const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
         company: companyID,
         "device.status": true,
       }).count();
+      const totalEventsActive = await Event.find({
+        _id: { $in: user.event_providers.map((id) => new mongoose.Types.ObjectId(id)) },
+        company_id: companyID,
+        active: true,
+      }).count();
+      result.usersList.push({
+        ...user,
+        totalDeviceRequested: inactiveTransactions + activeTransactions,
+        totalEventsActive: totalEventsActive,
+      });
       result.inactiveTransactions += inactiveTransactions;
       result.activeTransactions += activeTransactions;
       result.total += inactiveTransactions + activeTransactions;
     }
     return response.status(200).json({
       ok: true,
-      result,
+      result: {
+        ...result,
+        usersList: JSON.stringify(result.usersList),
+      },
     });
   } catch (error) {
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
-      error: error,
+      error: error.message,
     });
   }
 };
