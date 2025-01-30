@@ -279,55 +279,72 @@ const getListOfUsersAndTransactionsPerEvent = async (request, response) => {
 
 const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
   try {
+    const cache_connection = await clientRedis();
     const { companyID } = request.params;
-    const usersList = await User.find({
-      company_providers: { $in: [companyID] },
-    }).lean();
-    const leaseConsumersList = await Event.find({
-      company_id: companyID,
-      type: "lease",
-    }).count();
-    let result = {
-      inactiveTransactions: 0,
-      activeTransactions: 0,
-      total: 0,
-      totalConsumers: usersList.length,
-      usersList: [],
-      totalConsumersFromEvents: usersList.length,
-      lease: leaseConsumersList,
-    };
-    for (let user of usersList) {
-      const inactiveTransactions = await Receivers.find({
-        user: user.email,
-        company: companyID,
-        "device.status": false,
-      }).count();
-      const activeTransactions = await Receivers.find({
-        user: user.email,
-        company: companyID,
-        "device.status": true,
-      }).count();
-      const totalEventsActive = await Event.find({
-        _id: { $in: user.event_providers.map((id) => new mongoose.Types.ObjectId(id)) },
-        company_id: companyID,
-        active: true,
-      }).count();
-      result.usersList.push({
-        ...user,
-        totalDeviceRequested: inactiveTransactions + activeTransactions,
-        totalEventsActive: totalEventsActive,
+    const cachedList = await cache_connection.get(`consumersInfoPerCompany=${companyID}`);
+    if (cachedList) {
+      return response.status(200).json({
+        cached: true,
+        ok: true,
+        result: JSON.parse(cachedList),
       });
-      result.inactiveTransactions += inactiveTransactions;
-      result.activeTransactions += activeTransactions;
-      result.total += inactiveTransactions + activeTransactions;
+    } else {
+      const usersList = await User.find({
+        company_providers: { $in: [companyID] },
+      }).lean();
+      const leaseConsumersList = await Event.find({
+        company_id: companyID,
+        type: "lease",
+      }).count();
+      let result = {
+        inactiveTransactions: 0,
+        activeTransactions: 0,
+        total: 0,
+        totalConsumers: usersList.length,
+        usersList: [],
+        totalConsumersFromEvents: usersList.length,
+        lease: leaseConsumersList,
+      };
+      for (let user of usersList) {
+        const inactiveTransactions = await Receivers.find({
+          user: user.email,
+          company: companyID,
+          "device.status": false,
+        }).count();
+        const activeTransactions = await Receivers.find({
+          user: user.email,
+          company: companyID,
+          "device.status": true,
+        }).count();
+        const totalEventsActive = await Event.find({
+          _id: {
+            $in: user.event_providers.map(
+              (id) => new mongoose.Types.ObjectId(id)
+            ),
+          },
+          company_id: companyID,
+          active: true,
+        }).count();
+        result.usersList.push({
+          ...user,
+          totalDeviceRequested: inactiveTransactions + activeTransactions,
+          totalEventsActive: totalEventsActive,
+        });
+        result.inactiveTransactions += inactiveTransactions;
+        result.activeTransactions += activeTransactions;
+        result.total += inactiveTransactions + activeTransactions;
+      }
+      cache_connection.set(`consumersInfoPerCompany=${companyID}`, JSON.stringify(result));
+      cache_connection.expire(`consumersInfoPerCompany=${companyID}`, 180);
+      return response.status(200).json({
+        ok: true,
+        cache:false,
+        result: {
+          ...result,
+          usersList: JSON.stringify(result.usersList),
+        },
+      });
     }
-    return response.status(200).json({
-      ok: true,
-      result: {
-        ...result,
-        usersList: JSON.stringify(result.usersList),
-      },
-    });
   } catch (error) {
     return response.status(500).json({
       ok: false,
@@ -336,6 +353,7 @@ const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
     });
   }
 };
+
 module.exports = {
   showAllUsers,
   newUser,
