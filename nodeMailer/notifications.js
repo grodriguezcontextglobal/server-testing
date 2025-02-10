@@ -24,8 +24,10 @@ const {
   serviceChargeInvoiceEmailHtml,
   serviceRefundConfirmationEmailHtml,
   deviceReportPerTransactionMessageHtml,
+  devitrakFeedbackEmailMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
+const e = require("express");
 const assingDeviceNotification = async (request, response) => {
   try {
     const info = {
@@ -93,7 +95,6 @@ const deviceReportPerTransaction = async (request, response) => {
     });
   }
 };
-
 
 const cancelDepositNotification = async (request, response) => {
   try {
@@ -593,6 +594,46 @@ const massiveEventCustomerNotification = async (request, response) => {
     console.log(error);
   }
 };
+
+const devitrakFeedbackEmailNotification = async (request, response) => {
+  try {
+    const { eventID, eventSelected } = request.body;
+    const consumerEventList = await User.find(
+      {
+        event_providers: eventID,
+      },
+      { email: 1, name: 1, lastName: 1, _id: 0 }
+    ).lean();
+    console.log(consumerEventList);
+    if (consumerEventList.length > 0) {
+      const msg = {
+        from: "Devitrak Notifications <devitrak.testing@outlook.com>",
+        to: [...consumerEventList],
+        subject: `Share Your Feedback – Help Us Improve Your Experience!`,
+        html: devitrakFeedbackEmailMessageHtml({
+          props: {
+            eventName: eventSelected,
+            link: `https://devitrak-app-survey.pages.dev/?event=${eventSelected}&eventID=${eventID}`,
+          },
+        }),
+      };
+      sgMail.sendMultiple(msg).then(() => {
+        response.status(201).json({
+          notification: `Email sent to ${consumerEventList.length} consumers`,
+          ok: true,
+        });
+      });
+    } else {
+      response.status(201).json({
+        notification: `No email sent to any consumers`,
+        ok: true,
+      });
+    }
+  } catch (error) {
+    console.log(error);
+  }
+};
+
 module.exports = {
   assingDeviceNotification,
   returningDeviceNotification,
@@ -617,4 +658,5 @@ module.exports = {
   refundInvoice,
   massiveEventCustomerNotification,
   deviceReportPerTransaction,
+  devitrakFeedbackEmailNotification,
 };
