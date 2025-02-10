@@ -9,7 +9,8 @@ const { assingDeviceNotification, returningDeviceNotification, cancelDepositNoti
     eventLinkEvent,
     refundInvoice,
     massiveEventCustomerNotification,
-    deviceReportPerTransaction} = require("../nodeMailer/notifications");
+    deviceReportPerTransaction,
+    devitrakFeedbackEmailNotification} = require("../nodeMailer/notifications");
 const router = Router();
 
 //*email notification to inform about devices assigned to consumer
@@ -81,4 +82,6 @@ router.post('/massive-event-customer-notification', massiveEventCustomerNotifica
 //send device report per transaction
 router.post('/device-report-per-transaction', deviceReportPerTransaction)
 
+//feedback email notification 
+router.post('/feedback-email-notification', devitrakFeedbackEmailNotification)
 module.exports = router;
