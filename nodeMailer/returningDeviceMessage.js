@@ -533,7 +533,7 @@ const cancelingDepositMessageHtml = (props) => {
               "
             >
               <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
                 alt="devitrak-logo"
                 style="
                   object-fit: contain;
@@ -675,7 +675,7 @@ const capturingDepositMessageHtml = (props) => {
               "
             >
               <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
                 alt="devitrak-logo"
                 style="
                   object-fit: contain;
@@ -813,7 +813,7 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
               "
             >
               <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
                 alt="devitrak-logo"
                 style="
                   object-fit: contain;
@@ -969,7 +969,7 @@ const confirmationNewConsumerAccountMessageHtml = (props) => {
             "
           >
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1118,7 +1118,7 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
               "
             >
               <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
                 alt="devitrak-logo"
                 style="
                   object-fit: contain;
@@ -1416,7 +1416,7 @@ const newUserInvitationMessageHtml = (props) => {
             "
           >
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1566,7 +1566,7 @@ const customizedEmailMessageHtml = (props) => {
             "
           >
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1701,7 +1701,7 @@ const singleEmailMessageHtml = (props) => {
             "
           >
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1835,7 +1835,7 @@ const staffNotificationMessageHtml = (props) => {
             "
           >
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1970,7 +1970,7 @@ const staffInternalNotificationMessageHtml = (props) => {
             "
           >
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -2161,7 +2161,7 @@ const eventBeginsReminderHtmlMessage = (props) => {
             "
           >
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -2307,7 +2307,7 @@ const reportBugMessageHtml = (props) => {
             "
           >
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -2445,7 +2445,7 @@ const itemInfoStaffNotificationMessageHtml = (props) => {
               "
             >
               <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
                 alt="devitrak-logo"
                 style="
                   object-fit: contain;
@@ -2594,7 +2594,7 @@ const eventLinkEventHtml = (props) => {
       >
         Powered by Devitrak
       </p>
-      <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo"/>
+      <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-logo"/>
       <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-name"/>
     </div>
 
@@ -2724,7 +2724,7 @@ const serviceChargeInvoiceEmailHtml = (props) => {
                     "
                 >
                     <img
-                        src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                        src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
                         alt="Devitrak Logo"
                         style="
                             height: 24px;
@@ -2906,7 +2906,7 @@ const serviceRefundConfirmationEmailHtml = (props) => {
     <div class="container">
         <div class="header">
             <p>Powered by</p>
-            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="Devitrak Logo" />
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="Devitrak Logo" />
             <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="Devitrak Name" />
         </div>
         <div class="content">
@@ -3171,159 +3171,168 @@ const deviceReportPerTransactionMessageHtml = (props) => {
 `;
 };
 
-const devitrakFeedbackEmailMessageHtml = ({props}) => {
+const devitrakFeedbackEmailMessageHtml = ({ props }) => {
   return `
+<!DOCTYPE html>
 <html lang="en" translate="no">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>
-      Devitrak App | Easy way to manage inventory. A good solution for your
-      business no matter the size of your organization.
-    </title>
+    <title>Devitrak App | Manage Inventory Easily</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" />
     <style>
-      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
-    </style>
-  </head>
-  <body
-    style="
-      max-width: 768px;
-      min-width: 320px;
-      background-color:#fff;
-      color: #1a202c;
-      font-family: 'Inter', sans-serif;
-      -webkit-text-size-adjust: 100%;
-      -ms-text-size-adjust: 100%;
-      margin: auto;
-      padding: 0;
-    "
-  >
-    <div
-      style="
-        margin-left: auto;
-        margin-right: auto;
+      body {
+        max-width: 768px;
+        background-color: #fff;
+        color: #1a202c;
+        font-family: 'Inter', sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+
+      .container {
+        margin: auto;
         padding: 2rem;
         width: 100%;
         border-radius: 12px;
-      "
-    >
-      <div
-        style="
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 2.5rem;
-          width: 100%;
-        "
-      >
-        <div style="align-self: flex-start">
-          <p
-            style="
-              text-align: left;
-              width: 100%;
-              color: #475467;
-              font-size: 9px;
-              font-style: normal;
-              font-weight: 500;
-              line-height: 9px;
-            "
-          >
-            Power by
-          </p>
-          <div
-            style="
-              display: flex;
-              justify-content: flex-end;
-              align-items: center;
-              margin-top: 2.5px;
-            "
-          >
-            <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
-              alt="devitrak-logo"
-              style="
-                object-fit: contain;
-                object-position: 50% 50%;
-                align-self: flex-start;
-                display: flex;
-                align-items: center;
-              "
-            />
-            <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
-              alt="devitrak-name"
-              style="
-                object-fit: contain;
-                object-position: 50% 50%;
-                align-self: flex-start;
-                display: flex;
-                align-items: center;
-              "
-            />
-          </div>
-        </div>
-      </div>
-      <div style="max-width: 768px; min-width: 320px">
-      <h1
-      style="
+      }
+
+      .container_one {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 2.5rem;
+        width: 100%;
+      }
+
+      .container_one_title p {
+        text-align: left;
+        width: 100%;
+        color: #475467;
+        font-size: 9px;
+        font-weight: 500;
+        line-height: 9px;
+      }
+
+      .container_one_logo {
+        display: flex;
+        align-items: center;
+        margin-top: 2.5px;
+      }
+
+      .container_one_logo img {
+        /*object-fit: contain;*/
+        /*object-position: center;*/
+        align-self: flex-start;
+        display: flex;
+        align-items: center;
+        max-width: 100px;
+      }
+
+      .content {
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .heading {
         font-size: 1.5rem;
         font-weight: 600;
         color: #101828;
         margin-bottom: 1rem;
-      "
-    >
-      Hi,    </h1>
-          <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-            Thank you for using Devitrak to manage your devices at ${props.eventName}! We’d love to hear about your experience. Your feedback helps us improve and ensure a seamless process for future events.
-          </p>
-              <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-        It only takes <strong>2 minutes</strong> to complete the survey! 
+      }
+
+      .text {
+        font-size: 1rem;
+        color: #475467;
+        margin-bottom: 1.5rem;
+      }
+
+      .button {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        /*gap: 8px;*/
+        border-radius: 8px;
+        border: 1px solid #155eef;
+        background: #155eef;
+        box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
+        text-decoration: none;
+        color: #fff;
+        font-size: 16px;
+        font-weight: 600;
+        line-height: 24px;
+        padding: 8px 12px;
+        text-align: center;
+        width: fit-content;
+        margin: auto;
+      }
+
+      .footer {
+        margin-top: 2.5rem;
+        font-size: 1rem;
+        color: #475467;
+      }
+
+      @media screen and (max-width: 425px) {
+      body{
+        margin:0;
+        padding:0;
+        width:95%;
+      }
+
+        .container {
+        margin: 0;
+        padding: 1.2rem;
+        /*width: 50vw;*/
+        border-radius: 12px;
+        }
+
+        .container_one {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .container_one_logo {
+          margin-top: 10px;
+        }
+
+        .container_one_logo img {
+          max-width: 80px;
+        }
+        
+        .button{
+          width:60%;
+          padding:5px 10px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="container_one">
+        <div class="container_one_title">
+          <p>Powered by</p>
+          <div class="container_one_logo">
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-name" />
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo" />
+          </div>
+        </div>
+      </div>
+      <div class="content">
+        <h1 class="heading">Hi,</h1>
+        <p class="text">
+          Thank you for using Devitrak to manage your devices at ${props.eventName}! We’d love to hear about your
+          experience. Your feedback helps us improve and ensure a seamless process for future events.
         </p>
-
-        <a
-          href="${props.link}"
-          target="_blank"
-          style="
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            align-self: stretch;
-            border-radius: 8px;
-            border: 1px solid #155eef;
-            background: #155eef;
-            margin:auto;box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
-            text-decoration: none;
-          "
-          ><p
-            style="
-              margin:auto;
-              color:#fff;
-              text-align: center;
-              font-size: 16px;
-              font-style: normal;
-              font-weight: 600;
-              line-height: 24px; /* 150% */
-              padding:8px 12px;
-            "
-          >
-            Give feedback now
-          </p>
-        </a>
-            <div style="margin-top: 2.5rem">
-    <p>We appreciate your time and look forward to serving you even better next time</p>
-    <p style="font-size: 1rem; color: #475467">
-            – The Devitrak Team
-    </p>
-  </p>
-    </div>
-
-    <div style="margin-top: 2.5rem">
-    <p style="font-size: 1rem; color: #475467">
-    This email was sent from an unmonitored account. Do not reply to this email.    </p>
-  </p>
-    </div>
-
+        <p class="text">It only takes <strong>2 minutes</strong> to complete the survey!</p>
+        <a href="${props.link}" target="_blank" class="button"><p style="color:white;width:100%;text-align:center;">Give feedback now</p></a>
+        <div class="footer">
+          <p>We appreciate your time and look forward to serving you even better next time.</p>
+          <h4>– The Devitrak Team</h4>
+        </div>
+        <div class="footer">
+          <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
+        </div>
       </div>
     </div>
   </body>
