@@ -1262,13 +1262,36 @@ const updateItemInTableAfterBeingAddedToEventFromContainer = async (
     }
     return response.status(201).json({
       ok: true,
-      msg:"Items updated successfully in the warehouse",
+      msg: "Items updated successfully in the warehouse",
     });
   } catch (error) {
     console.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
+    });
+  }
+};
+
+const checkingIfCompanyHasInventory = async (request, response) => {
+  try {
+    const params = request._parsedUrl.query;
+      const splitting = params.split("&");
+      const formatting = splitting.map((item) => item.split("=")[0] + "=?");
+      const keys = formatting.toString().replaceAll(",", " AND ");
+      const values = [...splitting.map((item) => item.split("=")[1])];
+      const query = `select COUNT(*) as total from item_inv where ${keys};`;
+      const connection = getConnection();
+      const [result] = await connection.promise().execute(query, values);
+      return response.status(201).json({
+        cached: false,
+        ok: true,
+        total: result[0].total,
+      });
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
     });
   }
 };
@@ -1297,4 +1320,5 @@ module.exports = {
   checkInventoryCompanyExists,
   updateContentInContainerItem,
   updateItemInTableAfterBeingAddedToEventFromContainer,
+  checkingIfCompanyHasInventory,
 };

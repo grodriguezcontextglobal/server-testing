@@ -20,6 +20,7 @@ const {
   fragmentData,
   gettingDataFromLocationOption,
   returningItemToStockWhenEventIsFinishedRefactored,
+  checkingIfCompanyHasInventory,
 } = require("../controllers/item");
 const {
   consultingInventoryCurrentState,
@@ -96,5 +97,6 @@ router.post(
   returningItemToStockWhenEventIsFinishedRefactored
 );
 
-
+//check if company has inventory
+router.get("/check-company-has-inventory", checkingIfCompanyHasInventory);
 module.exports = router;
