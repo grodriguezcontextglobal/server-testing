@@ -2,6 +2,9 @@ const express = require("express");
 const Event = require("../models/Event");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const AdminUser = require("../models/AdminUser");
+const moment = require("moment");
+const getConnection = require("../mysql/database/config");
+const ReceiversPool = require("../models/ReceiversPool");
 
 const createEvent = async (request, response = express.response) => {
   try {
@@ -14,7 +17,6 @@ const createEvent = async (request, response = express.response) => {
       event,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -87,7 +89,6 @@ const editSubscriptionEvent = async (request, response = response) => {
       event: subscriptionEventEdited,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
@@ -128,7 +129,6 @@ const eventList = async (request, response) => {
       list,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -167,7 +167,6 @@ const gettingEventListPerCompany = async (request, response) => {
       });
     }
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -246,6 +245,172 @@ const eventStaffDetailInfo = async (request, response) => {
   }
 };
 
+const filterEventsByDate = (referenceDateStr, events) => {
+  // Set reference date
+  const referenceDate = moment(referenceDateStr, "YYYY-MM-DD").startOf("day");
+
+  // Define conditions
+  const threeDaysBefore = referenceDate
+    .clone()
+    .subtract(3, "days")
+    .endOf("day")
+    .valueOf();
+  const oneDayBefore = referenceDate
+    .clone()
+    .subtract(1, "days")
+    .endOf("day")
+    .valueOf();
+  const refStart = referenceDate.valueOf();
+  const refEnd = referenceDate.clone().endOf("day").valueOf();
+
+  // Process events
+  return events
+    .map((event) => {
+      const {
+        event: eventName,
+        startTime,
+        endTime,
+        inventory,
+        eventId,
+        companyId,
+      } = event;
+      let status = "";
+
+      if (endTime >= threeDaysBefore && endTime < oneDayBefore) {
+        status = "Ended 3 days before the reference date";
+      } else if (startTime <= refEnd && endTime >= refStart) {
+        status = "Ongoing during the reference date";
+      } else if (endTime >= oneDayBefore && endTime < refStart) {
+        status = "Ended 1 day before the reference date";
+      }
+
+      return status
+        ? { eventName, status, inventory, eventId, companyId }
+        : null;
+    })
+    .filter(Boolean); // Remove null values
+};
+
+const returnSerialNumberUsedInEvent = async (props) => {
+  const result = new Set();
+  let collection = [];
+  for (let data of props) {
+    const deviceInfo = await ReceiversPool.find(
+      {
+        company: data.companyId,
+        eventSelected: data.eventName,
+      },
+      { device: 1 }
+    ).lean();
+    if (deviceInfo.length > 0) {
+      deviceInfo.forEach((device) => result.add(device.device));
+    }
+  }
+  collection = [...collection, ...Array.from(result)];
+  return collection;
+};
+
+const returnItemsInfoInUsedInEvents = async ({
+  serialNumbers,
+  companySqlId,
+  dateRef2
+}) => {
+  const connection = getConnection();
+  const cache_connection = await clientRedis();
+  const cachedData = await cache_connection.get(
+    `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`
+  );
+  if (cachedData) {
+    return JSON.parse(cachedData);
+  }
+  if (serialNumbers.length === 0) {
+    const query = `SELECT * FROM item_inv WHERE company_id = ?`;
+    try {
+      const [result] = await connection
+        .promise()
+        .execute(query, [companySqlId]);
+      cache_connection.set(
+        `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`,
+        JSON.stringify(result)
+      );
+      cache_connection.expire(
+        `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`,
+        60
+      );
+      return result;
+    } catch (error) {
+      return [];
+    }
+  } else {
+    const placeholders = serialNumbers.map(() => "?").join(", "); // Create dynamic placeholders
+    const query = `SELECT * FROM item_inv WHERE company_id = ? AND serial_number NOT IN (${placeholders})`;
+    try {
+      const [result] = await connection
+        .promise()
+        .execute(query, [companySqlId, ...serialNumbers]);
+      cache_connection.set(
+        `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`,
+        JSON.stringify(result)
+      );
+      cache_connection.expire(
+        `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`,
+        60
+      );
+
+      return result;
+    } catch (error) {
+      console.error("Database error:", error);
+      return [];
+    }
+  }
+};
+
+const inventoryEventBasedOnPeriod = async (request, response) => {
+  try {
+    const companyId = request.query.company_id;
+    const dateRef2 = request.query.date2;
+    const companySqlId = request.query.company_sql_id;
+    const eventInfo = await Event.find({
+      company_id: companyId,
+      active: true,
+      type: "event",
+    }).lean(); //company_id: companyId
+    const result = [];
+    const referenceDate = moment(dateRef2, "YYYY-MM-DD").startOf("day");
+    for (let data of eventInfo) {
+      const startTime = new Date(data.eventInfoDetail.dateBegin).getTime();
+      const endTime = new Date(data.eventInfoDetail.dateEnd).getTime();
+      result.push({
+        referenceDate,
+        event: data.eventInfoDetail.eventName,
+        startTime,
+        endTime,
+        inventory: data.deviceSetup,
+        eventId: `${data._id}`,
+        companyId: `${data.company_id}`,
+      });
+    }
+    const filteredEvents = filterEventsByDate(dateRef2, result);
+    const checkingItem = await returnSerialNumberUsedInEvent(filteredEvents);
+    const serialNumbers = [...checkingItem];
+    const sqlItemInfoAvailable = await returnItemsInfoInUsedInEvents({
+      serialNumbers,
+      companySqlId,
+      dateRef2
+    });
+    return response.status(201).json({
+      ok: true,
+      events: sqlItemInfoAvailable,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+      error,
+    });
+  }
+};
+
 module.exports = {
   createEvent,
   editSubscriptionEvent,
@@ -254,4 +419,5 @@ module.exports = {
   searchStaffAllEvents,
   gettingEventListPerCompany,
   eventStaffDetailInfo,
+  inventoryEventBasedOnPeriod,
 };
