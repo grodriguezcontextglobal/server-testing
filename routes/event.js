@@ -12,7 +12,8 @@ const {
     editEvent,
     searchStaffAllEvents,
     gettingEventListPerCompany,
-    eventStaffDetailInfo
+    eventStaffDetailInfo,
+    inventoryEventBasedOnPeriod
 } = require("../controller/event");
 const { getListOfUsersAndTransactionsPerEvent } = require("../controller/auth");
 
@@ -50,5 +51,8 @@ router.get("/all-users-and-transactions-per-event", getListOfUsersAndTransaction
 
 //retrieve staff info in detail of an event
 router.get('/event-staff-detail/:id', eventStaffDetailInfo)
+
+//check event inventory based on timeframe selected
+router.get('/event-inventory-based-on-period', inventoryEventBasedOnPeriod)
 
 module.exports = router;
