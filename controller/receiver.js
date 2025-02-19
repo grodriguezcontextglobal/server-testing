@@ -259,7 +259,7 @@ const getListOfItemsInEventPool = async (request, response) => {
       if (check.eventSelected) {
         check.eventSelected = eventID;
       }
-      const items = await ReceiversPool.find(check);
+      const items = await ReceiversPool.find(check).sort({device: 1});
       cache_connection.set(
         `eventSelected=${eventID}&company=${companyID}`,
         JSON.stringify(items)
