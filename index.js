@@ -1,8 +1,9 @@
 const express = require("express");
-const compression = require('compression');
+const compression = require("compression");
 const { dbConnection } = require("./database/config");
 const cors = require("cors");
 require("dotenv").config();
+// const cookieParser = require("cookie-parser");
 // const statusMonitor = require("express-status-monitor");
 const cluster = require("node:cluster");
 const OS = require("node:os");
@@ -36,8 +37,10 @@ const lease = require("./routes/lease");
 const leaseSQL = require("./mysql/routes/lease");
 const cache_route = require("./routes/cache_route");
 const cloudinaryImageUpload = require("./cloudinary/connection");
-// const responseTime = require('response-time');
-
+const search = require("./routes/search");
+// const responseTime = require("response-time");
+// const { cookie } = require("express-validator");
+const feedback = require("./routes/feedback");
 //check CPU
 const numCpu = OS.cpus().length;
 
@@ -47,11 +50,12 @@ dbConnection();
 // CORS configuration
 const ACCEPTED_ORIGINS = [
   "http://localhost:5522",
+  "https://devitrak-app-survey.pages.dev",
   "http://localhost:3791",
   "https://admin.devitrak.net",
   "https://app.devitrak.net",
   "https://admin-testing-dev.netlify.app",
-  "https://login.microsoftonline.com/"
+  "https://login.microsoftonline.com/",
 ];
 
 const corsOptions = {
@@ -63,7 +67,17 @@ const corsOptions = {
     }
   },
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-token"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "x-token",
+    "token",
+    "Cookie",
+    "Set-Cookie",
+    "credentials",
+  ],
+  cookie: true,
+  credentials: true,
   // preflightContinue: false,
   maxAge: 84600,
   optionsSuccessStatus: 200,
@@ -73,23 +87,10 @@ const corsOptions = {
 const app = express();
 
 // //response time
-// app.use(responseTime())
+// app.use(responseTime());
 
 // Enable Gzip compression
 app.use(compression());
-
-// app.use(
-//   statusMonitor({
-//     healthChecks: [
-//       {
-//         protocol: "https",
-//         host: "db.devitrak.net",
-//         path: "/api/auth/users",
-//         port: process.env.PORT,
-//       }, 
-//     ],
-//   })
-// );
 
 app.use(cors(corsOptions));
 
@@ -98,6 +99,9 @@ app.options("*", cors(corsOptions));
 
 //public directory
 app.use(express.static("public"));
+
+//cookie parser
+// app.use(cookieParser());
 
 //Read and body parse
 app.use(express.json({ limit: "1mb" }));
@@ -133,7 +137,9 @@ app.use("/api/db_record", recordEvent);
 app.use("/api/db_lease", leaseSQL);
 app.use("/api/cloudinary", cloudinaryImageUpload);
 app.use("/api/cache_update", cache_route);
-
+app.use("/api/search", search);
+app.use("/api/feedback", feedback);
+// app.listen(process.env.PORT);
 if (cluster.isPrimary) {
   for (let index = 0; index < numCpu; index++) {
     cluster.fork();
