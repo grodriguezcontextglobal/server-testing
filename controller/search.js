@@ -7,6 +7,9 @@ const ReceiversPool = require("../models/ReceiversPool");
 const Transaction = require("../models/Transaction");
 const User = require("../models/User");
 const mongoose = require("mongoose");
+const moment = require("moment");
+const getConnection = require("../mysql/database/config");
+const { groupBy } = require("lodash");
 
 const searchingCompanyInfo = async (company) => {
   const cache_connection = await clientRedis();
@@ -248,6 +251,42 @@ const moreConsumer = async (req, res) => {
   }
 };
 
+const previousConsumer = async (req, res) => {
+  try {
+    const variable = req.query.variable;
+    const company = req.query.company;
+    const lastId = req.query.lastId;
+    const query = {
+      $or: [
+        { name: { $regex: variable, $options: "i" } },
+        { lastName: { $regex: variable, $options: "i" } },
+        { email: { $regex: variable, $options: "i" } },
+      ],
+      company_providers: { $in: [company] },
+    };
+    if (lastId) {
+      query._id = { $gt: new mongoose.Types.ObjectId(lastId) };
+    }
+    const limit = 11;
+    const results = await User.find(query).sort({ _id: -1 }).limit(limit);
+    const hasMore = results.length === limit;
+    if (hasMore) {
+      results.pop();
+    }
+    return res.status(200).json({
+      ok: true,
+      consumers: results,
+      hasMore,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      ok: false,
+      message: error.message,
+      error,
+    });
+  }
+};
+
 const moreEvents = async (req, res) => {
   const variable = req.query.variable;
   const company = req.query.company;
@@ -320,10 +359,261 @@ const moreDeviceTransaction = async (req, res) => {
   }
 };
 
+const filterEventsByDate = (referenceStartStr, referenceEndStr, events) => {
+  // Create reference moments
+  const refStart = moment(referenceStartStr, "YYYY-MM-DD").startOf("day");
+  const refEnd = moment(referenceEndStr, "YYYY-MM-DD").endOf("day");
+
+  // Define the extended period: 5 days before refStart and 5 days after refEnd
+  const periodStart = refStart.clone().subtract(5, "days");
+  const periodEnd = refEnd.clone().add(5, "days");
+
+  // Process events: Here we filter events that overlap with the extended period.
+  // You can add additional status labeling if needed.
+  return events
+    .map((event) => {
+      const {
+        event: eventName,
+        startTime,
+        endTime,
+        inventory,
+        eventId,
+        companyId,
+      } = event;
+
+      // Convert event times to moment objects
+      const eventStart = moment(startTime);
+      const eventEnd = moment(endTime);
+
+      // If the event ends before the extended period starts or starts after it ends,
+      // then skip this event.
+      if (eventEnd.isBefore(periodStart) || eventStart.isAfter(periodEnd)) {
+        return null;
+      }
+
+      // Optionally, determine a status based on the event's position relative to the reference period.
+      let status = "";
+      if (eventStart.isBefore(refStart) && eventEnd.isAfter(refEnd)) {
+        status = "Spans entire reference period";
+      } else if (
+        eventStart.isBefore(refStart) &&
+        eventEnd.isBetween(refStart, refEnd, null, "[]")
+      ) {
+        status = "Started before but ends during reference period";
+      } else if (
+        eventStart.isBetween(refStart, refEnd, null, "[]") &&
+        eventEnd.isAfter(refEnd)
+      ) {
+        status = "Starts during but ends after reference period";
+      } else if (
+        eventStart.isBetween(refStart, refEnd, null, "[]") &&
+        eventEnd.isBetween(refStart, refEnd, null, "[]")
+      ) {
+        status = "Occurs entirely within reference period";
+      } else {
+        status = "Within extended period";
+      }
+
+      return { eventName, status, inventory, eventId, companyId };
+    })
+    .filter(Boolean); // Remove any null values (i.e. events outside the extended period)
+};
+
+const returnSerialNumberUsedInEvent = async ({ renderingData, group }) => {
+  const result = new Set();
+  let collection = [];
+  for (let data of renderingData) {
+    const deviceInfo = await ReceiversPool.find(
+      {
+        company: data.companyId,
+        eventSelected: data.eventName,
+      },
+      { device: 1 }
+    ).lean();
+    if (deviceInfo.length > 0) {
+      deviceInfo.forEach((device) => result.add(device.device));
+    }
+  }
+  collection = [...collection, ...Array.from(result)];
+  return collection;
+};
+
+const returnItemsInfoInUsedInEvents = async ({
+  serialNumbers,
+  companySqlId,
+  dateRef2,
+  location = null,
+  group = null,
+  brand = null,
+  category = null,
+}) => {
+  const connection = getConnection();
+  const cache_connection = await clientRedis();
+  const cacheKey = `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers.join(
+    ","
+  )}`;
+  const cachedData = await cache_connection.get(cacheKey);
+
+  if (cachedData) {
+    return JSON.parse(cachedData);
+  }
+
+  // Start building the base query and parameter array
+  let query = "SELECT * FROM item_inv WHERE company_id = ?";
+  const params = [companySqlId];
+
+  // If serialNumbers are provided, add a NOT IN clause
+  if (serialNumbers && serialNumbers.length > 0) {
+    const placeholders = serialNumbers.map(() => "?").join(", ");
+    query += ` AND serial_number NOT IN (${placeholders})`;
+    params.push(...serialNumbers);
+  }
+
+  // Add optional filters dynamically
+  if (location !== null) {
+    query += " AND location = ?";
+    params.push(location);
+  }
+  if (group !== null) {
+    query += " AND item_group = ?"; // Wrap group with backticks since it's a reserved word
+    params.push(group);
+  }
+  if (brand !== null) {
+    query += " AND brand = ?";
+    params.push(brand);
+  }
+  if (category !== null) {
+    query += " AND category_name = ?";
+    params.push(category);
+  }
+
+  try {
+    const [result] = await connection.promise().execute(query, params);
+    // Cache the result with a 60-second expiry
+    await cache_connection.set(cacheKey, JSON.stringify(result));
+    await cache_connection.expire(cacheKey, 60);
+    return result;
+  } catch (error) {
+    console.error("Database error:", error);
+    return [];
+  }
+};
+
+const checkEventInventoryActivity = async ({ filteredEvents, group }) => {
+  console.log("group", group);
+  const result = new Map();
+  for (let data of filteredEvents) {
+    const deviceInfo = await ReceiversPool.find(
+      {
+        company: data.companyId,
+        eventSelected: data.eventName,
+      },
+      { type: 1 }
+    ).lean();
+    console.log("deviceInfo", deviceInfo);
+    if (deviceInfo.length > 0) {
+      const groupingInfo = groupBy(deviceInfo, "type");
+      console.log("groupingInfo", groupingInfo);
+      if (group) {
+        result.set(data.eventId, {
+          type: group,
+          count: groupingInfo[group].length,
+        });
+      } else {
+        result.set(data.eventId, {
+          ...Object.keys(groupingInfo).map((key) => ({
+            type: key,
+            count: groupingInfo[key].length,
+          })),
+        });
+      }
+    }
+  }
+  console.log("result", ...result);
+  return result;
+};
+
+const advanceSearchingQuery = async (request, response) => {
+  try {
+    const companyId = request.query.company_id;
+    const date_start = request.query.date_start;
+    const date_end = request.query.date_end;
+    const location =
+      request.query.location !== "undefined" ? request.query.location : null;
+    const group =
+      request.query.group !== "undefined" ? request.query.group : null;
+    const brand =
+      request.query.brand !== "undefined" ? request.query.brand : null;
+    const category =
+      request.query.category !== "undefined" ? request.query.category : null;
+    const companySqlId = request.query.company_sql_id;
+    const eventInfo = await Event.find({
+      company_id: companyId,
+      active: true,
+      type: "event",
+    }).lean(); //company_id: companyId
+    const result = [];
+    const referenceDateStarts = moment(date_start, "YYYY-MM-DD").startOf("day");
+    const referenceDateEnds = moment(date_end, "YYYY-MM-DD").startOf("day");
+    for (let data of eventInfo) {
+      const startTime = new Date(data.eventInfoDetail.dateBegin).getTime();
+      const endTime = new Date(data.eventInfoDetail.dateEnd).getTime();
+      result.push({
+        referenceDateStarts,
+        referenceDateEnds,
+        event: data.eventInfoDetail.eventName,
+        startTime,
+        endTime,
+        inventory: data.deviceSetup,
+        eventId: `${data._id}`,
+        companyId: `${data.company_id}`,
+      });
+    }
+    const filteredEvents = filterEventsByDate(
+      referenceDateStarts,
+      referenceDateEnds,
+      result
+    );
+    const checkingItem = await returnSerialNumberUsedInEvent({
+      renderingData: filteredEvents,
+      group: group,
+    });
+    const serialNumbers = [...checkingItem];
+    const eventInventory = await checkEventInventoryActivity({
+      filteredEvents,
+      group,
+    });
+    const sqlItemInfoAvailable = await returnItemsInfoInUsedInEvents({
+      serialNumbers,
+      companySqlId,
+      date_start,
+      location,
+      group,
+      brand,
+      category,
+    });
+    console.log('event inventory ', eventInventory)
+
+    return response.status(201).json({
+      ok: true,
+      advanceSearchResult: sqlItemInfoAvailable,
+      events: eventInventory,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+      error,
+    });
+  }
+};
+
 module.exports = {
   searching,
   moreConsumer,
   moreEvents,
   moreStaff,
   moreDeviceTransaction,
+  previousConsumer,
+  advanceSearchingQuery,
 };
