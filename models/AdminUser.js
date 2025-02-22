@@ -101,6 +101,7 @@ const AdminUserSchema = new Schema({
       },
     },
   ],
+  tokenVersion: { type: Number, default: 0 },
 });
 
 AdminUserSchema.method("toJSON", function () {
