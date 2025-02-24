@@ -41,6 +41,8 @@ const search = require("./routes/search");
 // const responseTime = require("response-time");
 // const { cookie } = require("express-validator");
 const feedback = require("./routes/feedback");
+const errorFeedback = require("./routes/errorLog");
+
 //check CPU
 const numCpu = OS.cpus().length;
 
@@ -139,6 +141,7 @@ app.use("/api/cloudinary", cloudinaryImageUpload);
 app.use("/api/cache_update", cache_route);
 app.use("/api/search", search);
 app.use("/api/feedback", feedback);
+app.use("/api/error_log", errorFeedback);
 // app.listen(process.env.PORT);
 if (cluster.isPrimary) {
   for (let index = 0; index < numCpu; index++) {
