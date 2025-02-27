@@ -9,7 +9,7 @@ const User = require("../models/User");
 const mongoose = require("mongoose");
 const moment = require("moment");
 const getConnection = require("../mysql/database/config");
-const { groupBy } = require("lodash");
+const { groupBy, noConflict } = require("lodash");
 
 const searchingCompanyInfo = async (company) => {
   const cache_connection = await clientRedis();
@@ -363,7 +363,6 @@ const filterEventsByDate = (referenceStartStr, referenceEndStr, events) => {
   // Create reference moments
   const refStart = moment(referenceStartStr, "YYYY-MM-DD").startOf("day");
   const refEnd = moment(referenceEndStr, "YYYY-MM-DD").endOf("day");
-
   // Define the extended period: 5 days before refStart and 5 days after refEnd
   const periodStart = refStart.clone().subtract(5, "days");
   const periodEnd = refEnd.clone().add(5, "days");
@@ -448,15 +447,15 @@ const returnItemsInfoInUsedInEvents = async ({
   category = null,
 }) => {
   const connection = getConnection();
-  const cache_connection = await clientRedis();
-  const cacheKey = `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers.join(
-    ","
-  )}`;
-  const cachedData = await cache_connection.get(cacheKey);
+  // const cache_connection = await clientRedis();
+  // const cacheKey = `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers.join(
+  //   ","
+  // )}`;
+  // const cachedData = await cache_connection.get(cacheKey);
 
-  if (cachedData) {
-    return JSON.parse(cachedData);
-  }
+  // if (cachedData) {
+  //   return JSON.parse(cachedData);
+  // }
 
   // Start building the base query and parameter array
   let query = "SELECT * FROM item_inv WHERE company_id = ?";
@@ -490,8 +489,8 @@ const returnItemsInfoInUsedInEvents = async ({
   try {
     const [result] = await connection.promise().execute(query, params);
     // Cache the result with a 60-second expiry
-    await cache_connection.set(cacheKey, JSON.stringify(result));
-    await cache_connection.expire(cacheKey, 60);
+    // await cache_connection.set(cacheKey, JSON.stringify(result));
+    // await cache_connection.expire(cacheKey, 60);
     return result;
   } catch (error) {
     console.error("Database error:", error);
@@ -500,7 +499,6 @@ const returnItemsInfoInUsedInEvents = async ({
 };
 
 const checkEventInventoryActivity = async ({ filteredEvents, group }) => {
-  console.log("group", group);
   const result = new Map();
   for (let data of filteredEvents) {
     const deviceInfo = await ReceiversPool.find(
@@ -510,10 +508,8 @@ const checkEventInventoryActivity = async ({ filteredEvents, group }) => {
       },
       { type: 1 }
     ).lean();
-    console.log("deviceInfo", deviceInfo);
     if (deviceInfo.length > 0) {
       const groupingInfo = groupBy(deviceInfo, "type");
-      console.log("groupingInfo", groupingInfo);
       if (group) {
         result.set(data.eventId, {
           type: group,
@@ -529,10 +525,106 @@ const checkEventInventoryActivity = async ({ filteredEvents, group }) => {
       }
     }
   }
-  console.log("result", ...result);
   return result;
 };
 
+const checkPlannedEventInventoryActivity = async ({ events, group }) => {
+  const result = new Map();
+  for (let data of events) {
+    const { inventory } = data;
+    if (group) {
+      const foundGroup = inventory.find((item) => item.group === group);
+      if (foundGroup) {
+        if (!result.has(group)) {
+          result.set(group, Number(foundGroup.quantity));
+        } else {
+          result.set(
+            group,
+            Number(result.get(group)) + Number(foundGroup.quantity)
+          );
+        }
+      }
+    } else {
+      for (let item of inventory) {
+        if (!result.has(item.group)) {
+          result.set(item.group, Number(item.quantity));
+        } else {
+          result.set(
+            item.group,
+            result.get(item.group) + Number(item.quantity)
+          );
+        }
+      }
+    }
+  }
+  return result;
+};
+
+const displayPlannedEventInventory = async ({
+  checkPlannedEventInventory,
+  companySqlId,
+  location = null,
+  group = null,
+  brand = null,
+  category = null,
+  dateRef2 = 0o0,
+}) => {
+  const connection = getConnection();
+  const formattedResult = new Set();
+  try {
+    if (checkPlannedEventInventory.size === 0) {
+      let query =
+        "SELECT item_group, COUNT(*) FROM item_inv WHERE company_id = ?";
+      const params = [companySqlId];
+
+      if (location !== null) {
+        query += " AND location = ?";
+        params.push(location);
+      }
+      if (group !== null) {
+        query += " AND item_group = ?"; // Wrap group with backticks since it's a reserved word
+        params.push(group);
+      }
+      if (brand !== null) {
+        query += " AND brand = ?";
+        params.push(brand);
+      }
+      if (category !== null) {
+        query += " AND category_name = ?";
+        params.push(category);
+      }
+
+      query += " GROUP BY item_group";
+      const [results] = await connection.promise().execute(query, params);
+      for (let data of results) {
+        formattedResult.add({
+          group: data.item_group,
+          available: data["count(*)"],
+          notAvailable: 0,
+        });
+      }
+      return new Array(...formattedResult);
+    }
+    const result = new Map();
+    for (let [key, value] of checkPlannedEventInventory) {
+      let query =
+        "SELECT COUNT(*) FROM item_inv WHERE company_id = ? AND item_group = ?";
+      const params = [companySqlId, key];
+      const [results] = await connection.promise().execute(query, params);
+      result.set(key,{ available:Number(results[0]["count(*)"]) - Number(value), notAvailable: Number(value) });
+    }
+    for (let [key, value] of result) {
+      formattedResult.add({
+        group: key,
+        available: value.available,
+        notAvailable: value.notAvailable,
+      });
+    }
+    return new Array(...formattedResult);
+  } catch (error) {
+    return [];
+  }
+};
 const advanceSearchingQuery = async (request, response) => {
   try {
     const companyId = request.query.company_id;
@@ -551,7 +643,7 @@ const advanceSearchingQuery = async (request, response) => {
       company_id: companyId,
       active: true,
       type: "event",
-    }).lean(); //company_id: companyId
+    }).lean();
     const result = [];
     const referenceDateStarts = moment(date_start, "YYYY-MM-DD").startOf("day");
     const referenceDateEnds = moment(date_end, "YYYY-MM-DD").startOf("day");
@@ -569,7 +661,7 @@ const advanceSearchingQuery = async (request, response) => {
         companyId: `${data.company_id}`,
       });
     }
-    const filteredEvents = filterEventsByDate(
+    const filteredEvents = await filterEventsByDate(
       referenceDateStarts,
       referenceDateEnds,
       result
@@ -592,18 +684,39 @@ const advanceSearchingQuery = async (request, response) => {
       brand,
       category,
     });
-    console.log('event inventory ', eventInventory)
 
+    const checkPlannedEventInventory = await checkPlannedEventInventoryActivity(
+      {
+        events: filteredEvents,
+        group: group,
+      }
+    );
+
+    const displayPlannedEventInventoryData = await displayPlannedEventInventory(
+      {
+        checkPlannedEventInventory,
+        companySqlId,
+        location,
+        group,
+        brand,
+        category,
+      }
+    );
     return response.status(201).json({
       ok: true,
       advanceSearchResult: sqlItemInfoAvailable,
       events: eventInventory,
+      plannedInventoryToUseInEvents: displayPlannedEventInventoryData,
+      period: {
+        start: date_start,
+        end: date_end,
+      }
     });
   } catch (error) {
     return response.status(500).json({
       ok: false,
       msg: error.message,
-      error,
+      error: JSON.stringify(error),
     });
   }
 };
