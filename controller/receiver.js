@@ -20,7 +20,6 @@ const addReceiverToTransaction = async (request, response) => {
       date: new Date(),
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -45,7 +44,6 @@ const checkingReceiversAssigned = async (request, response) => {
       });
     }
   } catch (error) {
-    console.log(error);
     return response.status(501).json({
       ok: false,
       msg: error,
@@ -74,7 +72,6 @@ const checkingReceiversExistInDatabase = async (request, response) => {
       });
     }
   } catch (error) {
-    console.log(error);
     return response.status(501).json({
       ok: false,
       msg: error,
@@ -111,7 +108,6 @@ const udpateReceiverStatus = async (request, response) => {
       device: receiverUpdated.device,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -122,7 +118,7 @@ const udpateReceiverStatus = async (request, response) => {
 const updateBulkItemsInTransaction = async (request, response) => {
   const { timeStamp, device } = request.body;
   try {
-    for (let item of device) {
+    for (let item of device) { 
       await Receivers.findByIdAndUpdate(
         item.key,
         {
@@ -138,7 +134,6 @@ const updateBulkItemsInTransaction = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -171,7 +166,6 @@ const updateBulkItemsInPool = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -188,7 +182,6 @@ const poolReceivers = async (request, response) => {
       receiversPool,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -227,7 +220,6 @@ const poolReceiversBulk = async (request, response) => {
       receiversPool: savedItems,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -275,7 +267,6 @@ const getListOfItemsInEventPool = async (request, response) => {
       });
     // }
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -307,7 +298,6 @@ const updatePoolReceivers = async (request, response) => {
       receiverUpdated: JSON.stringify(receiverUpdated),
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -323,10 +313,6 @@ const receiverPoolList = async (request, response) => {
       receiversInventory: receiversInventory,
     });
   } catch (error) {
-    console.log(
-      "🚀 ~ file: receiver.js ~ line 156 ~ receiverPoolList ~ error",
-      error
-    );
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -344,10 +330,6 @@ const receiverPoolFoundAndDelete = async (request, response) => {
       deviceDeleted,
     });
   } catch (error) {
-    console.log(
-      "🚀 ~ file: receiver.js ~ line 156 ~ receiverPoolList ~ error",
-      error
-    );
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -363,10 +345,6 @@ const listOfAssignedReceiver = async (request, response) => {
       listOfReceivers: listOfReceivers,
     });
   } catch (error) {
-    console.log(
-      "🚀 ~ file: receiver.js ~ line 205 ~ listOfAssignedReceiver ~ error",
-      error
-    );
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -394,7 +372,6 @@ const listOfAssignedReceiverPlusUserInformation = async (request, response) => {
       listOfReceivers: receiversWithUserInfo,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Error fetching receiver information",
@@ -412,7 +389,6 @@ const trackReturnedReceiverWithIssue = async (request, response) => {
       record: trackDevice,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error.response,
@@ -459,7 +435,6 @@ const updateIssueDevice = async (request, response) => {
       receiverUpdated,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -524,7 +499,6 @@ const updateBulkItemDataInPool = async (request, response) => {
       totalAssigned: result.modifiedCount,
     });
   } catch (error) {
-    console.error("updateBulkItemDataInPool error:", error);
     return response.status(500).json({
       ok: false,
       msg: "Internal server error.",
@@ -558,7 +532,6 @@ const returnAllItemsInTransactionInPool = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -585,7 +558,6 @@ const updateBulkItemsInTransactionPerUserAtOnce = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -635,7 +607,6 @@ const createBulkItemTransactionInUser = async (request, response) => {
       date: new Date(),
     });
   } catch (error) {
-    console.log("createBulkItemTransactionInUser", error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -653,7 +624,6 @@ const removingItemFromTransaction = async (request, response) => {
       response: foundItem,
     });
   } catch (error) {
-    console.log("removingItemFromTransaction", error);
     return response.status(500).json({
       ok: false,
       msg: error,
