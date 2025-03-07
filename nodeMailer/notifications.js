@@ -634,6 +634,102 @@ const devitrakFeedbackEmailNotification = async (request, response) => {
   }
 };
 
+const errorFeedbackEmailNotification = async (props) => {
+  try {
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="en">
+        <head>
+          <meta charset="UTF-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+          <title>Error Notification</title>
+          <style>
+            /* Basic styling to make the email more readable */
+            body {
+              font-family: Arial, sans-serif;
+              background-color: #f7f7f7;
+              margin: 0;
+              padding: 0;
+            }
+            .container {
+              max-width: 600px;
+              margin: 20px auto;
+              background-color: #ffffff;
+              padding: 20px;
+              border-radius: 5px;
+              box-shadow: 0 0 5px rgba(0, 0, 0, 0.1);
+            }
+            h1 {
+              margin-top: 0;
+              color: #333333;
+            }
+            .error-details {
+              background-color: #f9f9f9;
+              border: 1px solid #e0e0e0;
+              padding: 10px;
+              margin: 15px 0;
+            }
+            .error-details p {
+              margin: 6px 0;
+            }
+            .error-details pre {
+              background: #efefef;
+              padding: 10px;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+              border-radius: 4px;
+            }
+            .footer {
+              font-size: 12px;
+              color: #999999;
+              margin-top: 20px;
+              text-align: center;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <h1>Devitrak Error Notification</h1>
+            <p>Hello,</p>
+            <p>We encountered the following error in our application. Your feedback helps us improve your experience. Please review the details below and let us know if you have any additional information or questions.</p>
+            
+            <div class="error-details">
+              <h2>Error Details</h2>
+              <p><strong>Error ID:</strong> ${props.errorId}</p>
+              <p><strong>Error Message:</strong> ${props.error}</p>
+              <p><strong>Component Stack:</strong></p>
+              <pre>${props.componentStack}</pre>
+            </div>
+
+            <p>If you have any suggestions or more details about this error, please reply to this email. Thank you for helping us make Devitrak better!</p>
+
+            <div class="footer">
+              <p>Devitrak Notifications</p>
+              <p>&copy; 2025 Devitrak Inc.</p>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const msg = {
+      from: "Devitrak Notifications <notification@devitrak.net>",
+      to: "Gustavo Rodriguez <grodriguez@contextglobal.com>",
+      subject: `Error Log - Devitrak Admin Dashboard.`,
+      html: htmlContent,
+    };
+
+    return sgMail.sendMultiple(msg).then(() => {
+      return {
+        notification: `Email sent successfully`,
+        ok: true,
+      };
+    });
+  } catch (error) {
+    console.log(error);
+  }
+};
+
 module.exports = {
   assingDeviceNotification,
   returningDeviceNotification,
@@ -659,4 +755,5 @@ module.exports = {
   massiveEventCustomerNotification,
   deviceReportPerTransaction,
   devitrakFeedbackEmailNotification,
+  errorFeedbackEmailNotification,
 };
