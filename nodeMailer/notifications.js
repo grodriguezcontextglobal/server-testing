@@ -25,6 +25,7 @@ const {
   serviceRefundConfirmationEmailHtml,
   deviceReportPerTransactionMessageHtml,
   devitrakFeedbackEmailMessageHtml,
+  nrffInterpretationFeedbackEmailMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const e = require("express");
@@ -597,7 +598,7 @@ const massiveEventCustomerNotification = async (request, response) => {
 
 const devitrakFeedbackEmailNotification = async (request, response) => {
   try {
-    const { eventID, eventSelected } = request.body;
+    const { eventID } = request.body;
     const consumerEventList = await User.find(
       {
         event_providers: eventID,
@@ -610,12 +611,7 @@ const devitrakFeedbackEmailNotification = async (request, response) => {
         from: "Devitrak Notifications <notification@devitrak.net>",
         to: [...consumerEventList],
         subject: `Share Your Feedback – Help Us Improve Your Experience!`,
-        html: devitrakFeedbackEmailMessageHtml({
-          props: {
-            eventName: eventSelected,
-            link: `https://devitrak-app-survey.pages.dev/?event=${eventSelected}&eventID=${eventID}`,
-          },
-        }),
+        html: nrffInterpretationFeedbackEmailMessageHtml(),
       };
       sgMail.sendMultiple(msg).then(() => {
         response.status(201).json({
@@ -630,7 +626,10 @@ const devitrakFeedbackEmailNotification = async (request, response) => {
       });
     }
   } catch (error) {
-    console.log(error);
+    return response.status(500).json({
+      ok: false,
+      error: error,
+    });
   }
 };
 

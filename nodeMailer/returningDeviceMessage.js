@@ -3321,7 +3321,7 @@ const devitrakFeedbackEmailMessageHtml = ({ props }) => {
       <div class="content">
         <h1 class="heading">Hi,</h1>
         <p class="text">
-          Thank you for using Devitrak to manage your devices at ${props.eventName}! We’d love to hear about your
+          Thank you for using Devitrak to manage your devices! We’d love to hear about your
           experience. Your feedback helps us improve and ensure a seamless process for future events.
         </p>
         <p class="text">It only takes <strong>2 minutes</strong> to complete the survey!</p>
@@ -3329,6 +3329,171 @@ const devitrakFeedbackEmailMessageHtml = ({ props }) => {
         <div class="footer">
           <p>We appreciate your time and look forward to serving you even better next time.</p>
           <h4>– The Devitrak Team</h4>
+        </div>
+        <div class="footer">
+          <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
+`;
+};
+
+const nrffInterpretationFeedbackEmailMessageHtml = () => {
+  return `
+<!DOCTYPE html>
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interpretation Services | Survey Invitation</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" />
+    <style>
+      body {
+        max-width: 768px;
+        background-color: #fff;
+        color: #1a202c;
+        font-family: 'Inter', sans-serif;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        margin: auto;
+        padding: 2rem;
+        width: 100%;
+        border-radius: 12px;
+      }
+      .container_one {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        margin-bottom: 2.5rem;
+        width: 100%;
+      }
+      
+      .container_one_title p {
+        text-align: right;
+        width: 100%;
+        color: #475467;
+        font-size: 9px;
+        font-weight: 500;
+        line-height: 9px;
+      }
+      .container_one_logo {
+        display: flex;
+        align-items: center;
+        margin-top: 2.5px;
+      }
+      .container_one_logo img {
+        align-self: flex-start;
+        display: flex;
+        align-items: center;
+        max-width: 100px;
+      }
+      
+      header {
+        width:100%;
+        display:flex;
+        justify-content: center;
+        align-items:center;
+        margin: 4rem auto;
+        }
+
+      .content {
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .heading {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 1rem;
+      }
+        
+      .text {
+        font-size: 1rem;
+        color: #475467;
+        margin-bottom: 1.5rem;
+      }
+
+      .clickable-link-container {
+        display:flex;
+        flex-direction:column;
+        justify-content:space-between;
+        align-items:flex-start;
+        gap:25px;
+      }
+      
+      .footer {
+        margin-top: 2.5rem;
+        font-size: 1rem;
+        color: #475467;
+      }
+      @media screen and (max-width: 425px) {
+        body {
+          margin: 0;
+          padding: 0;
+          width: 95%;
+        }
+        .container {
+          margin: 0;
+          padding: 1.2rem;
+          border-radius: 12px;
+        }
+        .container_one {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .container_one_logo {
+          margin-top: 10px;
+        }
+        .container_one_logo img {
+          max-width: 80px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="container_one">
+        <div class="container_one_title">
+          <p>Powered by</p>
+          <div class="container_one_logo">
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-name" />
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo" />
+          </div>
+        </div>
+      </div>
+          <header class="header">
+            <img src="https://res.cloudinary.com/dsuynhcgd/image/upload/v1741913303/devitrak_logo_name_image_rthz6b.jpg" alt="devitrak-logo-name" />
+          </header>
+      <div class="content">
+        <!-- Portuguese Content -->
+        <h1 class="heading">Prezado usuário da NRFF e dos serviços de interpretação,</h1>
+        <p class="text">
+          Obrigado por utilizar os serviços de interpretação no Javits Center de 13 a 15 de janeiro. Elaboramos uma pesquisa para saber se você gostou dos serviços e como podemos oferecer serviços melhores nos próximos anos. Por favor, reserve um momento para preencher a pesquisa para que possamos usá-la para melhorar as ofertas de serviços. Como recompensa, estamos distribuindo dois cartões-presente da Amazon para duas pessoas que enviarem respostas à nossa pesquisa.
+        </p>
+        <p class="text">Obrigado por sua ajuda!</p>
+        <p class="clickable-link-container">
+          Clique no link para responder à pesquisa: 
+          <a href="https://forms.office.com/r/1L8bZ4XW6T" target="_blank" class="button">https://forms.office.com/r/1L8bZ4XW6T</a>
+        </p>
+        <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e2e8f0;" />
+        <!-- English Content -->
+        <h1 class="heading">Dear NRFF and Interpretation Services user,</h1>
+        <p class="text">
+          Thank you for using interpretation services at the Javits Center from January 13-15. We have put together a survey to determine whether you enjoyed the services and how we can offer better services in the years to come. Please take a moment to fill out our survey so that we can use it to potentially improve the service offerings. As a reward, we are giving away two Amazon gift cards to two people who submit answers to our survey.
+        </p>
+        <p class="text">Thank you for your help!</p>
+        <p class="clickable-link-container">
+          Please click the link to take the survey: 
+          <a href="https://forms.office.com/r/1L8bZ4XW6T" target="_blank" class="button">https://forms.office.com/r/1L8bZ4XW6T</a>
+        </p>
+        <div class="footer">
+          <p>We appreciate your time and look forward to serving you even better next time.</p>
+          <h4>– Interpretation Services Team</h4>
         </div>
         <div class="footer">
           <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
@@ -3364,4 +3529,5 @@ module.exports = {
   serviceRefundConfirmationEmailHtml,
   deviceReportPerTransactionMessageHtml,
   devitrakFeedbackEmailMessageHtml,
+  nrffInterpretationFeedbackEmailMessageHtml,
 };
