@@ -3477,7 +3477,7 @@ const nrffInterpretationFeedbackEmailMessageHtml = () => {
         </p>
         <p class="text">Obrigado por sua ajuda!</p>
         <p class="clickable-link-container">
-          Clique no link para responder à pesquisa: 
+          Clique no link para responder à pesquisa:<br/>
           <a href="https://forms.office.com/r/1L8bZ4XW6T" target="_blank" class="button">https://forms.office.com/r/1L8bZ4XW6T</a>
         </p>
         <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e2e8f0;" />
@@ -3488,7 +3488,7 @@ const nrffInterpretationFeedbackEmailMessageHtml = () => {
         </p>
         <p class="text">Thank you for your help!</p>
         <p class="clickable-link-container">
-          Please click the link to take the survey: 
+          Please click the link to take the survey:<br/>
           <a href="https://forms.office.com/r/1L8bZ4XW6T" target="_blank" class="button">https://forms.office.com/r/1L8bZ4XW6T</a>
         </p>
         <div class="footer">
