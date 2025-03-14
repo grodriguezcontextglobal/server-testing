@@ -3351,7 +3351,7 @@ const nrffInterpretationFeedbackEmailMessageHtml = () => {
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" />
     <style>
       body {
-        max-width: 768px;
+        max-width: 760px;
         background-color: #fff;
         color: #1a202c;
         font-family: 'Inter', sans-serif;
@@ -3359,21 +3359,21 @@ const nrffInterpretationFeedbackEmailMessageHtml = () => {
         padding: 0;
       }
       .container {
-        margin: auto;
-        padding: 2rem;
+        margin: auto 0;
+        padding: 2rem 0;
         width: 100%;
         border-radius: 12px;
       }
       .container_one {
         display: flex;
-        justify-content: flex-end;
+        justify-content: flex-start;
         align-items: center;
         margin-bottom: 2.5rem;
         width: 100%;
       }
       
       .container_one_title p {
-        text-align: right;
+        text-align: left;
         width: 100%;
         color: #475467;
         font-size: 9px;
@@ -3392,14 +3392,6 @@ const nrffInterpretationFeedbackEmailMessageHtml = () => {
         max-width: 100px;
       }
       
-      header {
-        width:100%;
-        display:flex;
-        justify-content: center;
-        align-items:center;
-        margin: 4rem auto;
-        }
-
       .content {
         max-width: 768px;
         min-width: 320px;
@@ -3466,9 +3458,6 @@ const nrffInterpretationFeedbackEmailMessageHtml = () => {
           </div>
         </div>
       </div>
-          <header class="header">
-            <img src="https://res.cloudinary.com/dsuynhcgd/image/upload/v1741913303/devitrak_logo_name_image_rthz6b.jpg" alt="devitrak-logo-name" />
-          </header>
       <div class="content">
         <!-- Portuguese Content -->
         <h1 class="heading">Prezado usuário da NRFF e dos serviços de interpretação,</h1>
