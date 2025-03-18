@@ -27,7 +27,13 @@ const CashReportSchema = Schema({
     typeCollection:{
         type:String,
         required: true
+    },
+    paymentIntent_charge_transaction:{
+        type:String,
+        required: true,
+        default: null
     }
+
 });
 
 CashReportSchema.method("toJSON", function () {
