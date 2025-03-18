@@ -1,6 +1,7 @@
 const express = require("express");
 const CashReport = require("../models/CashReport");
 const { clientRedis } = require("../database/cacheMemoryConfig");
+const { default: mongoose } = require("mongoose");
 
 const createReport = async (request, response = express.response) => {
   try {
@@ -28,20 +29,20 @@ const cashReport = async (request, response) => {
     const cachedReport = await cache_connection.get(
       `cashReport_event=${request.body.event}&cashReport_company=${request.body.company}`
     );
-    if (cachedReport) {
-      return response.status(201).json({
-        report: JSON.parse(cachedReport),
-      });
-    } else {
-      let report = await CashReport.find(request.body);
-      cache_connection.set(
-        `cashReport_event=${request.body.event}&cashReport_company=${request.body.company}`,
-        JSON.stringify(report)
-      );
-      return response.status(201).json({
-        report,
-      });
-    }
+    // if (cachedReport) {
+    //   return response.status(201).json({
+    //     report: JSON.parse(cachedReport),
+    //   });
+    // } else {
+    let report = await CashReport.find(request.body);
+    cache_connection.set(
+      `cashReport_event=${request.body.event}&cashReport_company=${request.body.company}`,
+      JSON.stringify(report)
+    );
+    return response.status(201).json({
+      report,
+    });
+    // }
   } catch (error) {
     console.log(error);
     return response.status(500).json({
@@ -51,7 +52,25 @@ const cashReport = async (request, response) => {
   }
 };
 
+const removeCashReportAfterRefund = async (request, response) => {
+  try {
+    const { id } = request.params;
+    const cashReport = await CashReport.findByIdAndDelete(id);
+    return response.status(201).json({
+      ok: true,
+      cashReport,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: "Please contact Administrator",
+      error,
+    });
+  }
+};
+
 module.exports = {
   createReport,
   cashReport,
+  removeCashReportAfterRefund,
 };
