@@ -901,6 +901,210 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
 `;
 };
 
+const lostDeviceFeeReceipt = (props) => {
+  return `
+  <!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- For responsiveness on mobile devices -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Lost Device Fee</title>
+    <style>
+      /* 
+        You can include additional styles here or inline.
+        Remember that many email clients strip out <style> tags, so 
+        inline styles and simple table-based layouts are recommended.
+      */
+
+      /* Example: Some basic resets and classes for optional usage */
+      body {
+        margin: 0;
+        padding: 0;
+        background-color: #ffffff;
+        font-family: Arial, sans-serif;
+        color: #333333;
+      }
+      h1, h2, h3, p {
+        margin: 0;
+        padding: 0;
+      }
+      img {
+        border: none;
+        display: block;
+        outline: none;
+        text-decoration: none;
+      }
+      a {
+        text-decoration: none;
+        color: inherit;
+      }
+      /* End example styles */
+    </style>
+  </head>
+  <body>
+    <!-- Preheader text (hidden) -->
+    <div
+      style="
+        display: none;
+        overflow: hidden;
+        line-height: 1px;
+        font-size: 1px;
+        max-height: 0;
+        max-width: 0;
+        opacity: 0;
+      "
+    >
+      Lost device fee confirmation
+    </div>
+
+    <!-- Outer container table -->
+    <table
+      border="0"
+      cellpadding="0"
+      cellspacing="0"
+      width="100%"
+      style="margin: 0 auto;"
+    >
+      <tr>
+        <td align="center" style="padding: 20px 10px;">
+          <!-- Inner container table (max-width for desktop) -->
+          <table
+            border="0"
+            cellpadding="0"
+            cellspacing="0"
+            width="600"
+            style="max-width: 600px; width: 100%;"
+          >
+            <!-- Header row -->
+            <tr>
+                <p style="display: flex; justify-content:flex-end;font-size: 12px; color: #888888; margin: 0;">
+                  Powered by</br>
+                </p>
+               <div
+              style="
+                display: flex;
+                justify-content: flex-end;
+                align-items: center;
+                margin-top: 2.5px;
+              "
+            >
+              <img
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+                alt="devitrak-logo"
+                style="
+                  object-fit: contain;
+                  object-position: 50% 50%;
+                  align-self: flex-start;
+                  display: flex;
+                  align-items: center;
+                "
+              />
+              <img
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                alt="devitrak-name"
+                style="
+                  object-fit: contain;
+                  object-position: 50% 50%;
+                  align-self: flex-start;
+                  display: flex;
+                  align-items: center;
+                "
+              />
+            </div>
+
+              </td>
+            </tr>
+
+            <!-- Main content row -->
+            <tr>
+              <td colspan="2" style="padding: 20px;">
+                <h1 style="font-size: 24px; margin-bottom: 16px;">
+                  Lost device fee
+                </h1>
+                <p style="font-size: 16px; line-height: 24px; margin-bottom: 16px;">
+                  This email confirms that 
+                  <strong>$${props.amount}</strong> 
+                  has been charged due to the lost devices from the transaction
+                  detailed below.
+                </p>
+
+                <!-- Transaction details -->
+                <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
+                  <strong>Event:</strong> ${props.event}
+                </p>
+                <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
+                  <strong>Company:</strong> ${props.company}
+                </p>
+                <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
+                  <strong>Date:</strong> ${props.date.toString().replaceAll(',',' ')}
+                </p>
+                <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
+                  <strong>Time:</strong> ${props.time}
+                </p>
+                <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
+                  <strong>Transaction ID:</strong> ${props.transaction}
+                </p>
+                <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
+                  <strong>Device:</strong> ${
+                    props.device.deviceType ?? props.type
+                  } | ${props.device.serialNumber ?? props.device}
+                </p>
+
+              </td>
+            </tr>
+            <!-- "What to expect" section -->
+            <tr>
+              <td colspan="2" style="padding: 0 20px;">
+                <h2
+                  style="
+                    font-size: 18px;
+                    margin-bottom: 12px;
+                    margin-top: 0;
+                  "
+                >
+                  What to expect
+                </h2>
+                <p style="font-size: 14px; line-height: 20px; margin-bottom: 16px;">
+                  In the application you will be able to request new devices,
+                  review your transactions, request support, and get answers to
+                  frequently asked questions. For any specific questions please
+                  contact the staff at ${props.company}.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Footer or signature row -->
+            <tr>
+              <td colspan="2" style="padding: 20px; text-align: center;">
+                <p
+                  style="
+                    font-size: 12px;
+                    color: #888888;
+                    margin: 0;
+                    line-height: 18px;
+                  "
+                >
+                  &copy; ${props.date.at(-1)}.
+                  All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+          <!-- End inner container table -->
+        </td>
+      </tr>
+    </table>
+    <!-- End outer container table -->
+  </body>
+</html>
+
+  `;
+};
+
 const confirmationNewConsumerAccountMessageHtml = (props) => {
   return `
 <html lang="en" translate="no">
@@ -3519,4 +3723,5 @@ module.exports = {
   deviceReportPerTransactionMessageHtml,
   devitrakFeedbackEmailMessageHtml,
   nrffInterpretationFeedbackEmailMessageHtml,
+  lostDeviceFeeReceipt,
 };

@@ -26,6 +26,7 @@ const {
   deviceReportPerTransactionMessageHtml,
   devitrakFeedbackEmailMessageHtml,
   nrffInterpretationFeedbackEmailMessageHtml,
+  lostDeviceFeeReceipt,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const e = require("express");
@@ -239,7 +240,7 @@ const lostDeviceFeeCollectedNotification = async (request, response) => {
       to: `${request.body.consumer.email}`,
       from: "Devitrak Notifications <notification@devitrak.net>",
       subject: "Lost device fee payment receipt",
-      html: lostDeviceFeeCollectedMessageHtml(request.body),
+      html: lostDeviceFeeReceipt(request.body),
     };
 
     sgMail.send(msg).then(() => {
