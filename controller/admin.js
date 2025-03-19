@@ -1,4 +1,5 @@
 const express = require("express");
+const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const AdminUser = require("../models/AdminUser");
 const { generateJWT } = require("../helpers/jwt");
@@ -25,7 +26,20 @@ const createAdminUser = async (request, response = express.response) => {
     await adminUser.save();
 
     //generate JWT
-    const token = await generateJWT(adminUser.id, adminUser.name);
+    const token = await generateJWT(
+      adminUser.id,
+      adminUser.name,
+      adminUser.tokenVersion
+    );
+
+    // Store JWT in a cookie
+    response.cookie("token", token, {
+      httpOnly: true, // Prevent client-side JavaScript from accessing the cookie
+      secure: process.env.NODE_ENV === "production", // Ensure cookies are only sent over HTTPS in production
+      sameSite: "strict", // Prevent CSRF attacks
+      maxAge: 8 * 60 * 60 * 1000, // 8 hours
+    });
+
     return response.status(201).json({
       ok: true,
       message: "registered",
@@ -40,7 +54,6 @@ const createAdminUser = async (request, response = express.response) => {
       token,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -48,8 +61,8 @@ const createAdminUser = async (request, response = express.response) => {
   }
 };
 
-const loginUser = async (request, response = express.response) => {
-  const { email, password } = request.body;
+const loginUser = async (request, response) => {
+  const { email, password, rememberMe } = request.body;
   try {
     let adminUser = await AdminUser.findOne({ email });
     if (!adminUser) {
@@ -59,7 +72,7 @@ const loginUser = async (request, response = express.response) => {
       });
     }
 
-    //confirmar password
+    //confirm password
     const validPassword = bcrypt.compareSync(password, adminUser.password);
 
     if (!validPassword) {
@@ -70,7 +83,13 @@ const loginUser = async (request, response = express.response) => {
     }
 
     //generate jwt (json web token)
-    const token = await generateJWT(adminUser.id, adminUser.name);
+    const token = await generateJWT(
+      adminUser.id,
+      adminUser.name,
+      adminUser.tokenVersion,
+      rememberMe
+    );
+
     return response.status(200).json({
       ok: true,
       entire: adminUser,
@@ -84,7 +103,6 @@ const loginUser = async (request, response = express.response) => {
       token,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -106,7 +124,7 @@ const editAdminUser = async (request, response = response) => {
       ...request.body,
     };
     //generate JWT
-    const token = await generateJWT(adminUserId, adminUser.name);
+    // const token = await generateJWT(adminUserId, adminUser.name);
     const adminUserUpdated = await AdminUser.findByIdAndUpdate(
       adminUserId,
       adminUserEdited,
@@ -125,23 +143,21 @@ const editAdminUser = async (request, response = response) => {
       phone: adminUserUpdated.phone,
       company: adminUserUpdated.company,
       role: adminUserUpdated.role,
-      token,
+      // token,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
     });
   }
 };
-//*
+
 const editOtherAdminUser = async (request, response = response) => {
   const adminUserId = request.params.id;
 
   try {
     const adminUserEdited = {
-
       ...request.body,
     };
     const adminUserUpdated = await AdminUser.findByIdAndUpdate(
@@ -155,17 +171,15 @@ const editOtherAdminUser = async (request, response = response) => {
     return response.json({
       msg: "admin user updated",
       ok: true,
-      adminUpdated: adminUserUpdated
+      adminUpdated: adminUserUpdated,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
     });
   }
 };
-
 
 const deleteAdminUser = async (request, response) => {
   try {
@@ -183,7 +197,6 @@ const deleteAdminUser = async (request, response) => {
       msg: "admin user deleted",
     });
   } catch (error) {
-    console.log(error);
     response.status(500).json({
       ok: false,
       msg: error,
@@ -224,7 +237,7 @@ const updatePassword = async (request, response) => {
     adminUser.password = bcrypt.hashSync(password, salt);
 
     //generate JWT
-    const token = await generateJWT(id, adminUser.name);
+    // const token = await generateJWT(id, adminUser.name);
 
     //update password in adminUser object
     const updateAdminUserPassword = await AdminUser.findByIdAndUpdate(
@@ -243,7 +256,7 @@ const updatePassword = async (request, response) => {
       phone: updateAdminUserPassword.phone,
       role: updateAdminUserPassword.role,
       company: updateAdminUserPassword.company,
-      token,
+      // token,
     });
   } catch (error) {
     response.status(500).json({
@@ -254,7 +267,9 @@ const updatePassword = async (request, response) => {
 };
 
 const showAllUsers = async (request, response) => {
-  const stripeTransactions = await StripeTransaction.find(request.body).populate("user");
+  const stripeTransactions = await StripeTransaction.find(
+    request.body
+  ).populate("user");
 
   try {
     return response.status(201).json({
@@ -294,7 +309,6 @@ const displayAllAdminUser = async (request, response) => {
       adminUsers,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -320,7 +334,6 @@ const articleSetup = async (request, response) => {
       newArticle,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -336,7 +349,6 @@ const displayArticles = async (request, response) => {
       articles,
     });
   } catch (error) {
-    console.log(error);
     return response.status(500).json({
       ok: false,
       msg: error.response.data,
@@ -347,32 +359,57 @@ const displayArticles = async (request, response) => {
 const checkStatus = async (request, response) => {
   try {
     const cache_connection = await clientRedis();
-    const email = request.params.email
-    const cachedStatus = await cache_connection.get(`admin_status=${email}`)
+    const email = request.params.email;
+    const cachedStatus = await cache_connection.get(`admin_status=${email}`);
     if (cachedStatus) {
-      cache_connection.del(`admin_status=${email}`)
+      cache_connection.del(`admin_status=${email}`);
       return response.status(201).json({
         ok: true,
         cached: true,
-        online: JSON.parse(cachedStatus)
-      })
+        online: JSON.parse(cachedStatus),
+      });
     }
-    const checkOnlineStatus = await AdminUser.findOne({ email: email })
-    cache_connection.set(`admin_status=${email}`, JSON.stringify(checkOnlineStatus.online))
-    cache_connection.expire(`admin_status=${email}`, 180)
+    const checkOnlineStatus = await AdminUser.findOne({ email: email });
+    cache_connection.set(
+      `admin_status=${email}`,
+      JSON.stringify(checkOnlineStatus.online)
+    );
+    cache_connection.expire(`admin_status=${email}`, 180);
     return response.status(201).json({
       ok: true,
       cached: false,
-      online: checkOnlineStatus.online
-    })
+      online: checkOnlineStatus.online,
+    });
   } catch (error) {
     return response.status(500).json({
       ok: false,
       msg: error.message,
-      error
-    })
+      error,
+    });
   }
-}
+};
+
+const logoutUser = async (request, response) => {
+  try {
+    const token = request.cookies.token;
+    if (token) {
+      const decoded = jwt.decode(token);
+      console.log(decoded);
+    }
+    response.clearCookie();
+    return response.status(201).json({
+      ok: true,
+      msg: "user logged out",
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+      error,
+    });
+  }
+};
+
 module.exports = {
   renewToken,
   loginUser,
@@ -387,4 +424,5 @@ module.exports = {
   articleSetup,
   displayArticles,
   checkStatus,
+  logoutUser,
 };
