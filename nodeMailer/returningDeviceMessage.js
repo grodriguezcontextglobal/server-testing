@@ -467,282 +467,407 @@ const returnConfirmationMessageHtml = (props) => {
 
 const cancelingDepositMessageHtml = (props) => {
   return `
-  <html lang="en" translate="no">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>
-        Devitrak App | Easy way to manage inventory. A good solution for your
-        business no matter the size of your organization.
-      </title>
-      <style>
-        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
-      </style>
-    </head>
-    <body
-      style="
-        max-width: 768px;
-        min-width: 320px;
-        background-color:#fff;
-        color: #1a202c;
-        font-family: 'Inter', sans-serif;
-        -webkit-text-size-adjust: 100%;
-        -ms-text-size-adjust: 100%;
-        margin: auto;
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Ensures responsiveness on mobile devices -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Deposit Released Confirmation</title>
+    <style>
+      /* Basic resets and responsive styles for email clients */
+      body,
+      table,
+      td,
+      p {
+        margin: 0;
         padding: 0;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #ffffff;
+        color: #333333;
+      }
+      a {
+        text-decoration: none;
+        color: inherit;
+      }
+      img {
+        display: block;
+        border: none;
+        outline: none;
+        text-decoration: none;
+      }
+      /* 
+        Use tables for layout to ensure better compatibility across 
+        email clients (e.g., Outlook).
+      */
+    </style>
+  </head>
+  <body>
+    <!-- Preheader text (hidden) -->
+    <div
+      style="
+        display: none;
+        font-size: 0;
+        line-height: 0;
+        max-height: 0;
+        max-width: 0;
+        opacity: 0;
+        overflow: hidden;
       "
     >
-      <div
-        style="
-          margin-left: auto;
-          margin-right: auto;
-          padding: 2rem;
-          width: 100%;
-          border-radius: 12px;
-        "
-      >
-        <div
-          style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2.5rem;
-            width: 100%;
-          "
-        >
-          <div style="align-self: flex-start">
-            <p
-              style="
-                text-align: left;
-                width: 100%;
-                color: #475467;
-                font-size: 9px;
-                font-style: normal;
-                font-weight: 500;
-                line-height: 9px;
-              "
-            >
-              Power by
-            </p>
-            <div
-              style="
-                display: flex;
-                justify-content: flex-end;
-                align-items: center;
-                margin-top: 2.5px;
-              "
-            >
-              <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
-                alt="devitrak-logo"
-                style="
-                  object-fit: contain;
-                  object-position: 50% 50%;
-                  align-self: flex-start;
-                  display: flex;
-                  align-items: center;
-                "
-              />
-              <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
-                alt="devitrak-name"
-                style="
-                  object-fit: contain;
-                  object-position: 50% 50%;
-                  align-self: flex-start;
-                  display: flex;
-                  align-items: center;
-                "
-              />
-            </div>
-          </div>
-        </div>
-        <div style="max-width: 768px; min-width: 320px">
-          <h1
-            style="
-              font-size: 1.5rem;
-              font-weight: 600;
-              color: #101828;
-              margin-bottom: 1rem;
-            "
+      Deposit released confirmation details inside
+    </div>
+
+    <!-- Outer container -->
+    <table
+      width="100%"
+      border="0"
+      cellspacing="0"
+      cellpadding="0"
+      style="margin: 0; padding: 0;"
+    >
+      <tr>
+        <td align="center" style="padding: 20px 10px;">
+          <!-- Inner container (max-width for desktop, fluid for mobile) -->
+          <table
+            width="600"
+            border="0"
+            cellspacing="0"
+            cellpadding="0"
+            style="max-width: 600px; width: 100%;"
           >
-          Deposit released confirmation
-          </h1>
-          <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-          This email confirms that the $${props.amount} deposit has been released and returned to you from the transaction detailed below.
-          </p>
-        <div
-            style="
-              width: 100%;
-              display: flex;
-              flex-direction: column;
-              margin: 1.5rem auto 0.5rem;
-              color: #475467;
-              font-size: 1rem;"
-            "
-          >
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Event: <strong>${props.event}</strong></p>
-          </div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Company: <strong>${props.company}</strong></p>
-          </div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date} ${props.time}</strong></p>
-          </div>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></p>
-          </div>
-          </div>
-          </div>
-        </div>
-        <div style="margin-top: 2.5rem">
-        <p style="font-size: 1rem; color: #475467">
-        This email was sent from an unmonitored account. Do not reply to this email.    </p>
-      </p>
-        </div>  
-        </div>
-    </body>
-  </html>
+            <!-- Header row -->
+            <tr>
+
+              <td style="padding: 10px 0; text-align: right; vertical-align: middle;">
+                <!-- "Powered by devitrak" (using provided devitrak_name_layer_1 image) -->
+                <div
+                  style="
+                    display: inline-block;
+                    vertical-align: middle;
+                    margin-left: 5px;
+                  "
+                >
+                  <div style="margin: 5px 0 0 0; line-height: 1.4;">
+                  <em style="font-size: 12px; color: #888888; margin: 0; padding: 0;">Powered by</em>
+                  <div style="display:flex">
+                  <img
+                    src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+                    alt="devitrak"
+                    style="
+                      height: 14px;
+                      vertical-align: middle;
+                      margin-left: 4px;
+                    "
+                  />
+                  <img
+                    src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                    alt="devitrak"
+                    style="max-width: 80px;"
+                  />
+                  </div>
+                </div>
+
+                </div>
+              </td>
+            </tr>
+
+            <!-- Main content -->
+            <tr>
+              <td
+                colspan="2"
+                style="
+                  background-color: #ffffff;
+                  border-radius: 4px;
+                  padding: 20px;
+                "
+              >
+                <h1 style="font-size: 22px; margin-bottom: 12px;">
+                  Deposit released confirmation
+                </h1>
+                <p style="font-size: 16px; line-height: 1.5; margin-bottom: 16px;">
+                  This email confirms that the 
+                  <strong>${props.amount}</strong> 
+                  deposit has been released and returned to you from the
+                  transaction detailed below.
+                </p>
+
+                <!-- Transaction details -->
+                <table
+                  width="100%"
+                  border="0"
+                  cellspacing="0"
+                  cellpadding="0"
+                  style="
+                    background-color: #f9f9f9;
+                    border-radius: 4px;
+                    margin: 20px 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 15px;">
+                      <p style="font-size: 14px; margin-bottom: 8px;">
+                        <strong>Event:</strong> ${props.event}
+                      </p>
+                      <p style="font-size: 14px; margin-bottom: 8px;">
+                        <strong>Company:</strong> ${props.company}
+                      </p>
+                      <p style="font-size: 14px; margin-bottom: 8px;">
+                        <strong>Date:</strong> ${props.date}
+                      </p>
+                      <p style="font-size: 14px; margin-bottom: 8px;">
+                        <strong>Time:</strong> ${props.time}
+                      </p>
+                      <p style="font-size: 14px; margin-bottom: 0;">
+                        <strong>Transaction ID:</strong> ${props.transaction}
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- What to expect section -->
+                <h2 style="font-size: 18px; margin-bottom: 8px;">
+                  What to expect
+                </h2>
+                <p style="font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
+                  In the application you will be able to request new devices,
+                  review your transactions, request support, and get answers to
+                  frequently asked questions. For any specific questions please
+                  contact the staff at {props.company}.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Footer row -->
+            <tr>
+              <td
+                colspan="2"
+                align="center"
+                style="padding: 20px; font-size: 12px; color: #888888;"
+              >
+                <p style="margin: 0; line-height: 1.4;">
+                  &copy;${new Date().getFullYear()}. All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+          <!-- End inner container -->
+        </td>
+      </tr>
+    </table>
+    <!-- End outer container -->
+  </body>
+</html>
   `;
 };
 
 const capturingDepositMessageHtml = (props) => {
   return `
-  <html lang="en" translate="no">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>
-        Devitrak App | Easy way to manage inventory. A good solution for your
-        business no matter the size of your organization.
-      </title>
-      <style>
-        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
-      </style>
-    </head>
-    <body
-      style="
-        max-width: 768px;
-        min-width: 320px;
-        background-color:#fff;
-        color: #1a202c;
-        font-family: 'Inter', sans-serif;
-        -webkit-text-size-adjust: 100%;
-        -ms-text-size-adjust: 100%;
-        margin: auto;
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Ensures responsiveness on mobile devices -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Deposit Captured Confirmation</title>
+    <style>
+      /* Basic resets and responsive styles for email clients */
+      body,
+      table,
+      td,
+      p {
+        margin: 0;
         padding: 0;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #ffffff;
+        color: #333333;
+      }
+      a {
+        text-decoration: none;
+        color: inherit;
+      }
+      img {
+        display: block;
+        border: none;
+        outline: none;
+        text-decoration: none;
+      }
+      /* 
+        Use tables for layout to ensure better compatibility across 
+        email clients (e.g., Outlook).
+      */
+    </style>
+  </head>
+  <body>
+    <!-- Preheader text (hidden) -->
+    <div
+      style="
+        display: none;
+        font-size: 0;
+        line-height: 0;
+        max-height: 0;
+        max-width: 0;
+        opacity: 0;
+        overflow: hidden;
       "
     >
-      <div
-        style="
-          margin-left: auto;
-          margin-right: auto;
-          width: 100%;
-          padding: 2rem;
-          border-radius: 12px;
-        "
-      >
-        <div
-          style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2.5rem;
-            width: 100%;
-          "
-        >
-          <div style="align-self: flex-start">
-            <p
-              style="
-                text-align: left;
-                width: 100%;
-                color: #475467;
-                font-size: 9px;
-                font-style: normal;
-                font-weight: 500;
-                line-height: 9px;
-              "
-            >
-              Power by
-            </p>
-            <div
-              style="
-                display: flex;
-                justify-content: flex-end;
-                align-items: center;
-                margin-top: 2.5px;
-              "
-            >
-              <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
-                alt="devitrak-logo"
-                style="
-                  object-fit: contain;
-                  object-position: 50% 50%;
-                  align-self: flex-start;
-                  display: flex;
-                  align-items: center;
-                "
-              />
-              <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
-                alt="devitrak-name"
-                style="
-                  object-fit: contain;
-                  object-position: 50% 50%;
-                  align-self: flex-start;
-                  display: flex;
-                  align-items: center;
-                "
-              />
-            </div>
-          </div>
-        </div>
-        <div style="max-width: 768px; min-width: 320px">
-          <h1
-            style="
-              font-size: 1.5rem;
-              font-weight: 600;
-              color: #101828;
-              margin-bottom: 1rem;
-            "
+      Deposit captured confirmation details inside
+    </div>
+
+    <!-- Outer container -->
+    <table
+      width="100%"
+      border="0"
+      cellspacing="0"
+      cellpadding="0"
+      style="margin: 0; padding: 0;"
+    >
+      <tr>
+        <td align="center" style="padding: 20px 10px;">
+          <!-- Inner container (max-width for desktop, fluid for mobile) -->
+          <table
+            width="600"
+            border="0"
+            cellspacing="0"
+            cellpadding="0"
+            style="max-width: 600px; width: 100%;"
           >
-          Deposit captured confirmation
-          </h1>
-          <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-          This email confirms that $${props.amount} of your deposit has been charged due to the lost devices from the transaction detailed below.
-          </p>
-          <div
-            style="
-              width: 100%;
-              display: flex;
-              flex-direction: column;
-              margin: 1.5rem auto 0.5rem;
-              color: #475467;
-              font-size: 1rem;"
-            "
-          >
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Event: <strong>${props.event}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Company: <strong>${props.company}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Date: <strong>${props.date} ${props.time}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto; width: 100%; text-align: left">Time: <strong>${props.time}</strong></div>
-              <br/>
-            <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">Transaction ID: <strong>${props.transaction}</strong></div>
-          </div>
-      </div>
-      <div style="margin-top: 2.5rem">
-      <p style="font-size: 1rem; color: #475467">
-      This email was sent from an unmonitored account. Do not reply to this email.    </p>
-    </p>
-      </div>
-      </div>
-    </body>
-  </html>
-  `;
+            <!-- Header row -->
+            <tr>
+              <td style="padding: 10px 0; text-align: right; vertical-align: middle;">
+                <!-- "Powered by devitrak" (using provided devitrak_name_layer_1 image) -->
+                <!--<div style="display: inline-block; vertical-align: middle;">-->
+                <!--  <p style="font-size: 12px; color: #888888; margin: 0; padding: 0;">-->
+                <!--    Powered by-->
+                <!--  </p>-->
+                <!--</div>-->
+                <div
+                  style="
+                    display: inline-block;
+                    vertical-align: middle;
+                    margin-left: 5px;
+                  "
+                >
+                <p style="margin: 5px 0 0 0; line-height: 1.4;">
+                  <em style="font-size: 12px; color: #888888; margin: 0; padding: 0;">Powered by</em>
+                  <div style="display:flex;">
+                  <img
+                    src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+                    alt="devitrak"
+                    style="
+                      height: 14px;
+                      vertical-align: middle;
+                      margin-left: 4px;
+                    "
+                  />
+                    <img
+                    src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                    alt="devitrak"
+                    style="max-width: 80px;"
+                  />
+                  </div>
+                </p>
+
+                </div>
+              </td>
+            </tr>
+
+            <!-- Main content -->
+            <tr>
+              <td
+                colspan="2"
+                style="
+                  background-color: #ffffff;
+                  border-radius: 4px;
+                  padding: 20px;
+                "
+              >
+                <h1 style="font-size: 22px; margin-bottom: 12px;">
+                  Deposit captured confirmation
+                </h1>
+                <p style="font-size: 16px; line-height: 1.5; margin-bottom: 16px;">
+                  This email confirms that 
+                  <strong>${props.amount}</strong> 
+                  of your deposit has been charged due to the lost devices from
+                  the transaction detailed below.
+                </p>
+
+                <!-- Transaction details -->
+                <table
+                  width="100%"
+                  border="0"
+                  cellspacing="0"
+                  cellpadding="0"
+                  style="
+                    background-color: #f9f9f9;
+                    border-radius: 4px;
+                    margin: 20px 0;
+                  "
+                >
+                  <tr>
+                    <td style="padding: 15px;">
+                      <p style="font-size: 14px; margin-bottom: 8px;">
+                        <strong>Event:</strong> ${props.event}
+                      </p>
+                      <p style="font-size: 14px; margin-bottom: 8px;">
+                        <strong>Company:</strong> ${props.company}
+                      </p>
+                      <p style="font-size: 14px; margin-bottom: 8px;">
+                        <strong>Date:</strong> ${props.date}
+                      </p>
+                      <p style="font-size: 14px; margin-bottom: 8px;">
+                        <strong>Time:</strong> ${props.time}
+                      </p>
+                      <p style="font-size: 14px; margin-bottom: 0;">
+                        <strong>Transaction ID:</strong> ${props.transaction}
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- What to expect section -->
+                <h2 style="font-size: 18px; margin-bottom: 8px;">
+                  What to expect
+                </h2>
+                <p style="font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
+                  In the application you will be able to request new devices,
+                  review your transactions, request support, and get answers to
+                  frequently asked questions. For any specific questions please
+                  contact the staff at {props.company}.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Footer row -->
+            <tr>
+              <td
+                colspan="2"
+                align="center"
+                style="padding: 20px; font-size: 12px; color: #888888;"
+              >
+                <p style="margin: 0; line-height: 1.4;">
+                  &copy; ${new Date().getFullYear()}. All rights reserved.
+                </p>
+              </td>
+            </tr>
+          </table>
+          <!-- End inner container -->
+        </td>
+      </tr>
+    </table>
+    <!-- End outer container -->
+  </body>
+</html>  `;
 };
 
 const lostDeviceFeeCollectedMessageHtml = (props) => {
@@ -1040,7 +1165,9 @@ const lostDeviceFeeReceipt = (props) => {
                   <strong>Company:</strong> ${props.company}
                 </p>
                 <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
-                  <strong>Date:</strong> ${props.date.toString().replaceAll(',',' ')}
+                  <strong>Date:</strong> ${props.date
+                    .toString()
+                    .replaceAll(",", " ")}
                 </p>
                 <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
                   <strong>Time:</strong> ${props.time}
@@ -1107,301 +1234,412 @@ const lostDeviceFeeReceipt = (props) => {
 
 const confirmationNewConsumerAccountMessageHtml = (props) => {
   return `
-<html lang="en" translate="no">
+<!DOCTYPE html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!-- Ensures responsiveness on mobile devices -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>
-      Devitrak App | Easy way to manage inventory. A good solution for your
-      business no matter the size of your organization.
-    </title>
+    <title>Please Confirm Your Account</title>
     <style>
-      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+      /* Basic resets and responsive styles for email clients */
+      body,
+      table,
+      td,
+      p {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #ffffff;
+        color: #333333;
+      }
+      a {
+        text-decoration: none;
+        color: inherit;
+      }
+      img {
+        display: block;
+        border: none;
+        outline: none;
+        text-decoration: none;
+      }
+      /* 
+        Use tables for layout to ensure better compatibility across 
+        email clients (e.g., Outlook).
+      */
     </style>
   </head>
-  <body
-    style="
-      max-width: 768px;
-      min-width: 320px;
-      background-color:#fff;
-      color: #1a202c;
-      font-family: 'Inter', sans-serif;
-      -webkit-text-size-adjust: 100%;
-      -ms-text-size-adjust: 100%;
-      margin: auto;
-      padding: 0;
-    "
-  >
+  <body>
+    <!-- Preheader text (hidden) -->
     <div
       style="
-        margin-left: auto;
-        margin-right: auto;
-        padding: 2rem;
-        width: 100%;
-        border-radius: 12px;
+        display: none;
+        font-size: 0;
+        line-height: 0;
+        max-height: 0;
+        max-width: 0;
+        opacity: 0;
+        overflow: hidden;
       "
     >
-      <div
-        style="
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 2.5rem;
-          width: 100%;
-        "
-      >
-        <div style="align-self: flex-start">
-          <p
-            style="
-              text-align: left;
-              width: 100%;
-              color: #475467;
-              font-size: 9px;
-              font-style: normal;
-              font-weight: 500;
-              line-height: 9px;
-            "
-          >
-            Power by
-          </p>
-          <div
-            style="
-              display: flex;
-              justify-content: flex-end;
-              align-items: center;
-              margin-top: 2.5px;
-            "
-          >
-            <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
-              alt="devitrak-logo"
-              style="
-                object-fit: contain;
-                object-position: 50% 50%;
-                align-self: flex-start;
-                display: flex;
-                align-items: center;
-              "
-            />
-            <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
-              alt="devitrak-name"
-              style="
-                object-fit: contain;
-                object-position: 50% 50%;
-                align-self: flex-start;
-                display: flex;
-                align-items: center;
-              "
-            />
-          </div>
-        </div>
-      </div>
-      <div style="max-width: 768px; min-width: 320px">
-        <h1
-          style="
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #101828;
-            margin-bottom: 1rem;
-          "
-        >
-          Please confirm your account
-        </h1>
-        <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-          Please click the button below to confirm your account in the Devitrak
-          app and manage your devices and transactions at ${props.event} with
-          ${props.company}.
-        </p>
-        <a
-          href="${props.link}"
-          target="_blank"
-          style="
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            align-self: stretch;
-            border-radius: 8px;
-            border: 1px solid #155eef;
-            background:#155eef;
-            -shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
-            text-decoration: none;
-          "
-          ><p
-            style="
-              color:#fff;
-              font-size: 16px;
-              font-style: normal;
-              font-weight: 600;
-              line-height: 24px; /* 150% */
-            "
-          >
-            Confirm account
-          </p>
-        </a>
-      </div>
-      <div style="margin-top: 2.5rem">
-      <p style="font-size: 1rem; color: #475467">
-      This email was sent from an unmonitored account. Do not reply to this email.    </p>
-    </p>
-      </div>
-
+      Please confirm your account
     </div>
+
+    <!-- Outer container -->
+    <table
+      width="100%"
+      border="0"
+      cellspacing="0"
+      cellpadding="0"
+      style="margin: 0; padding: 0;"
+    >
+      <tr>
+        <td align="center" style="padding: 20px 10px;">
+          <!-- Inner container (max-width for desktop, fluid for mobile) -->
+          <table
+            width="600"
+            border="0"
+            cellspacing="0"
+            cellpadding="0"
+            style="max-width: 600px; width: 100%;"
+          >
+            <!-- Header row -->
+            <tr>
+              <!-- Devitrak (Right) -->
+              <td style="display:flex; flex-direction:column; justify-content:flex-end">
+                <div
+                  style="
+                    display: inline-block;
+                    vertical-align: middle;
+                    margin-left: 5px;
+                  "
+                >
+                  <p style="font-size: 12px; color: #888888; margin: 0;">
+                    Powered by
+                  </p>
+                </div>
+                <div
+                  style="
+                    display: flex;
+                    <!--vertical-align: middle;-->
+                    <!--margin-left: 5px;-->
+                  "
+                >
+                  <!-- Devitrak Logo + Name -->
+                  <img
+                    src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+                    alt="devitrak"
+                    style="
+                      height: 14px;
+                      vertical-align: middle;
+                      margin-right: 4px;
+                    "
+                  />
+                  <img
+                    src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                    alt="devitrak"
+                    style="max-width: 80px; vertical-align: middle;"
+                  />
+                </div>
+              </td>
+            </tr>
+
+            <!-- Main content -->
+            <tr>
+              <td
+                colspan="2"
+                style="
+                  background-color: #ffffff;
+                  border-radius: 4px;
+                  padding: 20px;
+                "
+              >
+                <h1 style="font-size: 22px; margin-bottom: 12px;">
+                  Please confirm your account
+                </h1>
+                <p style="font-size: 16px; line-height: 1.5; margin-bottom: 16px;">
+                  Please click the button below to confirm your account and
+                  manage your devices and transactions at
+                  <strong>${props.event}</strong> with
+                  <strong>${props.company}</strong>.
+                </p>
+
+                <!-- Confirm button -->
+                <table
+                  border="0"
+                  cellspacing="0"
+                  cellpadding="0"
+                  align="center"
+                  style="margin: 20px auto;"
+                >
+                  <tr>
+                    <td
+                      align="center"
+                      style="
+                        background-color: #007bff;
+                        padding: 12px 24px;
+                        border-radius: 4px;
+                      "
+                    >
+                      <a
+                        href="${props.link}"
+                        style="
+                          color: #ffffff;
+                          font-size: 16px;
+                          text-decoration: none;
+                          display: inline-block;
+                        "
+                      >
+                        Confirm account
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- What to expect -->
+                <h2 style="font-size: 18px; margin-bottom: 8px;">
+                  What to expect
+                </h2>
+                <p style="font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
+                  In the application you will be able to request new devices,
+                  review your transactions, request support, and get answers to
+                  frequently asked questions. For any specific questions please
+                  contact the staff at
+                  <strong>${props.company}</strong>.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Footer row -->
+            <tr>
+              <td
+                colspan="2"
+                align="center"
+                style="padding: 20px; font-size: 12px; color: #888888;"
+              >
+                <p style="margin: 0 0 10px 0; line-height: 1.4;">
+                  &copy; ${new Date().getFullYear()}. 
+                  All rights reserved.
+                </p>
+                <p style="margin: 0; line-height: 1.4;">
+                  This email was sent from an unmonitored account. 
+                  Please do not reply to this email.
+                </p>
+              </td>
+            </tr>
+          </table>
+          <!-- End inner container -->
+        </td>
+      </tr>
+    </table>
+    <!-- End outer container -->
   </body>
 </html>
-
 `;
 };
 
 const linkToLoginExistingConsumerMessageHtml = (props) => {
   return `
-  <html lang="en" translate="no">
-    <head>
-      <meta charset="UTF-8" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-      <title>
-        Devitrak App | Easy way to manage inventory. A good solution for your
-        business no matter the size of your organization.
-      </title>
-      <style>
-        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
-      </style>
-    </head>
-    <body
-      style="
-        max-width: 768px;
-        min-width: 320px;
-        background-color:#fff;
-        color: #1a202c;
-        font-family: 'Inter', sans-serif;
-        -webkit-text-size-adjust: 100%;
-        -ms-text-size-adjust: 100%;
-        margin: auto;
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Ensures responsiveness on mobile devices -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Welcome Back</title>
+    <style>
+      /* Basic resets and responsive styles for email clients */
+      body,
+      table,
+      td,
+      p {
+        margin: 0;
         padding: 0;
+      }
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #ffffff;
+        color: #333333;
+      }
+      a {
+        text-decoration: none;
+        color: inherit;
+      }
+      img {
+        display: block;
+        border: none;
+        outline: none;
+        text-decoration: none;
+      }
+      /* 
+        Use tables for layout to ensure better compatibility across 
+        email clients (e.g., Outlook).
+      */
+    </style>
+  </head>
+  <body>
+    <!-- Preheader text (hidden) -->
+    <div
+      style="
+        display: none;
+        font-size: 0;
+        line-height: 0;
+        max-height: 0;
+        max-width: 0;
+        opacity: 0;
+        overflow: hidden;
       "
     >
-      <div
-        style="
-          margin-left: auto;
-          margin-right: auto;
-          padding: 2rem;
-          width: 100%;
-          border-radius: 12px;
-        "
-      >
-        <div
-          style="
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2.5rem;
-            width: 100%;
-          "
-        >
-          <div style="align-self: flex-start">
-            <p
-              style="
-                text-align: left;
-                width: 100%;
-                color: #475467;
-                font-size: 9px;
-                font-style: normal;
-                font-weight: 500;
-                line-height: 9px;
-              "
-            >
-              Power by
-            </p>
-            <div
-              style="
-                display: flex;
-                justify-content: flex-end;
-                align-items: center;
-                margin-top: 2.5px;
-              "
-            >
-              <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
-                alt="devitrak-logo"
-                style="
-                  object-fit: contain;
-                  object-position: 50% 50%;
-                  align-self: flex-start;
-                  display: flex;
-                  align-items: center;
-                "
-              />
-              <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
-                alt="devitrak-name"
-                style="
-                  object-fit: contain;
-                  object-position: 50% 50%;
-                  align-self: flex-start;
-                  display: flex;
-                  align-items: center;
-                "
-              />
-            </div>
-          </div>
-        </div>
-        <div style="max-width: 768px; min-width: 320px">
-          <h1
-            style="
-              font-size: 1.5rem;
-              font-weight: 600;
-              color: #101828;
-              margin-bottom: 1rem;
-            "
-          >
-            Welcome back!
-          </h1>
-          <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-            Please click the button below to log in to the Devitrak app and manage
-            your devices and transactions with ${props.company}.
-          </p>
+      Log in to the Devitrak app
+    </div>
 
-          <a
-            href="${props.link}"
-            target="_blank"
-            style="
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              gap: 8px;
-              align-self: stretch;
-              border-radius: 8px;
-              border: 1px solid #155eef;
-              background:#155eef;
-              box-shadow: 0px 1px 2px 0px rgba(16, 24, 40, 0.05);
-              text-decoration: none;
-            "
-          ><p
-            style="
-                color:#fff;
-                font-size: 16px;
-                font-style: normal;
-                font-weight: 600;
-                line-height: 24px; /* 150% */
-                text-align: center;
-                width: 100%;
-              "
+    <!-- Outer container -->
+    <table
+      width="100%"
+      border="0"
+      cellspacing="0"
+      cellpadding="0"
+      style="margin: 0; padding: 0;"
+    >
+      <tr>
+        <td align="center" style="padding: 20px 10px;">
+          <!-- Inner container (max-width for desktop, fluid for mobile) -->
+          <table
+            width="600"
+            border="0"
+            cellspacing="0"
+            cellpadding="0"
+            style="max-width: 600px; width: 100%;"
           >
-              Log in
-            </p>
-            </a>
-        </div>
-        <div style="margin-top: 2.5rem">
-        <p style="font-size: 1rem; color: #475467">
-        This email was sent from an unmonitored account. Do not reply to this email.    </p>
-      </p>
-        </div>
-  
-      </div>
-    </body>
-  </html>
-  `;
+            <!-- Header row -->
+            <tr>
+              <!-- Devitrak (Right) -->
+              <td style="display:flex; flex-direction:column">
+                <div
+                  style="
+                    display: inline-block;
+                    vertical-align: middle;
+                    margin-left: 5px;
+                  "
+                >
+                  <p style="font-size: 12px; color: #888888; margin: 0;">
+                    Powered by
+                  </p>
+                </div>
+                <div
+                  style="display:flex"
+                >
+                  <!-- Devitrak Logo + Name -->
+                  <img
+                    src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+                    alt="devitrak"
+                    style="
+                      height: 14px;
+                      vertical-align: middle;
+                      margin-right: 4px;
+                    "
+                  />
+                  <img
+                    src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                    alt="devitrak"
+                    style="max-width: 80px; vertical-align: middle;"
+                  />
+                </div>
+              </td>
+            </tr>
+
+            <!-- Main content -->
+            <tr>
+              <td
+                colspan="2"
+                style="
+                  background-color: #ffffff;
+                  border-radius: 4px;
+                  padding: 20px;
+                "
+              >
+                <h1 style="font-size: 22px; margin-bottom: 12px;">
+                  Welcome back!
+                </h1>
+                <p style="font-size: 16px; line-height: 1.5; margin-bottom: 16px;">
+                  Please click the button below to log in to the Devitrak app
+                  and manage your devices and transactions with
+                  <strong>${props.company}</strong>.
+                </p>
+
+                <!-- Login button -->
+                <table
+                  border="0"
+                  cellspacing="0"
+                  cellpadding="0"
+                  align="center"
+                  style="margin: 20px auto; width:100%"
+                >
+                  <tr>
+                    <td
+                      align="center"
+                      style="
+                        background-color: #007bff;
+                        padding: 12px 24px;
+                        border-radius: 4px;
+                        width:100%
+                      "
+                    >
+                      <a
+                        href="${props.link}"
+                        style="
+                          color: #ffffff;
+                          font-size: 16px;
+                          text-decoration: none;
+                          display: inline-block;
+                          width:100%
+                        "
+                      >
+                        Log in
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- What to expect -->
+                <h2 style="font-size: 18px; margin-bottom: 8px;">
+                  What to expect
+                </h2>
+                <p style="font-size: 14px; line-height: 1.5; margin-bottom: 16px;">
+                  In the application you will be able to request new devices,
+                  review your transactions, request support, and get answers to
+                  frequently asked questions. For any specific questions please
+                  contact the staff at <strong>${props.company}</strong>.
+                </p>
+              </td>
+            </tr>
+
+            <!-- Footer row -->
+            <tr>
+              <td
+                colspan="2"
+                align="center"
+                style="padding: 20px; font-size: 12px; color: #888888;"
+              >
+                <p style="margin: 0 0 10px 0; line-height: 1.4;">
+                  &copy; ${new Date().getFullYear()}. All rights reserved.
+                </p>
+                <p style="margin: 0; line-height: 1.4;">
+                  This email was sent from an unmonitored account. 
+                  Please do not reply to this email.
+                </p>
+              </td>
+            </tr>
+          </table>
+          <!-- End inner container -->
+        </td>
+      </tr>
+    </table>
+    <!-- End outer container -->
+  </body>
+</html>  `;
 };
 
 const linkToResetUserPassword = (props) => {
