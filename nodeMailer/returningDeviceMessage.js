@@ -1215,7 +1215,7 @@ const lostDeviceFeeReceipt = (props) => {
                     line-height: 18px;
                   "
                 >
-                  &copy; ${props.date.at(-1)}.
+                  &copy; ${new Date().getFullYear()}.
                   All rights reserved.
                 </p>
               </td>
