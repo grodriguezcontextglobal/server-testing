@@ -1,23 +1,40 @@
 const { Router } = require("express");
-const { assingDeviceNotification, returningDeviceNotification, cancelDepositNotification, captureDepositNotification, earlierReturningNotification,
-    eventStaffNotification, lostDeviceFeeCollectedNotification, loginLinkExistingConsumerNotification, linkToResetPassword, editingDeviceAdminNotification,
-    confirmationLinkNewConsumerNotification, customizedEmailNotification, singleEmailNotification, newUserInvitationNotification, internalNotification, 
-    eventBeginsReminderNotification,
-    staffInternalNotification,
-    itemInfoStaffNotification,
-    chargeInvoice,
-    eventLinkEvent,
-    refundInvoice,
-    massiveEventCustomerNotification,
-    deviceReportPerTransaction,
-    devitrakFeedbackEmailNotification} = require("../nodeMailer/notifications");
+const {
+  assingDeviceNotification,
+  returningDeviceNotification,
+  cancelDepositNotification,
+  captureDepositNotification,
+  earlierReturningNotification,
+  eventStaffNotification,
+  lostDeviceFeeCollectedNotification,
+  loginLinkExistingConsumerNotification,
+  linkToResetPassword,
+  editingDeviceAdminNotification,
+  confirmationLinkNewConsumerNotification,
+  customizedEmailNotification,
+  singleEmailNotification,
+  newUserInvitationNotification,
+  internalNotification,
+  eventBeginsReminderNotification,
+  staffInternalNotification,
+  itemInfoStaffNotification,
+  chargeInvoice,
+  eventLinkEvent,
+  refundInvoice,
+  massiveEventCustomerNotification,
+  deviceReportPerTransaction,
+  devitrakFeedbackEmailNotification,
+} = require("../nodeMailer/notifications");
 const router = Router();
 
 //*email notification to inform about devices assigned to consumer
 router.post("/assignig-device-notification", assingDeviceNotification);
 
 //*email notification to inform about devices returned to consumer
-router.post("/confirm-returned-device-notification", returningDeviceNotification);
+router.post(
+  "/confirm-returned-device-notification",
+  returningDeviceNotification
+);
 
 //*email notification to inform about deposit returned/cancelled
 router.post("/deposit-return-notification", cancelDepositNotification);
@@ -26,62 +43,68 @@ router.post("/deposit-return-notification", cancelDepositNotification);
 router.post("/deposit-collected-notification", captureDepositNotification);
 
 //*email notification to remind consumer about returning devices before to the event ends
-router.post("/early-remind-notification", earlierReturningNotification)
+router.post("/early-remind-notification", earlierReturningNotification);
 
 //*email notification to remind consumer about returning devices before to the event ends
 router.post("/event-staff-notification", eventStaffNotification);
 
 //*email notification to inform consumer about the lost device fee collected
-router.post("/lost-device-fee-notification", lostDeviceFeeCollectedNotification);
+router.post(
+  "/lost-device-fee-notification",
+  lostDeviceFeeCollectedNotification
+);
 
 //*email notification to confirm new consumer account
-router.post('/confirmation-account', confirmationLinkNewConsumerNotification)
+router.post("/confirmation-account", confirmationLinkNewConsumerNotification);
 
 //*email notification to login to existing consumer
-router.post('/login-existing-consumer', loginLinkExistingConsumerNotification)
+router.post("/login-existing-consumer", loginLinkExistingConsumerNotification);
 
 //*email to reset admin password
-router.post("/reset-admin-password", linkToResetPassword)
+router.post("/reset-admin-password", linkToResetPassword);
 
 //*notify admin when staff edit device
-router.post('/edit-device-admin', editingDeviceAdminNotification)
+router.post("/edit-device-admin", editingDeviceAdminNotification);
 
 //*notify all consumers of event
-router.post('/customized-notification', customizedEmailNotification)
+router.post("/customized-notification", customizedEmailNotification);
 
 //*single email notification
-router.post('/single-email-notification', singleEmailNotification)
+router.post("/single-email-notification", singleEmailNotification);
 
 //*invitation for new user in company
-router.post('/new_invitation', newUserInvitationNotification)
+router.post("/new_invitation", newUserInvitationNotification);
 
 //*internal notification
-router.post('/internal-single-email-notification', internalNotification)
+router.post("/internal-single-email-notification", internalNotification);
 
 //*event begins notification
-router.post('/events-begin-reminder', eventBeginsReminderNotification)
+router.post("/events-begin-reminder", eventBeginsReminderNotification);
 
 //*event begins notification
-router.post('/staff_internal_notification', staffInternalNotification)
+router.post("/staff_internal_notification", staffInternalNotification);
 
 //email leased equipment to staff
 router.post("/leased-equip-staff-notification", itemInfoStaffNotification);
 
 //payment confirmation invoice email notification
-router.post('/invoice-notification', chargeInvoice)
+router.post("/invoice-notification", chargeInvoice);
 ///staff_internal_notification
 
 //redunf confirmation invoice email notification
-router.post('/refund-notification', refundInvoice)
+router.post("/refund-notification", refundInvoice);
 //payment confirmation invoice email notification
-router.post('/send-consumer-app-instructions', eventLinkEvent)
+router.post("/send-consumer-app-instructions", eventLinkEvent);
 
 //send massive event customer notification
-router.post('/massive-event-customer-notification', massiveEventCustomerNotification)
+router.post(
+  "/massive-event-customer-notification",
+  massiveEventCustomerNotification
+);
 
 //send device report per transaction
-router.post('/device-report-per-transaction', deviceReportPerTransaction)
+router.post("/device-report-per-transaction", deviceReportPerTransaction);
 
-//feedback email notification 
-router.post('/feedback-email-notification', devitrakFeedbackEmailNotification)
+//feedback email notification
+router.post("/feedback-email-notification", devitrakFeedbackEmailNotification);
 module.exports = router;
