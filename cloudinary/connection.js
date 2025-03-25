@@ -1,4 +1,3 @@
-// import { v2 as cloudinary } from "cloudinary";
 const cloudinary = require("cloudinary").v2;
 require("dotenv").config();
 
@@ -8,23 +7,23 @@ const cloudinaryUploader = async (request, response) => {
     cloudinary.config({
       cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
       api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET, // Click 'View API Keys' above to copy your API secret
+      api_secret: process.env.CLOUDINARY_API_SECRET,
     });
 
-    const { imageFile, imageID } = request.body;
-    // Upload an image
-    const uploadResult = await cloudinary.uploader
-      .upload(imageFile, {
-        public_id: imageID,
-      })
-      .catch((error) => {
-        console.log(error);
-      });
+    // Extract the additional parameters from the request body
+    const { imageFile, imageID, tags, context } = request.body;
+    // Note: Cloudinary expects the property name 'tags', so you can map 'tag' to 'tags'
+    const uploadResult = await cloudinary.uploader.upload(imageFile, {
+      public_id: imageID,
+      tags: tags,       // 'tag' from the client side (as an array)
+      context: context // metadata as key=value pairs separated by '|'
+    });
+
     // Optimize delivery by resizing and applying auto-format and auto-quality
     const optimizeUrl = cloudinary.source(uploadResult.public_id, {
       fetch_format: "auto",
       quality: "auto",
-      type:"upload",
+      type: "upload",
     });
 
     response.status(201).json({
