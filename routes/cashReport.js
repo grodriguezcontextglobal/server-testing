@@ -5,7 +5,7 @@
 
 const { Router } = require("express");
 const router = Router();
-const { createReport, cashReport, removeCashReportAfterRefund } = require("../controller/cashReport");
+const { createReport, cashReport, removeCashReportAfterRefund, updateCashReport } = require("../controller/cashReport");
 
 //create new report
 router.post("/create-cash-report", createReport);
@@ -18,5 +18,8 @@ router.post("/cash-reports", cashReport);
 
 //remove cash report
 router.post("/remove-cash-report/:id", removeCashReportAfterRefund);
+
+//update cash report
+router.patch("/update-cash-report/:id", updateCashReport);
 
 module.exports = router;
