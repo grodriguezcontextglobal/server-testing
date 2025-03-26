@@ -38,6 +38,7 @@ const {
   stripeAccountCreate,
   stripeAccountSession,
   stripeAccountLink,
+  partialRefundStripePaymentIntent,
 } = require("../controller/stripe");
 const {
   saveTransaction,
@@ -161,6 +162,8 @@ router.post(
 //create a refund
 router.post("/refund", refundStripePaymentIntent);
 
+//create a partial refund
+router.post("/partial-refund", partialRefundStripePaymentIntent);
 //removing duplicate entries in database
 router.delete("/remove-duplicate/:id", removeDuplicateEntries);
 
