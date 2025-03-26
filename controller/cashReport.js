@@ -69,8 +69,28 @@ const removeCashReportAfterRefund = async (request, response) => {
   }
 };
 
+const updateCashReport = async (request, response) => {
+  try {
+    const { id, template } = request.body;
+    console.log(request.body);
+    const cashReport = await CashReport.findByIdAndUpdate(id, template, {
+      new: true,
+    });
+    return response.status(201).json({
+      ok: true,
+      cashReport,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: "Please contact Administrator",
+      error,
+    });
+  }
+};
 module.exports = {
   createReport,
   cashReport,
   removeCashReportAfterRefund,
+  updateCashReport,
 };
