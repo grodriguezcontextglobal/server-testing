@@ -727,6 +727,26 @@ const refundStripePaymentIntent = async (request, response) => {
   }
 };
 
+const partialRefundStripePaymentIntent = async (request, response) => {
+  try {
+    const { paymentIntent, total } = request.body;
+    const refund = await stripe.refunds.create({
+      payment_intent: paymentIntent,
+      amount: Number(total)*100,
+    });
+    return response.status(201).json({
+      ok: true,
+      refund,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
+
 const saveStripeTransactionTemplateForNoRegularUser = async (
   request,
   response
@@ -929,4 +949,5 @@ module.exports = {
   stripeAccountCreate,
   stripeAccountSession,
   stripeAccountLink,
+  partialRefundStripePaymentIntent,
 };
