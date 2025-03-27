@@ -3275,99 +3275,146 @@ const serviceChargeInvoiceEmailHtml = (props) => {
 
 const serviceRefundConfirmationEmailHtml = (props) => {
   return `
+<!DOCTYPE html>
 <html lang="en" translate="no">
-<head>
+  <head>
     <meta charset="UTF-8" />
+    <!-- Ensures responsiveness on mobile devices -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Refund Confirmation - Devitrak</title>
+    <title>Refund Confirmation - ${props.company}</title>
     <style>
-        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
-        body {
-            background-color: #fff;
-            color: #1a202c;
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            padding: 0;
-            width: 100%;
-        }
-        .container {
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 20px;
-            border-radius: 12px;
-            border: 1px solid #e0e0e0;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        .header {
-            text-align: right;
-            color: #475467;
-            font-size: 0.575rem;
-            margin: 20px 0;
-        } 
-        
-        .footer {
-            text-align: center;
-            color: #475467;
-            font-size: 0.875rem;
-            margin: 20px 0;
-        }
-        .footer {
-            border-top: 1px solid #e0e0e0;
-            padding-top: 20px;
-        }
-        .content {
-            color: #475467;
-            font-size: 1rem;
-            line-height: 1.5;
-        }
-        .title {
-            font-size: 1.5rem;
-            font-weight: 600;
-            color: #101828;
-            margin-bottom: 20px;
-        }
-        .details-box {
-            border: 1px solid #e0e0e0;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .details-box p {
-            font-size: 0.95rem;
-            color: #475467;
-            margin-bottom: 10px;
-        }
-        .details-box .heading {
-            font-weight: 600;
-            color: #101828;
-            margin-bottom: 10px;
-        }
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+      /* Basic resets */
+      body,
+      table,
+      td,
+      p {
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family: 'Inter', Arial, sans-serif;
+        background-color: #fff;
+        color: #1a202c;
+        width: 100%;
+      }
+      /* Container */
+      .container {
+        max-width: 600px;
+        width: 100%;
+        margin: 0 auto;
+        padding: 20px;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+      }
+      /* Header */
+      .header {
+        text-align: right;
+        color: #475467;
+        font-size: 0.575rem;
+        margin-bottom: 20px;
+      }
+      .header div {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+      }
+      /* Main content */
+      .content {
+        color: #475467;
+        font-size: 1rem;
+        line-height: 1.5;
+      }
+      .title {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 20px;
+      }
+      .details-box {
+        border: 1px solid #e0e0e0;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 20px;
+        font-size: 0.95rem;
+      }
+      .details-box .heading {
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 10px;
+      }
+      .message-box {
+        background-color: #f9f9f9;
+        padding: 16px;
+        border-radius: 8px;
+        margin-top: 16px;
+        font-size: 0.95rem;
+      }
+      /* Footer */
+      .footer {
+        text-align: center;
+        color: #475467;
+        font-size: 0.875rem;
+        margin-top: 20px;
+        border-top: 1px solid #e0e0e0;
+        padding-top: 20px;
+      }
     </style>
-</head>
-<body>
+  </head>
+  <body>
+    <!-- Outer container -->
     <div class="container">
-        <div class="header">
-            <p>Powered by</p>
-            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="Devitrak Logo" />
-            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="Devitrak Name" />
+      <!-- Header with Devitrak Branding -->
+      <div class="header">
+        <p>Powered by</p>
+        <div>
+          <img
+            src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+            alt="Devitrak Logo"
+            style="height: 14px; margin-right: 4px;"
+          />
+          <img
+            src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+            alt="Devitrak Name"
+            style="max-width: 80px;"
+          />
         </div>
-        <div class="content">
-            <h1 class="title">Refund Confirmation</h1>
-            <p>We are pleased to confirm that the amount of <strong>$${props.amount}</strong> has been successfully refunded on <strong>${props.date}</strong>.</p>
-            <p>Below, you'll find the details of your refund for your records:</p>
-            <div class="details-box">
-                <p class="heading">Refund Details</p>
-                <p>Confirmation Code: <strong>${props.paymentIntent}</strong></p>
-                <p>Name: <strong>${props.customer}</strong></p>
-                <p>Refund Amount: <strong>$${props.amount}</strong></p>
-            </div>
-            <p>Please keep this email for your personal records.</p>
+      </div>
+      <!-- Main Content -->
+      <div class="content">
+        <h1 class="title">Refund Confirmation</h1>
+        <p>
+          Message from <strong>${props.company}</strong>
+        </p>
+        <p>
+          This email was sent from <strong>${props.company}</strong> regarding the refund for the event <strong>${props.event}</strong>.
+        </p>
+        <p>
+          We are pleased to confirm that the amount of <strong>$${props.amount}</strong> has been successfully refunded on <strong>${props.date}</strong>.
+        </p>
+        <div class="details-box">
+          <p class="heading">Refund Details</p>
+          <p>Confirmation Code: <strong>${props.paymentIntent}</strong></p>
+          <p>Name: <strong>${props.customer}</strong></p>
+          <p>Refund Amount: <strong>$${props.amount}</strong></p>
         </div>
-        <div class="footer">
-            <p>This email was sent from an unmonitored account. Please do not reply to this email.</p>
+        <div class="message-box">
+          ${props.message ? props.message : ""}
         </div>
+        <p style="margin-top: 16px;">
+          Please keep this email for your records.
+        </p>
+      </div>
+      <!-- Footer -->
+      <div class="footer">
+        <p>&copy; ${new Date().getFullYear()}. All rights reserved.</p>
+        <p>
+          This email was sent from an unmonitored account. Please do not reply to this email.
+        </p>
+      </div>
     </div>
-</body>
+  </body>
 </html>
 `;
 };
