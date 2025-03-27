@@ -28,7 +28,7 @@ const {
   lostDeviceFeeReceipt,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
-const e = require("express");
+// const e = require("express");
 const assingDeviceNotification = async (request, response) => {
   try {
     const info = {
@@ -352,7 +352,7 @@ const singleEmailNotification = async (request, response) => {
   try {
     const msg = {
       to: request.body.consumer,
-      from:"noreply@devitrak.com", // "notification@devitrak.net",
+      from: "noreply@devitrak.com", // "notification@devitrak.net",
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: singleEmailMessageHtml(request.body),
     };
