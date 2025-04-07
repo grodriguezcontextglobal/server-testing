@@ -74,7 +74,7 @@ const createCompany = async (request, response = express.response) => {
 const updatingCompany = async (request, response = express.response) => {
   try {
     const cache_connection = await clientRedis();
-    await cache_connection.del(`_id=${request.params.id}`);
+    await cache_connection.del(`company_id=${request.params.id}`);
     const paramsId = request.params.id;
     let companyInfo = await Company.findById(paramsId);
     if (!companyInfo) {
