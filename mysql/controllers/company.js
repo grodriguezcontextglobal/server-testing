@@ -159,18 +159,19 @@ const updateCompanyData = async (request, response) => {
                                 email_company=?,
                                 update_at=NOW()
                             WHERE company_id=?`;
-    const [err, result] = await connection.promise().execute(query, values);
-    // connection.execute(query, values, function (err, result, fields) {
-    // });
-    if (err) {
-      return response.status(401).json({
-        ok: false,
-        msg: `${err.message}`,
+    // const [err, result] = await connection.promise().execute(query, values);
+    connection.execute(query, values, function (err, result, fields) {
+      if (err) {
+        console.log("error", err);
+        return response.status(401).json({
+          ok: false,
+          msg: `${err}`,
+        });
+      }
+      return response.status(201).json({
+        ok: true,
+        items: result.affectedRows,
       });
-    }
-    return response.status(201).json({
-      ok: true,
-      items: result.affectedRows,
     });
   } catch (error) {
     console.error("Error:", error.message);
