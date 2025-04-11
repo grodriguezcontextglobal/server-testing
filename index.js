@@ -38,10 +38,11 @@ const leaseSQL = require("./mysql/routes/lease");
 const cache_route = require("./routes/cache_route");
 const cloudinaryImageUpload = require("./cloudinary/connection");
 const search = require("./routes/search");
-// const responseTime = require("response-time");
-// const { cookie } = require("express-validator");
 const feedback = require("./routes/feedback");
 const errorFeedback = require("./routes/errorLog");
+const post = require("./routes/post");
+// const responseTime = require("response-time");
+// const { cookie } = require("express-validator");
 
 //check CPU
 const numCpu = OS.cpus().length;
@@ -143,6 +144,7 @@ app.use("/api/cache_update", cache_route);
 app.use("/api/search", search);
 app.use("/api/feedback", feedback);
 app.use("/api/error_log", errorFeedback);
+app.use("/api/post", post);
 // app.listen(process.env.PORT);
 if (cluster.isPrimary) {
   for (let index = 0; index < numCpu; index++) {
