@@ -20,27 +20,27 @@ const createPost = async (request, response) => {
 
 const postList = async (request, response) => {
   try {
-    const cache_connection = await clientRedis();
-    //key for cache = company_id
-    const companyPostsCached = await cache_connection.get(
-      `company_posts=${request.body.company_id}`
-    );
-    if (companyPostsCached) {
-      return response.status(201).json({
-        companyPosts: JSON.parse(companyPostsCached),
-      });
-    } else {
+    // const cache_connection = await clientRedis();
+    // //key for cache = company_id
+    // const companyPostsCached = await cache_connection.get(
+    //   `company_posts=${request.body.company_id}`
+    // );
+    // if (companyPostsCached) {
+    //   return response.status(201).json({
+    //     companyPosts: JSON.parse(companyPostsCached),
+    //   });
+    // } else {
       let companyPosts = await Post.find(request.body);
-      cache_connection.set(
-        `company_posts=${request.body.company_id}`,
-        JSON.stringify(companyPosts)
-      );
-      cache_connection.expire(`company_posts=${request.body.company_id}`, 180);
+      // cache_connection.set(
+      //   `company_posts=${request.body.company_id}`,
+      //   JSON.stringify(companyPosts)
+      // );
+      // cache_connection.expire(`company_posts=${request.body.company_id}`, 180);
       return response.status(201).json({
         ok: true,
         companyPosts,
       });
-    }
+    // }
   } catch (error) {
     return response.status(500).json({
       ok: false,
