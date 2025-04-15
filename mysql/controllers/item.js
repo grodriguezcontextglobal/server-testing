@@ -19,6 +19,7 @@ const insertingItem = async (request, response) => {
     warehouse,
     company,
     location,
+    sub_location,
     current_location,
     extra_serial_number,
     company_id,
@@ -40,6 +41,7 @@ const insertingItem = async (request, response) => {
       warehouse, 
       company, 
       location,
+      sub_location,
       current_location,
       extra_serial_number,
       company_id,
@@ -47,7 +49,7 @@ const insertingItem = async (request, response) => {
       container,
       containerSpotLimit,
       enableAssignFeature
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   const values = [
@@ -62,12 +64,13 @@ const insertingItem = async (request, response) => {
     warehouse,
     company,
     location,
+    sub_location,
     current_location,
     extra_serial_number,
     company_id,
     return_date || null,
-    container,
-    containerSpotLimit,
+    container ? container : false,
+    containerSpotLimit ? containerSpotLimit : 0,
     true,
   ];
 
@@ -109,6 +112,7 @@ const insertBulkItem = async (request, response) => {
       warehouse,
       company,
       location,
+      sub_location,
       current_location,
       extra_serial_number,
       company_id,
@@ -160,6 +164,7 @@ const insertBulkItem = async (request, response) => {
         warehouse, 
         company, 
         location,
+        sub_location,
         current_location,
         extra_serial_number,
         company_id,
@@ -184,6 +189,7 @@ const insertBulkItem = async (request, response) => {
       warehouse,
       company,
       location,
+      sub_location,
       current_location,
       extra_serial_number,
       company_id,
@@ -1276,18 +1282,18 @@ const updateItemInTableAfterBeingAddedToEventFromContainer = async (
 const checkingIfCompanyHasInventory = async (request, response) => {
   try {
     const params = request._parsedUrl.query;
-      const splitting = params.split("&");
-      const formatting = splitting.map((item) => item.split("=")[0] + "=?");
-      const keys = formatting.toString().replaceAll(",", " AND ");
-      const values = [...splitting.map((item) => item.split("=")[1])];
-      const query = `select COUNT(*) as total from item_inv where ${keys};`;
-      const connection = getConnection();
-      const [result] = await connection.promise().execute(query, values);
-      return response.status(201).json({
-        cached: false,
-        ok: true,
-        total: result[0].total,
-      });
+    const splitting = params.split("&");
+    const formatting = splitting.map((item) => item.split("=")[0] + "=?");
+    const keys = formatting.toString().replaceAll(",", " AND ");
+    const values = [...splitting.map((item) => item.split("=")[1])];
+    const query = `select COUNT(*) as total from item_inv where ${keys};`;
+    const connection = getConnection();
+    const [result] = await connection.promise().execute(query, values);
+    return response.status(201).json({
+      cached: false,
+      ok: true,
+      total: result[0].total,
+    });
   } catch (error) {
     response.status(500).json({
       ok: false,
