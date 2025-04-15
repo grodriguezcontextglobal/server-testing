@@ -1,7 +1,6 @@
 const { response, request } = require("express");
 const getConnection = require("../database/config");
 const { clientRedis } = require("../../database/cacheMemoryConfig");
-const { remove } = require("lodash");
 require("dotenv").config();
 
 const insertingItem = async (request, response) => {
@@ -71,7 +70,7 @@ const insertingItem = async (request, response) => {
     return_date || null,
     container ? container : false,
     containerSpotLimit ? containerSpotLimit : 0,
-    true,
+    1,
   ];
 
   try {
@@ -194,7 +193,7 @@ const insertBulkItem = async (request, response) => {
       extra_serial_number,
       company_id,
       return_date || null,
-      enableAssignFeature,
+      1,
       container,
       containerSpotLimit,
     ]);
