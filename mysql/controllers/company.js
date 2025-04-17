@@ -193,12 +193,18 @@ const updateGroupItems = async (request, response) => {
       descript_item,
       ownership,
       main_warehouse,
-      update_at,
+      warehouse,
+      company,
       location,
+      sub_location,
       current_location,
       extra_serial_number,
+      company_id,
       return_date,
-      enableAssignFeature,
+      enableAssignFeature = 1,
+      container,
+      containerSpotLimit,
+      image_url,
       data,
     } = request.body;
 
@@ -213,12 +219,18 @@ const updateGroupItems = async (request, response) => {
         descript_item,
         ownership,
         main_warehouse,
-        update_at,
+        warehouse,
+        company,
         location,
+        sub_location,
         current_location,
         extra_serial_number,
+        company_id,
         return_date,
         enableAssignFeature,
+        container,
+        containerSpotLimit,
+        image_url,
         item_id: item.item_id,
       };
     });
@@ -226,6 +238,7 @@ const updateGroupItems = async (request, response) => {
     const query = `
       UPDATE item_inv
       SET
+      serial_number=?,
         category_name=?,
         item_group=?,
         cost=?,
@@ -233,12 +246,18 @@ const updateGroupItems = async (request, response) => {
         descript_item=?,
         ownership=?,
         main_warehouse=?,
-        update_at=?,
+        warehouse=?,
+        company=?,
         location=?,
+        sub_location=?,
         current_location=?,
         extra_serial_number=?,
+        company_id=?,
         return_date=?,
-        enableAssignFeature=?
+        enableAssignFeature=?,
+        container=?,
+        containerSpotLimit=?,
+        image_url=?
       WHERE item_id=?`;
 
     // Execute updates for each item individually
@@ -249,19 +268,26 @@ const updateGroupItems = async (request, response) => {
       }
 
       const values = [
-        item.category_name,
-        item.item_group,
-        item.cost,
-        item.brand,
-        item.descript_item,
-        item.ownership,
-        item.main_warehouse,
-        item.update_at,
-        item.location,
-        item.current_location,
-        item.extra_serial_number,
-        item.return_date,
-        item.enableAssignFeature,
+        item.serial_number,
+        category_name,
+        item_group,
+        cost,
+        brand,
+        descript_item,
+        ownership,
+        main_warehouse,
+        warehouse,
+        company,
+        location,
+        sub_location,
+        current_location,
+        JSON.stringify(extra_serial_number),
+        company_id,
+        return_date,
+        enableAssignFeature,
+        container,
+        containerSpotLimit,
+        image_url,
         item.item_id,
       ];
 
