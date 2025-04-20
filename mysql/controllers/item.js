@@ -25,6 +25,7 @@ const insertingItem = async (request, response) => {
     return_date,
     container,
     containerSpotLimit,
+    image_url,
   } = request.body;
 
   const query = `
@@ -47,8 +48,9 @@ const insertingItem = async (request, response) => {
       return_date,
       container,
       containerSpotLimit,
-      enableAssignFeature
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      enableAssignFeature,
+      image_url
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   const values = [
@@ -71,6 +73,7 @@ const insertingItem = async (request, response) => {
     container ? container : false,
     containerSpotLimit ? containerSpotLimit : 0,
     1,
+    image_url,
   ];
 
   try {
@@ -118,9 +121,10 @@ const insertBulkItem = async (request, response) => {
       return_date,
       min_serial_number,
       max_serial_number,
-      enableAssignFeature,
+      enableAssignFeature = 1,
       container,
       containerSpotLimit,
+      image_url,
     } = request.body;
 
     if (!min_serial_number || !max_serial_number) {
@@ -170,7 +174,8 @@ const insertBulkItem = async (request, response) => {
         return_date,
         enableAssignFeature,
         container,
-        containerSpotLimit
+        containerSpotLimit,
+        image_url
       )
       VALUES ?
     `;
@@ -193,9 +198,10 @@ const insertBulkItem = async (request, response) => {
       extra_serial_number,
       company_id,
       return_date || null,
-      1,
+      enableAssignFeature,
       container,
       containerSpotLimit,
+      image_url,
     ]);
     const [result] = await connection.promise().query(query, [values]);
     // connection.query(query, [values], function (err, result) {
@@ -321,6 +327,9 @@ const updateItemInTable = async (request, response) => {
       location,
       current_location,
       return_date,
+      container,
+      containerSpotLimit,
+      image_url,
     } = request.body;
 
     const query = `
@@ -339,7 +348,10 @@ const updateItemInTable = async (request, response) => {
           company = ?, 
           location = ?, 
           current_location = ?, 
-          return_date = ? 
+          return_date = ?,
+          container=?,
+          containerSpotLimit=?,
+          image_url=? 
       WHERE item_id = ?;
     `;
 
@@ -360,6 +372,9 @@ const updateItemInTable = async (request, response) => {
       current_location,
       return_date,
       item_id,
+      container,
+      containerSpotLimit,
+      image_url,
     ];
 
     const [result] = await connection.promise().execute(query, values);
@@ -375,7 +390,6 @@ const updateItemInTable = async (request, response) => {
     });
   }
 };
-
 const returningLeasedEquipmentToCompany = async (request, response) => {
   try {
     const connection = getConnection();
