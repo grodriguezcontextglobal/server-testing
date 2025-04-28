@@ -23,6 +23,7 @@ const addReceiverToTransaction = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      err:error
     });
   }
 };
@@ -185,6 +186,7 @@ const poolReceivers = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      err:error
     });
   }
 };
@@ -203,7 +205,7 @@ const poolReceiversBulk = async (request, response) => {
     } = request.body;
     const list = JSON.parse(deviceList);
     const receiversPoolData = list.map((item) => ({
-      device: item.serial_number,
+      device: item,
       status,
       activity,
       comment,
@@ -223,6 +225,7 @@ const poolReceiversBulk = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      err:error
     });
   }
 };
@@ -270,6 +273,7 @@ const getListOfItemsInEventPool = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      err:error
     });
   }
 };
