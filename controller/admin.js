@@ -57,6 +57,7 @@ const createAdminUser = async (request, response = express.response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      err: error,
     });
   }
 };
@@ -106,6 +107,7 @@ const loginUser = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      err: error,
     });
   }
 };
@@ -149,6 +151,7 @@ const editAdminUser = async (request, response = response) => {
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
+      err: error,
     });
   }
 };
@@ -177,6 +180,7 @@ const editOtherAdminUser = async (request, response = response) => {
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
+      err: error,
     });
   }
 };
@@ -200,6 +204,7 @@ const deleteAdminUser = async (request, response) => {
     response.status(500).json({
       ok: false,
       msg: error,
+      err: error,
     });
   }
 };
@@ -262,6 +267,7 @@ const updatePassword = async (request, response) => {
     response.status(500).json({
       ok: false,
       msg: error,
+      err: error,
     });
   }
 };
@@ -280,6 +286,7 @@ const showAllUsers = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: error,
+      err: error,
     });
   }
 };
@@ -312,6 +319,7 @@ const displayAllAdminUser = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: error,
+      err: error,
     });
   }
 };
@@ -337,6 +345,7 @@ const articleSetup = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: error,
+      err: error,
     });
   }
 };
@@ -352,6 +361,7 @@ const displayArticles = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: error.response.data,
+      err: error,
     });
   }
 };
@@ -384,7 +394,7 @@ const checkStatus = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: error.message,
-      error,
+      err: error,
     });
   }
 };
@@ -405,7 +415,7 @@ const logoutUser = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: error.message,
-      error,
+      err: error,
     });
   }
 };
