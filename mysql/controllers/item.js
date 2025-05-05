@@ -1,6 +1,7 @@
 const { response, request } = require("express");
 const getConnection = require("../database/config");
 const { clientRedis } = require("../../database/cacheMemoryConfig");
+const { groupBy, orderBy } = require("lodash");
 require("dotenv").config();
 
 const insertingItem = async (request, response) => {
@@ -1320,6 +1321,46 @@ const checkingIfCompanyHasInventory = async (request, response) => {
   }
 };
 
+const retrieveItemLocationQuantityForEvent = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const options = new Map();
+    const formatting = Object.keys(request.body)
+      .map((item) => `${item}=?`)
+      .join(" AND ");
+    const values = Object.values(request.body);
+    const query = `SELECT * FROM item_inv WHERE ${formatting};`;
+    const [result] = await connection.promise().execute(query, values);
+    const locations = groupBy(result, "location");
+    for (const [key, value] of Object.entries(locations)) {
+      const serialNumberListOrderedAsc = orderBy(
+        value,
+        ["serial_number"],
+        ["asc"]
+      );
+
+      options.set(key, {
+        qty: value.length,
+        data: JSON.stringify(value),
+        start: serialNumberListOrderedAsc[0].serial_number,
+        end: serialNumberListOrderedAsc.at(-1).serial_number,
+      });
+    }
+
+    return response.status(201).json({
+      cached: false,
+      ok: true,
+      items: Object.fromEntries(options),
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: error,
+    });
+  }
+};
+
 module.exports = {
   consultingItem,
   insertingItem,
@@ -1345,4 +1386,5 @@ module.exports = {
   updateContentInContainerItem,
   updateItemInTableAfterBeingAddedToEventFromContainer,
   checkingIfCompanyHasInventory,
+  retrieveItemLocationQuantityForEvent,
 };
