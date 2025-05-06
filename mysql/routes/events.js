@@ -28,6 +28,7 @@ const {
   itemFinalStatusWhenEventIsFinishedRefactored,
   updateItemInTableAfterBeingAddedToEventFromContainer,
   retrieveItemLocationQuantityForEvent,
+  consultItemDataFromSerialNumber,
 } = require("../controllers/item");
 const router = Router();
 
@@ -95,5 +96,8 @@ router.post('/inserting-items-in-event-from-container', insertingDeviceInEventDi
 
 //retrieve inventory structured by location with its quantity
 router.post("/retrieve-item-location-quantity", retrieveItemLocationQuantityForEvent);
+
+//retrieve inventory structured by location with its quantity full details
+router.post("/retrieve-item-location-quantity-full-details", consultItemDataFromSerialNumber);
 
 module.exports = router;
