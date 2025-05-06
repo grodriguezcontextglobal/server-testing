@@ -1325,29 +1325,57 @@ const retrieveItemLocationQuantityForEvent = async (request, response) => {
   try {
     const connection = getConnection();
     const options = new Map();
+
     const formatting = Object.keys(request.body)
       .map((item) => `${item}=?`)
       .join(" AND ");
     const values = Object.values(request.body);
-    const query = `SELECT * FROM item_inv WHERE ${formatting};`;
-    const [result] = await connection.promise().execute(query, values);
-    const locations = groupBy(result, "location");
-    for (const [key, value] of Object.entries(locations)) {
-      const serialNumberListOrderedAsc = orderBy(
-        value,
-        ["serial_number"],
-        ["asc"]
-      );
 
-      options.set(key, {
-        qty: value.length,
-        data: JSON.stringify(value),
-        start: serialNumberListOrderedAsc[0].serial_number,
-        end: serialNumberListOrderedAsc.at(-1).serial_number,
+    // 1. Summary query
+    const summaryQuery = `
+      SELECT 
+        location, 
+        COUNT(*) as qty, 
+        MIN(serial_number) as min_serial, 
+        MAX(serial_number) as max_serial
+      FROM item_inv 
+      WHERE ${formatting}
+      GROUP BY location
+    `;
+    const [locationSummaries] = await connection.promise().execute(summaryQuery, values);
+
+    // Initialize options with summary info
+    for (const summary of locationSummaries) {
+      options.set(summary.location, {
+        qty: summary.qty,
+        start: summary.min_serial,
+        end: summary.max_serial,
+        serialNumberList: [],
+        hasFullData: false
       });
     }
 
-    return response.status(201).json({
+    // 2. Serial numbers query
+    const serialQuery = `
+      SELECT location, serial_number
+      FROM item_inv 
+      WHERE ${formatting}
+    `;
+    const [serials] = await connection.promise().execute(serialQuery, values);
+
+    // Populate serialNumberList for each location
+    for (const row of serials) {
+      if (options.has(row.location)) {
+        options.get(row.location).serialNumberList.push(row.serial_number);
+      }
+    }
+
+    // 3. Enable compression if supported
+    if (request.headers['accept-encoding']?.includes('gzip') && response.compress) {
+      response.setHeader('Content-Encoding', 'gzip');
+    }
+
+    return response.status(200).json({
       cached: false,
       ok: true,
       items: Object.fromEntries(options),
@@ -1356,10 +1384,70 @@ const retrieveItemLocationQuantityForEvent = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: error.message,
-      err: error,
     });
   }
 };
+
+const consultItemDataFromSerialNumber = async (request, response) => {
+  try {
+    const connection = getConnection();
+
+    const {
+      location,
+      serial_number,
+      quantity,
+      company_id,
+      warehouse = 1,
+      item_group,
+      enableAssignFeature = 1,
+    } = request.body;
+
+    if (!location || !serial_number || !quantity || !company_id || !item_group) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Missing required parameters: location, serial_number, quantity, company_id, item_group",
+      });
+    }
+
+    const query = `
+      SELECT *
+      FROM item_inv
+      WHERE 
+        location = ? AND
+        company_id = ? AND
+        warehouse = ? AND
+        item_group = ? AND
+        enableAssignFeature = ? AND
+        serial_number >= ?
+      ORDER BY serial_number ASC
+      LIMIT ?
+    `;
+
+    const values = [
+      location,
+      company_id,
+      warehouse,
+      item_group,
+      enableAssignFeature,
+      serial_number,
+      quantity,
+    ];
+
+    const [results] = await connection.promise().execute(query, values);
+
+    return response.status(200).json({
+      ok: true,
+      count: results.length,
+      data: results,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
 
 module.exports = {
   consultingItem,
@@ -1387,4 +1475,5 @@ module.exports = {
   updateItemInTableAfterBeingAddedToEventFromContainer,
   checkingIfCompanyHasInventory,
   retrieveItemLocationQuantityForEvent,
+  consultItemDataFromSerialNumber,
 };
