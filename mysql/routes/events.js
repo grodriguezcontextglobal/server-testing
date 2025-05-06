@@ -29,6 +29,7 @@ const {
   updateItemInTableAfterBeingAddedToEventFromContainer,
   retrieveItemLocationQuantityForEvent,
   consultItemDataFromSerialNumber,
+  getGroupedItemInventory,
 } = require("../controllers/item");
 const router = Router();
 
@@ -99,5 +100,8 @@ router.post("/retrieve-item-location-quantity", retrieveItemLocationQuantityForE
 
 //retrieve inventory structured by location with its quantity full details
 router.post("/retrieve-item-location-quantity-full-details", consultItemDataFromSerialNumber);
+
+//retrieve inventory structured by item group with its location and its quantity
+router.post("/retrieve-item-group-location-quantity", getGroupedItemInventory);
 
 module.exports = router;
