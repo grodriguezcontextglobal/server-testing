@@ -1342,7 +1342,9 @@ const retrieveItemLocationQuantityForEvent = async (request, response) => {
       WHERE ${formatting}
       GROUP BY location
     `;
-    const [locationSummaries] = await connection.promise().execute(summaryQuery, values);
+    const [locationSummaries] = await connection
+      .promise()
+      .execute(summaryQuery, values);
 
     // Initialize options with summary info
     for (const summary of locationSummaries) {
@@ -1351,7 +1353,7 @@ const retrieveItemLocationQuantityForEvent = async (request, response) => {
         start: summary.min_serial,
         end: summary.max_serial,
         serialNumberList: [],
-        hasFullData: false
+        hasFullData: false,
       });
     }
 
@@ -1371,8 +1373,11 @@ const retrieveItemLocationQuantityForEvent = async (request, response) => {
     }
 
     // 3. Enable compression if supported
-    if (request.headers['accept-encoding']?.includes('gzip') && response.compress) {
-      response.setHeader('Content-Encoding', 'gzip');
+    if (
+      request.headers["accept-encoding"]?.includes("gzip") &&
+      response.compress
+    ) {
+      response.setHeader("Content-Encoding", "gzip");
     }
 
     return response.status(200).json({
@@ -1402,14 +1407,15 @@ const consultItemDataFromSerialNumber = async (request, response) => {
       enableAssignFeature = 1,
     } = request.body;
 
-    if (!location || !serial_number || !quantity || !company_id || !item_group) {
+    if (!location || !quantity || !company_id || !item_group) {
       return response.status(400).json({
         ok: false,
-        msg: "Missing required parameters: location, serial_number, quantity, company_id, item_group",
+        msg: "Missing required parameters: location, quantity, company_id, item_group",
       });
     }
 
-    const query = `
+    // Build base query and values
+    let query = `
       SELECT *
       FROM item_inv
       WHERE 
@@ -1417,21 +1423,19 @@ const consultItemDataFromSerialNumber = async (request, response) => {
         company_id = ? AND
         warehouse = ? AND
         item_group = ? AND
-        enableAssignFeature = ? AND
-        serial_number >= ?
-      ORDER BY serial_number ASC
-      LIMIT ?
+        enableAssignFeature = ?
     `;
+    const values = [location, company_id, warehouse, item_group, enableAssignFeature];
 
-    const values = [
-      location,
-      company_id,
-      warehouse,
-      item_group,
-      enableAssignFeature,
-      serial_number,
-      quantity,
-    ];
+    // Conditionally add serial_number filter if provided
+    if (serial_number) {
+      query += ` AND serial_number >= ?`;
+      values.push(serial_number);
+    }
+
+    // Always order and limit
+    query += ` ORDER BY serial_number ASC LIMIT ?`;
+    values.push(quantity);
 
     const [results] = await connection.promise().execute(query, values);
 
@@ -1448,6 +1452,58 @@ const consultItemDataFromSerialNumber = async (request, response) => {
   }
 };
 
+const getGroupedItemInventory = async (request, response) => {
+  try {
+    const connection = getConnection();
+
+    const formatting = Object.keys(request.body)
+      .map((item) => `${item} = ?`)
+      .join(" AND ");
+    const values = Object.values(request.body);
+
+    const query = `
+      SELECT 
+        category_name,
+        item_group, 
+        location, 
+        COUNT(*) AS quantity
+      FROM item_inv
+      WHERE ${formatting}
+      GROUP BY category_name, item_group, location
+      ORDER BY category_name ASC, item_group ASC, location ASC
+    `;
+
+    const [rows] = await connection.promise().execute(query, values);
+
+    // Organize into nested structure: { category_name: { item_group: { location: quantity } } }
+    const result = {};
+
+    for (const row of rows) {
+      const { category_name, item_group, location, quantity } = row;
+
+      if (!result[category_name]) {
+        result[category_name] = {};
+      }
+
+      if (!result[category_name][item_group]) {
+        result[category_name][item_group] = {};
+      }
+
+      result[category_name][item_group][location] = Number(quantity);
+    }
+
+    return response.status(200).json({
+      ok: true,
+      groupedInventory: result,
+    });
+
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
 
 module.exports = {
   consultingItem,
@@ -1476,4 +1532,5 @@ module.exports = {
   checkingIfCompanyHasInventory,
   retrieveItemLocationQuantityForEvent,
   consultItemDataFromSerialNumber,
+  getGroupedItemInventory,
 };
