@@ -92,6 +92,9 @@ const app = express();
 // //response time
 // app.use(responseTime());
 
+// parse application/json
+app.use(express.json());
+
 // Enable Gzip compression
 app.use(compression());
 
