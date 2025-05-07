@@ -1425,7 +1425,13 @@ const consultItemDataFromSerialNumber = async (request, response) => {
         item_group = ? AND
         enableAssignFeature = ?
     `;
-    const values = [location, company_id, warehouse, item_group, enableAssignFeature];
+    const values = [
+      location,
+      company_id,
+      warehouse,
+      item_group,
+      enableAssignFeature,
+    ];
 
     // Conditionally add serial_number filter if provided
     if (serial_number) {
@@ -1496,7 +1502,125 @@ const getGroupedItemInventory = async (request, response) => {
       ok: true,
       groupedInventory: result,
     });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
 
+const consultingCompanyInventoryWithPagination = async (request, response) => {
+  try {
+    const connection = getConnection();
+
+    // Safe fallback for body
+    const body =
+      typeof request.body === "object" && request.body !== null
+        ? request.body
+        : {};
+    const { lastItemId, direction = "forward" } = request.query;
+    const pageSize = 10;
+
+    // Filter non-undefined keys for WHERE clause
+    const filterKeys = Object.keys(body).filter(
+      (key) => body[key] !== undefined
+    );
+    const filters =
+      filterKeys.map((key) => `${key} = ?`).join(" AND ") || "1=1";
+    const filterValues = filterKeys.map((key) => body[key]);
+
+    // Cursor-based condition
+    let cursorCondition = "";
+    let cursorParams = [];
+
+    if (lastItemId !== undefined && !isNaN(parseInt(lastItemId))) {
+      cursorCondition =
+        direction === "backward" ? " AND item_id < ?" : " AND item_id > ?";
+      cursorParams.push(parseInt(lastItemId));
+    }
+
+    const sortOrder = direction === "backward" ? "DESC" : "ASC";
+
+    // Final query
+    const query = `
+      SELECT * FROM item_inv
+      WHERE ${filters}${cursorCondition}
+      ORDER BY item_id ${sortOrder}
+      LIMIT ?
+    `;
+
+    const queryValues = [...filterValues, ...cursorParams, pageSize].map((v) =>
+      v === undefined ? null : v
+    );
+
+    const [result] = await connection.promise().execute(query, queryValues);
+
+    return response.status(200).json({
+      ok: true,
+      items: result,
+      nextCursor: result.length > 0 ? result[result.length - 1].item_id : null,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const buildSublocationQuery = (sublocationSegments = []) => {
+  if (!sublocationSegments.length || sublocationSegments[0] === "null") {
+    return {
+      clause: "sub_location IS NULL",
+      values: [],
+    };
+  }
+
+  const clause = sublocationSegments
+    .map((_, i) => `JSON_UNQUOTE(JSON_EXTRACT(sub_location, '$[${i}]')) = ?`)
+    .join(" AND ");
+
+  return {
+    clause,
+    values: sublocationSegments,
+  };
+};
+
+const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
+  request,
+  response
+) => {
+  try {
+    const connection = getConnection();
+
+    // Step 1: extract company filters
+    const formattingKeys = Object.keys(request.body);
+    const formatting = formattingKeys.map((item) => `${item}=?`).join(" AND ");
+    const formattingValues = Object.values(request.body);
+    const sublocationParam = request.query.sub_location || "null";
+    // Step 2: extract sub_location path from query
+    const sublocationSegments = sublocationParam.split(",").filter(Boolean);
+    // Step 3: Final SQL
+    let query = `
+    SELECT * FROM item_inv
+    WHERE ${formatting}
+    `;
+    const queryValues = [...formattingValues];
+    if (sublocationSegments[0] !== "null") {
+      const { clause, values } = buildSublocationQuery(sublocationSegments);
+      query += ` AND ${clause}`;
+      queryValues.push(...values);
+    }
+    query += ` ORDER BY item_id ASC`;
+
+    const [result] = await connection.promise().execute(query, queryValues);
+
+    return response.status(201).json({
+      ok: true,
+      count: result.length,
+      items: result,
+    });
   } catch (error) {
     return response.status(500).json({
       ok: false,
@@ -1533,4 +1657,6 @@ module.exports = {
   retrieveItemLocationQuantityForEvent,
   consultItemDataFromSerialNumber,
   getGroupedItemInventory,
+  consultingCompanyInventoryWithPagination,
+  consultingCompanyInventoryBasedOnLocationAndSubLocation,
 };
