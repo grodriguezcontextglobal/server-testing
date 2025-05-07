@@ -2,8 +2,7 @@
  * Auth Route
  * host + /api/db_item
  */
-
-const { Router } = require("express");
+const express = require("express");
 const {
   consultingItem,
   consultingItemTable,
@@ -21,6 +20,9 @@ const {
   gettingDataFromLocationOption,
   returningItemToStockWhenEventIsFinishedRefactored,
   checkingIfCompanyHasInventory,
+  retrieveItemLocationQuantityForEvent,
+  consultingCompanyInventoryWithPagination,
+  consultingCompanyInventoryBasedOnLocationAndSubLocation,
 } = require("../controllers/item");
 const {
   consultingInventoryCurrentState,
@@ -28,7 +30,10 @@ const {
   consultingRowInItemInvAssignedEventTable,
   checkingInventoryCurrentState,
 } = require("../controllers/items_events");
-const router = Router();
+const router = express.Router();
+
+// ✅ Force body parsing to ensure JSON bodies are read
+router.use(express.json());
 
 //check item info
 router.post("/consulting-item", consultingItem);
@@ -99,4 +104,20 @@ router.post(
 
 //check if company has inventory
 router.get("/check-company-has-inventory", checkingIfCompanyHasInventory);
+
+//available inventory structured by location with its quantity
+router.post(
+  "/retrieve-item-location-quantity",
+  retrieveItemLocationQuantityForEvent
+);
+
+//company inventory pagination
+router.post("/inventory-pagination", consultingCompanyInventoryWithPagination);
+
+//company inventory based on location and sublocation
+router.post(
+  "/inventory-based-on-location-and-sublocation",
+  consultingCompanyInventoryBasedOnLocationAndSubLocation
+);
+
 module.exports = router;

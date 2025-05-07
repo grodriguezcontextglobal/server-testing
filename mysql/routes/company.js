@@ -4,43 +4,70 @@
  */
 
 const { Router } = require("express");
-const { consultingCompany, consultingCompanyTable, insertingCompany, deleteCompany, consultingIndustryCompanyTable, updateCompanyData, updateGroupItems } = require("../controllers/company");
-const { returningLeasedEquipmentToCompany, searchingInventoryTracking, searchingGetInventoryTracking, checkInventoryCompanyExists, updateContentInContainerItem } = require("../controllers/item");
+const {
+  consultingCompany,
+  consultingCompanyTable,
+  insertingCompany,
+  deleteCompany,
+  consultingIndustryCompanyTable,
+  updateCompanyData,
+  updateGroupItems,
+} = require("../controllers/company");
+const {
+  returningLeasedEquipmentToCompany,
+  searchingInventoryTracking,
+  searchingGetInventoryTracking,
+  checkInventoryCompanyExists,
+  updateContentInContainerItem,
+  consultingCompanyInventoryWithPagination,
+  consultingCompanyInventoryBasedOnLocationAndSubLocation,
+} = require("../controllers/item");
 const router = Router();
 
 // Check company info
 router.post("/consulting-company", consultingCompany);
 
 // Check company table
-router.post('/companies_information', consultingCompanyTable);
+router.post("/companies_information", consultingCompanyTable);
 
 // Check industry column from company table
-router.post('/industry', consultingIndustryCompanyTable);
+router.post("/industry", consultingIndustryCompanyTable);
 
 // Insert new company
-router.post('/new_company', insertingCompany);
+router.post("/new_company", insertingCompany);
 
 // update company data
-router.post('/update_company', updateCompanyData);
+router.post("/update_company", updateCompanyData);
 
 // Delete company
-router.delete('/:id', deleteCompany);
+router.delete("/:id", deleteCompany);
 
 //retuning leased equipment to original company
-router.post('/returning-leased-equipment', returningLeasedEquipmentToCompany)
+router.post("/returning-leased-equipment", returningLeasedEquipmentToCompany);
 
-router.post('/update-group-items', updateGroupItems);
+router.post("/update-group-items", updateGroupItems);
 
 //searching function
 router.post("/search-inventory", searchingInventoryTracking);
 
 //searching function
-router.get('/search-inventory', searchingGetInventoryTracking)
+router.get("/search-inventory", searchingGetInventoryTracking);
 
 //check if company has inventory or not
-router.get('/check-company-exists', checkInventoryCompanyExists)
+router.get("/check-company-exists", checkInventoryCompanyExists);
 
 //update item content in container
 router.post("/update-content-in-container", updateContentInContainerItem);
 
+//company inventory pagination
+router.post(
+  "/company-inventory-pagination",
+  consultingCompanyInventoryWithPagination
+);
+
+//company inventory based on location and sublocation
+router.post(
+  "/inventory-based-on-location-and-sublocation",
+  consultingCompanyInventoryBasedOnLocationAndSubLocation
+);
 module.exports = router;
