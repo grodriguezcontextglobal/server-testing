@@ -1404,6 +1404,7 @@ const consultItemDataFromSerialNumber = async (request, response) => {
       company_id,
       warehouse = 1,
       item_group,
+      category_name = null,
       enableAssignFeature = 1,
     } = request.body;
 
@@ -1423,6 +1424,7 @@ const consultItemDataFromSerialNumber = async (request, response) => {
         company_id = ? AND
         warehouse = ? AND
         item_group = ? AND
+        ${category_name && `category_name = ? AND`}
         enableAssignFeature = ?
     `;
     const values = [
@@ -1430,6 +1432,7 @@ const consultItemDataFromSerialNumber = async (request, response) => {
       company_id,
       warehouse,
       item_group,
+      category_name,
       enableAssignFeature,
     ];
 
