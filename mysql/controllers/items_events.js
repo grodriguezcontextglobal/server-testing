@@ -6,7 +6,7 @@ const connection = getConnection();
 
 const insertingItemInEvent = async (request, response) => {
   try {
-    const { startingNumber, quantity, event_id, item_group, category_name } =
+    const { startingNumber, quantity, event_id, item_group, category_name, company_id } =
       request.body;
     // Validate request body
     if (
@@ -26,12 +26,11 @@ const insertingItemInEvent = async (request, response) => {
     const findIndexQuery = `
       SELECT item_id, serial_number
       FROM item_inv
-      WHERE item_group = ? AND category_name = ?
+      WHERE item_group = ? AND category_name = ? AND company_id = ?
       ORDER BY serial_number
     `;
 
-    const findIndexValues = [item_group, category_name];
-
+    const findIndexValues = [item_group, category_name, company_id];
     connection.execute(findIndexQuery, findIndexValues, (err, results) => {
       if (err) {
         return response.status(500).json({
@@ -89,7 +88,6 @@ const insertingItemInEvent = async (request, response) => {
       });
     });
   } catch (error) {
-    console.error("Error:", error.message);
     response.status(500).json({
       ok: false,
       msg: `Server error: ${error.message}`,
