@@ -1424,7 +1424,6 @@ const consultItemDataFromSerialNumber = async (request, response) => {
         company_id = ? AND
         warehouse = ? AND
         item_group = ? AND
-        ${category_name && `category_name = ? AND`}
         enableAssignFeature = ?
     `;
     const values = [
@@ -1432,9 +1431,13 @@ const consultItemDataFromSerialNumber = async (request, response) => {
       company_id,
       warehouse,
       item_group,
-      category_name,
       enableAssignFeature,
     ];
+
+    if (category_name) {
+      query += ` AND category_name = ?`;
+      values.push(category_name);
+    }
 
     // Conditionally add serial_number filter if provided
     if (serial_number) {
@@ -1632,6 +1635,46 @@ const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
   }
 };
 
+const getGroupedItemWithFormatInventory = async (request, response) => {
+  try {
+    const connection = getConnection();
+
+    const formatting = Object.keys(request.body)
+      .map((item) => `${item} = ?`)
+      .join(" AND ");
+    const values = Object.values(request.body);
+
+    const query = `
+      SELECT 
+        category_name,
+        item_group,
+        MIN(brand) AS brand,
+        MIN(descript_item) AS descript_item,
+        COUNT(*) AS quantity
+      FROM item_inv
+      WHERE ${formatting}
+      GROUP BY 
+        category_name,
+        item_group
+      ORDER BY 
+        category_name ASC,
+        item_group ASC
+    `;
+
+    const [rows] = await connection.promise().execute(query, values);
+
+    return response.status(200).json({
+      ok: true,
+      groupedInventory: rows,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
 module.exports = {
   consultingItem,
   insertingItem,
@@ -1662,4 +1705,5 @@ module.exports = {
   getGroupedItemInventory,
   consultingCompanyInventoryWithPagination,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
+  getGroupedItemWithFormatInventory,
 };
