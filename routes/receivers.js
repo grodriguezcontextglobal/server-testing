@@ -28,6 +28,7 @@ const {
   removingItemFromTransaction,
   returnAllItemsInTransactionInPool,
   updateBulkItemsInTransactionPerUserAtOnce,
+  receiverPoolBulkDelete,
 } = require("../controller/receiver");
 
 //post receivers per user per transaction
@@ -56,7 +57,6 @@ router.patch("/receivers-pool-update/:id", updatePoolReceivers);
 
 //update specific value of receiver data in pool
 router.patch("/receivers-pool-update-bulk", updateBulkItemDataInPool);
-
 
 //update specific value of an issue receiver data
 router.patch("/receiver-returned-issue/:id", updateIssueDevice);
@@ -97,6 +97,9 @@ router.patch("/receiver-returned-issue/:id", updateIssueDevice);
 //find and delete device from pool document
 router.delete("/delete-device-pool/:id", receiverPoolFoundAndDelete);
 
+//find and delete device from pool document in bulk way
+router.post("/delete-bulk-devices-pool", receiverPoolBulkDelete);
+
 //find and delete device from pool document
 router.delete("/receiver-pool-device/:id", receiverPoolFoundAndDelete);
 
@@ -107,15 +110,24 @@ router.patch("/update-bulk-items-in-transaction", updateBulkItemsInTransaction);
 router.patch("/update-bulk-items-in-pool", updateBulkItemsInPool);
 
 //create bulk item transaction in user
-router.post("/create-bulk-item-transaction-in-user", createBulkItemTransactionInUser);
+router.post(
+  "/create-bulk-item-transaction-in-user",
+  createBulkItemTransactionInUser
+);
 
 //removing transaction
 router.delete("/remove-transaction/:id", removingItemFromTransaction);
 
 //update multiple items in pool with device.serialNumber props
-router.patch("/transaction-return-all-items-in-pool", returnAllItemsInTransactionInPool);
+router.patch(
+  "/transaction-return-all-items-in-pool",
+  returnAllItemsInTransactionInPool
+);
 
 //update multiple items in transaction with device.serialNumber props
-router.patch("/transaction-all-items-returned-at-once", updateBulkItemsInTransactionPerUserAtOnce);
+router.patch(
+  "/transaction-all-items-returned-at-once",
+  updateBulkItemsInTransactionPerUserAtOnce
+);
 
 module.exports = router;
