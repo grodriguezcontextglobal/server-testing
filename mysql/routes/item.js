@@ -23,6 +23,7 @@ const {
   retrieveItemLocationQuantityForEvent,
   consultingCompanyInventoryWithPagination,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
+  consultingCompanyInventoryBasedOnSubmittedParameters,
 } = require("../controllers/item");
 const {
   consultingInventoryCurrentState,
@@ -118,6 +119,12 @@ router.post("/inventory-pagination", consultingCompanyInventoryWithPagination);
 router.post(
   "/inventory-based-on-location-and-sublocation",
   consultingCompanyInventoryBasedOnLocationAndSubLocation
+);
+
+//consulting company inventory based on submitted parameters
+router.post(
+  "/inventory-based-on-submitted-parameters",
+  consultingCompanyInventoryBasedOnSubmittedParameters
 );
 
 module.exports = router;
