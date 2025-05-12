@@ -1,4 +1,5 @@
 const { response, request } = require("express");
+const mongoose = require("mongoose");
 const ReceiverReturnedStatus = require("../models/ReceiverReturnedStatus");
 const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
@@ -23,7 +24,7 @@ const addReceiverToTransaction = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
-      err:error
+      err: error,
     });
   }
 };
@@ -119,7 +120,7 @@ const udpateReceiverStatus = async (request, response) => {
 const updateBulkItemsInTransaction = async (request, response) => {
   const { timeStamp, device } = request.body;
   try {
-    for (let item of device) { 
+    for (let item of device) {
       await Receivers.findByIdAndUpdate(
         item.key,
         {
@@ -186,7 +187,7 @@ const poolReceivers = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
-      err:error
+      err: error,
     });
   }
 };
@@ -225,7 +226,7 @@ const poolReceiversBulk = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
-      err:error
+      err: error,
     });
   }
 };
@@ -239,41 +240,41 @@ const getListOfItemsInEventPool = async (request, response) => {
     const cachedList = await cache_connection.get(
       `eventSelected=${eventID}&company=${companyID}`
     );
-    // if (cachedList && cachedList.length > 5) {
-    //   return response.status(200).json({
-    //     cached: true,
-    //     ok: true,
-    //     receiversInventory: cachedList, //JSON.parse(cachedList),
-    //   });
-    // } else {
-      const formatting = [...params.split("&")];
-      let check = formatting.reduce(
-        (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
-        {}
-      );
-      if (check.eventSelected) {
-        check.eventSelected = eventID;
-      }
-      const items = await ReceiversPool.find(check).sort({device: 1});
-      cache_connection.set(
-        `eventSelected=${eventID}&company=${companyID}`,
-        JSON.stringify(items)
-      );
-      cache_connection.expire(
-        `eventSelected=${eventID}&company=${companyID}`,
-        180
-      );
+    if (cachedList && cachedList.length > 5) {
       return response.status(200).json({
+        cached: true,
         ok: true,
-        cached: false,
-        receiversInventory: JSON.stringify(items),
+        receiversInventory: cachedList, //JSON.parse(cachedList),
       });
-    // }
+    } else {
+    const formatting = [...params.split("&")];
+    let check = formatting.reduce(
+      (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
+      {}
+    );
+    if (check.eventSelected) {
+      check.eventSelected = eventID;
+    }
+    const items = await ReceiversPool.find(check).sort({ device: 1 });
+    cache_connection.set(
+      `eventSelected=${eventID}&company=${companyID}`,
+      JSON.stringify(items)
+    );
+    cache_connection.expire(
+      `eventSelected=${eventID}&company=${companyID}`,
+      120
+    );
+    return response.status(200).json({
+      ok: true,
+      cached: false,
+      receiversInventory: JSON.stringify(items),
+    });
+    }
   } catch (error) {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
-      err:error
+      err: error,
     });
   }
 };
@@ -311,7 +312,9 @@ const updatePoolReceivers = async (request, response) => {
 
 const receiverPoolList = async (request, response) => {
   try {
-    const receiversInventory = await ReceiversPool.find(request.body).sort({device: 1});
+    const receiversInventory = await ReceiversPool.find(request.body).sort({
+      device: 1,
+    });
     return response.status(201).json({
       ok: true,
       receiversInventory: receiversInventory,
@@ -337,6 +340,47 @@ const receiverPoolFoundAndDelete = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: error,
+    });
+  }
+};
+
+const receiverPoolBulkDelete = async (request, response) => {
+  try {
+    const { ids } = request.body;
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "No IDs provided for deletion.",
+      });
+    }
+
+    // Ensure only valid ObjectId strings are included
+    const validIds = ids
+      .filter(
+        (id) => typeof id === "string" && mongoose.Types.ObjectId.isValid(id)
+      )
+      .map((id) => new mongoose.Types.ObjectId(id));
+
+    if (validIds.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "No valid ObjectIds provided.",
+      });
+    }
+
+    const deleteResult = await ReceiversPool.deleteMany({
+      _id: { $in: validIds },
+    });
+
+    return response.status(200).json({
+      ok: true,
+      deletedCount: deleteResult.deletedCount,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+      debug: error, // Optional: Remove in production
     });
   }
 };
@@ -650,6 +694,7 @@ module.exports = {
   updateIssueDevice,
   listOfAssignedReceiverPlusUserInformation,
   receiverPoolFoundAndDelete,
+  receiverPoolBulkDelete,
   updateBulkItemsInTransaction,
   updateBulkItemsInPool,
   poolReceiversBulk,
