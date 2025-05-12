@@ -30,6 +30,7 @@ const {
   retrieveItemLocationQuantityForEvent,
   consultItemDataFromSerialNumber,
   getGroupedItemInventory,
+  getGroupedItemWithFormatInventory,
 } = require("../controllers/item");
 const router = Router();
 
@@ -103,5 +104,8 @@ router.post("/retrieve-item-location-quantity-full-details", consultItemDataFrom
 
 //retrieve inventory structured by item group with its location and its quantity
 router.post("/retrieve-item-group-location-quantity", getGroupedItemInventory);
+
+//retrieve inventory structured by item group with its location and its quantity and more columns defined
+router.post("/retrieve-item-group-quantity-with-format", getGroupedItemWithFormatInventory);
 
 module.exports = router;
