@@ -1277,7 +1277,7 @@ const updateItemInTableAfterBeingAddedToEventFromContainer = async (
     for (let item of database) {
       const query = `
         UPDATE item_inv 
-        SET warehouse = ? 
+        SET warehouse = ? AND update_at = NOW()
         WHERE item_id = ?;
       `;
 
@@ -1675,6 +1675,55 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
   }
 };
 
+const consultingCompanyInventoryBasedOnSubmittedParameters = async (
+  request,
+  response
+) => {
+  try {
+    const connection = getConnection();
+    let { query, values } = request.body;
+
+    // Clone the values to safely manipulate
+    let finalValues = [];
+    let placeholderIndex = 0;
+
+    // Replace all IN (?) with dynamic placeholders
+    query = query.replace(/IN\s*\(\?\)/gi, () => {
+      const val = values[placeholderIndex++];
+
+      if (Array.isArray(val)) {
+        // Push individual values into the final array
+        finalValues.push(...val);
+        // Return (?, ?, ?, ...) based on array length
+        return `IN (${val.map(() => '?').join(', ')})`;
+      } else {
+        // Non-array, pass as-is
+        finalValues.push(val);
+        return 'IN (?)';
+      }
+    });
+
+    // Add remaining non-IN values
+    for (; placeholderIndex < values.length; placeholderIndex++) {
+      finalValues.push(values[placeholderIndex]);
+    }
+
+    const [result] = await connection.promise().execute(query, finalValues);
+
+    return response.status(200).json({
+      ok: true,
+      result,
+    });
+
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
+
 module.exports = {
   consultingItem,
   insertingItem,
@@ -1706,4 +1755,5 @@ module.exports = {
   consultingCompanyInventoryWithPagination,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   getGroupedItemWithFormatInventory,
+  consultingCompanyInventoryBasedOnSubmittedParameters
 };
