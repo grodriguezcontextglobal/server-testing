@@ -31,6 +31,7 @@ const {
   consultItemDataFromSerialNumber,
   getGroupedItemInventory,
   getGroupedItemWithFormatInventory,
+  consultingCompanyInventoryBasedOnSubmittedParameters,
 } = require("../controllers/item");
 const router = Router();
 
@@ -107,5 +108,11 @@ router.post("/retrieve-item-group-location-quantity", getGroupedItemInventory);
 
 //retrieve inventory structured by item group with its location and its quantity and more columns defined
 router.post("/retrieve-item-group-quantity-with-format", getGroupedItemWithFormatInventory);
+
+//consulting company inventory based on submitted parameters
+router.post(
+  "/inventory-based-on-submitted-parameters",
+  consultingCompanyInventoryBasedOnSubmittedParameters
+);
 
 module.exports = router;
