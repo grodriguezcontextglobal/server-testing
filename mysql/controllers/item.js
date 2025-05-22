@@ -1695,11 +1695,11 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
         // Push individual values into the final array
         finalValues.push(...val);
         // Return (?, ?, ?, ...) based on array length
-        return `IN (${val.map(() => '?').join(', ')})`;
+        return `IN (${val.map(() => "?").join(", ")})`;
       } else {
         // Non-array, pass as-is
         finalValues.push(val);
-        return 'IN (?)';
+        return "IN (?)";
       }
     });
 
@@ -1714,12 +1714,164 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
       ok: true,
       result,
     });
-
   } catch (error) {
     return response.status(500).json({
       ok: false,
       msg: error.message,
       err: JSON.stringify(error),
+    });
+  }
+};
+
+const retrieveItemData = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const { company_id } = request.body;
+
+    const query = `
+      SELECT 
+        item_id, category_name, item_group, serial_number, ownership, descript_item, 
+        warehouse, company, cost, create_at, update_at, status, location, 
+        main_warehouse, current_location, brand, extra_serial_number, company_id, 
+        return_date, returnedRentedInfo, enableAssignFeature, container, 
+        container_items, isItInContainer, containerSpotLimit, container_id, 
+        display_item, sub_location, image_url
+      FROM item_inv
+      WHERE company_id = ?
+    `;
+
+    const [items] = await connection.promise().execute(query, [company_id]);
+
+    const totalAvailable = items.filter((item) => item.warehouse === 1).length;
+    const total = items.length;
+
+    const groupedData = {
+      category_name: groupBy(items, "category_name"),
+      item_group: groupBy(items, "item_group"),
+      brand: groupBy(items, "brand"),
+      ownership: groupBy(items, "ownership"),
+    };
+
+    // Format the total available and total for each group
+    const formatGroupData = (group) => {
+      return Object.entries(group).reduce((acc, [key, value]) => {
+        acc[key] = {
+          totalAvailable: value.filter((item) => item.warehouse === 1).length,
+          total: value.length,
+        };
+        return acc;
+      }, {});
+    };
+
+    const formattedGroupedData = {
+      category_name: formatGroupData(groupedData.category_name),
+      item_group: formatGroupData(groupedData.item_group),
+      brand: formatGroupData(groupedData.brand),
+      ownership: formatGroupData(groupedData.ownership),
+    };
+
+    return response.status(200).json({
+      ok: true,
+      totalAvailable,
+      total,
+      groupedData: formattedGroupedData,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const retrieveCompanyInventory = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const { company_id } = request.body;
+
+    // Correct query to get the inventory items for the company
+    const inventoryQuery = `
+      SELECT *
+      FROM item_inv
+      WHERE company_id = ?
+    `;
+
+    const [items] = await connection
+      .promise()
+      .execute(inventoryQuery, [company_id]);
+
+    // Prepare a map to store usage information for items with warehouse = 0
+    const usageMap = new Map();
+
+    // Collect item IDs with warehouse = 0
+    const itemIds = items
+      .filter((item) => item.warehouse === 0)
+      .map((item) => item.item_id);
+
+    if (itemIds.length > 0) {
+      // Query to get usage information for items with warehouse = 0
+      const usageQuery = `
+        SELECT iiae.item_id, ei.event_name
+        FROM item_inv_assigned_event iiae
+        LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
+        WHERE iiae.active = 1 AND iiae.item_id IN (${itemIds})
+        order by iiae.event_id desc`;
+
+      const [usageResults] = await connection.promise().execute(usageQuery);
+      // Assuming you have a usageResults array containing the usage information for items with warehouse = 0
+      // Populate the usageMap with the results
+      usageResults.forEach((usage) => {
+        if (!usageMap.has(usage.item_id)) {
+          usageMap.set(usage.item_id, []);
+        }
+        usageMap.get(usage.item_id).push(usage.event_name);
+      });
+    }
+
+    // Attach usage information to items
+    const itemsWithUsage = items.map((item) => {
+      if (item.warehouse === 0) {
+        return {
+          category_name: item.category_name,
+          item_group: item.item_group,
+          warehouse: item.warehouse,
+          status: item.status,
+          enableAssignFeature:item.enableAssignFeature,
+          brand:item.brand,
+          ownership:item.ownership,
+          location: item.location,
+          main_warehouse: item.main_warehouse,
+          image_url: item.image_url,
+          serial_number: item.serial_number,
+          item: item.item_id,
+          usage: usageMap.get(item.item_id)[0] || [],
+        };
+      }
+      return {
+        category_name: item.category_name,
+        item_group: item.item_group,
+        warehouse: item.warehouse,
+        status: item.status,
+        enableAssignFeature:item.enableAssignFeature,
+        brand:item.brand,
+        ownership:item.ownership,
+        location: item.location,
+        main_warehouse: item.main_warehouse,
+        image_url: item.image_url,
+        serial_number: item.serial_number,
+        item: item.item_id,
+        usage: [],
+      };
+    });
+
+    return response.status(200).json({
+      ok: true,
+      items: itemsWithUsage,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
     });
   }
 };
@@ -1755,5 +1907,7 @@ module.exports = {
   consultingCompanyInventoryWithPagination,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   getGroupedItemWithFormatInventory,
-  consultingCompanyInventoryBasedOnSubmittedParameters
+  consultingCompanyInventoryBasedOnSubmittedParameters,
+  retrieveItemData,
+  retrieveCompanyInventory,
 };

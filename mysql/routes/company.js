@@ -21,6 +21,8 @@ const {
   updateContentInContainerItem,
   consultingCompanyInventoryWithPagination,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
+  retrieveItemData,
+  retrieveCompanyInventory,
 } = require("../controllers/item");
 const router = Router();
 
@@ -70,4 +72,11 @@ router.post(
   "/inventory-based-on-location-and-sublocation",
   consultingCompanyInventoryBasedOnLocationAndSubLocation
 );
+
+//company inventory structure to be displayed in inventory page.
+router.post("/company-inventory-structure", retrieveItemData);
+
+//company inventory with current warehouse status
+router.post("/company-inventory-with-current-warehouse-status", retrieveCompanyInventory);
+
 module.exports = router;
