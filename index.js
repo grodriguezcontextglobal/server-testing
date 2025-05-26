@@ -1,167 +1,155 @@
 const express = require("express");
 const compression = require("compression");
-const { dbConnection } = require("./database/config");
 const cors = require("cors");
-require("dotenv").config();
-// const cookieParser = require("cookie-parser");
-// const statusMonitor = require("express-status-monitor");
 const cluster = require("node:cluster");
 const OS = require("node:os");
-const admin = require("./routes/admin");
-const article = require("./routes/article");
-const auth = require("./routes/auth");
-const cashReport = require("./routes/cashReport");
-const company = require("./routes/company");
-const companySQL = require("./mysql/routes/company");
-const consumerAttendingEvent = require("./mysql/routes/consumerAttendingEvent");
-const consumers = require("./mysql/routes/consumers");
-const event = require("./routes/event");
-const eventLog = require("./routes/eventLog");
-const eventSQL = require("./mysql/routes/events");
-const image = require("./routes/image");
-const inventory = require("./routes/inventory");
-const item = require("./routes/item");
-const itemSQl = require("./mysql/routes/item");
-const nodeMailer = require("./routes/nodeMailer");
-const notificationLog = require("./routes/notificationLog");
-const receivers = require("./routes/receivers");
-const recordEvent = require("./mysql/routes/recordEvent");
-const staff = require("./routes/staff");
-const staffSQL = require("./mysql/routes/staff");
-const stripe = require("./routes/stripe");
-const stripeSQL = require("./mysql/routes/stripe");
-const subscription = require("./routes/subscription");
-const transaction = require("./routes/transaction");
-const transactionAuditLog = require("./routes/transactionAuditLog");
-const lease = require("./routes/lease");
-const leaseSQL = require("./mysql/routes/lease");
-const cache_route = require("./routes/cache_route");
-const cloudinaryImageUpload = require("./cloudinary/connection");
-const search = require("./routes/search");
-const feedback = require("./routes/feedback");
-const errorFeedback = require("./routes/errorLog");
-const post = require("./routes/post");
-// const responseTime = require("response-time");
-// const { cookie } = require("express-validator");
+const { dbConnection } = require("./database/config");
 
-//check CPU
-const numCpu = OS.cpus().length;
+// Load environment variables
+require("dotenv").config();
 
-//Database
-dbConnection();
+// Configuration imports
+const { corsOptions } = require("./config/cors");
 
-// CORS configuration
-const ACCEPTED_ORIGINS = [
-  "http://localhost:5522",
-  "https://devitrak-app-survey.pages.dev",
-  "http://localhost:3791",
-  "https://admin.devitrak.net",
-  "https://app.devitrak.net",
-  "https://admin-testing-dev.netlify.app",
-  "https://login.microsoftonline.com/",
-];
+// Constants
+const NUM_CPU = OS.cpus().length;
+const PORT = process.env.PORT || 34001;
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || ACCEPTED_ORIGINS.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-  allowedHeaders: [
-    "Content-Type",
-    "Authorization",
-    "x-token",
-    "token",
-    "Cookie",
-    "Set-Cookie",
-    "credentials",
-  ],
-  cookie: true,
-  credentials: true,
-  // preflightContinue: false,
-  maxAge: 84600,
-  optionsSuccessStatus: 200,
-};
+// Initialize database connection
+dbConnection().catch(err => {
+    console.error('Database connection failed:', err);
+    process.exit(1);
+});
 
-//create express server
+// Create express application
 const app = express();
 
-// //response time
-// app.use(responseTime());
+// Middleware configuration
+const configureMiddleware = (app) => {
+    // Security and parsing middleware
+    app.use(cors(corsOptions));
+    app.use(compression());
+    app.use(express.json({ limit: '50mb' }));
+    app.use(express.urlencoded({ limit: '50mb', extended: true }));
+    app.use(express.static("public"));
 
-// parse application/json
-app.use(express.json());
+    // Handle pre-flight requests
+    app.options("*", cors(corsOptions));
+};
 
-// Enable Gzip compression
-app.use(compression());
+// Route configuration
+const configureRoutes = (app) => {
+    // MongoDB Routes
+    const mongoRoutes = {
+        auth: require("./routes/auth"),
+        stripe: require("./routes/stripe"),
+        subscription: require("./routes/subscription"),
+        transaction: require("./routes/transaction"),
+        admin: require("./routes/admin"),
+        company: require("./routes/company"),
+        receivers: require("./routes/receivers"),
+        article: require("./routes/article"),
+        staff: require("./routes/staff"),
+        eventLog: require("./routes/eventLog"),
+        event: require("./routes/event"),
+        transactionAuditLog: require("./routes/transactionAuditLog"),
+        notificationLog: require("./routes/notificationLog"),
+        cashReport: require("./routes/cashReport"),
+        nodeMailer: require("./routes/nodeMailer"),
+        inventory: require("./routes/inventory"),
+        item: require("./routes/item"),
+        image: require("./routes/image"),
+        lease: require("./routes/lease"),
+        search: require("./routes/search"),
+        feedback: require("./routes/feedback"),
+        errorFeedback: require("./routes/errorLog"),
+        post: require("./routes/post"),
+        document: require("./routes/document")
+    };
 
-app.use(cors(corsOptions));
+    // MySQL Routes
+    const mysqlRoutes = {
+        company: require("./mysql/routes/company"),
+        consumerAttendingEvent: require("./mysql/routes/consumerAttendingEvent"),
+        consumers: require("./mysql/routes/consumers"),
+        events: require("./mysql/routes/events"),
+        item: require("./mysql/routes/item"),
+        recordEvent: require("./mysql/routes/recordEvent"),
+        staff: require("./mysql/routes/staff"),
+        stripe: require("./mysql/routes/stripe"),
+        lease: require("./mysql/routes/lease")
+    };
 
-// Handle pre-flight requests
-app.options("*", cors(corsOptions));
+    // Utility Routes
+    const utilityRoutes = {
+        cache: require("./routes/cache_route"),
+        cloudinary: require("./cloudinary/connection")
+    };
 
-//public directory
-app.use(express.static("public"));
+    // Mount MongoDB routes
+    Object.entries(mongoRoutes).forEach(([name, router]) => {
+        app.use(`/api/${name.toLowerCase()}`, router);
+    });
 
-//cookie parser
-// app.use(cookieParser());
+    // Mount MySQL routes
+    Object.entries(mysqlRoutes).forEach(([name, router]) => {
+        app.use(`/api/db_${name.toLowerCase()}`, router);
+    });
 
-//Read and body parse
-app.use(express.json({ limit: '5mb' }));
-app.use(express.urlencoded({ limit: '5mb', extended: true }));
+    // Mount utility routes
+    app.use("/api/cache_update", utilityRoutes.cache);
+    app.use("/api/cloudinary", utilityRoutes.cloudinary);
+    app.use('/api', require('./routes/status'));
+};
 
-//routes
-app.use("/api/auth", auth);
-app.use("/api/stripe", stripe);
-app.use("/api/subscription", subscription);
-app.use("/api/transaction", transaction);
-app.use("/api/admin", admin);
-app.use("/api/company", company);
-app.use("/api/receiver", receivers);
-app.use("/api/article", article);
-app.use("/api/staff", staff);
-app.use("/api/event-log", eventLog);
-app.use("/api/event", event);
-app.use("/api/transaction-audit-log", transactionAuditLog);
-app.use("/api/notification-log", notificationLog);
-app.use("/api/cash-report", cashReport);
-app.use("/api/nodemailer", nodeMailer);
-app.use("/api/inventory", inventory);
-app.use("/api/item", item);
-app.use("/api/image", image);
-app.use("/api/lease", lease);
-app.use("/api/db_consumer", consumers);
-app.use("/api/db_event", eventSQL);
-app.use("/api/db_item", itemSQl);
-app.use("/api/db_consumer_attending_event_record", consumerAttendingEvent);
-app.use("/api/db_company", companySQL);
-app.use("/api/db_staff", staffSQL);
-app.use("/api/db_stripe", stripeSQL);
-app.use("/api/db_record", recordEvent);
-app.use("/api/db_lease", leaseSQL);
-app.use("/api/cloudinary", cloudinaryImageUpload);
-app.use("/api/cache_update", cache_route);
-app.use("/api/search", search);
-app.use("/api/feedback", feedback);
-app.use("/api/error_log", errorFeedback);
-app.use("/api/post", post);
-// app.listen(process.env.PORT);
-if (cluster.isPrimary) {
-  for (let index = 0; index < numCpu; index++) {
-    cluster.fork();
-  }
-  cluster.on("exit", (worker, code, signal) => {
-    cluster.fork();
-  });
-  cluster.on("error", (worker, code, signal) => {
-    cluster.fork();
-  });
-  cluster.on("disconnect", (worker, code, signal) => {
-    cluster.fork();
-  });
-} else {
-  app.listen(process.env.PORT);
-}
+// Error handling middleware
+const configureErrorHandling = (app) => {
+    app.use((err, req, res, next) => {
+        console.error(err.stack);
+        res.status(500).json({
+            error: 'Something went wrong!',
+            message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+        });
+    });
+};
+
+// Initialize application
+const initializeApp = () => {
+    configureMiddleware(app);
+    configureRoutes(app);
+    configureErrorHandling(app);
+    return app;
+};
+
+// Cluster configuration
+const startServer = () => {
+    if (cluster.isPrimary) {
+        console.log(`Master process ${process.pid} is running`);
+
+        // Fork workers based on CPU cores
+        for (let i = 0; i < NUM_CPU; i++) {
+            cluster.fork();
+        }
+
+        // Handle worker events
+        cluster.on("exit", (worker, code, signal) => {
+            console.log(`Worker ${worker.process.pid} died. Restarting...`);
+            cluster.fork();
+        });
+    } else {
+        const server = initializeApp().listen(PORT, () => {
+            console.log(`Worker ${process.pid} started on port ${PORT}`);
+        });
+
+        // Graceful shutdown
+        process.on('SIGTERM', () => {
+            console.log('SIGTERM signal received: closing HTTP server');
+            server.close(() => {
+                console.log('HTTP server closed');
+                process.exit(0);
+            });
+        });
+    }
+};
+
+startServer();
