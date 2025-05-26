@@ -3,3 +3,5 @@ node_modules
 
 //mongoDB 
 DBConexion.txt
+tmp/uploads/
+.env    
