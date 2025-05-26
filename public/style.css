@@ -2,3 +2,47 @@ h2{
     background-color: #212529;
     color: #fff;
 }
+
+.status-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    text-transform: capitalize;
+}
+
+.status-badge.operational {
+    background-color: #22c55e;
+    color: white;
+}
+
+.status-badge.error {
+    background-color: #ef4444;
+    color: white;
+}
+
+.status-badge.degraded {
+    background-color: #f59e0b;
+    color: white;
+}
+
+.status-item {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+}
+
+.status-item h3 {
+    margin: 0 0 0.5rem 0;
+    color: #64748b;
+    font-size: 0.875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.status-item p {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 500;
+}
