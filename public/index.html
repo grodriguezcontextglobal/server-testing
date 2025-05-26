@@ -1,13 +1,130 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-US" translate="no">
 <head>
-    <meta charset="UTF-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="style.css">
-    <title>Document</title>
+    <meta charset="UTF-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap"
+        rel="stylesheet"
+    />
+    <meta
+        property="og:title"
+        content="Devitrak Server Status"
+    />
+    <meta property="og:type" content="website" />
+    <meta
+        property="og:description"
+        content="Devitrak Server: Backend infrastructure powering the Devitrak Inventory Management System. Monitor server status, performance metrics, and system health for optimal operation."
+    />
+    <meta name="theme-color" content="#1976d2" />
+    <meta
+        http-equiv="Cache-Control"
+        content="private, must-revalidate, proxy-revalidate, max-age=0"
+    />
+    <meta
+        name="keywords"
+        content="devitrak server, system status, server monitoring, api status, backend infrastructure, server health, system metrics, performance monitoring, server dashboard, devitrak backend, api monitoring, system status page"
+    />
+    <meta
+        name="description"
+        content="Devitrak Server: Backend infrastructure powering the Devitrak Inventory Management System. Monitor server status, performance metrics, and system health for optimal operation."
+    />
+    <link
+        rel="icon"
+        type="image/svg+xml"
+        href="assets/devitrak-logo-white.svg"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="style.css" />
+    <title>Devitrak Server Status</title>
 </head>
 <body>
-    <h2>Devitrak server</h2>
+    <header class="server-header" style="background-color: #155dee;display: flex; border-radius: 12px;padding: 8px 12px;">
+        <img src="assets/devitrak-logo-white.svg" alt="Devitrak Logo" class="logo" />&nbsp;
+        <h3 style="color: #fff;">Devitrak Server Status</h3>
+    </header>
+
+    <main class="server-content">
+        <section class="status-panel">
+            <h2>System Status</h2>
+            <div class="status-grid">
+                <div class="status-item">
+                    <h3>API Status</h3>
+                    <p id="apiStatus">Checking...</p>
+                </div>
+                <div class="status-item">
+                    <h3>Server Version</h3>
+                    <p id="serverVersion">Loading...</p>
+                </div>
+                <div class="status-item">
+                    <h3>Last Updated</h3>
+                    <p id="lastUpdated">Loading...</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer class="server-footer">
+        <p>&copy; <span id="currentYear"></span> Devitrak. All rights reserved.</p>
+    </footer>
+
+    <script>
+        // Update current year
+        document.getElementById('currentYear').textContent = new Date().getFullYear();
+
+        // Format bytes to human readable format
+        function formatBytes(bytes) {
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            if (bytes === 0) return '0 Byte';
+            const i = parseInt(Math.floor(Math.log(bytes) / Math.log(1024)));
+            return Math.round(bytes / Math.pow(1024, i), 2) + ' ' + sizes[i];
+        }
+
+        // Format uptime to human readable format
+        function formatUptime(seconds) {
+            const days = Math.floor(seconds / (3600 * 24));
+            const hours = Math.floor((seconds % (3600 * 24)) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            return `${days}d ${hours}h ${minutes}m`;
+        }
+
+        // Fetch server status
+        function updateServerStatus() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    // Update basic status
+                    document.getElementById('apiStatus').textContent = 
+                        data.status.charAt(0).toUpperCase() + data.status.slice(1);
+                    document.getElementById('apiStatus').className = 
+                        `status-badge ${data.status}`;
+                    
+                    document.getElementById('serverVersion').textContent = 
+                        `v${data.version}`;
+                    
+                    // Update system info
+                    const systemInfo = `
+                        Platform: ${data.system.platform}
+                        CPU Cores: ${data.system.cpu.cores}
+                        Memory: ${formatBytes(data.system.memory.used)} / ${formatBytes(data.system.memory.total)}
+                        Uptime: ${formatUptime(data.uptime)}
+                    `;
+                    
+                    // Update timestamp
+                    document.getElementById('lastUpdated').textContent = 
+                        new Date(data.timestamp).toLocaleString();
+                })
+                .catch(error => {
+                    document.getElementById('apiStatus').textContent = 'Error';
+                    document.getElementById('apiStatus').className = 'status-badge error';
+                    console.error('Failed to fetch server status:', error);
+                });
+        }
+
+        // Update status every minute
+        updateServerStatus();
+        setInterval(updateServerStatus, 60000);
+    </script>
 </body>
 </html>
