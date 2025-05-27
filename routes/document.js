@@ -1,5 +1,4 @@
 const { Router } = require('express');
-const { validateJWT } = require('../middlewares/validate-jwt');
 const multer = require('multer');
 const path = require('path');
 
@@ -7,7 +6,10 @@ const {
     uploadDocument,
     getCompanyDocuments,
     getDocumentTypes,
-    getTriggerActions
+    getTriggerActions,
+    getCompanyDocumentByID,
+    getDocumentDownloadUrl,
+    deleteDocument
 } = require('../controller/document');
 
 // Configure multer
@@ -41,14 +43,16 @@ const upload = multer({
 const router = Router();
 
 // Middleware for all routes
-router.use(validateJWT);
+// router.use(validateJWT);
 
 // Routes
 router.post('/upload', upload.single('document'), uploadDocument);
 router.get('/', getCompanyDocuments);
 router.get('/types', getDocumentTypes);
 router.get('/triggers', getTriggerActions);
-
+router.get('/:id', getCompanyDocumentByID);
+router.get('/download/:documentId/:userId', getDocumentDownloadUrl);
+router.delete('/:id', deleteDocument);
 // Error handling middleware for multer errors
 router.use((error, req, res, next) => {
     if (error instanceof multer.MulterError) {
