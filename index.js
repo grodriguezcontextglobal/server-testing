@@ -47,14 +47,14 @@ const configureRoutes = (app) => {
         transaction: require("./routes/transaction"),
         admin: require("./routes/admin"),
         company: require("./routes/company"),
-        receivers: require("./routes/receivers"),
+        receiver: require("./routes/receivers"),
         article: require("./routes/article"),
         staff: require("./routes/staff"),
-        eventLog: require("./routes/eventLog"),
+        'event-log': require("./routes/eventLog"),
         event: require("./routes/event"),
-        transactionAuditLog: require("./routes/transactionAuditLog"),
+        'transaction-audit-log': require("./routes/transactionAuditLog"),
         notificationLog: require("./routes/notificationLog"),
-        cashReport: require("./routes/cashReport"),
+        'cash-report': require("./routes/cashReport"),
         nodeMailer: require("./routes/nodeMailer"),
         inventory: require("./routes/inventory"),
         item: require("./routes/item"),
@@ -62,7 +62,7 @@ const configureRoutes = (app) => {
         lease: require("./routes/lease"),
         search: require("./routes/search"),
         feedback: require("./routes/feedback"),
-        errorFeedback: require("./routes/errorLog"),
+        'error_log': require("./routes/errorLog"),
         post: require("./routes/post"),
         document: require("./routes/document")
     };
@@ -70,11 +70,11 @@ const configureRoutes = (app) => {
     // MySQL Routes
     const mysqlRoutes = {
         company: require("./mysql/routes/company"),
-        consumerAttendingEvent: require("./mysql/routes/consumerAttendingEvent"),
-        consumers: require("./mysql/routes/consumers"),
-        events: require("./mysql/routes/events"),
+        consumer_attending_event_record: require("./mysql/routes/consumerAttendingEvent"),
+        consumer: require("./mysql/routes/consumers"),
+        event: require("./mysql/routes/events"),
         item: require("./mysql/routes/item"),
-        recordEvent: require("./mysql/routes/recordEvent"),
+        record: require("./mysql/routes/recordEvent"),
         staff: require("./mysql/routes/staff"),
         stripe: require("./mysql/routes/stripe"),
         lease: require("./mysql/routes/lease")
