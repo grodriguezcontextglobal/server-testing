@@ -124,8 +124,6 @@ const initializeApp = () => {
 // Cluster configuration
 const startServer = () => {
     if (cluster.isPrimary) {
-        console.log(`Master process ${process.pid} is running`);
-
         // Fork workers based on CPU cores
         for (let i = 0; i < NUM_CPU; i++) {
             cluster.fork();
@@ -133,19 +131,14 @@ const startServer = () => {
 
         // Handle worker events
         cluster.on("exit", (worker, code, signal) => {
-            console.log(`Worker ${worker.process.pid} died. Restarting...`);
             cluster.fork();
         });
     } else {
-        const server = initializeApp().listen(PORT, () => {
-            console.log(`Worker ${process.pid} started on port ${PORT}`);
-        });
+        const server = initializeApp().listen(PORT);
 
         // Graceful shutdown
         process.on('SIGTERM', () => {
-            console.log('SIGTERM signal received: closing HTTP server');
             server.close(() => {
-                console.log('HTTP server closed');
                 process.exit(0);
             });
         });
