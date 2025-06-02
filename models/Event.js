@@ -65,6 +65,16 @@ const EventSchema = Schema({
     required: true,
     default: null,
   },
+  legal_contract: {
+    type: Boolean,
+    required: true,
+    default: false,
+  },
+  legal_documents_list:{
+    type: Array,
+    required: false,
+    default: []
+  },
 });
 
 EventSchema.method("toJSON", function () {
