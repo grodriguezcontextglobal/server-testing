@@ -1,16 +1,17 @@
-const AWS = require("aws-sdk");
-const fs = require("fs");
-const util = require("util");
+const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const fs = require('fs');
+const util = require('util');
 const unlinkFile = util.promisify(fs.unlink);
 
-// Configure AWS
-AWS.config.update({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+// Configure S3 Client
+const s3Client = new S3Client({
   region: process.env.AWS_REGION,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }
 });
-
-const s3 = new AWS.S3();
 
 /**
  * Uploads a PDF file to AWS S3 with organized folder structure
@@ -24,47 +25,52 @@ const s3 = new AWS.S3();
  */
 const uploadPdfToS3 = async (file, options) => {
   try {
-    const { companyId, documentType = "general", metadata = {} } = options;
+    const {
+      companyId,
+      documentType = 'general',
+      metadata = {}
+    } = options;
 
     if (!file || !companyId) {
-      throw new Error("Missing required parameters: file, companyId");
+      throw new Error('Missing required parameters: file, companyId');
     }
 
     // Validate file type
-    if (file.mimetype !== "application/pdf") {
-      throw new Error("Only PDF files are allowed");
+    if (file.mimetype !== 'application/pdf') {
+      throw new Error('Only PDF files are allowed');
     }
 
     // Construct the S3 key with organized folder structure
-    const key = `companies/${companyId}/${documentType}/${Date.now()}-${
-      file.originalname
-    }`;
+    const key = `companies/${companyId}/${documentType}/${Date.now()}-${file.originalname}`;
 
     // Read file content
     const fileContent = fs.readFileSync(file.path);
 
-    // Prepare S3 upload parameters
-    const params = {
+    // Prepare S3 upload command
+    const uploadCommand = new PutObjectCommand({
       Bucket: process.env.AWS_S3_BUCKET_NAME,
       Key: key,
       Body: fileContent,
-      ContentType: "application/pdf",
+      ContentType: 'application/pdf',
       Metadata: {
         companyId,
         documentType,
         originalName: file.originalname,
         uploadDate: new Date().toISOString(),
-        ...metadata,
-      },
-    };
+        ...metadata
+      }
+    });
 
     // Upload to S3
-    const uploadResult = await s3.upload(params).promise();
+    const uploadResult = await s3Client.send(uploadCommand);
 
     // Clean up temporary file
     await unlinkFile(file.path);
 
-    return uploadResult;
+    return {
+      ...uploadResult,
+      Location: `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`
+    };
   } catch (error) {
     // Clean up temporary file if it exists
     if (file && file.path) {
@@ -82,14 +88,16 @@ const uploadPdfToS3 = async (file, options) => {
  */
 const getTemporaryDownloadUrl = async (key, expirationMinutes = 5) => {
   try {
-    const params = {
+    const command = new GetObjectCommand({
       Bucket: process.env.AWS_S3_BUCKET_NAME,
-      Key: key,
-      Expires: expirationMinutes * 60, // Convert minutes to seconds
-    };
+      Key: key
+    });
 
-    const downloadUrl = await s3.getSignedUrlPromise("getObject", params);
-    return downloadUrl;
+    const signedUrl = await getSignedUrl(s3Client, command, {
+      expiresIn: expirationMinutes * 60
+    });
+
+    return signedUrl;
   } catch (error) {
     throw new Error(`Failed to generate download URL: ${error.message}`);
   }
@@ -103,26 +111,19 @@ const getTemporaryDownloadUrl = async (key, expirationMinutes = 5) => {
 const deleteDocumentFromS3 = async (key) => {
   try {
     if (!key) {
-      throw new Error("Missing required parameter: key");
+      throw new Error('Missing required parameter: key');
     }
-    console.log(key);
-    // Prepare S3 delete parameters
-    // Construct the S3 key with organized folder structure
-    // const key = `companies/${companyId}/${documentType}/${Date.now()}-${file.originalname}`;
-    const params = {
-      Bucket: process.env.AWS_S3_BUCKET_NAME,
-      Key: key,
-    };
 
-    const deleteResult = await s3.deleteObject(params).promise();
+    const command = new DeleteObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Key: key
+    });
+
+    const deleteResult = await s3Client.send(command);
     return deleteResult;
   } catch (error) {
     throw new Error(`Failed to delete document: ${error.message}`);
   }
 };
 
-module.exports = {
-  uploadPdfToS3,
-  getTemporaryDownloadUrl,
-  deleteDocumentFromS3,
-};
+module.exports = { uploadPdfToS3, getTemporaryDownloadUrl, deleteDocumentFromS3 };
