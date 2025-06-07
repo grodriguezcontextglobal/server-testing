@@ -14,7 +14,7 @@ const getConnection = () => {
       ssl: {
         rejectUnauthorized: true,
       },
-    });
+    }).promise();
 
     connection.on('error', (err) => {
       console.error('Error in connection:', err.message);
@@ -38,4 +38,10 @@ const getConnection = () => {
   return connection;
 };
 
+// getConnection()
+//   .query('SELECT 1')
+//   .then(() => console.log('✅ Connection OK'))
+//   .catch(err => console.error('❌ Connection failed:', err.message));
+
+  
 module.exports = getConnection;
