@@ -55,7 +55,7 @@ const consultingCompany = async (request, response) => {
   const values = [reference[0][1]];
 
   try {
-    const [result] = await connection.promise().execute(query, values);
+    const [result] = await connection.execute(query, values);
     return response.status(200).json({
       ok: true,
       company: result,
@@ -96,15 +96,12 @@ const consultingCompanyTable = async (request, response) => {
     const connection = getConnection();
     const query = "select * from company_info;";
     const values = [];
-    const [error, result] = await connection.promise().execute(query, values);
-    // connection.execute(query, values, function (err, result, fields) {
+    const [error, result] = await connection.execute(query, values);
     if (error)
       return response.status(500).json({
         ok: false,
         msg: `${error.message}`,
       });
-
-    //   });
     return response?.status(201)?.json({
       ok: true,
       companies: result,
@@ -123,7 +120,7 @@ const consultingIndustryCompanyTable = async (request, response) => {
     const connection = getConnection();
     const query = "select industry from company_info;";
     const values = [];
-    const [error, result] = await connection.promise().execute(query, values);
+    const [error, result] = await connection.execute(query, values);
     // connection.execute(query, values, function (err, result, fields) {
     // });
     if (error)
@@ -159,7 +156,7 @@ const updateCompanyData = async (request, response) => {
                                 email_company=?,
                                 update_at=NOW()
                             WHERE company_id=?`;
-    // const [err, result] = await connection.promise().execute(query, values);
+    // const [err, result] = await connection.execute(query, values);
     connection.execute(query, values, function (err, result, fields) {
       if (err) {
         console.log("error", err);
