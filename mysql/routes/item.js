@@ -24,6 +24,7 @@ const {
   consultingCompanyInventoryWithPagination,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  insertBulkItemAlhpanumericFormat,
 } = require("../controllers/item");
 const {
   consultingInventoryCurrentState,
@@ -59,6 +60,9 @@ router.post("/new_item", insertingItem);
 
 //insert bulk item
 router.post("/bulk-item", insertBulkItem);
+
+//insert bulk item alpha numeric format
+router.post("/bulk-item-alphanumeric", insertBulkItemAlhpanumericFormat);
 
 //update new item
 router.post("/edit-item", updateItemInTable);

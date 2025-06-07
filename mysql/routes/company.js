@@ -23,6 +23,7 @@ const {
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   retrieveItemData,
   retrieveCompanyInventory,
+  insertingItem,
 } = require("../controllers/item");
 const router = Router();
 
@@ -79,4 +80,6 @@ router.post("/company-inventory-structure", retrieveItemData);
 //company inventory with current warehouse status
 router.post("/company-inventory-with-current-warehouse-status", retrieveCompanyInventory);
 
+//insert new single item in company inventory
+router.post("/insert-new-single-item", insertingItem);
 module.exports = router;
