@@ -1,6 +1,6 @@
 const { response, request } = require("express");
 const getConnection = require("../database/config");
-const { clientRedis } = require("../../database/cacheMemoryConfig");
+// const { clientRedis } = require("../../database/cacheMemoryConfig");
 const { groupBy } = require("lodash");
 require("dotenv").config();
 
@@ -82,7 +82,6 @@ const insertingItem = async (request, response) => {
     (container_id = JSON.stringify([])),
     (display_item = 1),
   ];
-  console.log(values);
   try {
     const [result] = await connection.execute(query, values);
 
@@ -587,13 +586,13 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
   response
 ) => {
   try {
-    const cache_connection = await clientRedis();
+    // const cache_connection = await clientRedis();
     const connection = getConnection();
     const { warehouse, item_group, startingNumber, quantity, company_id } =
       request.body;
-    cache_connection
-      .promise()
-      .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
+    // cache_connection
+    //   .promise()
+    //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
 
     // Validate request body
     if (!item_group || !startingNumber || !quantity || !company_id) {
@@ -681,7 +680,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
 const returningItemToStockWhenEventIsFinished = async (request, response) => {
   try {
     const connection = getConnection();
-    const cache_connection = await clientRedis();
+    // const cache_connection = await clientRedis();
     const {
       status,
       update_at,
@@ -710,19 +709,12 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
       company_id,
     ];
     const [result] = await connection.execute(query, values);
-    // , function (err, result, fields) {
-    //   if (err)
-    //     return response.status(401).json({
-    //       ok: false,
-    //       msg: `${err.message}`,
-    //     });
-    //   });
-    cache_connection
-      .promise()
-      .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
-    cache_connection
-      .promise()
-      .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
+    // cache_connection
+    //   .promise()
+    //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
+    // cache_connection
+    //   .promise()
+    //   .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
 
     return response?.status(201)?.json({
       ok: true,
@@ -744,7 +736,7 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
   try {
     let resultAffectedRows = [];
     const connection = getConnection();
-    const cache_connection = await clientRedis();
+    // const cache_connection = await clientRedis();
     const {
       groupingDevicesFromNoSQL,
       allInventoryOfEvent,
@@ -776,14 +768,6 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
           company_id,
         ];
         const [result] = await connection.execute(query, values);
-        //  , function (err, result, fields) {
-        //     if (err) {
-        //       return response.status(401).json({
-        //         ok: false,
-        //         msg: `${err.message}`,
-        //       });
-        //     }
-        //   });
         resultAffectedRows = [...resultAffectedRows, result.affectedRows];
       } else {
         const values = [
@@ -795,26 +779,15 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
           company_id,
         ];
         const [result] = await connection.execute(query, values);
-        // if (err) {
-        //     return response.status(401).json({
-        //       ok: false,
-        //       msg: `${err.message}`,
-        //     });
-        //   }
-        //   console.log(
-        //     "returningItemToStockWhenEventIsFinishedRefactored affected row",
-        //     result.affectedRows
-        //   );
-        // });
         resultAffectedRows = [...resultAffectedRows, result.affectedRows];
       }
     }
-    cache_connection
-      .promise()
-      .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
-    cache_connection
-      .promise()
-      .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
+    // cache_connection
+    //   .promise()
+    //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
+    // cache_connection
+    //   .promise()
+    //   .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
     return response.status(201)?.json({
       ok: true,
       // items: result,
@@ -842,13 +815,6 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
                     `;
     const values = [status, condition, updated_at, serial_number, event_id];
     const [result] = await connection.execute(query, values);
-    // , function (err, result, fields) {
-    // if (err)
-    //   return response.status(401).json({
-    //     ok: false,
-    //     msg: `${err.message}`,
-    //   });
-    // });
     return response?.status(201)?.json({
       ok: true,
       items: result,
@@ -896,15 +862,6 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
           event_id,
         ];
         const [result] = await connection.execute(query, values);
-        // , function (err, result, fields) {
-        //   if (err) {
-        //     console.log("error in item final status", err);
-        //     return response.status(401).json({
-        //       ok: false,
-        //       msg: `${err.message}`,
-        //     });
-        //   }
-        // });
         finalResult = [...finalResult, result];
       } else {
         const values = [
@@ -915,15 +872,6 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
           event_id,
         ];
         const [result] = await connection.execute(query, values);
-        // , function (err, result, fields) {
-        //   if (err)
-        //     return response.status(401).json({
-        //       ok: false,
-        //       msg: `${err.message}`,
-        //     });
-        //   console.log("affected row", result.affectedRows);
-
-        // });
         finalResult = [...finalResult, result];
       }
     }
@@ -954,13 +902,6 @@ const consultingInventoryTracking = async (request, response) => {
     `;
     const values = [item_id];
     const [result] = await connection.execute(query, values);
-    // , function (err, result, fields) {
-    //   if (err)
-    //     return response.status(500).json({
-    //       ok: false,
-    //       msg: `${err.message}`,
-    //     });
-    //   });
     return response.status(201).json({
       ok: true,
       result,
@@ -976,34 +917,30 @@ const consultingInventoryTracking = async (request, response) => {
 
 const checkingInventoryCurrentState = async (request, response) => {
   try {
-    const connection = await getConnection();
-    const item_id = request.params.id;
+    const connection = getConnection();
+    // const item_id = request.params.id;
+    console.log(request.params);
+    const company_id = request.params.company_id;
     const query = `
     SELECT ii.* , iiae.status, iiae.condition, ei.*
     FROM item_inv ii
     LEFT JOIN item_inv_assigned_event iiae ON iiae.item_id = ii.item_id
     LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
-        WHERE ii.item_id = ?
+        WHERE ii.company_id = ${company_id}
         ORDER by iiae.event_id DESC
         `;
-    const values = [item_id];
-    const [result] = await connection.execute(query, values);
-    // , function (err, result, fields) {
-    //   if (err)
-    //     return response.status(500).json({
-    //       ok: false,
-    //       msg: `${err.message}`,
-    //     });
-    //   });
+    // const values = [company_id];
+    const [result] = await connection.execute(query); //, values
+    console.log(result);
     return response.status(201).json({
       ok: true,
       result,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    console.error("Error:", error);
     response.status(500).json({
       ok: false,
-      msg: `${error.message}`,
+      msg: `${error}`,
     });
   }
 };
@@ -1011,38 +948,32 @@ const checkingInventoryCurrentState = async (request, response) => {
 const checkingItem = async (request, response) => {
   try {
     //company_id=122&warehouse=true&enableAssignFeature=1
-    const cache_connection = await clientRedis();
+    // const cache_connection = await clientRedis();
     const params = request._parsedUrl.query;
-    const checkingInMemory = await cache_connection.get(`${params}`);
-    if (checkingInMemory) {
-      return response.status(201).json({
-        cached: true,
-        ok: true,
-        items: JSON.parse(checkingInMemory),
-      });
-    } else {
-      const splitting = params.split("&");
-      const formatting = splitting.map((item) => item.split("=")[0] + "=?");
-      const keys = formatting.toString().replaceAll(",", " AND ");
-      const values = [...splitting.map((item) => item.split("=")[1])];
-      const query = `select * from item_inv where ${keys};`;
-      const connection = getConnection();
-      const [result] = await connection.execute(query, values);
-      // , function (err, result, fields) {
-      //   if (err)
-      //     return response.status(500).json({
-      //       ok: false,
-      //       msg: `${err.message}`,
-      //     });
-      //   });
-      cache_connection.set(`${params}`, JSON.stringify(result));
-      cache_connection.expire(`${params}`, 60);
-      return response.status(201).json({
-        cached: false,
-        ok: true,
-        items: result,
-      });
-    }
+    console.log(params);
+    // const checkingInMemory = await cache_connection.get(`${params}`);
+    // if (checkingInMemory) {
+    //   return response.status(201).json({
+    //     cached: true,
+    //     ok: true,
+    //     items: JSON.parse(checkingInMemory),
+    //   });
+    // } else {
+    const splitting = params.split("&");
+    const formatting = splitting.map((item) => item.split("=")[0] + "=?");
+    const keys = formatting.toString().replaceAll(",", " AND ");
+    const values = [...splitting.map((item) => item.split("=")[1])];
+    const query = `select * from item_inv where ${keys};`;
+    const connection = getConnection();
+    const [result] = await connection.execute(query, values);
+    // cache_connection.set(`${params}`, JSON.stringify(result));
+    // cache_connection.expire(`${params}`, 60);
+    return response.status(201).json({
+      cached: false,
+      ok: true,
+      items: result,
+    });
+    // }
   } catch (error) {
     console.error("Error:", error.message);
     response.status(500).json({
@@ -1084,13 +1015,6 @@ const searchingInventoryTracking = async (request, response) => {
       `%${searchValue}%`,
     ];
     const [result] = await connection.execute(query, values);
-    // , function (err, result, fields) {
-    //   if (err)
-    //     return response.status(500).json({
-    //       ok: false,
-    //       msg: `${err.message}`,
-    //     });
-    //   });
     return response.status(201).json({
       ok: true,
       result,
@@ -1138,13 +1062,6 @@ const searchingGetInventoryTracking = async (request, response) => {
       `%${searchingValue[1]}%`,
     ];
     const [result] = await connection.execute(query, values);
-    // , function (err, result, fields) {
-    // if (err)
-    //   return response.status(500).json({
-    //       ok: false,
-    //       msg: `${err.message}`,
-    //     });
-    //   });
     return response.status(201).json({
       ok: true,
       result,
@@ -1165,19 +1082,19 @@ const fragmentData = async (request, response) => {
     const company_id = new URLSearchParams(params).get("company_id");
     const offset = parseInt(new URLSearchParams(params).get("offset"), 10);
     const limit = parseInt(new URLSearchParams(params).get("limit"), 10);
-    const cache_connection = await clientRedis();
-    const cachedData = await cache_connection
-      .promise()
-      .get(`inventory_${company_id}_${offset}_${limit}`);
+    // const cache_connection = await clientRedis();
+    // const cachedData = await cache_connection
+    //   .promise()
+    //   .get(`inventory_${company_id}_${offset}_${limit}`);
 
-    if (cachedData) {
-      const responseTemplate = {
-        ok: true,
-        items: JSON.parse(cachedData),
-        cached: true,
-      };
-      return response.send(JSON.stringify(responseTemplate));
-    }
+    // if (cachedData) {
+    //   const responseTemplate = {
+    //     ok: true,
+    //     items: JSON.parse(cachedData),
+    //     cached: true,
+    //   };
+    //   return response.send(JSON.stringify(responseTemplate));
+    // }
 
     const query = `
       SELECT * FROM item_inv
@@ -1198,15 +1115,15 @@ const fragmentData = async (request, response) => {
     //   }
 
     // });
-    cache_connection
-      .promise()
-      .set(
-        `inventory_${company_id}_${offset}_${limit}`,
-        JSON.stringify(result)
-      );
-    cache_connection
-      .promise()
-      .expire(`inventory_${company_id}_${offset}_${limit}`, 120);
+    // cache_connection
+    //   .promise()
+    //   .set(
+    //     `inventory_${company_id}_${offset}_${limit}`,
+    //     JSON.stringify(result)
+    //   );
+    // cache_connection
+    //   .promise()
+    //   .expire(`inventory_${company_id}_${offset}_${limit}`, 120);
 
     return response.status(201).json({
       ok: true,
@@ -1228,18 +1145,18 @@ const gettingDataFromLocationOption = async (request, response) => {
     const connection = getConnection();
     const params = request._parsedUrl.query;
     const company_id = new URLSearchParams(params).get("company_id");
-    const cache_connection = await clientRedis();
-    const cachedData = await cache_connection
-      .promise()
-      .get(`inventory_${company_id}`);
-    if (cachedData) {
-      const responseTemplate = {
-        ok: true,
-        items: JSON.parse(cachedData),
-        cached: true,
-      };
-      return response.send(JSON.stringify(responseTemplate));
-    }
+    // const cache_connection = await clientRedis();
+    // const cachedData = await cache_connection
+    //   .promise()
+    //   .get(`inventory_${company_id}`);
+    // if (cachedData) {
+    //   const responseTemplate = {
+    //     ok: true,
+    //     items: JSON.parse(cachedData),
+    //     cached: true,
+    //   };
+    //   return response.send(JSON.stringify(responseTemplate));
+    // }
     // Query to get count by location and count of items where warehouse is true
     const query = `
       SELECT location, COUNT(location) as total_count, 
@@ -1265,10 +1182,10 @@ const gettingDataFromLocationOption = async (request, response) => {
     //   // Send the response
     // });
     // Cache the data
-    cache_connection
-      .promise()
-      .set(`inventory_${company_id}`, JSON.stringify(result));
-    cache_connection.expire(`inventory_${company_id}`);
+    // cache_connection
+    //   .promise()
+    //   .set(`inventory_${company_id}`, JSON.stringify(result));
+    // cache_connection.expire(`inventory_${company_id}`);
     return response.status(201).json({
       ok: true,
       items: result,
@@ -1290,21 +1207,21 @@ const checkInventoryCompanyExists = async (request, response) => {
     const params = request._parsedUrl.query;
     const company_id = new URLSearchParams(params).get("company_id");
     const connection = getConnection();
-    const cache_connection = await clientRedis();
-    const cachedData = await cache_connection
-      .promise()
-      .get(`company_${company_id}_inventory_counting`);
-    if (cachedData) {
-      cache_connection
-        .promise()
-        .del(`company_${company_id}_inventory_counting`);
-      return response.json({
-        statusCode: 200,
-        ok: true,
-        items: cachedData,
-        cached: true,
-      });
-    }
+    // const cache_connection = await clientRedis();
+    // const cachedData = await cache_connection
+    //   .promise()
+    //   .get(`company_${company_id}_inventory_counting`);
+    // if (cachedData) {
+    //   cache_connection
+    //     .promise()
+    //     .del(`company_${company_id}_inventory_counting`);
+    //   return response.json({
+    //     statusCode: 200,
+    //     ok: true,
+    //     items: cachedData,
+    //     cached: true,
+    //   });
+    // }
     const query = `
       SELECT COUNT(*)
       FROM item_inv
@@ -1312,9 +1229,9 @@ const checkInventoryCompanyExists = async (request, response) => {
     `;
     const values = [company_id];
     const [result] = await connection.execute(query, values);
-    await cache_connection
-      .promise()
-      .set(`company_${company_id}_inventory_counting`, JSON.stringify(result));
+    // await cache_connection
+    //   .promise()
+    //   .set(`company_${company_id}_inventory_counting`, JSON.stringify(result));
     return response.json({
       statusCode: 200,
       cached: false,
@@ -1756,7 +1673,6 @@ const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
     query += ` ORDER BY item_id ASC`;
 
     const [result] = await connection.execute(query, queryValues);
-    console.log(result.slice(0, 20));
     return response.status(201).json({
       ok: true,
       count: result.length,
@@ -1923,7 +1839,7 @@ const retrieveCompanyInventory = async (request, response) => {
   try {
     const connection = getConnection();
     const { company_id } = request.body;
-
+    console.log(company_id);
     // Correct query to get the inventory items for the company
     const inventoryQuery = `
       SELECT *
@@ -1932,7 +1848,6 @@ const retrieveCompanyInventory = async (request, response) => {
     `;
 
     const [items] = await connection.execute(inventoryQuery, [company_id]);
-
     // Prepare a map to store usage information for items with warehouse = 0
     const usageMap = new Map();
 
@@ -1940,7 +1855,6 @@ const retrieveCompanyInventory = async (request, response) => {
     const itemIds = items
       .filter((item) => item.warehouse === 0)
       .map((item) => item.item_id);
-
     if (itemIds.length > 0) {
       // Query to get usage information for items with warehouse = 0
       const usageQuery = `
@@ -1953,12 +1867,15 @@ const retrieveCompanyInventory = async (request, response) => {
       const [usageResults] = await connection.execute(usageQuery);
       // Assuming you have a usageResults array containing the usage information for items with warehouse = 0
       // Populate the usageMap with the results
-      usageResults.forEach((usage) => {
-        if (!usageMap.has(usage.item_id)) {
-          usageMap.set(usage.item_id, []);
-        }
-        usageMap.get(usage.item_id).push(usage.event_name);
-      });
+
+      if (usageResults.length > 0) {
+        usageResults.forEach((usage) => {
+          if (!usageMap.has(usage.item_id)) {
+            usageMap.set(usage.item_id, []);
+          }
+          usageMap.get(usage.item_id).push(usage.event_name);
+        });
+      }
     }
 
     // Attach usage information to items
@@ -1977,9 +1894,10 @@ const retrieveCompanyInventory = async (request, response) => {
           image_url: item.image_url,
           serial_number: item.serial_number,
           item: item.item_id,
-          usage: usageMap.get(item.item_id)[0] || [],
+          usage: usageMap.has(item.item_id) ? usageMap.get(item.item_id)[0] : [],
         };
       }
+
       return {
         category_name: item.category_name,
         item_group: item.item_group,

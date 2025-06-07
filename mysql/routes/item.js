@@ -25,6 +25,7 @@ const {
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
   insertBulkItemAlhpanumericFormat,
+  getGroupedItemInventory,
 } = require("../controllers/item");
 const {
   consultingInventoryCurrentState,
@@ -93,7 +94,7 @@ router.get("/search-inventory", searchingGetInventoryTracking);
 router.get("/check-item", checkingItem);
 
 //get current inventory state
-router.get("/check-inventory", checkingInventoryCurrentState);
+router.get("/check-inventory/:company_id", checkingInventoryCurrentState);
 
 //get fragment data
 router.get("/fragment-data", fragmentData);
@@ -130,5 +131,8 @@ router.post(
   "/inventory-based-on-submitted-parameters",
   consultingCompanyInventoryBasedOnSubmittedParameters
 );
+
+//get inventory company based on location and sublocation
+router.post("/get-inventory-company", getGroupedItemInventory);
 
 module.exports = router;
