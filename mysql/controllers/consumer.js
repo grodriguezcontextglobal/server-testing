@@ -21,9 +21,9 @@ const insertingCustomer = async (request, response) => {
       `${first_name}`,
       `${last_name}`,
       `${email}`,
-      `${phone_number ?? '000-000-0000'}`,
+      `${phone_number ?? "000-000-0000"}`,
     ];
-    const [result] = await connection.promise().execute(query, values); 
+    const [result] = await connection.execute(query, values);
     // connection.execute(query, values, function (err, result, fields) {
     // });
     // if (err)
@@ -61,7 +61,7 @@ const consultingConsumerInfo = async (request, response) => {
     const keys = formatting.toString().replaceAll(",", " AND ");
     const values = [...Object.values(request.body).map((item) => item)];
     const query = `select * from consumer_info where ${keys}`;
-    const [err, result] = await connection.promise().execute(query, values); // connection.execute(query, values, function (err, result, fields) {
+    const [err, result] = await connection.execute(query, values); // connection.execute(query, values, function (err, result, fields) {
     // connection.execute(query, values, function (err, result, fields) {
     // });
     if (err)
@@ -96,7 +96,7 @@ const consultingConsumerTable = async (request, response) => {
       },
     });
     const query = await "select * from consumer_info;";
-    const [err, result] = await connection.promise().execute(query, values); // connection.execute(query, values, function (err, result, fields) {
+    const [err, result] = await connection.execute(query, values); // connection.execute(query, values, function (err, result, fields) {
     // await connection.execute(query, "", function (err, result, fields) {
     // });
     if (err)
@@ -129,7 +129,7 @@ const deleteCustomer = async () => {
     });
     const query = "delete from consumer_info where consumer_id=?";
     const values = [request.body.email];
-    const [err, result] = await connection.promise().execute(query, values); // connection.execute(query, values, function (err, result, fields) {
+    const [err, result] = await connection.execute(query, values); // connection.execute(query, values, function (err, result, fields) {
 
     // connection.execute(query, values, function (err, result, fields) {
     // });
