@@ -24,6 +24,8 @@ const {
   retrieveItemData,
   retrieveCompanyInventory,
   insertingItem,
+  checkingInventoryCurrentState,
+  getGroupedItemInventory,
 } = require("../controllers/item");
 const router = Router();
 
@@ -82,4 +84,12 @@ router.post("/company-inventory-with-current-warehouse-status", retrieveCompanyI
 
 //insert new single item in company inventory
 router.post("/insert-new-single-item", insertingItem);
+
+//checking current inventory state of company inventory
+router.get("/current-inventory/:company_id", checkingInventoryCurrentState);
+
+//get inventory company based on location and sublocation
+router.post("/get-inventory-company", getGroupedItemInventory);
+
+
 module.exports = router;
