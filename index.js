@@ -78,7 +78,7 @@ const configureRoutes = (app) => {
         staff: require("./mysql/routes/staff"),
         stripe: require("./mysql/routes/stripe"),
         lease: require("./mysql/routes/lease"),
-        utils: require("./mysql/routes/utils")
+        // utils: require("./mysql/routes/utils")
     };
 
     // Utility Routes
