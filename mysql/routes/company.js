@@ -26,6 +26,7 @@ const {
   insertingItem,
   checkingInventoryCurrentState,
   getGroupedItemInventory,
+  consultingCompanyInventoryBasedOnSubmittedParameters,
 } = require("../controllers/item");
 const router = Router();
 
@@ -90,6 +91,12 @@ router.get("/current-inventory/:company_id", checkingInventoryCurrentState);
 
 //get inventory company based on location and sublocation
 router.post("/get-inventory-company", getGroupedItemInventory);
+
+//consulting company inventory based on submitted parameters
+router.post(
+  "/inventory-based-on-submitted-parameters",
+  consultingCompanyInventoryBasedOnSubmittedParameters
+);
 
 
 module.exports = router;
