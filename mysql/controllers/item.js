@@ -3,6 +3,7 @@ const getConnection = require("../database/config");
 // const { clientRedis } = require("../../database/cacheMemoryConfig");
 const { groupBy } = require("lodash");
 require("dotenv").config();
+const connection = getConnection();
 
 const insertingItem = async (request, response) => {
   const connection = getConnection();
@@ -919,7 +920,6 @@ const checkingInventoryCurrentState = async (request, response) => {
   try {
     const connection = getConnection();
     // const item_id = request.params.id;
-    console.log(request.params);
     const company_id = request.params.company_id;
     const query = `
     SELECT ii.* , iiae.status, iiae.condition, ei.*
@@ -931,7 +931,6 @@ const checkingInventoryCurrentState = async (request, response) => {
         `;
     // const values = [company_id];
     const [result] = await connection.execute(query); //, values
-    console.log(result);
     return response.status(201).json({
       ok: true,
       result,
@@ -950,7 +949,6 @@ const checkingItem = async (request, response) => {
     //company_id=122&warehouse=true&enableAssignFeature=1
     // const cache_connection = await clientRedis();
     const params = request._parsedUrl.query;
-    console.log(params);
     // const checkingInMemory = await cache_connection.get(`${params}`);
     // if (checkingInMemory) {
     //   return response.status(201).json({
@@ -1145,19 +1143,6 @@ const gettingDataFromLocationOption = async (request, response) => {
     const connection = getConnection();
     const params = request._parsedUrl.query;
     const company_id = new URLSearchParams(params).get("company_id");
-    // const cache_connection = await clientRedis();
-    // const cachedData = await cache_connection
-    //   .promise()
-    //   .get(`inventory_${company_id}`);
-    // if (cachedData) {
-    //   const responseTemplate = {
-    //     ok: true,
-    //     items: JSON.parse(cachedData),
-    //     cached: true,
-    //   };
-    //   return response.send(JSON.stringify(responseTemplate));
-    // }
-    // Query to get count by location and count of items where warehouse is true
     const query = `
       SELECT location, COUNT(location) as total_count, 
              SUM(CASE WHEN warehouse = false and enableAssignFeature = true THEN 1 ELSE 0 END) as warehouse_true_count
@@ -1171,21 +1156,6 @@ const gettingDataFromLocationOption = async (request, response) => {
 
     // Execute the query
     const [result] = await connection.execute(query, values);
-    //   , function (err, result, fields) {
-    //   if (err) {
-    //     return response.status(500).json({
-    //       ok: false,
-    //       msg: `${err.message}`,
-    //     });
-    //   }
-
-    //   // Send the response
-    // });
-    // Cache the data
-    // cache_connection
-    //   .promise()
-    //   .set(`inventory_${company_id}`, JSON.stringify(result));
-    // cache_connection.expire(`inventory_${company_id}`);
     return response.status(201).json({
       ok: true,
       items: result,
@@ -1733,7 +1703,6 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   try {
     const connection = getConnection();
     let { query, values } = request.body;
-
     // Clone the values to safely manipulate
     let finalValues = [];
     let placeholderIndex = 0;
@@ -1758,7 +1727,6 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
     for (; placeholderIndex < values.length; placeholderIndex++) {
       finalValues.push(values[placeholderIndex]);
     }
-
     const [result] = await connection.execute(query, finalValues);
 
     return response.status(200).json({
@@ -1839,7 +1807,6 @@ const retrieveCompanyInventory = async (request, response) => {
   try {
     const connection = getConnection();
     const { company_id } = request.body;
-    console.log(company_id);
     // Correct query to get the inventory items for the company
     const inventoryQuery = `
       SELECT *
@@ -1894,7 +1861,9 @@ const retrieveCompanyInventory = async (request, response) => {
           image_url: item.image_url,
           serial_number: item.serial_number,
           item: item.item_id,
-          usage: usageMap.has(item.item_id) ? usageMap.get(item.item_id)[0] : [],
+          usage: usageMap.has(item.item_id)
+            ? usageMap.get(item.item_id)[0]
+            : [],
         };
       }
 
@@ -1920,6 +1889,285 @@ const retrieveCompanyInventory = async (request, response) => {
       items: itemsWithUsage,
     });
   } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const updateAllItemsInInventory = async (request, response) => {
+  try {
+    const {
+      category_name,
+      item_group,
+      cost,
+      brand,
+      descript_item,
+      ownership,
+      warehouse,
+      main_warehouse,
+      update_at,
+      location,
+      current_location,
+      sub_location,
+      extra_serial_number,
+      company_id,
+      return_date,
+      returnedRentedInfo,
+      container,
+      containerSpotLimit,
+      display_item,
+      enableAssignFeature,
+      image_url,
+      original_template,
+    } = request.body;
+    const query = `
+      select item_id from item_inv
+      where company_id = ? and
+      category_name = ? and
+      item_group = ?;
+    `;
+    const values = [
+      company_id,
+      original_template.category_name,
+      original_template.item_group,
+    ];
+    const [result] = await connection.execute(query, values);
+    const itemIds = result.map((item) => item.item_id);
+    const queryToUpdateParams = {
+      brand: brand,
+      category_name: category_name,
+      container: container,
+      containerSpotLimit: containerSpotLimit,
+      cost: cost,
+      current_location: current_location,
+      descript_item: descript_item,
+      display_item: display_item,
+      enableAssignFeature: enableAssignFeature,
+      extra_serial_number: extra_serial_number,
+      image_url: image_url || null,
+      item_group: item_group,
+      location: location,
+      main_warehouse: main_warehouse,
+      ownership: ownership,
+      return_date: return_date,
+      returnedRentedInfo: returnedRentedInfo,
+      sub_location: sub_location,
+      update_at: update_at,
+      warehouse: warehouse,
+    };
+
+    const keys = Object.keys(queryToUpdateParams);
+    const updateQuery = `
+      UPDATE item_inv SET ${keys.map((key) => `${key} = ?`).join(", ")} 
+      WHERE item_id IN (${itemIds.map(() => "?").join(", ")})
+    `;
+    const sanitizedParams = keys.map((k) =>
+      queryToUpdateParams[k] !== undefined ? queryToUpdateParams[k] : null
+    );
+    const updateValues = [...sanitizedParams, ...itemIds];
+    const [finalResult] = await connection.execute(updateQuery, updateValues);
+    return response.status(200).json({
+      ok: true,
+      msg: "Items updated successfully in the warehouse",
+      result: finalResult,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
+
+const updateItemsBasedOnSerialNumber = async (request, response) => {
+  try {
+    const {
+      brand,
+      category_name,
+      company_id,
+      container,
+      containerSpotLimit,
+      cost,
+      current_location,
+      descript_item,
+      display_item,
+      enableAssignFeature,
+      extra_serial_number,
+      image_url,
+      item_group,
+      location,
+      main_warehouse,
+      max_serial_number,
+      min_serial_number,
+      ownership,
+      return_date,
+      returnedRentedInfo,
+      sub_location,
+      update_at,
+      warehouse,
+      originalTemplate,
+    } = request.body;
+
+    const findQuery = `
+      select item_id from item_inv
+      where company_id = ? and
+      category_name = ? and
+      item_group = ? and
+      serial_number >= ? and
+      serial_number <= ?
+    `;
+
+    const findValues = [
+      company_id,
+      originalTemplate.category_name,
+      originalTemplate.item_group,
+      min_serial_number,
+      max_serial_number,
+    ];
+
+    const [result] = await connection.execute(findQuery, findValues);
+
+    const itemIds = result.map((item) => item.item_id);
+    const queryToUpdateParams = {
+      category_name: category_name,
+      item_group: item_group,
+      cost: cost,
+      brand: brand,
+      descript_item: descript_item,
+      ownership: ownership,
+      warehouse: warehouse,
+      main_warehouse: main_warehouse,
+      update_at: update_at,
+      location: location,
+      current_location: current_location,
+      sub_location: sub_location,
+      extra_serial_number: extra_serial_number,
+      return_date: return_date,
+      returnedRentedInfo: returnedRentedInfo,
+      container: container,
+      containerSpotLimit: containerSpotLimit,
+      display_item: display_item,
+      enableAssignFeature: enableAssignFeature,
+      image_url: image_url,
+    };
+
+    const keys = Object.keys(queryToUpdateParams);
+    const updateQuery = `
+      UPDATE item_inv SET ${keys.map((key) => `${key} = ?`).join(", ")} 
+      WHERE item_id IN (${itemIds.map(() => "?").join(", ")})
+    `;
+    const updateValues = [
+      ...keys.map((k) => queryToUpdateParams[k]),
+      ...itemIds,
+    ];
+    const [finalResult] = await connection.execute(updateQuery, updateValues);
+    return response.status(200).json({
+      ok: true,
+      msg: "Items updated successfully in the warehouse",
+      queryToUpdateParams,
+      result: finalResult,
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const updateItemsBasedOnAlphanumericSerialNumber = async (
+  request,
+  response
+) => {
+  try {
+    const {
+      brand,
+      category_name,
+      company_id,
+      container,
+      containerSpotLimit,
+      cost,
+      current_location,
+      descript_item,
+      display_item,
+      enableAssignFeature,
+      extra_serial_number,
+      image_url,
+      item_group,
+      location,
+      main_warehouse,
+      list,
+      ownership,
+      return_date,
+      returnedRentedInfo,
+      sub_location,
+      update_at,
+      warehouse,
+      originalTemplate,
+    } = request.body;
+
+    const findQuery = `
+      select item_id from item_inv
+      where company_id = ? and
+      category_name = ? and
+      item_group = ? and
+      serial_number in (${list.map(() => "?").join(", ")})    `;
+
+    const findValues = [
+      company_id,
+      originalTemplate.category_name,
+      originalTemplate.item_group,
+      ...list,
+    ];
+
+    const [result] = await connection.execute(findQuery, findValues);
+
+    const itemIds = result.map((item) => item.item_id);
+    const queryToUpdateParams = {
+      category_name: category_name,
+      item_group: item_group,
+      cost: cost,
+      brand: brand,
+      descript_item: descript_item,
+      ownership: ownership,
+      warehouse: warehouse,
+      main_warehouse: main_warehouse,
+      update_at: update_at,
+      location: location,
+      current_location: current_location,
+      sub_location: sub_location,
+      extra_serial_number: extra_serial_number,
+      return_date: return_date,
+      returnedRentedInfo: returnedRentedInfo,
+      container: container,
+      containerSpotLimit: containerSpotLimit,
+      display_item: display_item,
+      enableAssignFeature: enableAssignFeature,
+      image_url: image_url,
+    };
+
+    const keys = Object.keys(queryToUpdateParams);
+    const updateQuery = `
+      UPDATE item_inv SET ${keys.map((key) => `${key} = ?`).join(", ")} 
+      WHERE item_id IN (${itemIds.map(() => "?").join(", ")})
+    `;
+    const updateValues = [
+      ...keys.map((k) => queryToUpdateParams[k]),
+      ...itemIds,
+    ];
+    const [finalResult] = await connection.execute(updateQuery, updateValues);
+    return response.status(200).json({
+      ok: true,
+      msg: "Items updated successfully in the warehouse",
+      queryToUpdateParams,
+      result: finalResult,
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -1962,4 +2210,7 @@ module.exports = {
   updateItemInTable,
   updateItemInTableAfterBeingAddedToEventFromContainer,
   updateItemInWarehouseAfterBeingAddedToEvent,
+  updateAllItemsInInventory,
+  updateItemsBasedOnSerialNumber,
+  updateItemsBasedOnAlphanumericSerialNumber,
 };
