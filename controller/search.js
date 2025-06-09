@@ -487,7 +487,7 @@ const returnItemsInfoInUsedInEvents = async ({
   }
 
   try {
-    const [result] = await connection.promise().execute(query, params);
+    const [result] = await connection.execute(query, params);
     // Cache the result with a 60-second expiry
     // await cache_connection.set(cacheKey, JSON.stringify(result));
     // await cache_connection.expire(cacheKey, 60);
@@ -595,7 +595,7 @@ const displayPlannedEventInventory = async ({
       }
 
       query += " GROUP BY item_group";
-      const [results] = await connection.promise().execute(query, params);
+      const [results] = await connection.execute(query, params);
       for (let data of results) {
         formattedResult.add({
           group: data.item_group,
@@ -610,8 +610,11 @@ const displayPlannedEventInventory = async ({
       let query =
         "SELECT COUNT(*) FROM item_inv WHERE company_id = ? AND item_group = ?";
       const params = [companySqlId, key];
-      const [results] = await connection.promise().execute(query, params);
-      result.set(key,{ available:Number(results[0]["count(*)"]) - Number(value), notAvailable: Number(value) });
+      const [results] = await connection.execute(query, params);
+      result.set(key, {
+        available: Number(results[0]["count(*)"]) - Number(value),
+        notAvailable: Number(value),
+      });
     }
     for (let [key, value] of result) {
       formattedResult.add({
@@ -710,7 +713,7 @@ const advanceSearchingQuery = async (request, response) => {
       period: {
         start: date_start,
         end: date_end,
-      }
+      },
     });
   } catch (error) {
     return response.status(500).json({
