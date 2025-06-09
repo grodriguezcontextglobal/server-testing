@@ -27,6 +27,9 @@ const {
   checkingInventoryCurrentState,
   getGroupedItemInventory,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  updateAllItemsInInventory,
+  updateItemsBasedOnAlphanumericSerialNumber,
+  updateItemsBasedOnSerialNumber,
 } = require("../controllers/item");
 const router = Router();
 
@@ -98,5 +101,13 @@ router.post(
   consultingCompanyInventoryBasedOnSubmittedParameters
 );
 
+//update all items in inventory company based on submitted parameters
+router.post("/update-all-items-in-inventory", updateAllItemsInInventory);
+
+//update all items in inventory company based on submitted parameters
+router.post("/update-items-based-on-alphanumeric-serial-number", updateItemsBasedOnAlphanumericSerialNumber);
+
+//update all items in inventory company based on submitted parameters
+router.post("/update-items-based-on-serial-number", updateItemsBasedOnSerialNumber);
 
 module.exports = router;
