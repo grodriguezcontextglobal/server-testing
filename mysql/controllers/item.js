@@ -524,6 +524,7 @@ const updateItemInTable = async (request, response) => {
     });
   }
 };
+
 const returningLeasedEquipmentToCompany = async (request, response) => {
   try {
     const connection = getConnection();
@@ -1920,7 +1921,7 @@ const updateAllItemsInInventory = async (request, response) => {
       display_item,
       enableAssignFeature,
       image_url,
-      original_template,
+      originalTemplate,
     } = request.body;
     const query = `
       select item_id from item_inv
@@ -1930,8 +1931,8 @@ const updateAllItemsInInventory = async (request, response) => {
     `;
     const values = [
       company_id,
-      original_template.category_name,
-      original_template.item_group,
+      originalTemplate.category_name,
+      originalTemplate.item_group,
     ];
     const [result] = await connection.execute(query, values);
     const itemIds = result.map((item) => item.item_id);
@@ -2011,25 +2012,39 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
       originalTemplate,
     } = request.body;
 
+    if (!min_serial_number || !max_serial_number) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Minimum and maximum serial numbers are required.",
+      });
+    }
+    const serialNumbers = [];
+    let currentSerial = parseInt(min_serial_number, 10);
+    const maxSerial = parseInt(max_serial_number, 10);
+
+    while (currentSerial <= maxSerial) {
+      serialNumbers.push(
+        currentSerial.toString().padStart(min_serial_number.length, "0")
+      );
+      currentSerial++;
+    }
+    const placeholders = serialNumbers.map(() => "?").join(",");
     const findQuery = `
-      select item_id from item_inv
-      where company_id = ? and
-      category_name = ? and
-      item_group = ? and
-      serial_number >= ? and
-      serial_number <= ?
+      SELECT item_id FROM item_inv
+      WHERE company_id = ? AND
+            category_name = ? AND
+            item_group = ? AND
+            serial_number IN (${placeholders})
     `;
 
     const findValues = [
       company_id,
       originalTemplate.category_name,
       originalTemplate.item_group,
-      min_serial_number,
-      max_serial_number,
+      ...serialNumbers,
     ];
 
     const [result] = await connection.execute(findQuery, findValues);
-
     const itemIds = result.map((item) => item.item_id);
     const queryToUpdateParams = {
       category_name: category_name,
@@ -2063,7 +2078,9 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
       ...keys.map((k) => queryToUpdateParams[k]),
       ...itemIds,
     ];
+
     const [finalResult] = await connection.execute(updateQuery, updateValues);
+
     return response.status(200).json({
       ok: true,
       msg: "Items updated successfully in the warehouse",
@@ -2123,9 +2140,7 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (
       originalTemplate.item_group,
       ...list,
     ];
-
     const [result] = await connection.execute(findQuery, findValues);
-
     const itemIds = result.map((item) => item.item_id);
     const queryToUpdateParams = {
       category_name: category_name,
@@ -2147,7 +2162,7 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (
       containerSpotLimit: containerSpotLimit,
       display_item: display_item,
       enableAssignFeature: enableAssignFeature,
-      image_url: image_url,
+      image_url: image_url || null,
     };
 
     const keys = Object.keys(queryToUpdateParams);
