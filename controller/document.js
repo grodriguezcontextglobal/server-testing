@@ -186,7 +186,6 @@ const MAX_REQUESTS = 10; // Maximum 10 requests per minute
 
 const getDocumentDownloadUrl = async (req, res) => {
   try {
-    console.log("getDocumentDownloadUrl called", req.params);
     const { userId } = req.params; // Assuming user ID is available from JWT auth
 
     // Check rate limit
