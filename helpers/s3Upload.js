@@ -69,14 +69,22 @@ const uploadPdfToS3 = async (file, options) => {
 
     return {
       ...uploadResult,
-      Location: `${process.env.AWS_S3_BUCKET_NAME}/${key}`
+      Location: `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+      document_url:`${process.env.AWS_S3_BUCKET_NAME}/${key}`
     };
   } catch (error) {
     // Clean up temporary file if it exists
     if (file && file.path) {
       await unlinkFile(file.path).catch(console.error);
     }
-    console.log(error);
+    console.error('S3 Upload Error:', {
+      error: error.message,
+      code: error.code,
+      statusCode: error.statusCode,
+      requestId: error.$metadata?.requestId,
+      file: file?.originalname,
+      options
+    });
     throw error;
   }
 };

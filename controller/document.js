@@ -74,7 +74,7 @@ const uploadDocument = async (req, res) => {
     // In uploadDocument function, modify the document creation:
     const document = new Document({
       company_id,
-      document_url: uploadResult.Location.trim(), // Remove any extra spaces
+      document_url: uploadResult.document_url.trim(), // Remove any extra spaces
       document_type,
       trigger_action,
       at_: new Date(at_),
