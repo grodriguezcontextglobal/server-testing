@@ -70,7 +70,6 @@ const uploadPdfToS3 = async (file, options) => {
     return {
       ...uploadResult,
       Location: `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
-      document_url:`${process.env.AWS_S3_BUCKET_NAME}/${key}`
     };
   } catch (error) {
     // Clean up temporary file if it exists
