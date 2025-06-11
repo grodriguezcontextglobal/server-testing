@@ -70,11 +70,12 @@ const uploadDocument = async (req, res) => {
       ? JSON.parse(applicable_events)
       : undefined;
 
+      const splittingLocation = uploadResult.Location.split(".s3.us-east-2.amazonaws.com/")
     // Create document record
     // In uploadDocument function, modify the document creation:
     const document = new Document({
       company_id,
-      document_url: uploadResult.Location.trim(), // Remove any extra spaces
+      document_url: `${process.env.AWS_S3_BUCKET_NAME}/${splittingLocation[1]}`, // Remove any extra spaces
       document_type,
       trigger_action,
       at_: new Date(at_),
