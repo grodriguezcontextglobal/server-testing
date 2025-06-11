@@ -76,6 +76,7 @@ const uploadPdfToS3 = async (file, options) => {
     if (file && file.path) {
       await unlinkFile(file.path).catch(console.error);
     }
+    console.log(error);
     throw error;
   }
 };
