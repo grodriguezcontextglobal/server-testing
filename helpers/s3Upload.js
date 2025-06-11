@@ -69,7 +69,7 @@ const uploadPdfToS3 = async (file, options) => {
 
     return {
       ...uploadResult,
-      Location: `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`
+      Location: `${process.env.AWS_S3_BUCKET_NAME}/${key}`
     };
   } catch (error) {
     // Clean up temporary file if it exists
@@ -80,17 +80,25 @@ const uploadPdfToS3 = async (file, options) => {
   }
 };
 
+
+function extractS3Key(fullUrl) {
+    // Extract everything after the .com/ or first forward slash if .com isn't present
+    const matches = fullUrl.match(/\.com\/(.*)|\/(.*)/);
+    return matches ? matches[1] || matches[2] : null;
+}
+
 /**
  * Generates a temporary download URL for an S3 object
  * @param {string} key - The S3 object key
  * @param {number} expirationMinutes - URL expiration time in minutes (default: 5)
  * @returns {Promise<string>} - The temporary download URL
- */
+*/
 const getTemporaryDownloadUrl = async (key, expirationMinutes = 5) => {
+  const sanitazedKey = extractS3Key(key);
   try {
     const command = new GetObjectCommand({
       Bucket: process.env.AWS_S3_BUCKET_NAME,
-      Key: key
+      Key: sanitazedKey
     });
 
     const signedUrl = await getSignedUrl(s3Client, command, {
