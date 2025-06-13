@@ -34,7 +34,7 @@ const assingDeviceNotification = async (request, response) => {
     const info = {
       from: "noreply@devitrak.com",
       to: `${request.body.consumer.firstName} ${request.body.consumer.lastName} <${request.body.consumer.email}>`,
-      subject: "Returned device notification",
+      subject: "Assigned device notification",
       html: assigningDeviceMessageHtml(request.body),
     };
     return sgMail.send(info).then(() => {
