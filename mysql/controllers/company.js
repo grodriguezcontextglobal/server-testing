@@ -1,9 +1,10 @@
 require("dotenv").config();
 const { response } = require("express");
 const getConnection = require("../database/config");
-const insertingCompany = (request, response) => {
+
+const insertingCompany = async (request, response) => {
   try {
-    const connection = getConnection();
+    const connection = await getConnection();
     const {
       company_name,
       street_address,
@@ -14,9 +15,10 @@ const insertingCompany = (request, response) => {
       email_company,
       industry,
     } = request.body;
-    const query = `insert into company_info
-        (company_name, street_address, city_address, state_address, zip_address, phone_number, email_company, industry)
-        values(?,?,?,?,?,?,?,?)`;
+
+    const query = `INSERT INTO company_info
+      (company_name, street_address, city_address, state_address, zip_address, phone_number, email_company, industry)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
     const values = [
       company_name,
@@ -28,160 +30,86 @@ const insertingCompany = (request, response) => {
       email_company,
       industry,
     ];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-      return response.status(201).json({
-        ok: true,
-        company: result,
-      });
-    });
+
+    const [result] = await connection.execute(query, values);
+    return response.status(201).json({ ok: true, company: result });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
-      ok: false,
-      msg: `${error.message}`,
-    });
+    response.status(500).json({ ok: false, msg: error.message });
   }
 };
 
 const consultingCompany = async (request, response) => {
-  const connection = getConnection();
-  const reference = Object.entries(request.body);
-  const query = `SELECT * FROM company_info WHERE \`${reference[0][0]}\` = ?`;
-  const values = [reference[0][1]];
-
   try {
+    const connection = await getConnection();
+    const reference = Object.entries(request.body);
+    const query = `SELECT * FROM company_info WHERE \`${reference[0][0]}\` = ?`;
+    const values = [reference[0][1]];
     const [result] = await connection.execute(query, values);
-    return response.status(200).json({
-      ok: true,
-      company: result,
-    });
+    return response.status(200).json({ ok: true, company: result });
   } catch (err) {
     console.error("Error:", err.message);
-    return response.status(500).json({
-      ok: false,
-      msg: err.message,
-    });
+    return response.status(500).json({ ok: false, msg: err.message });
   }
 };
 
-const deleteCompany = async () => {
+const deleteCompany = async (request, response) => {
   try {
-    const connection = getConnection();
-    const query = "delete from company_info where company_id=?";
+    const connection = await getConnection();
+    const query = "DELETE FROM company_info WHERE company_id=?";
     const values = [request.body.company_id];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
-
-      return response?.status(201)?.json({
-        ok: true,
-        company_deleted: result,
-      });
-    });
+    const [result] = await connection.execute(query, values);
+    return response.status(200).json({ ok: true, company_deleted: result });
   } catch (error) {
     console.error("Error:", error.message);
+    return response.status(500).json({ ok: false, msg: error.message });
   }
 };
 
 const consultingCompanyTable = async (request, response) => {
   try {
-    const connection = getConnection();
-    const query = "select * from company_info;";
-    const values = [];
-    const [error, result] = await connection.execute(query, values);
-    if (error)
-      return response.status(500).json({
-        ok: false,
-        msg: `${error.message}`,
-      });
-    return response?.status(201)?.json({
-      ok: true,
-      companies: result,
-    });
+    const connection = await getConnection();
+    const query = "SELECT * FROM company_info;";
+    const [result] = await connection.execute(query);
+    return response.status(200).json({ ok: true, companies: result });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
-      ok: false,
-      msg: `${error.message}`,
-    });
+    response.status(500).json({ ok: false, msg: error.message });
   }
 };
 
 const consultingIndustryCompanyTable = async (request, response) => {
   try {
-    const connection = getConnection();
-    const query = "select industry from company_info;";
-    const values = [];
-    const [error, result] = await connection.execute(query, values);
-    // connection.execute(query, values, function (err, result, fields) {
-    // });
-    if (error)
-      return response.status(500).json({
-        ok: false,
-        msg: `${error.message}`,
-      });
-
-    return response?.status(201)?.json({
-      ok: true,
-      industry: result,
-    });
+    const connection = await getConnection();
+    const query = "SELECT industry FROM company_info;";
+    const [result] = await connection.execute(query);
+    return response.status(200).json({ ok: true, industry: result });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
-      ok: false,
-      msg: `${error.message}`,
-    });
+    response.status(500).json({ ok: false, msg: error.message });
   }
 };
 
 const updateCompanyData = async (request, response) => {
   try {
-    const connection = getConnection();
-    const values = [...Object.values(request.body).map((item) => item)];
+    const connection = await getConnection();
+    const values = Object.values(request.body);
     const query = `UPDATE company_info 
-                            SET company_name=?,
-                                street_address=?,
-                                city_address=?,
-                                state_address=?,
-                                zip_address=?,
-                                phone_number=?,
-                                email_company=?,
-                                update_at=NOW()
-                            WHERE company_id=?`;
-    // const [err, result] = await connection.execute(query, values);
-    connection.execute(query, values, function (err, result, fields) {
-      if (err) {
-        console.log("error", err);
-        return response.status(401).json({
-          ok: false,
-          msg: `${err}`,
-        });
-      }
-      return response.status(201).json({
-        ok: true,
-        items: result.affectedRows,
-      });
-    });
+      SET company_name=?, street_address=?, city_address=?, state_address=?, zip_address=?, 
+          phone_number=?, email_company=?, update_at=NOW()
+      WHERE company_id=?`;
+
+    const [result] = await connection.execute(query, values);
+    return response.status(200).json({ ok: true, items: result.affectedRows });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
-      ok: false,
-      msg: `${error.message}`,
-    });
+    response.status(500).json({ ok: false, msg: error.message });
   }
 };
 
 const updateGroupItems = async (request, response) => {
   try {
-    const connection = getConnection();
+    const connection = await getConnection();
     const {
       category_name,
       item_group,
@@ -206,115 +134,73 @@ const updateGroupItems = async (request, response) => {
       data,
     } = request.body;
 
-    // Parse the data from the request body
-    const copyData = JSON.parse(data).map((item) => {
-      return {
-        ...item,
-        category_name,
-        item_group,
-        cost,
-        brand,
-        descript_item,
-        ownership,
-        main_warehouse,
-        warehouse,
-        company,
-        location,
-        sub_location,
-        current_location,
-        extra_serial_number,
-        company_id,
-        return_date,
-        update_at,
-        enableAssignFeature,
-        container,
-        containerSpotLimit,
-        image_url,
-        item_id: item.item_id,
-      };
-    });
+    const copyData = JSON.parse(data).map(item => ({
+      ...item,
+      category_name,
+      item_group,
+      cost,
+      brand,
+      descript_item,
+      ownership,
+      main_warehouse,
+      warehouse,
+      company,
+      location,
+      sub_location,
+      current_location,
+      extra_serial_number,
+      company_id,
+      return_date,
+      update_at,
+      enableAssignFeature,
+      container,
+      containerSpotLimit,
+      image_url,
+    }));
 
     const query = `
       UPDATE item_inv
-      SET
-      serial_number=?,
-        category_name=?,
-        item_group=?,
-        cost=?,
-        brand=?,
-        descript_item=?,
-        ownership=?,
-        main_warehouse=?,
-        warehouse=?,
-        company=?,
-        location=?,
-        sub_location=?,
-        current_location=?,
-        extra_serial_number=?,
-        company_id=?,
-        return_date=?,
-        update_at=?,
-        enableAssignFeature=?,
-        container=?,
-        containerSpotLimit=?,
-        image_url=?
+      SET serial_number=?, category_name=?, item_group=?, cost=?, brand=?, descript_item=?, ownership=?,
+          main_warehouse=?, warehouse=?, company=?, location=?, sub_location=?, current_location=?, 
+          extra_serial_number=?, company_id=?, return_date=?, update_at=?, enableAssignFeature=?, 
+          container=?, containerSpotLimit=?, image_url=?
       WHERE item_id=?`;
 
-    // Execute updates for each item individually
     for (const item of copyData) {
-      // Check if item_id is valid
-      if (!item.item_id) {
-        continue;
-      }
+      if (!item.item_id) continue;
 
       const values = [
         item.serial_number,
-        category_name,
-        item_group,
-        cost,
-        brand,
-        descript_item,
-        ownership,
-        main_warehouse,
-        warehouse,
-        company,
-        location,
-        sub_location,
-        current_location,
-        JSON.stringify(extra_serial_number),
-        company_id,
-        return_date,
-        update_at,
-        enableAssignFeature,
-        container,
-        containerSpotLimit,
-        image_url,
+        item.category_name,
+        item.item_group,
+        item.cost,
+        item.brand,
+        item.descript_item,
+        item.ownership,
+        item.main_warehouse,
+        item.warehouse,
+        item.company,
+        item.location,
+        item.sub_location,
+        item.current_location,
+        JSON.stringify(item.extra_serial_number),
+        item.company_id,
+        item.return_date,
+        item.update_at,
+        item.enableAssignFeature,
+        item.container,
+        item.containerSpotLimit,
+        item.image_url,
         item.item_id,
       ];
 
-      // Use a Promise to wait for the query to complete
-      await new Promise((resolve, reject) => {
-        connection.query(query, values, function (err, result) {
-          if (err) {
-            return reject(err);
-          }
-
-          // Log the result to verify the affected rows
-          resolve(result);
-        });
-      });
+      await connection.execute(query, values);
     }
 
-    return response.status(200).json({
-      ok: true,
-      msg: "Items updated successfully",
-    });
+    return response.status(200).json({ ok: true, msg: "Items updated successfully" });
   } catch (error) {
-    console.error("Error in updateGroupItems controller:", error);
-    response.status(500).json({
-      ok: false,
-      msg: `${error.message}`,
-    });
+    console.error("Error in updateGroupItems controller:", error.message);
+    response.status(500).json({ ok: false, msg: error.message });
   }
 };
 
