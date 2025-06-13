@@ -1,6 +1,6 @@
 const { response, request } = require("express");
 const { createConnection } = require("mysql2");
-const getConnection = require('../database/config')
+const getConnection = require("../database/config");
 require("dotenv").config();
 const connection = getConnection();
 
@@ -15,7 +15,7 @@ const connection = getConnection();
 //   },
 // })
 
-const insertingEvent = (request, response) => {
+const insertingEvent = async (request, response) => {
   try {
     const {
       event_name,
@@ -32,28 +32,29 @@ const insertingEvent = (request, response) => {
         (event_name, venue_name, street_address, city_address, state_address, zip_address, email_company,  phone_number, company_assigned_event_id ) 
         values(?,?,?,?,?,?,?,?,?)`;
     const values = [
-      `${event_name}`,
-      `${venue_name}`,
-      `${street_address}`,
-      `${city_address}`,
-      `${state_address}`,
-      `${zip_address}`,
-      `${email_company}`,
-      `${phone_number}`,
-      `${company_assigned_event_id}`,
+      event_name,
+      venue_name,
+      street_address,
+      city_address,
+      state_address,
+      zip_address,
+      email_company,
+      phone_number,
+      company_assigned_event_id
     ];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
+    const [result] = await connection.execute(query, values);
+    // , function (err, result, fields) {
+      // if (err)
+      //   return response.status(500).json({
+      //     ok: false,
+      //     msg: `${err.message}`,
+      //   });
 
       return response.status(201).json({
         ok: true,
         consumer: result,
       });
-    });
+    // });
   } catch (error) {
     console.error("Error:", error.message);
     response.status(500).json({
@@ -63,7 +64,7 @@ const insertingEvent = (request, response) => {
   }
 };
 
-const consultingEventInformation = (request, response) => {
+const consultingEventInformation = async (request, response) => {
   try {
     // const reference = Object.entries(request.body);
     const formatting = Object.keys(request.body).map((item) => item + "=?");
@@ -71,18 +72,19 @@ const consultingEventInformation = (request, response) => {
     const values = [...Object.values(request.body).map((item) => item)];
 
     const query = `select * from event_info where ${keys}`;
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
+    const [result] = await connection.execute(query, values);
+    // , function (err, result, fields) {
+    //   if (err)
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
 
       return response.status(201).json({
         ok: true,
         event: result,
       });
-    });
+    // });
   } catch (error) {
     console.error("Error:", error.message);
     response.status(500).json({
@@ -99,18 +101,19 @@ const consultingEventTable = async (request, response) => {
     const values = [...Object.values(request.body).map((item) => item)];
     const query = `select * from event_info where ${keys};`;
     // const valu es = [event_name, zip_address];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
+    const [result] = await connection.execute(query, values);
+    // , function (err, result, fields) {
+    //   if (err)
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
 
       return response?.status(201)?.json({
         ok: true,
         events: result,
       });
-    });
+    // });
   } catch (error) {
     console.error("Error:", error.message);
     response.status(500).json({
@@ -126,18 +129,19 @@ const consultingEventsPerCompany = async (request, response) => {
         join company_info ci on ci.company_id = ei.company_assigned_event_id 
         where ci.company_id = ?;`;
     const values = [request.body];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
+    const [result] = await connection.execute(query, values);
+    // , function (err, result, fields) {
+    //   if (err)
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
 
       return response?.status(201)?.json({
         ok: true,
         events: result,
       });
-    });
+    // });
   } catch (error) {
     console.log(error);
     response.status(500).json({
@@ -150,18 +154,19 @@ const deleteEvent = async (request, response) => {
   try {
     const query = "delete from event_info where event_id=?";
     const values = [request.body.email];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
+    const [result] = await connection.execute(query, values);
+    // , function (err, result, fields) {
+    //   if (err)
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
 
       return response?.status(201)?.json({
         ok: true,
         consumer_deleted: result,
       });
-    });
+    // });
   } catch (error) {
     console.error("Error:", error.message);
   }
@@ -178,24 +183,25 @@ const insertingStaffInEvent = async (request, response) => {
       request.body.staff_id,
       `${request.body.role}`,
     ];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
+   const [result] = await connection.execute(query, values);
+    // , function (err, result, fields) {
+    //   if (err)
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
 
       return response?.status(201)?.json({
         ok: true,
         result: result,
       });
-    });
+    // });
   } catch (error) {
     console.error("Error:", error.message);
   }
 };
 
-const consultingInventoryEvent = (request, response) => {
+const consultingInventoryEvent = async (request, response) => {
   try {
     const connection = getConnection();
     const event_id = request.params.id;
@@ -208,18 +214,19 @@ const consultingInventoryEvent = (request, response) => {
         ORDER by ii.update_at ASC
         `;
     const values = [event_id];
-    connection.execute(query, values, function (err, result, fields) {
-      if (err)
-        return response.status(500).json({
-          ok: false,
-          msg: `${err.message}`,
-        });
+    const [result] = await connection.execute(query, values);
+    // , function (err, result, fields) {
+    //   if (err)
+    //     return response.status(500).json({
+    //       ok: false,
+    //       msg: `${err.message}`,
+    //     });
 
       return response.status(201).json({
         ok: true,
         result,
       });
-    });
+    // });
   } catch (error) {
     console.error("Error:", error.message);
     response.status(500).json({
@@ -244,13 +251,14 @@ const updateStatusItemBasedOnEvent = async (request, response) => {
             AND iiae.event_id = ?;
           `;
       const values = [key, key, update_at, item.device, event_id];
-      connection.execute(query, values, function (err, result, fields) {
-        if (err) {
-          errorRef.push({ item: item.device, error: err });
-        } else {
+      await connection.execute(query, values);
+      // , function (err, result, fields) {
+      //   if (err) {
+      //     errorRef.push({ item: item.device, error: err });
+      //   } else {
           itemRef.push({ item: item.device, status: key });
-        }
-      });
+      //   }
+      // });
     }
   }
   response.status(200).json({
