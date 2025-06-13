@@ -583,98 +583,70 @@ const returningLeasedEquipmentToCompany = async (request, response) => {
   }
 };
 
-const updateItemInWarehouseAfterBeingAddedToEvent = async (
-  request,
-  response
-) => {
+const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) => {
   try {
-    // const cache_connection = await clientRedis();
-    const connection = getConnection();
-    const { warehouse, item_group, startingNumber, quantity, company_id } =
-      request.body;
-    // cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
+    const { warehouse, company_id, item_group, category_name, data } = request.body;
+    console.log(request.body);
 
     // Validate request body
-    if (!item_group || !startingNumber || !quantity || !company_id) {
+    if (!item_group || !category_name || !company_id || !Array.isArray(data) || data.length === 0) {
       return response.status(400).json({
         ok: false,
-        msg: "Missing required fields",
+        msg: "Missing required fields or invalid data format",
       });
     }
 
-    // Find the starting index
+    // Prepare the serial numbers for the IN clause
+    const serialNumbers = data.map((item) => item.toString());
+    const placeholders = serialNumbers.map(() => "?").join(",");
+
+    // Find items query with proper parameterization
     const findIndexQuery = `
-    SELECT item_id, serial_number
-    FROM item_inv
-    WHERE item_group = ? AND company_id = ?
-    ORDER BY serial_number
+      SELECT item_id, serial_number
+      FROM item_inv
+      WHERE item_group = ?
+        AND category_name = ?
+        AND company_id = ?
+        AND serial_number IN (${placeholders})
     `;
-    const findIndexValues = [item_group, company_id];
 
-    connection.execute(findIndexQuery, findIndexValues, (err, results) => {
-      if (err) {
-        return response.status(500).json({
-          ok: false,
-          msg: `Database error: ${err.message}`,
-        });
-      }
+    const findIndexValues = [item_group, category_name, company_id, ...serialNumbers];
+    const [results] = await connection.execute(findIndexQuery, findIndexValues);
 
-      // Find the index of the starting number
-      const startIndex = results.findIndex(
-        (item) => item.serial_number === startingNumber
-      );
-
-      if (startIndex === -1) {
-        return response.status(404).json({
-          ok: false,
-          msg: "Starting number not found",
-        });
-      }
-
-      // Get the items to be updated
-      const itemsToUpdate = results.slice(
-        startIndex,
-        startIndex + Number(quantity)
-      );
-
-      if (itemsToUpdate.length < Number(quantity)) {
-        return response.status(400).json({
-          ok: false,
-          msg: "Not enough items available starting from the given number",
-        });
-      }
-
-      const updateQuery = `
-      UPDATE item_inv 
-      SET warehouse = ?, update_at = NOW()
-          WHERE item_id IN (?)
-          `;
-
-      const itemIds = itemsToUpdate.map((item) => item.item_id);
-      const updateValues = [warehouse, itemIds];
-
-      connection.query(updateQuery, updateValues, (err, result) => {
-        if (err) {
-          return response.status(500).json({
-            ok: false,
-            msg: `Database error: ${err.message}`,
-          });
-        }
-
-        response.status(201).json({
-          ok: true,
-          msg: "Items updated successfully in the warehouse",
-          updated_items: result.affectedRows,
-        });
+    if (!results || results.length === 0) {
+      return response.status(404).json({
+        ok: false,
+        msg: "No matching items found",
       });
+    }
+
+    // Fix: Keep item_ids as numbers instead of converting to strings
+    const itemIds = results.map((item) => item.item_id);
+    console.log(itemIds);
+
+    const idPlaceholders = itemIds.map(() => "?").join(",");
+    console.log(idPlaceholders);
+
+    // Fix: Spread itemIds array in updateValues
+    const updateQuery = `
+    UPDATE item_inv 
+    SET warehouse = ?, update_at = NOW()
+    WHERE item_id IN (${idPlaceholders})
+    `;
+
+    const updateValues = [warehouse, ...itemIds];
+    await connection.execute(updateQuery, updateValues);
+
+    return response.status(201).json({
+      ok: true,
+      msg: "Items updated successfully",
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    console.error("Error in updateItemInWarehouseAfterBeingAddedToEvent:", error);
     response.status(500).json({
       ok: false,
       msg: `Server error: ${error.message}`,
+      error: process.env.NODE_ENV === "development" ? error.stack : undefined,
     });
   }
 };
@@ -711,12 +683,6 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
       company_id,
     ];
     const [result] = await connection.execute(query, values);
-    // cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
-    // cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
 
     return response?.status(201)?.json({
       ok: true,
