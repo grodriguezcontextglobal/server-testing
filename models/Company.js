@@ -148,6 +148,17 @@ const Company = new Schema({
     required: false,
     default: {},
   },
+  structure: {
+    type: Object,
+    required: false,
+    default: {
+      location_1: "Locations|Sub-locations",
+      category_name: "Category",
+      item_group: "Groups",
+      brand: "Brands",
+      ownership: "Ownership",
+    },
+  },
 });
 
 Company.method("toJSON", function () {
