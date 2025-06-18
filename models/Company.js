@@ -146,7 +146,10 @@ const Company = new Schema({
   stripe_connected_account: {
     type: Object,
     required: false,
-    default: {},
+    default: {
+      test:null,
+      live:null,
+    },
   },
   structure: {
     type: Object,
