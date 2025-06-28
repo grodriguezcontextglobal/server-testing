@@ -138,7 +138,7 @@ const insertBulkItem = async (request, response) => {
       enableAssignFeature,
       image_url,
     } = request.body;
-
+    console.log(request.body);
     if (!min_serial_number || !max_serial_number) {
       return response.status(400).json({
         ok: false,
@@ -583,13 +583,23 @@ const returningLeasedEquipmentToCompany = async (request, response) => {
   }
 };
 
-const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) => {
+const updateItemInWarehouseAfterBeingAddedToEvent = async (
+  request,
+  response
+) => {
   try {
-    const { warehouse, company_id, item_group, category_name, data } = request.body;
+    const { warehouse, company_id, item_group, category_name, data } =
+      request.body;
     console.log(request.body);
 
     // Validate request body
-    if (!item_group || !category_name || !company_id || !Array.isArray(data) || data.length === 0) {
+    if (
+      !item_group ||
+      !category_name ||
+      !company_id ||
+      !Array.isArray(data) ||
+      data.length === 0
+    ) {
       return response.status(400).json({
         ok: false,
         msg: "Missing required fields or invalid data format",
@@ -610,7 +620,12 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) =>
         AND serial_number IN (${placeholders})
     `;
 
-    const findIndexValues = [item_group, category_name, company_id, ...serialNumbers];
+    const findIndexValues = [
+      item_group,
+      category_name,
+      company_id,
+      ...serialNumbers,
+    ];
     const [results] = await connection.execute(findIndexQuery, findIndexValues);
 
     if (!results || results.length === 0) {
@@ -642,7 +657,10 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (request, response) =>
       msg: "Items updated successfully",
     });
   } catch (error) {
-    console.error("Error in updateItemInWarehouseAfterBeingAddedToEvent:", error);
+    console.error(
+      "Error in updateItemInWarehouseAfterBeingAddedToEvent:",
+      error
+    );
     response.status(500).json({
       ok: false,
       msg: `Server error: ${error.message}`,
@@ -1670,6 +1688,8 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   try {
     const connection = getConnection();
     let { query, values } = request.body;
+    console.log(query);
+    console.log(values);
     // Clone the values to safely manipulate
     let finalValues = [];
     let placeholderIndex = 0;
@@ -1677,7 +1697,8 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
     // Replace all IN (?) with dynamic placeholders
     query = query.replace(/IN\s*\(\?\)/gi, () => {
       const val = values[placeholderIndex++];
-
+      console.log(query);
+      console.log(val);
       if (Array.isArray(val)) {
         // Push individual values into the final array
         finalValues.push(...val);
@@ -2156,6 +2177,342 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (
   }
 };
 
+const insertContainerItems = async (request, response) => {
+  const connection = getConnection();
+  const { container_item_id, child_ids } = request.body;
+
+  try {
+    // Validate required fields
+    if (
+      !container_item_id ||
+      !child_ids ||
+      !Array.isArray(child_ids) ||
+      child_ids.length === 0
+    ) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Container ID and at least one child ID are required",
+      });
+    }
+
+    // Validate container_item_id is a number
+    if (!Number.isInteger(container_item_id)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Container ID must be an integer",
+      });
+    }
+
+    // Convert child_ids array to JSON string for storage
+    const childIdsJson = JSON.stringify(child_ids);
+
+    const query = `
+      INSERT INTO container_items (container_item_id, child_ids)
+      VALUES (?, ?)
+      ON DUPLICATE KEY UPDATE
+      child_ids = JSON_MERGE_PRESERVE(COALESCE(child_ids, JSON_ARRAY()), ?)
+    `;
+
+    const [results, err] = await connection.execute(query, [
+      container_item_id,
+      childIdsJson,
+      childIdsJson,
+    ]);
+
+    if ((err, results.affectedRows === 0)) {
+      console.error("Error inserting container items:", err);
+      return response.status(500).json({
+        ok: false,
+        msg: "Error inserting container items",
+        error: process.env.NODE_ENV === "development" ? err.message : undefined,
+      });
+    }
+    return response.json({
+      ok: true,
+      msg: "Container items inserted successfully",
+      affected_rows: results.affectedRows,
+      container_item_id,
+      child_ids,
+    });
+  } catch (error) {
+    console.error("Error in insertContainerItems:", error);
+    return response.status(500).json({
+      ok: false,
+      msg: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
+const getContainerItems = async (request, response) => {
+  const connection = getConnection();
+  const { container_item_id } = request.params;
+
+  try {
+    // Validate input
+    if (!container_item_id || isNaN(container_item_id)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Invalid container_item_id provided",
+      });
+    }
+
+    // First query to get container_items data
+    const containerQuery =
+      "SELECT container_item_id, child_ids FROM container_items WHERE container_item_id = ?";
+    const [containerResults] = await connection.query(containerQuery, [
+      container_item_id,
+    ]);
+
+    if (!containerResults.length) {
+      return response.status(404).json({
+        ok: false,
+        msg: "Container not found",
+      });
+    }
+
+    // Parse child_ids safely with string cleanup
+    let childIds;
+    try {
+      const rawChildIds = containerResults[0].child_ids;
+      //     // Remove any BOM or extra characters that might be present
+      //     const cleanJson = rawChildIds?.replace(/^\ufeff/g, '').trim();
+      childIds =
+        typeof rawChildIds === "string" ? JSON.parse(cleanJson) : rawChildIds;
+
+      if (!Array.isArray(childIds)) {
+        // If it's not an array but a valid JSON, convert single value to array
+        childIds = [childIds].filter((id) => id != null);
+      }
+    } catch (parseError) {
+      console.error(
+        "Parse error details:",
+        parseError,
+        "\nRaw child_ids:",
+        containerResults[0].child_ids
+      );
+      return response.status(400).json({
+        ok: false,
+        msg: "Invalid child_ids format in container",
+        error: parseError.message,
+      });
+    }
+
+    if (childIds.length === 0) {
+      return response.json({
+        ok: true,
+        container: {
+          container_item_id: parseInt(containerResults[0].container_item_id),
+          child_ids: [],
+          items: [],
+        },
+      });
+    }
+
+    // Query to get items data
+    const itemsQuery = `
+            SELECT 
+                item_id,
+                category_name,
+                item_group,
+                brand,
+                descript_item,
+                serial_number,
+                warehouse,
+                location,
+                current_location
+            FROM item_inv 
+            WHERE item_id IN (?)
+        `;
+    const [itemsResults] = await connection.query(itemsQuery, [childIds]);
+    // // Format response
+    const containerData = {
+      container_item_id: parseInt(containerResults[0].container_item_id),
+      child_ids: childIds,
+      items: itemsResults.map((item) => ({
+        item_id: parseInt(item.item_id),
+        item_group: item.item_group,
+        serial_number: item.serial_number,
+      })),
+    };
+
+    return response.json({
+      ok: true,
+      container: containerData,
+    });
+  } catch (error) {
+    console.error("Error in getContainerItems:", error);
+    return response.status(500).json({
+      ok: false,
+      msg: "Error retrieving container items",
+      error: error.message,
+    });
+  }
+};
+
+const deleteContainerItem = async (request, response) => {
+  const connection = getConnection();
+  const { container_item_id } = request.params;
+
+  try {
+    // Validate input
+    if (!container_item_id || isNaN(container_item_id)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Invalid container_item_id provided",
+      });
+    }
+
+    // Check if container exists before deletion
+    const checkQuery =
+      "SELECT container_item_id FROM container_items WHERE container_item_id = ?";
+    const [checkResult] = await connection.query(checkQuery, [
+      container_item_id,
+    ]);
+
+    if (!checkResult.length) {
+      return response.status(404).json({
+        ok: false,
+        msg: "Container not found",
+      });
+    }
+
+    // Delete the container
+    const deleteQuery =
+      "DELETE FROM container_items WHERE container_item_id = ?";
+    const [deleteResult] = await connection.query(deleteQuery, [
+      container_item_id,
+    ]);
+
+    if (deleteResult.affectedRows === 0) {
+      return response.status(500).json({
+        ok: false,
+        msg: "Failed to delete container",
+      });
+    }
+
+    return response.json({
+      ok: true,
+      msg: "Container deleted successfully",
+      container_item_id: parseInt(container_item_id),
+    });
+  } catch (error) {
+    console.error("Error in deleteContainerItem:", error);
+    return response.status(500).json({
+      ok: false,
+      msg: "Error deleting container",
+      error: error.message,
+    });
+  }
+};
+
+const updateContainerItems = async (request, response) => {
+  const connection = getConnection();
+  const { container_item_id } = request.params;
+  const { child_ids } = request.body;
+
+  try {
+    // Validate input
+    if (!container_item_id || isNaN(container_item_id)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Invalid container_item_id provided",
+      });
+    }
+
+    if (!Array.isArray(child_ids)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "child_ids must be an array",
+      });
+    }
+
+    // Check if container exists
+    const checkQuery =
+      "SELECT container_item_id FROM container_items WHERE container_item_id = ?";
+    const [checkResult] = await connection.query(checkQuery, [
+      container_item_id,
+    ]);
+
+    if (!checkResult.length) {
+      return response.status(404).json({
+        ok: false,
+        msg: "Container not found",
+      });
+    }
+
+    // Update container items
+    const updateQuery =
+      "UPDATE container_items SET child_ids = ? WHERE container_item_id = ?";
+    const [updateResult] = await connection.query(updateQuery, [
+      JSON.stringify(child_ids),
+      container_item_id,
+    ]);
+
+    if (updateResult.affectedRows === 0) {
+      return response.status(500).json({
+        ok: false,
+        msg: "Failed to update container",
+      });
+    }
+
+    return response.json({
+      ok: true,
+      msg: "Container updated successfully",
+      container: {
+        container_item_id: parseInt(container_item_id),
+        child_ids: child_ids,
+      },
+    });
+  } catch (error) {
+    console.error("Error in updateContainerItems:", error);
+    return response.status(500).json({
+      ok: false,
+      msg: "Error updating container",
+      error: error.message,
+    });
+  }
+};
+
+const checkLargeData = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const { item_ids } = request.body;
+    const query = `SELECT * FROM item_inv WHERE item_id IN (${item_ids.map(item_id => item_id).join(",")});`;
+    const [results] = await connection.execute(query);
+    response.status(200).json({
+      ok: true,
+      result: results,
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const updateLargeData = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const { item_ids, warehouse } = request.body;
+    const query = `UPDATE item_inv SET warehouse = ${warehouse} WHERE item_id IN (${item_ids.map(item_id => item_id).join(",")});`;
+    const [results] = await connection.execute(query);
+    response.status(200).json({
+      ok: true,
+      result: results,
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+
 module.exports = {
   checkingIfCompanyHasInventory,
   checkingInventoryCurrentState,
@@ -2169,13 +2526,16 @@ module.exports = {
   consultingItemInWarehouseTable,
   consultingItemTable,
   consultItemDataFromSerialNumber,
+  deleteContainerItem,
   deleteItem,
   fragmentData,
+  getContainerItems,
   getGroupedItemInventory,
   getGroupedItemWithFormatInventory,
   gettingDataFromLocationOption,
   insertBulkItem,
   insertBulkItemAlhpanumericFormat,
+  insertContainerItems,
   insertingItem,
   itemFinalStatusWhenEventIsFinished,
   itemFinalStatusWhenEventIsFinishedRefactored,
@@ -2187,11 +2547,14 @@ module.exports = {
   returningLeasedEquipmentToCompany,
   searchingGetInventoryTracking,
   searchingInventoryTracking,
+  updateAllItemsInInventory,
+  updateContainerItems,
   updateContentInContainerItem,
   updateItemInTable,
   updateItemInTableAfterBeingAddedToEventFromContainer,
   updateItemInWarehouseAfterBeingAddedToEvent,
-  updateAllItemsInInventory,
-  updateItemsBasedOnSerialNumber,
   updateItemsBasedOnAlphanumericSerialNumber,
+  updateItemsBasedOnSerialNumber,
+  checkLargeData,
+  updateLargeData,
 };
