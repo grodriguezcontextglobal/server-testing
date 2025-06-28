@@ -1,8 +1,8 @@
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const ProviderCompany = require("../models/ProviderCompany");
-
 const createProviderCompany = async (req, res) => {
   try {
+    const cache_connection = await clientRedis();
     const { companyName, industry, services, address, contactInfo, creator } =
       req.body;
 
@@ -71,7 +71,7 @@ const createProviderCompany = async (req, res) => {
 
     // Clear related cache if exists
     const cacheKey = `providerCompanies_${creator}`;
-    await clientRedis.del(cacheKey);
+    await cache_connection.del(cacheKey);
 
     return res.status(201).json({
       ok: true,
@@ -90,6 +90,7 @@ const createProviderCompany = async (req, res) => {
 
 const getProviderCompanies = async (req, res) => {
   try {
+    const cache_connection = await clientRedis();
     const { creator } = req.query;
 
     // Validate creator parameter
@@ -100,12 +101,13 @@ const getProviderCompanies = async (req, res) => {
       });
     }
 
-    // Check cache for provider companies
+    // // Check cache for provider companies
     const cacheKey = `providerCompanies_${creator}`;
-    const cachedProviderCompanies = await clientRedis.get(cacheKey);
+    const cachedProviderCompanies = await cache_connection.get(cacheKey);
 
     if (cachedProviderCompanies) {
       return res.status(200).json({
+        cached: true,
         ok: true,
         providerCompanies: JSON.parse(cachedProviderCompanies),
       });
@@ -114,9 +116,10 @@ const getProviderCompanies = async (req, res) => {
     const providerCompanies = await ProviderCompany.find({ creator });
 
     // Cache the result
-    await clientRedis.set(cacheKey, JSON.stringify(providerCompanies));
-    await clientRedis.expire(cacheKey, 60 * 60 * 1); // 24 hours
+    await cache_connection.set(cacheKey, JSON.stringify(providerCompanies));
+    await cache_connection.expire(cacheKey, 60 * 1); // 24 hours
     return res.status(200).json({
+      cached: false,
       ok: true,
       providerCompanies,
     });
@@ -134,7 +137,7 @@ const updateProviderCompany = async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
-
+    const cache_connection = await clientRedis();
     // Validate if provider company exists
     const existingProvider = await ProviderCompany.findById(id);
     if (!existingProvider) {
@@ -209,7 +212,7 @@ const updateProviderCompany = async (req, res) => {
 
     // Clear related cache
     const cacheKey = `providerCompanies_${updatedProvider.creator}`;
-    await clientRedis.del(cacheKey);
+    await cache_connection.del(cacheKey);
 
     return res.status(200).json({
       ok: true,
@@ -229,7 +232,7 @@ const updateProviderCompany = async (req, res) => {
 const deleteProviderCompany = async (req, res) => {
   try {
     const { id } = req.params;
-
+    const cache_connection = await clientRedis();
     // Validate if provider company exists
     const existingProvider = await ProviderCompany.findById(id);
     if (!existingProvider) {
@@ -244,7 +247,7 @@ const deleteProviderCompany = async (req, res) => {
 
     // Clear related cache
     const cacheKey = `providerCompanies_${existingProvider.creator}`;
-    await clientRedis.del(cacheKey);
+    await cache_connection.del(cacheKey);
     return res.status(200).json({
       ok: true,
       msg: "Provider company deleted successfully",
@@ -262,8 +265,9 @@ const deleteProviderCompany = async (req, res) => {
 const uploadProviderDocument = async (req, res) => {
   try {
     const { id } = req.params;
-    const { documentType = "general" } = req.body;
-
+    const { document_type, title, company_id, created_by, uploadedAt } =
+      req.body;
+    const cache_connection = await clientRedis();
     // Check if file exists in request
     if (!req.file) {
       return res.status(400).json({
@@ -280,13 +284,13 @@ const uploadProviderDocument = async (req, res) => {
         msg: "Provider company not found",
       });
     }
-
+    console.log("providerCompany", providerCompany);
     // Upload file to S3
     const uploadResult = await uploadPdfToS3(req.file, {
       companyId: providerCompany.creator.toString(), // Use creator's company ID for folder structure
-      documentType: `provider_${documentType}`, // Prefix to distinguish provider documents
+      documentType: `provider_${document_type}`, // Prefix to distinguish provider documents
       metadata: {
-        providerId: id,
+        providerId: company_id,
         providerName: providerCompany.companyName,
         uploadedBy: req.user?.id || "system",
       },
@@ -296,8 +300,8 @@ const uploadProviderDocument = async (req, res) => {
     const newDocument = {
       name: req.file.originalname,
       url: uploadResult.Location,
-      type: documentType,
-      uploadedAt: new Date(),
+      type: document_type,
+      uploadedAt: uploadedAt,
     };
 
     // Add document to provider company's documents array
@@ -306,7 +310,7 @@ const uploadProviderDocument = async (req, res) => {
 
     // Clear cache
     const cacheKey = `providerCompanies_${providerCompany.creator}`;
-    await clientRedis.del(cacheKey);
+    await cache_connection.del(cacheKey);
 
     return res.status(200).json({
       ok: true,
