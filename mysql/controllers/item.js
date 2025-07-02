@@ -138,7 +138,6 @@ const insertBulkItem = async (request, response) => {
       enableAssignFeature,
       image_url,
     } = request.body;
-    console.log(request.body);
     if (!min_serial_number || !max_serial_number) {
       return response.status(400).json({
         ok: false,
@@ -241,7 +240,6 @@ const insertBulkItem = async (request, response) => {
       item: result,
     });
   } catch (error) {
-    console.log(error);
     response.status(500).json({
       ok: false,
       msg: `${error.message}`,
@@ -345,7 +343,6 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
       item: result,
     });
   } catch (error) {
-    console.log(error);
     response.status(500).json({
       ok: false,
       msg: `${error.message}`,
@@ -590,7 +587,6 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
   try {
     const { warehouse, company_id, item_group, category_name, data } =
       request.body;
-    console.log(request.body);
 
     // Validate request body
     if (
@@ -637,10 +633,8 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
 
     // Fix: Keep item_ids as numbers instead of converting to strings
     const itemIds = results.map((item) => item.item_id);
-    console.log(itemIds);
 
     const idPlaceholders = itemIds.map(() => "?").join(",");
-    console.log(idPlaceholders);
 
     // Fix: Spread itemIds array in updateValues
     const updateQuery = `
@@ -1688,8 +1682,6 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   try {
     const connection = getConnection();
     let { query, values } = request.body;
-    console.log(query);
-    console.log(values);
     // Clone the values to safely manipulate
     let finalValues = [];
     let placeholderIndex = 0;
@@ -1697,8 +1689,6 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
     // Replace all IN (?) with dynamic placeholders
     query = query.replace(/IN\s*\(\?\)/gi, () => {
       const val = values[placeholderIndex++];
-      console.log(query);
-      console.log(val);
       if (Array.isArray(val)) {
         // Push individual values into the final array
         finalValues.push(...val);
@@ -2331,8 +2321,14 @@ const getContainerItems = async (request, response) => {
       child_ids: childIds,
       items: itemsResults.map((item) => ({
         item_id: parseInt(item.item_id),
+        id: parseInt(item.item_id),
         item_group: item.item_group,
         serial_number: item.serial_number,
+        category_name: item.category_name,
+        ownership: item.ownership,
+        descript_item: item.descript_item,
+        brand: item.brand,
+        cost: item.cost,
       })),
     };
 
@@ -2478,7 +2474,9 @@ const checkLargeData = async (request, response) => {
   try {
     const connection = getConnection();
     const { item_ids } = request.body;
-    const query = `SELECT * FROM item_inv WHERE item_id IN (${item_ids.map(item_id => item_id).join(",")});`;
+    const query = `SELECT * FROM item_inv WHERE item_id IN (${item_ids
+      .map((item_id) => item_id)
+      .join(",")});`;
     const [results] = await connection.execute(query);
     response.status(200).json({
       ok: true,
@@ -2497,7 +2495,9 @@ const updateLargeData = async (request, response) => {
   try {
     const connection = getConnection();
     const { item_ids, warehouse } = request.body;
-    const query = `UPDATE item_inv SET warehouse = ${warehouse} WHERE item_id IN (${item_ids.map(item_id => item_id).join(",")});`;
+    const query = `UPDATE item_inv SET warehouse = ${warehouse} WHERE item_id IN (${item_ids
+      .map((item_id) => item_id)
+      .join(",")});`;
     const [results] = await connection.execute(query);
     response.status(200).json({
       ok: true,
@@ -2511,7 +2511,6 @@ const updateLargeData = async (request, response) => {
     });
   }
 };
-
 
 module.exports = {
   checkingIfCompanyHasInventory,
