@@ -22,9 +22,9 @@ const corsOptions = {
         "Authorization",
         "x-token",
         "token",
-        "Cookie",
-        "Set-Cookie",
-        "credentials"
+        // "Cookie",
+        // "Set-Cookie",
+        // "credentials"
     ],
     credentials: true,
     maxAge: 84600,

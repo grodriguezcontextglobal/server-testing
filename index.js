@@ -28,13 +28,13 @@ const app = express();
 const configureMiddleware = (app) => {
     // Security and parsing middleware
     app.use(cors(corsOptions));
+    // Handle pre-flight requests
+    app.options("*", cors(corsOptions));
     app.use(compression());
     app.use(express.json({ limit: '50mb' }));
     app.use(express.urlencoded({ limit: '50mb', extended: true }));
     app.use(express.static("public"));
 
-    // Handle pre-flight requests
-    app.options("*", cors(corsOptions));
 };
 
 // Route configuration
