@@ -2302,15 +2302,16 @@ const getContainerItems = async (request, response) => {
     // Query to get items data
     const itemsQuery = `
             SELECT 
-                item_id,
-                category_name,
-                item_group,
                 brand,
+                category_name,
+                cost,
+                current_location,
                 descript_item,
-                serial_number,
-                warehouse,
+                item_group,
+                item_id,
                 location,
-                current_location
+                serial_number,
+                warehouse
             FROM item_inv 
             WHERE item_id IN (?)
         `;
