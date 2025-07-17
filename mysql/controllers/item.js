@@ -587,7 +587,6 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
   try {
     const { warehouse, company_id, item_group, category_name, data } =
       request.body;
-
     // Validate request body
     if (
       !item_group ||
@@ -2513,11 +2512,108 @@ const updateLargeData = async (request, response) => {
   }
 };
 
+const updateSubLocation = async (req, res) => {
+  try {
+    const { newName, path, currentIndex, company_id } = req.body;
+
+    // Validate required fields
+    if (
+      !newName ||
+      !Array.isArray(path) ||
+      currentIndex === undefined ||
+      !company_id ||
+      path.length === 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Missing required fields: newName, path (array), currentIndex, and company_id",
+      });
+    }
+
+    // Handle location update (index 0)
+    if (currentIndex === 0) {
+      const updateQuery = `
+        UPDATE item_inv
+        SET location = ?
+        WHERE company_id = ? 
+        AND location = ?`;
+
+      const [updateResult] = await connection.query(updateQuery, [
+        newName,
+        company_id,
+        path[0]
+      ]);
+
+      if (updateResult.affectedRows === 0) {
+        return res.status(404).json({
+          ok: false,
+          message: "No matching items found to update",
+        });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        message: "Location updated successfully",
+        affectedRows: updateResult.affectedRows,
+      });
+    }
+
+    // Handle sub_location update (index > 0)
+    const updateIndex = currentIndex - 1;
+    
+    // Build the WHERE conditions to match each element in the path array (excluding index 0)
+    const pathConditions = path.slice(1).map((_, index) => 
+      `JSON_UNQUOTE(JSON_EXTRACT(sub_location, '$[${index}]')) = ?`
+    ).join(' AND ');
+
+    const updateQuery = `
+      UPDATE item_inv
+      SET sub_location = JSON_SET(
+        sub_location,
+        '$[${updateIndex}]',
+        CAST(? AS JSON)
+      )
+      WHERE company_id = ? 
+      AND location = ?
+      ${pathConditions ? 'AND ' + pathConditions : ''}`;
+
+    const [updateResult] = await connection.query(updateQuery, [
+      JSON.stringify(newName),
+      company_id,
+      path[0],
+      ...path.slice(1)
+    ]);
+
+    if (updateResult.affectedRows === 0) {
+      return res.status(404).json({
+        ok: false,
+        message: "No matching items found to update",
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      message: "Sub location updated successfully",
+      affectedRows: updateResult.affectedRows,
+    });
+  } catch (error) {
+    console.error("Error updating sub location:", error);
+    return res.status(500).json({
+      ok: false,
+      message: "Internal server error while updating sub location",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   checkingIfCompanyHasInventory,
+  updateSubLocation,
   checkingInventoryCurrentState,
   checkingItem,
   checkInventoryCompanyExists,
+  checkLargeData,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
   consultingCompanyInventoryWithPagination,
@@ -2555,6 +2651,5 @@ module.exports = {
   updateItemInWarehouseAfterBeingAddedToEvent,
   updateItemsBasedOnAlphanumericSerialNumber,
   updateItemsBasedOnSerialNumber,
-  checkLargeData,
   updateLargeData,
 };
