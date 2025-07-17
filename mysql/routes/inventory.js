@@ -10,6 +10,7 @@ const {
   deleteContainerItem,
   updateContainerItems,
   checkLargeData,
+  updateSubLocation,
 } = require("../controllers/item");
 
 const router = Router();
@@ -27,5 +28,6 @@ router.post("/check-large-data", checkLargeData);
 
 router.post("/update-large-data", checkLargeData);
 
+router.post("/update-location-sub-location", updateSubLocation);
 
 module.exports = router;
