@@ -2607,9 +2607,136 @@ const updateSubLocation = async (req, res) => {
   }
 };
 
+const getInventoryHierarchyWithTypes = async (request, response) => {
+  try {
+    const { company_id } = request.body;
+
+    if (!company_id) {
+      return response.status(400).json({
+        ok: false,
+        msg: "company_id is required"
+      });
+    }
+
+    const query = `
+      SELECT 
+        item_id, item_group, warehouse, location, sub_location
+      FROM item_inv
+      WHERE company_id = ?
+    `;
+
+    const [items] = await connection.execute(query, [company_id]);
+
+    // Group items by location
+    const locationGroups = {};
+    
+    items.forEach(item => {
+      const location = item.location || 'Unknown Location';
+      
+      if (!locationGroups[location]) {
+        locationGroups[location] = [];
+      }
+      
+      locationGroups[location].push({
+        data: {
+          item_group: item.item_group,
+          warehouse: item.warehouse,
+          sub_location: typeof item.sub_location === "string" ? JSON.parse(item.sub_location) : item.sub_location
+        }
+      });
+    });
+
+    // Build hierarchical structure with types
+    const result = {};
+    
+    for (const [location, items] of Object.entries(locationGroups)) {
+      if (!result[location]) {
+        result[location] = {
+          total: 0,
+          available: 0,
+          types: [],
+          children: {}
+        };
+      }
+
+      // Collect unique item types for this location
+      const locationTypes = new Set();
+      
+      for (const item of items) {
+        const subLocArray = item?.data?.sub_location ?? [];
+        const isAvailable = item?.data?.warehouse === 1;
+        const itemType = item?.data?.item_group;
+        
+        if (itemType) locationTypes.add(itemType);
+        
+        // Main Location Count
+        result[location].total = items.length;
+        result[location].available = items.filter(i => i?.data?.warehouse === 1).length;
+        
+        // Walk through sub_location levels
+        let pointer = result[location];
+        
+        for (const sub of subLocArray) {
+          const subKey = sub || 'null';
+          
+          if (!pointer.children[subKey]) {
+            pointer.children[subKey] = {
+              total: 0,
+              available: 0,
+              types: [],
+              children: {}
+            };
+          }
+          
+          pointer.children[subKey].total += 1;
+          if (isAvailable) pointer.children[subKey].available += 1;
+          
+          // Add item type to this sub-location
+          if (itemType && !pointer.children[subKey].types.includes(itemType)) {
+            pointer.children[subKey].types.push(itemType);
+          }
+          
+          pointer = pointer.children[subKey];
+        }
+      }
+      
+      // Set types for main location
+      result[location].types = Array.from(locationTypes);
+    }
+
+    // Recursively clean up children with no content and ensure types are properly set
+    const cleanAndSetTypes = (node, parentItems = []) => {
+      if (!node.children) return;
+      
+      for (const key in node.children) {
+        cleanAndSetTypes(node.children[key]);
+      }
+      
+      if (Object.keys(node.children).length === 0) {
+        node.children = null;
+      }
+    };
+    
+    // Clean up the structure
+    for (const location in result) {
+      cleanAndSetTypes(result[location]);
+    }
+
+    return response.status(200).json({
+      ok: true,
+      data: result
+    });
+    
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message
+    });
+  }
+};
+
 module.exports = {
   checkingIfCompanyHasInventory,
-  updateSubLocation,
   checkingInventoryCurrentState,
   checkingItem,
   checkInventoryCompanyExists,
@@ -2628,6 +2755,7 @@ module.exports = {
   getContainerItems,
   getGroupedItemInventory,
   getGroupedItemWithFormatInventory,
+  getInventoryHierarchyWithTypes,
   gettingDataFromLocationOption,
   insertBulkItem,
   insertBulkItemAlhpanumericFormat,
@@ -2652,4 +2780,5 @@ module.exports = {
   updateItemsBasedOnAlphanumericSerialNumber,
   updateItemsBasedOnSerialNumber,
   updateLargeData,
+  updateSubLocation,
 };
