@@ -30,6 +30,7 @@ const {
   updateAllItemsInInventory,
   updateItemsBasedOnAlphanumericSerialNumber,
   updateItemsBasedOnSerialNumber,
+  getInventoryHierarchyWithTypes,
 } = require("../controllers/item");
 const router = Router();
 
@@ -84,7 +85,10 @@ router.post(
 router.post("/company-inventory-structure", retrieveItemData);
 
 //company inventory with current warehouse status
-router.post("/company-inventory-with-current-warehouse-status", retrieveCompanyInventory);
+router.post(
+  "/company-inventory-with-current-warehouse-status",
+  retrieveCompanyInventory
+);
 
 //insert new single item in company inventory
 router.post("/insert-new-single-item", insertingItem);
@@ -105,9 +109,21 @@ router.post(
 router.post("/update-all-items-in-inventory", updateAllItemsInInventory);
 
 //update all items in inventory company based on submitted parameters
-router.post("/update-items-based-on-alphanumeric-serial-number", updateItemsBasedOnAlphanumericSerialNumber);
+router.post(
+  "/update-items-based-on-alphanumeric-serial-number",
+  updateItemsBasedOnAlphanumericSerialNumber
+);
 
 //update all items in inventory company based on submitted parameters
-router.post("/update-items-based-on-serial-number", updateItemsBasedOnSerialNumber);
+router.post(
+  "/update-items-based-on-serial-number",
+  updateItemsBasedOnSerialNumber
+);
+
+//get location/sub location and items type hierarchy
+router.post(
+  "/get-location-item-types-hierarchy",
+  getInventoryHierarchyWithTypes
+);
 
 module.exports = router;
