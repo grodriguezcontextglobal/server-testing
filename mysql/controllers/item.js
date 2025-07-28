@@ -2735,6 +2735,136 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
   }
 };
 
+const getGroupedInventoryBySearchParameter = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const { company_id, searchParameter } = request.body;
+
+    if (!company_id) {
+      return response.status(400).json({
+        ok: false,
+        msg: "company_id is required"
+      });
+    }
+
+    if (!searchParameter) {
+      return response.status(400).json({
+        ok: false,
+        msg: "searchParameter is required"
+      });
+    }
+
+    // Build dynamic search query
+    let query = `
+      SELECT 
+        item_group, category_name, brand, ownership, location as main_location, warehouse
+      FROM item_inv
+      WHERE company_id = ?
+    `;
+    
+    const queryParams = [company_id];
+    
+    // Add search conditions for category_name, item_group, or serial_number
+    query += ` AND (
+      category_name LIKE ? OR 
+      item_group LIKE ? OR 
+      serial_number LIKE ?
+    )`;
+    
+    const searchPattern = `%${searchParameter}%`;
+    queryParams.push(searchPattern, searchPattern, searchPattern);
+
+    const [items] = await connection.execute(query, queryParams);
+
+    // Initialize result structure
+    const result = {
+      item_group: {},
+      category_name: {},
+      brand: {},
+      ownership: {},
+      main_location: {}
+    };
+
+    // Process each item and group by different fields
+    items.forEach(item => {
+      const isAvailable = item.warehouse === 1;
+      
+      // Group by item_group
+      if (item.item_group) {
+        if (!result.item_group[item.item_group]) {
+          result.item_group[item.item_group] = {
+            total: 0,
+            available: 0
+          };
+        }
+        result.item_group[item.item_group].total += 1;
+        if (isAvailable) result.item_group[item.item_group].available += 1;
+      }
+
+      // Group by category_name
+      if (item.category_name) {
+        if (!result.category_name[item.category_name]) {
+          result.category_name[item.category_name] = {
+            total: 0,
+            available: 0
+          };
+        }
+        result.category_name[item.category_name].total += 1;
+        if (isAvailable) result.category_name[item.category_name].available += 1;
+      }
+
+      // Group by brand
+      if (item.brand) {
+        if (!result.brand[item.brand]) {
+          result.brand[item.brand] = {
+            total: 0,
+            available: 0
+          };
+        }
+        result.brand[item.brand].total += 1;
+        if (isAvailable) result.brand[item.brand].available += 1;
+      }
+
+      // Group by ownership
+      if (item.ownership) {
+        if (!result.ownership[item.ownership]) {
+          result.ownership[item.ownership] = {
+            total: 0,
+            available: 0
+          };
+        }
+        result.ownership[item.ownership].total += 1;
+        if (isAvailable) result.ownership[item.ownership].available += 1;
+      }
+
+      // Group by main_location
+      if (item.main_location) {
+        if (!result.main_location[item.main_location]) {
+          result.main_location[item.main_location] = {
+            total: 0,
+            available: 0
+          };
+        }
+        result.main_location[item.main_location].total += 1;
+        if (isAvailable) result.main_location[item.main_location].available += 1;
+      }
+    });
+
+    return response.status(200).json({
+      ok: true,
+      searchParameter,
+      totalResults: items.length,
+      data: result
+    });
+
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message
+    });
+  }
+};
+
 module.exports = {
   checkingIfCompanyHasInventory,
   checkingInventoryCurrentState,
@@ -2781,4 +2911,5 @@ module.exports = {
   updateItemsBasedOnSerialNumber,
   updateLargeData,
   updateSubLocation,
+  getGroupedInventoryBySearchParameter,
 };
