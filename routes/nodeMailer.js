@@ -24,6 +24,7 @@ const {
   massiveEventCustomerNotification,
   deviceReportPerTransaction,
   devitrakFeedbackEmailNotification,
+  liabilityContractStaffNotification,
 } = require("../nodeMailer/notifications");
 const router = Router();
 
@@ -107,4 +108,11 @@ router.post("/device-report-per-transaction", deviceReportPerTransaction);
 
 //feedback email notification
 router.post("/feedback-email-notification", devitrakFeedbackEmailNotification);
+
+//send liability contract email notification
+router.post(
+  "/liability-contract-email-notification",
+  liabilityContractStaffNotification
+);
+
 module.exports = router;
