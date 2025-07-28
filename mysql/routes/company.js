@@ -31,6 +31,7 @@ const {
   updateItemsBasedOnAlphanumericSerialNumber,
   updateItemsBasedOnSerialNumber,
   getInventoryHierarchyWithTypes,
+  getGroupedInventoryBySearchParameter,
 } = require("../controllers/item");
 const router = Router();
 
@@ -125,5 +126,8 @@ router.post(
   "/get-location-item-types-hierarchy",
   getInventoryHierarchyWithTypes
 );
+
+//getting data from search parameter
+router.post("/get-grouped-inventory-by-search-parameter", getGroupedInventoryBySearchParameter);
 
 module.exports = router;
