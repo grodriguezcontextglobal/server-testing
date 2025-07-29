@@ -3992,7 +3992,7 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
       <tr>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title}</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">
-          <a href="${contract.view_url}" style="color: #155eef; text-decoration: none; font-weight: 600;">Download Contract</a>
+          <a href="www.admin.devitrak.net/display-contracts?${contract.view_url}" style="color: #155eef; text-decoration: none; font-weight: 600;">Download Contract</a>
         </td>
       </tr>
     `).join('');
