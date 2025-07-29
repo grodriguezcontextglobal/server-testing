@@ -19,6 +19,7 @@ const {
   uploadProviderDocument,
   getProviderCompanies,
 } = require("../controller/providerCompany");
+const { collectingSignatures } = require("../controller/document");
 
 // Configure multer
 const storage = multer.diskStorage({
@@ -72,5 +73,8 @@ router.post("/provider-upload-document/:id",upload.single('document'), uploadPro
 
 // Get provider companies
 router.get("/provider-companies", getProviderCompanies);
+
+//signatures contract
+router.post("/signatures", collectingSignatures);
 
 module.exports = router;
