@@ -287,12 +287,29 @@ const deleteDocument = async (req, res) => {
   }
 };
 
+const generateTemporaryDownloadUrl = async (req, res) => {
+  try {
+    const { documentUrl } = req.body;
+    const downloadUrl = await getTemporaryDownloadUrl(documentUrl);
+    res.json({
+      ok: true,
+      downloadUrl,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
 module.exports = {
-  uploadDocument,
+  deleteDocument,
+  generateTemporaryDownloadUrl,
+  getCompanyDocumentByID,
   getCompanyDocuments,
   getDocumentDownloadUrl,
   getDocumentTypes,
   getTriggerActions,
-  getCompanyDocumentByID,
-  deleteDocument,
+  uploadDocument,
 };

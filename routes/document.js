@@ -9,7 +9,8 @@ const {
     getTriggerActions,
     getCompanyDocumentByID,
     getDocumentDownloadUrl,
-    deleteDocument
+    deleteDocument,
+    generateTemporaryDownloadUrl
 } = require('../controller/document');
 
 // Configure multer
@@ -52,6 +53,7 @@ router.get('/types', getDocumentTypes);
 router.get('/triggers', getTriggerActions);
 router.get('/:id', getCompanyDocumentByID);
 router.get('/download/:documentId/:userId', getDocumentDownloadUrl);
+router.post('/download/documentUrl', generateTemporaryDownloadUrl);
 router.delete('/:id', deleteDocument);
 // Error handling middleware for multer errors
 router.use((error, req, res, next) => {
