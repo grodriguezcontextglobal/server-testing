@@ -5,6 +5,7 @@ const {
 } = require("../helpers/s3Upload");
 const Document = require("../models/Document");
 const Company = require("../models/Company");
+const Signatures = require("../models/Signatures");
 
 const uploadDocument = async (req, res) => {
   try {
@@ -70,7 +71,9 @@ const uploadDocument = async (req, res) => {
       ? JSON.parse(applicable_events)
       : undefined;
 
-      const splittingLocation = uploadResult.Location.split(".s3.us-east-2.amazonaws.com/")
+    const splittingLocation = uploadResult.Location.split(
+      ".s3.us-east-2.amazonaws.com/"
+    );
     // Create document record
     // In uploadDocument function, modify the document creation:
     const document = new Document({
@@ -303,6 +306,28 @@ const generateTemporaryDownloadUrl = async (req, res) => {
   }
 };
 
+const collectingSignatures = async (req, res) => {
+  try {
+    const { signature, date, contract_url, company_id } = req.body;
+    const signatureData = new Signatures({
+      signature,
+      date,
+      contract_url,
+      company_id,
+    });
+    await signatureData.save();
+    res.status(200).json({
+      ok: true,
+      msg: "Signatures saved successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
 module.exports = {
   deleteDocument,
   generateTemporaryDownloadUrl,
@@ -312,4 +337,5 @@ module.exports = {
   getDocumentTypes,
   getTriggerActions,
   uploadDocument,
+  collectingSignatures,
 };
