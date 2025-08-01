@@ -28,6 +28,7 @@ const insertingItem = async (request, response) => {
     container,
     containerSpotLimit,
     image_url,
+    supplier_info
   } = request.body;
 
   const query = `
@@ -54,8 +55,9 @@ const insertingItem = async (request, response) => {
       image_url,
       returnedRentedInfo,
       container_id,
-      display_item
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      display_item,
+      supplier_info
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `;
 
   const values = [
@@ -82,6 +84,7 @@ const insertingItem = async (request, response) => {
     (returnedRentedInfo = JSON.stringify([])),
     (container_id = JSON.stringify([])),
     (display_item = 1),
+    supplier_info || null
   ];
   try {
     const [result] = await connection.execute(query, values);
@@ -137,6 +140,7 @@ const insertBulkItem = async (request, response) => {
       display_item,
       enableAssignFeature,
       image_url,
+      supplier_info,
     } = request.body;
     if (!min_serial_number || !max_serial_number) {
       return response.status(400).json({
@@ -191,7 +195,8 @@ const insertBulkItem = async (request, response) => {
       container_id,
       display_item,
       enableAssignFeature,
-      image_url
+      image_url,
+      supplier_info
       )
       VALUES ?
     `;
@@ -223,6 +228,7 @@ const insertBulkItem = async (request, response) => {
       display_item,
       enableAssignFeature,
       image_url || null, // Handle undefined image_url
+      supplier_info
     ]);
 
     const [result] = await connection.query(query, [values]);
@@ -276,6 +282,7 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
       display_item,
       enableAssignFeature,
       image_url,
+      supplier_info
     } = request.body;
 
     const connection = getConnection();
@@ -305,7 +312,8 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
       container_id,
       display_item,
       enableAssignFeature,
-      image_url
+      image_url,
+      supplier_info
     ) VALUES ?`;
 
     // Prepare an array of value arrays, each sub-array representing a row to be inserted
@@ -335,6 +343,7 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
       display_item,
       enableAssignFeature,
       image_url || null, // Handle undefined image_url
+      supplier_info
     ]);
 
     const [result] = await connection.query(query, [values]);
@@ -2542,7 +2551,7 @@ const updateSubLocation = async (req, res) => {
       const [updateResult] = await connection.query(updateQuery, [
         newName,
         company_id,
-        path[0]
+        path[0],
       ]);
 
       if (updateResult.affectedRows === 0) {
@@ -2561,11 +2570,15 @@ const updateSubLocation = async (req, res) => {
 
     // Handle sub_location update (index > 0)
     const updateIndex = currentIndex - 1;
-    
+
     // Build the WHERE conditions to match each element in the path array (excluding index 0)
-    const pathConditions = path.slice(1).map((_, index) => 
-      `JSON_UNQUOTE(JSON_EXTRACT(sub_location, '$[${index}]')) = ?`
-    ).join(' AND ');
+    const pathConditions = path
+      .slice(1)
+      .map(
+        (_, index) =>
+          `JSON_UNQUOTE(JSON_EXTRACT(sub_location, '$[${index}]')) = ?`
+      )
+      .join(" AND ");
 
     const updateQuery = `
       UPDATE item_inv
@@ -2576,13 +2589,13 @@ const updateSubLocation = async (req, res) => {
       )
       WHERE company_id = ? 
       AND location = ?
-      ${pathConditions ? 'AND ' + pathConditions : ''}`;
+      ${pathConditions ? "AND " + pathConditions : ""}`;
 
     const [updateResult] = await connection.query(updateQuery, [
       JSON.stringify(newName),
       company_id,
       path[0],
-      ...path.slice(1)
+      ...path.slice(1),
     ]);
 
     if (updateResult.affectedRows === 0) {
@@ -2614,7 +2627,7 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
     if (!company_id) {
       return response.status(400).json({
         ok: false,
-        msg: "company_id is required"
+        msg: "company_id is required",
       });
     }
 
@@ -2629,77 +2642,82 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
 
     // Group items by location
     const locationGroups = {};
-    
-    items.forEach(item => {
-      const location = item.location || 'Unknown Location';
-      
+
+    items.forEach((item) => {
+      const location = item.location || "Unknown Location";
+
       if (!locationGroups[location]) {
         locationGroups[location] = [];
       }
-      
+
       locationGroups[location].push({
         data: {
           item_group: item.item_group,
           warehouse: item.warehouse,
-          sub_location: typeof item.sub_location === "string" ? JSON.parse(item.sub_location) : item.sub_location
-        }
+          sub_location:
+            typeof item.sub_location === "string"
+              ? JSON.parse(item.sub_location)
+              : item.sub_location,
+        },
       });
     });
 
     // Build hierarchical structure with types
     const result = {};
-    
+
     for (const [location, items] of Object.entries(locationGroups)) {
       if (!result[location]) {
         result[location] = {
           total: 0,
           available: 0,
           types: [],
-          children: {}
+          children: {},
         };
       }
 
       // Collect unique item types for this location
       const locationTypes = new Set();
-      
+
       for (const item of items) {
         const subLocArray = item?.data?.sub_location ?? [];
         const isAvailable = item?.data?.warehouse === 1;
         const itemType = item?.data?.item_group;
-        
+
         if (itemType) locationTypes.add(itemType);
-        
+
         // Main Location Count
         result[location].total = items.length;
-        result[location].available = items.filter(i => i?.data?.warehouse === 1).length;
-        
+        result[location].available = items.filter(
+          (i) => i?.data?.warehouse === 1
+        ).length;
+
         // Walk through sub_location levels
         let pointer = result[location];
-        
+
         for (const sub of subLocArray) {
-          const subKey = sub || 'null';
-          
+          const subKey = sub || "null";
+
           if (!pointer.children[subKey]) {
             pointer.children[subKey] = {
               total: 0,
               available: 0,
               types: [],
-              children: {}
+              children: {},
             };
           }
-          
+
           pointer.children[subKey].total += 1;
           if (isAvailable) pointer.children[subKey].available += 1;
-          
+
           // Add item type to this sub-location
           if (itemType && !pointer.children[subKey].types.includes(itemType)) {
             pointer.children[subKey].types.push(itemType);
           }
-          
+
           pointer = pointer.children[subKey];
         }
       }
-      
+
       // Set types for main location
       result[location].types = Array.from(locationTypes);
     }
@@ -2707,16 +2725,16 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
     // Recursively clean up children with no content and ensure types are properly set
     const cleanAndSetTypes = (node, parentItems = []) => {
       if (!node.children) return;
-      
+
       for (const key in node.children) {
         cleanAndSetTypes(node.children[key]);
       }
-      
+
       if (Object.keys(node.children).length === 0) {
         node.children = null;
       }
     };
-    
+
     // Clean up the structure
     for (const location in result) {
       cleanAndSetTypes(result[location]);
@@ -2724,13 +2742,12 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
 
     return response.status(200).json({
       ok: true,
-      data: result
+      data: result,
     });
-    
   } catch (error) {
     return response.status(500).json({
       ok: false,
-      msg: error.message
+      msg: error.message,
     });
   }
 };
@@ -2743,14 +2760,14 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
     if (!company_id) {
       return response.status(400).json({
         ok: false,
-        msg: "company_id is required"
+        msg: "company_id is required",
       });
     }
 
     if (!searchParameter) {
       return response.status(400).json({
         ok: false,
-        msg: "searchParameter is required"
+        msg: "searchParameter is required",
       });
     }
 
@@ -2761,16 +2778,16 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
       FROM item_inv
       WHERE company_id = ?
     `;
-    
+
     const queryParams = [company_id];
-    
+
     // Add search conditions for category_name, item_group, or serial_number
     query += ` AND (
       category_name LIKE ? OR 
       item_group LIKE ? OR 
       serial_number LIKE ?
     )`;
-    
+
     const searchPattern = `%${searchParameter}%`;
     queryParams.push(searchPattern, searchPattern, searchPattern);
 
@@ -2782,19 +2799,19 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
       category_name: {},
       brand: {},
       ownership: {},
-      main_location: {}
+      main_location: {},
     };
 
     // Process each item and group by different fields
-    items.forEach(item => {
+    items.forEach((item) => {
       const isAvailable = item.warehouse === 1;
-      
+
       // Group by item_group
       if (item.item_group) {
         if (!result.item_group[item.item_group]) {
           result.item_group[item.item_group] = {
             total: 0,
-            available: 0
+            available: 0,
           };
         }
         result.item_group[item.item_group].total += 1;
@@ -2806,11 +2823,12 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
         if (!result.category_name[item.category_name]) {
           result.category_name[item.category_name] = {
             total: 0,
-            available: 0
+            available: 0,
           };
         }
         result.category_name[item.category_name].total += 1;
-        if (isAvailable) result.category_name[item.category_name].available += 1;
+        if (isAvailable)
+          result.category_name[item.category_name].available += 1;
       }
 
       // Group by brand
@@ -2818,7 +2836,7 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
         if (!result.brand[item.brand]) {
           result.brand[item.brand] = {
             total: 0,
-            available: 0
+            available: 0,
           };
         }
         result.brand[item.brand].total += 1;
@@ -2830,7 +2848,7 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
         if (!result.ownership[item.ownership]) {
           result.ownership[item.ownership] = {
             total: 0,
-            available: 0
+            available: 0,
           };
         }
         result.ownership[item.ownership].total += 1;
@@ -2842,11 +2860,12 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
         if (!result.main_location[item.main_location]) {
           result.main_location[item.main_location] = {
             total: 0,
-            available: 0
+            available: 0,
           };
         }
         result.main_location[item.main_location].total += 1;
-        if (isAvailable) result.main_location[item.main_location].available += 1;
+        if (isAvailable)
+          result.main_location[item.main_location].available += 1;
       }
     });
 
@@ -2854,13 +2873,12 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
       ok: true,
       searchParameter,
       totalResults: items.length,
-      data: result
+      data: result,
     });
-
   } catch (error) {
     return response.status(500).json({
       ok: false,
-      msg: error.message
+      msg: error.message,
     });
   }
 };
