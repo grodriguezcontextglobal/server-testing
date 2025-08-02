@@ -732,7 +732,7 @@ const errorFeedbackEmailNotification = async (props) => {
 
 const liabilityContractStaffNotification = async (request, response) => {
   try {
-    const { company_name, email_admin, staff, contract_list, subject, items } = request.body;
+    const { staff, contract_list, subject, items } = request.body;
     
     // Validate required fields
     if (!staff || !staff.email || !staff.name) {
