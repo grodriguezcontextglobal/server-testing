@@ -28,7 +28,7 @@ const insertingItem = async (request, response) => {
     container,
     containerSpotLimit,
     image_url,
-    supplier_info
+    supplier_info,
   } = request.body;
 
   const query = `
@@ -84,7 +84,7 @@ const insertingItem = async (request, response) => {
     (returnedRentedInfo = JSON.stringify([])),
     (container_id = JSON.stringify([])),
     (display_item = 1),
-    supplier_info || null
+    supplier_info || null,
   ];
   try {
     const [result] = await connection.execute(query, values);
@@ -228,7 +228,7 @@ const insertBulkItem = async (request, response) => {
       display_item,
       enableAssignFeature,
       image_url || null, // Handle undefined image_url
-      supplier_info
+      supplier_info,
     ]);
 
     const [result] = await connection.query(query, [values]);
@@ -282,7 +282,7 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
       display_item,
       enableAssignFeature,
       image_url,
-      supplier_info
+      supplier_info,
     } = request.body;
 
     const connection = getConnection();
@@ -343,7 +343,7 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
       display_item,
       enableAssignFeature,
       image_url || null, // Handle undefined image_url
-      supplier_info
+      supplier_info,
     ]);
 
     const [result] = await connection.query(query, [values]);
@@ -985,11 +985,13 @@ const searchingInventoryTracking = async (request, response) => {
       OR status LIKE ?
       OR location LIKE ?
       OR brand LIKE ?
+      OR ownership LIKE ?
       )
       ORDER BY serial_number ASC;
       `;
     const values = [
       company_id,
+      `%${searchValue}%`,
       `%${searchValue}%`,
       `%${searchValue}%`,
       `%${searchValue}%`,
@@ -2883,6 +2885,42 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
   }
 };
 
+const filterSuppliersInfoItems = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const { company_id } = request.body;
+    const query = `
+      SELECT DISTINCT ii.supplier_info FROM item_inv ii
+      WHERE ii.ownership = "Rent"
+      AND ii.company_id = ?
+      AND ii.supplier_info IS NOT NULL
+      AND ii.supplier_info != ""
+      AND ii.supplier_info != "null"
+      ORDER BY ii.supplier_info ASC;
+    `;
+    const values = [company_id];
+    const [result] = await connection.execute(query, values);
+    
+    // Additional filtering in case some empty values slip through
+    const filteredResult = result.filter(item => 
+      item.supplier_info && 
+      item.supplier_info.trim() !== "" && 
+      item.supplier_info !== "null" &&
+      item.supplier_info !== "undefined"
+    );
+    
+    return response.status(200).json({
+      ok: true,
+      result: filteredResult,
+    });
+  } catch (error) {
+    console.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
 module.exports = {
   checkingIfCompanyHasInventory,
   checkingInventoryCurrentState,
@@ -2930,4 +2968,5 @@ module.exports = {
   updateLargeData,
   updateSubLocation,
   getGroupedInventoryBySearchParameter,
+  filterSuppliersInfoItems,
 };
