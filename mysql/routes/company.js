@@ -32,6 +32,7 @@ const {
   updateItemsBasedOnSerialNumber,
   getInventoryHierarchyWithTypes,
   getGroupedInventoryBySearchParameter,
+  filterSuppliersInfoItems,
 } = require("../controllers/item");
 const router = Router();
 
@@ -129,5 +130,8 @@ router.post(
 
 //getting data from search parameter
 router.post("/get-grouped-inventory-by-search-parameter", getGroupedInventoryBySearchParameter);
+
+//suppliers info items
+router.post("/filter-suppliers-info-items", filterSuppliersInfoItems);
 
 module.exports = router;
