@@ -27,6 +27,7 @@ const {
   nrffInterpretationFeedbackEmailMessageHtml,
   lostDeviceFeeReceipt,
   liabilityContractStaffNotificationMessageHtml,
+  returnedItemsToRenterNotificationMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 // const e = require("express");
@@ -733,26 +734,26 @@ const errorFeedbackEmailNotification = async (props) => {
 const liabilityContractStaffNotification = async (request, response) => {
   try {
     const { staff, contract_list, subject, items } = request.body;
-    
+
     // Validate required fields
     if (!staff || !staff.email || !staff.name) {
       return response.status(400).json({
         ok: false,
-        msg: "Staff information (name and email) is required"
+        msg: "Staff information (name and email) is required",
       });
     }
-    
+
     if (!contract_list || contract_list.length === 0) {
       return response.status(400).json({
         ok: false,
-        msg: "At least one contract is required"
+        msg: "At least one contract is required",
       });
     }
-    
+
     if (!items || items.length === 0) {
       return response.status(400).json({
         ok: false,
-        msg: "At least one item is required"
+        msg: "At least one item is required",
       });
     }
 
@@ -762,7 +763,7 @@ const liabilityContractStaffNotification = async (request, response) => {
       subject: subject || "Device Liability Contract",
       html: liabilityContractStaffNotificationMessageHtml(request.body),
     };
-    
+
     return sgMail.send(info).then(() => {
       response.status(201).json({
         notification: `Liability contract email sent to ${staff.name} (${staff.email})`,
@@ -773,6 +774,84 @@ const liabilityContractStaffNotification = async (request, response) => {
     console.log(`Error sending liability contract email: ${error}`);
     response.status(500).json({
       ok: false,
+      error: error.message,
+    });
+  }
+};
+
+const returnedItemsToRenterNotification = async (request, response) => {
+  try {
+    const { subject, staffEmails, items, supplierInfo } = request.body;
+
+    // Validate required fields
+    if (!subject) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Subject is required",
+      });
+    }
+
+    if (
+      !staffEmails ||
+      !Array.isArray(staffEmails) ||
+      staffEmails.length === 0
+    ) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Staff emails array is required and must contain at least one email",
+      });
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Items array is required and must contain at least one item",
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const invalidEmails = staffEmails.filter(
+      (email) => !emailRegex.test(email)
+    );
+    if (invalidEmails.length > 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: `Invalid email format(s): ${invalidEmails.join(", ")}`,
+      });
+    }
+
+    // Validate items structure
+    const invalidItems = items.filter(
+      (item) => !item.serial_number || !item.item_group
+    );
+    if (invalidItems.length > 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "All items must have serial_number and item_group properties",
+      });
+    }
+
+    const msg = {
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: staffEmails,
+      subject: subject,
+      html: returnedItemsToRenterNotificationMessageHtml({ items, supplierInfo }),
+    };
+
+    await sgMail.sendMultiple(msg);
+
+    return response.status(201).json({
+      ok: true,
+      notification: `Email sent to ${staffEmails.length} staff member(s)`,
+      recipients: staffEmails,
+      itemsCount: items.length,
+    });
+  } catch (error) {
+    console.error("Error sending returned items notification:", error);
+    return response.status(500).json({
+      ok: false,
+      msg: "Failed to send notification email",
       error: error.message,
     });
   }
@@ -805,4 +884,5 @@ module.exports = {
   devitrakFeedbackEmailNotification,
   errorFeedbackEmailNotification,
   liabilityContractStaffNotification,
+  returnedItemsToRenterNotification,
 };
