@@ -25,6 +25,7 @@ const {
   deviceReportPerTransaction,
   devitrakFeedbackEmailNotification,
   liabilityContractStaffNotification,
+  returnedItemsToRenterNotification,
 } = require("../nodeMailer/notifications");
 const router = Router();
 
@@ -115,4 +116,7 @@ router.post(
   liabilityContractStaffNotification
 );
 
+
+//send email notification to staff about returned items to renter
+router.post("/returned-items-to-renter-notification", returnedItemsToRenterNotification);
 module.exports = router;
