@@ -3389,10 +3389,18 @@ const serviceRefundConfirmationEmailHtml = (props) => {
           Message from <strong>${props.company}</strong>
         </p>
         <p>
-          This email was sent from <strong>${props.company}</strong> regarding the refund for the event <strong>${props.event}</strong>.
+          This email was sent from <strong>${
+            props.company
+          }</strong> regarding the refund for the event <strong>${
+    props.event
+  }</strong>.
         </p>
         <p>
-          We are pleased to confirm that the amount of <strong>$${props.amount}</strong> has been successfully refunded on <strong>${props.date}</strong>.
+          We are pleased to confirm that the amount of <strong>$${
+            props.amount
+          }</strong> has been successfully refunded on <strong>${
+    props.date
+  }</strong>.
         </p>
         <div class="details-box">
           <p class="heading">Refund Details</p>
@@ -3985,26 +3993,42 @@ const nrffInterpretationFeedbackEmailMessageHtml = () => {
 };
 
 const liabilityContractStaffNotificationMessageHtml = (props) => {
-  const { company_name, email_admin, staff, contract_list, items, subject, company_id } = props;
-  
+  const {
+    company_name,
+    email_admin,
+    staff,
+    contract_list,
+    items,
+    subject,
+    company_id,
+  } = props;
+
   const renderContractLinks = () => {
-    return contract_list.map(contract => `
+    return contract_list
+      .map(
+        (contract) => `
       <tr>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title}</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">
           <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&contract_url=${contract.view_url}" style="color: #155eef; text-decoration: none; font-weight: 600;">Download Contract</a>
         </td>
       </tr>
-    `).join('');
+    `
+      )
+      .join("");
   };
-  
+
   const renderItemsTable = () => {
-    return items.map(item => `
+    return items
+      .map(
+        (item) => `
       <tr>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">${item.serial_number}</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">${item.type}</td>
       </tr>
-    `).join('');
+    `
+      )
+      .join("");
   };
 
   return `
@@ -4267,6 +4291,314 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
   `;
 };
 
+const returnedItemsToRenterNotificationMessageHtml = (props) => {
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Returned Items to Renter Notification</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding: 20px 0;
+        border-bottom: 2px solid #e0e0e0;
+      }
+
+      .header img {
+        max-width: 200px;
+        height: auto;
+        margin-bottom: 10px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 24px;
+        line-height: 1.5;
+      }
+
+      .alert-box {
+        background-color: #fef3c7;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .alert-box h3 {
+        color: #92400e;
+        margin: 0 0 8px 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .alert-box p {
+        color: #92400e;
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .supplier-info {
+        background-color: #f0fdf4;
+        border: 1px solid #22c55e;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .supplier-info h3 {
+        color: #15803d;
+        margin: 0 0 12px 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .supplier-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-top: 12px;
+      }
+
+      .supplier-section {
+        background-color: #ffffff;
+        padding: 12px;
+        border-radius: 6px;
+        border: 1px solid #d1fae5;
+      }
+
+      .supplier-section h4 {
+        color: #166534;
+        margin: 0 0 8px 0;
+        font-size: 14px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .supplier-section p {
+        color: #374151;
+        margin: 4px 0;
+        font-size: 14px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        font-size: 14px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      }
+
+      th, td {
+        padding: 12px;
+        border: 1px solid #e0e0e0;
+        text-align: left;
+      }
+
+      th {
+        background-color: #f8fafc;
+        font-weight: 600;
+        color: #374151;
+        text-transform: uppercase;
+        font-size: 12px;
+        letter-spacing: 0.05em;
+      }
+
+      tr:nth-child(even) {
+        background-color: #f9fafb;
+      }
+
+      .summary {
+        background-color: #f0f9ff;
+        border: 1px solid #0ea5e9;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .summary h3 {
+        color: #0c4a6e;
+        margin: 0 0 8px 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .summary p {
+        color: #0c4a6e;
+        margin: 4px 0;
+        font-size: 14px;
+      }
+
+      .footer {
+        font-size: 12px;
+        color: #6b7280;
+        text-align: center;
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      @media (max-width: 600px) {
+        .container {
+          padding: 10px;
+        }
+        
+        .supplier-details {
+          grid-template-columns: 1fr;
+        }
+        
+        table {
+          font-size: 12px;
+        }
+        
+        th, td {
+          padding: 8px 4px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-name" style="max-width: 150px; height: auto;" />
+        <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo"  style="max-width: 200px; height: auto; margin-left: 10px;" />
+      </div>
+
+      <h1>🔄 Items Returned to Renter</h1>
+      
+      <div class="alert-box">
+        <h3>⚠️ Admin Notification</h3>
+        <p>The following rented items have been returned to the renter. Please review and take appropriate action if needed.</p>
+      </div>
+
+      <p>Dear Admin Team,</p>
+      <p>This is an automated notification to inform you that rented items have been returned to the renter. Please find the details below:</p>
+
+      ${props.supplierInfo ? `
+      <div class="supplier-info">
+        <h3>🏢 Renter Information</h3>
+        <div style="background-color: #ffffff; padding: 12px; border-radius: 6px; border: 1px solid #d1fae5; margin-bottom: 12px;">
+          <h4 style="color: #166534; margin: 0 0 8px 0; font-size: 16px; font-weight: 600;">${props.supplierInfo.companyName}</h4>
+          <p style="color: #374151; margin: 4px 0; font-size: 14px;"><strong>Industry:</strong> ${props.supplierInfo.industry}</p>
+          ${props.supplierInfo.services && props.supplierInfo.services.length > 0 ? `<p style="color: #374151; margin: 4px 0; font-size: 14px;"><strong>Services:</strong> ${props.supplierInfo.services.join(', ')}</p>` : ''}
+        </div>
+        
+        <div class="supplier-details">
+          <div class="supplier-section">
+            <h4>📍 Address</h4>
+            <p>${props.supplierInfo.address.street}</p>
+            <p>${props.supplierInfo.address.city}, ${props.supplierInfo.address.state} ${props.supplierInfo.address.postalCode}</p>
+            <p>${props.supplierInfo.address.country}</p>
+          </div>
+          
+          <div class="supplier-section">
+            <h4>📞 Contact Information</h4>
+            <p><strong>Email:</strong> <a href="mailto:${props.supplierInfo.contactInfo.email}" style="color: #2563eb; text-decoration: none;">${props.supplierInfo.contactInfo.email}</a></p>
+            <p><strong>Phone:</strong> <a href="tel:${props.supplierInfo.contactInfo.phone}" style="color: #2563eb; text-decoration: none;">${props.supplierInfo.contactInfo.phone}</a></p>
+            ${props.supplierInfo.contactInfo.website ? `<p><strong>Website:</strong> <a href="https://${props.supplierInfo.contactInfo.website}" style="color: #2563eb; text-decoration: none;" target="_blank">${props.supplierInfo.contactInfo.website}</a></p>` : ''}
+          </div>
+        </div>
+      </div>
+      ` : ''}
+
+      <div class="summary">
+        <h3>📊 Return Summary</h3>
+        <p><strong>Total Items Returned:</strong> ${
+          props.items ? props.items.length : 0
+        }</p>
+        <p><strong>Date:</strong> ${new Date().toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })}</p>
+        <p><strong>Time:</strong> ${new Date().toLocaleTimeString("en-US")}</p>
+      </div>
+
+      <h3>📋 Returned Items Details</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Serial Number</th>
+            <th>Item Group</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${
+            props.items
+              ? props.items
+                  .map(
+                    (item) => `
+            <tr>
+              <td><strong>${item.serial_number}</strong></td>
+              <td>${item.item_group}</td>
+              <td><span style="color: #059669; font-weight: 600;">✅ Returned</span></td>
+            </tr>
+          `
+                  )
+                  .join("")
+              : '<tr><td colspan="3">No items found</td></tr>'
+          }
+        </tbody>
+      </table>
+
+      <div style="background-color: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
+        <h3 style="color: #374151; margin: 0 0 8px 0; font-size: 16px;">📝 Next Steps</h3>
+        <ul style="color: #4b5563; margin: 8px 0; padding-left: 20px;">
+          <li>Verify the physical return of all listed items</li>
+          <li>Update inventory status in the system</li>
+          <li>Process any applicable refunds or deposits</li>
+          <li>Document the return in the transaction log</li>
+          ${props.supplierInfo.companyName ? '<li>Contact the renter if any follow-up is required</li>' : ''}
+
+        </ul>
+      </div>
+
+      <p style="font-size: 14px; color: #6b7280; font-style: italic;">This is an automated notification. Please do not reply to this email. For any questions or concerns, please contact the system administrator.</p>
+
+      <div class="footer">
+        <p>© 2025 DevitrakAI. All rights reserved.</p>
+        <p>This email was sent to notify administrators of returned rental items.</p>
+      </div>
+    </div>
+  </body>
+</html>
+  `;
+};
+
 module.exports = {
   returnConfirmationMessageHtml,
   assigningDeviceMessageHtml,
@@ -4294,4 +4626,5 @@ module.exports = {
   nrffInterpretationFeedbackEmailMessageHtml,
   lostDeviceFeeReceipt,
   liabilityContractStaffNotificationMessageHtml,
+  returnedItemsToRenterNotificationMessageHtml,
 };
