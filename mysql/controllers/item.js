@@ -1997,8 +1997,8 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
       update_at,
       warehouse,
       originalTemplate,
+      supplier_info,
     } = request.body;
-
     if (!min_serial_number || !max_serial_number) {
       return response.status(400).json({
         ok: false,
@@ -2054,6 +2054,7 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
       display_item: display_item,
       enableAssignFeature: enableAssignFeature,
       image_url: image_url,
+      supplier_info: supplier_info || null,
     };
 
     const keys = Object.keys(queryToUpdateParams);
@@ -2112,6 +2113,7 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (
       update_at,
       warehouse,
       originalTemplate,
+      supplier_info,
     } = request.body;
 
     const findQuery = `
@@ -2150,6 +2152,7 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (
       display_item: display_item,
       enableAssignFeature: enableAssignFeature,
       image_url: image_url || null,
+      supplier_info: supplier_info || null,
     };
 
     const keys = Object.keys(queryToUpdateParams);
@@ -2900,15 +2903,16 @@ const filterSuppliersInfoItems = async (request, response) => {
     `;
     const values = [company_id];
     const [result] = await connection.execute(query, values);
-    
+
     // Additional filtering in case some empty values slip through
-    const filteredResult = result.filter(item => 
-      item.supplier_info && 
-      item.supplier_info.trim() !== "" && 
-      item.supplier_info !== "null" &&
-      item.supplier_info !== "undefined"
+    const filteredResult = result.filter(
+      (item) =>
+        item.supplier_info &&
+        item.supplier_info.trim() !== "" &&
+        item.supplier_info !== "null" &&
+        item.supplier_info !== "undefined"
     );
-    
+
     return response.status(200).json({
       ok: true,
       result: filteredResult,
