@@ -133,6 +133,63 @@ const getProviderCompanies = async (req, res) => {
   }
 };
 
+const getSpecificProviderCompany = async (req, res) => {
+  try {
+    const cache_connection = await clientRedis();
+    const { creator, provider_id } = req.body;
+    console.log(req.body);
+    // Validate creator parameter
+    if (!creator) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Creator parameter is required",
+      });
+    }
+
+    // // Check cache for provider companies
+    const cacheKey = `providerCompanies_${creator}`;
+    // const cachedProviderCompanies = await cache_connection.get(cacheKey);
+
+    // if (cachedProviderCompanies) {
+    //   const data = JSON.parse(cachedProviderCompanies);
+    //   console.log(data);
+    //   const provider = data.find(
+    //     (provider) => provider._id === provider_id
+    //   );
+
+    //   if (!provider) {
+    //     return res.status(404).json({
+    //       ok: false,
+    //       msg: "Provider company not found",
+    //     });
+    //   }
+    //   return res.status(200).json({
+    //     cached: true,
+    //     ok: true,
+    //     providerCompanies: provider,
+    //   });
+    // }
+    // If not in cache, query the database
+    const providerCompanies = await ProviderCompany.findById(provider_id);
+
+    // Cache the result
+    await cache_connection.set(cacheKey, JSON.stringify(providerCompanies));
+    await cache_connection.expire(cacheKey, 60 * 1); // 24 hours
+    return res.status(200).json({
+      cached: false,
+      ok: true,
+      providerCompanies,
+    });
+  } catch (error) {
+    console.error("Error getting provider companies:", error);
+    return res.status(500).json({
+      ok: false,
+      msg: "Error getting provider companies",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+};
+
 const updateProviderCompany = async (req, res) => {
   try {
     const { id } = req.params;
@@ -333,4 +390,5 @@ module.exports = {
   updateProviderCompany,
   deleteProviderCompany,
   uploadProviderDocument,
+  getSpecificProviderCompany,
 };
