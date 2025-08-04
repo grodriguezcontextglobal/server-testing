@@ -18,6 +18,7 @@ const {
   updateProviderCompany,
   uploadProviderDocument,
   getProviderCompanies,
+  getSpecificProviderCompany,
 } = require("../controller/providerCompany");
 const { collectingSignatures } = require("../controller/document");
 
@@ -76,5 +77,8 @@ router.get("/provider-companies", getProviderCompanies);
 
 //signatures contract
 router.post("/signatures", collectingSignatures);
+
+//get specific provider company
+router.post("/provider-company/:id", getSpecificProviderCompany);
 
 module.exports = router;
