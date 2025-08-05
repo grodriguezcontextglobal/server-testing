@@ -1909,6 +1909,7 @@ const updateAllItemsInInventory = async (request, response) => {
       enableAssignFeature,
       image_url,
       originalTemplate,
+      supplier_info,
     } = request.body;
     const query = `
       select item_id from item_inv
@@ -1944,6 +1945,8 @@ const updateAllItemsInInventory = async (request, response) => {
       sub_location: sub_location,
       update_at: update_at,
       warehouse: warehouse,
+      supplier_info: supplier_info ?? null,
+
     };
 
     const keys = Object.keys(queryToUpdateParams);
