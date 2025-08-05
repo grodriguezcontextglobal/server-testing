@@ -4370,15 +4370,15 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
       }
 
       .supplier-info {
-        background-color: #f0fdf4;
-        border: 1px solid #22c55e;
+        background-color: #f8fffe;
+        border: 1px solid #10b981;
         border-radius: 8px;
         padding: 16px;
         margin: 20px 0;
       }
 
       .supplier-info h3 {
-        color: #15803d;
+        color: #065f46;
         margin: 0 0 12px 0;
         font-size: 18px;
         font-weight: 600;
@@ -4413,33 +4413,6 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
         font-size: 14px;
       }
 
-      table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 20px 0;
-        font-size: 14px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-      }
-
-      th, td {
-        padding: 12px;
-        border: 1px solid #e0e0e0;
-        text-align: left;
-      }
-
-      th {
-        background-color: #f8fafc;
-        font-weight: 600;
-        color: #374151;
-        text-transform: uppercase;
-        font-size: 12px;
-        letter-spacing: 0.05em;
-      }
-
-      tr:nth-child(even) {
-        background-color: #f9fafb;
-      }
-
       .summary {
         background-color: #f0f9ff;
         border: 1px solid #0ea5e9;
@@ -4461,6 +4434,28 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
         font-size: 14px;
       }
 
+      .attachment-notice {
+        background-color: #eff6ff;
+        border: 1px solid #3b82f6;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+        text-align: center;
+      }
+
+      .attachment-notice h3 {
+        color: #1e40af;
+        margin: 0 0 8px 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .attachment-notice p {
+        color: #1e40af;
+        margin: 0;
+        font-size: 14px;
+      }
+
       .footer {
         font-size: 12px;
         color: #6b7280;
@@ -4478,14 +4473,6 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
         .supplier-details {
           grid-template-columns: 1fr;
         }
-        
-        table {
-          font-size: 12px;
-        }
-        
-        th, td {
-          padding: 8px 4px;
-        }
       }
     </style>
   </head>
@@ -4500,11 +4487,11 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
       
       <div class="alert-box">
         <h3>⚠️ Admin Notification</h3>
-        <p>The following rented items have been returned to the renter. Please review and take appropriate action if needed.</p>
+        <p>Rented items have been returned to the renter. Please review the attached spreadsheet for detailed information and take appropriate action if needed.</p>
       </div>
 
       <p>Dear Admin Team,</p>
-      <p>This is an automated notification to inform you that rented items have been returned to the renter. Please find the details below:</p>
+      <p>This is an automated notification to inform you that rented items have been returned to the renter. Please find the renter details below and check the attached Excel file for the complete list of returned items.</p>
 
       ${props.supplierInfo ? `
       <div class="supplier-info">
@@ -4535,9 +4522,6 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
 
       <div class="summary">
         <h3>📊 Return Summary</h3>
-        <p><strong>Total Items Returned:</strong> ${
-          props.items ? props.items.length : 0
-        }</p>
         <p><strong>Date:</strong> ${new Date().toLocaleDateString("en-US", {
           weekday: "long",
           year: "numeric",
@@ -4547,43 +4531,20 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
         <p><strong>Time:</strong> ${new Date().toLocaleTimeString("en-US")}</p>
       </div>
 
-      <h3>📋 Returned Items Details</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>Serial Number</th>
-            <th>Item Group</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${
-            props.items
-              ? props.items
-                  .map(
-                    (item) => `
-            <tr>
-              <td><strong>${item.serial_number}</strong></td>
-              <td>${item.item_group}</td>
-              <td><span style="color: #059669; font-weight: 600;">✅ Returned</span></td>
-            </tr>
-          `
-                  )
-                  .join("")
-              : '<tr><td colspan="3">No items found</td></tr>'
-          }
-        </tbody>
-      </table>
+      <div class="attachment-notice">
+        <h3>📎 Returned Items Details</h3>
+        <p>Please check the attached Excel spreadsheet for the complete list of returned items including serial numbers, item groups, and status information.</p>
+      </div>
 
       <div style="background-color: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
         <h3 style="color: #374151; margin: 0 0 8px 0; font-size: 16px;">📝 Next Steps</h3>
         <ul style="color: #4b5563; margin: 8px 0; padding-left: 20px;">
+          <li>Review the attached Excel file for detailed item information</li>
           <li>Verify the physical return of all listed items</li>
           <li>Update inventory status in the system</li>
           <li>Process any applicable refunds or deposits</li>
           <li>Document the return in the transaction log</li>
-          ${props.supplierInfo.companyName ? '<li>Contact the renter if any follow-up is required</li>' : ''}
-
+          ${props.supplierInfo && props.supplierInfo.companyName ? '<li>Contact the renter if any follow-up is required</li>' : ''}
         </ul>
       </div>
 
@@ -4598,6 +4559,7 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
 </html>
   `;
 };
+
 
 module.exports = {
   returnConfirmationMessageHtml,
