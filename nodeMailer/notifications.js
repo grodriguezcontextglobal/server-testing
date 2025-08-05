@@ -1,5 +1,7 @@
 const nodeMailer = require("nodemailer");
 const sgMail = require("@sendgrid/mail");
+const fs = require("fs");
+const path = require("path");
 sgMail.setApiKey(process.env.SENDGRID_API_KEY_PAID);
 
 const {
@@ -781,9 +783,9 @@ const liabilityContractStaffNotification = async (request, response) => {
 
 const returnedItemsToRenterNotification = async (request, response) => {
   try {
-    const { subject, staffEmails, items, supplierInfo } = request.body;
+    const { subject, staffEmails, supplierInfo, attachments } = request.body;
 
-    // Validate required fields
+    // Validate subject
     if (!subject) {
       return response.status(400).json({
         ok: false,
@@ -791,29 +793,17 @@ const returnedItemsToRenterNotification = async (request, response) => {
       });
     }
 
-    if (
-      !staffEmails ||
-      !Array.isArray(staffEmails) ||
-      staffEmails.length === 0
-    ) {
+    // Validate email list
+    if (!Array.isArray(staffEmails) || staffEmails.length === 0) {
       return response.status(400).json({
         ok: false,
         msg: "Staff emails array is required and must contain at least one email",
       });
     }
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Items array is required and must contain at least one item",
-      });
-    }
-
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const invalidEmails = staffEmails.filter(
-      (email) => !emailRegex.test(email)
-    );
+    const invalidEmails = staffEmails.filter((email) => !emailRegex.test(email));
     if (invalidEmails.length > 0) {
       return response.status(400).json({
         ok: false,
@@ -821,38 +811,76 @@ const returnedItemsToRenterNotification = async (request, response) => {
       });
     }
 
-    // Validate items structure
-    const invalidItems = items.filter(
-      (item) => !item.serial_number || !item.item_group
-    );
-    if (invalidItems.length > 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "All items must have serial_number and item_group properties",
-      });
-    }
-
+    // Build base email
     const msg = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: staffEmails,
       subject: subject,
-      html: returnedItemsToRenterNotificationMessageHtml({ items, supplierInfo }),
+      html: returnedItemsToRenterNotificationMessageHtml({ supplierInfo }),
     };
 
+    // Validate and attach files
+    if (attachments && Array.isArray(attachments)) {
+      const formattedAttachments = [];
+
+      for (const file of attachments) {
+        // Either: file.content is already base64
+        // Or: file.path is a full path to local file (optional support)
+        if (file.content && file.filename) {
+          formattedAttachments.push({
+            content: file.content,
+            filename: file.filename,
+            type: file.type || "application/octet-stream",
+            disposition: "attachment",
+          });
+        } else if (file.path && file.filename) {
+          const filePath = path.resolve(file.path);
+          if (fs.existsSync(filePath)) {
+            const fileContent = fs.readFileSync(filePath).toString("base64");
+            formattedAttachments.push({
+              content: fileContent,
+              filename: file.filename,
+              type: file.type || "application/octet-stream",
+              disposition: "attachment",
+            });
+          } else {
+            return response.status(400).json({
+              ok: false,
+              msg: `Attachment file not found: ${file.filename}`,
+            });
+          }
+        } else {
+          return response.status(400).json({
+            ok: false,
+            msg: `Invalid attachment object: missing content or filename`,
+          });
+        }
+      }
+
+      msg.attachments = formattedAttachments;
+    } else if (attachments && !Array.isArray(attachments)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Attachments must be an array",
+      });
+    }
+
+    // Send email
     await sgMail.sendMultiple(msg);
 
     return response.status(201).json({
       ok: true,
       notification: `Email sent to ${staffEmails.length} staff member(s)`,
       recipients: staffEmails,
-      itemsCount: items.length,
+      attachmentsCount: msg.attachments ? msg.attachments.length : 0,
     });
   } catch (error) {
     console.error("Error sending returned items notification:", error);
+
     return response.status(500).json({
       ok: false,
       msg: "Failed to send notification email",
-      error: error.message,
+      error: error.response?.body || error.message,
     });
   }
 };
