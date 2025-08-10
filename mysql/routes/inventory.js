@@ -11,6 +11,7 @@ const {
   updateContainerItems,
   checkLargeData,
   updateSubLocation,
+  updateLargeData,
 } = require("../controllers/item");
 
 const router = Router();
@@ -29,5 +30,8 @@ router.post("/check-large-data", checkLargeData);
 router.post("/update-large-data", checkLargeData);
 
 router.post("/update-location-sub-location", updateSubLocation);
+
+//update large data
+router.post("/update-large-data", updateLargeData);
 
 module.exports = router;
