@@ -1565,7 +1565,11 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
                 </h1>
                 <p style="font-size: 16px; line-height: 1.5; margin-bottom: 16px;">
                   Please click the button below to log in to the Devitrak app
-                  and manage your devices and transactions with
+                  and manage your devices and transactions in ${
+                    props.event
+                      ? props.event.eventInfoDetail.eventName
+                      : "this event"
+                  } with
                   <strong>${props.company}</strong>.
                 </p>
 
@@ -4493,32 +4497,61 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
       <p>Dear Admin Team,</p>
       <p>This is an automated notification to inform you that rented items have been returned to the renter. Please find the renter details below and check the attached Excel file for the complete list of returned items.</p>
 
-      ${props.supplierInfo ? `
+      ${
+        props.supplierInfo
+          ? `
       <div class="supplier-info">
         <h3>🏢 Renter Information</h3>
         <div style="background-color: #ffffff; padding: 12px; border-radius: 6px; border: 1px solid #d1fae5; margin-bottom: 12px;">
-          <h4 style="color: #166534; margin: 0 0 8px 0; font-size: 16px; font-weight: 600;">${props.supplierInfo.companyName}</h4>
-          <p style="color: #374151; margin: 4px 0; font-size: 14px;"><strong>Industry:</strong> ${props.supplierInfo.industry}</p>
-          ${props.supplierInfo.services && props.supplierInfo.services.length > 0 ? `<p style="color: #374151; margin: 4px 0; font-size: 14px;"><strong>Services:</strong> ${props.supplierInfo.services.join(', ')}</p>` : ''}
+          <h4 style="color: #166534; margin: 0 0 8px 0; font-size: 16px; font-weight: 600;">${
+            props.supplierInfo.companyName
+          }</h4>
+          <p style="color: #374151; margin: 4px 0; font-size: 14px;"><strong>Industry:</strong> ${
+            props.supplierInfo.industry
+          }</p>
+          ${
+            props.supplierInfo.services &&
+            props.supplierInfo.services.length > 0
+              ? `<p style="color: #374151; margin: 4px 0; font-size: 14px;"><strong>Services:</strong> ${props.supplierInfo.services.join(
+                  ", "
+                )}</p>`
+              : ""
+          }
         </div>
         
         <div class="supplier-details">
           <div class="supplier-section">
             <h4>📍 Address</h4>
             <p>${props.supplierInfo.address.street}</p>
-            <p>${props.supplierInfo.address.city}, ${props.supplierInfo.address.state} ${props.supplierInfo.address.postalCode}</p>
+            <p>${props.supplierInfo.address.city}, ${
+              props.supplierInfo.address.state
+            } ${props.supplierInfo.address.postalCode}</p>
             <p>${props.supplierInfo.address.country}</p>
           </div>
           
           <div class="supplier-section">
             <h4>📞 Contact Information</h4>
-            <p><strong>Email:</strong> <a href="mailto:${props.supplierInfo.contactInfo.email}" style="color: #2563eb; text-decoration: none;">${props.supplierInfo.contactInfo.email}</a></p>
-            <p><strong>Phone:</strong> <a href="tel:${props.supplierInfo.contactInfo.phone}" style="color: #2563eb; text-decoration: none;">${props.supplierInfo.contactInfo.phone}</a></p>
-            ${props.supplierInfo.contactInfo.website ? `<p><strong>Website:</strong> <a href="https://${props.supplierInfo.contactInfo.website}" style="color: #2563eb; text-decoration: none;" target="_blank">${props.supplierInfo.contactInfo.website}</a></p>` : ''}
+            <p><strong>Email:</strong> <a href="mailto:${
+              props.supplierInfo.contactInfo.email
+            }" style="color: #2563eb; text-decoration: none;">${
+              props.supplierInfo.contactInfo.email
+            }</a></p>
+            <p><strong>Phone:</strong> <a href="tel:${
+              props.supplierInfo.contactInfo.phone
+            }" style="color: #2563eb; text-decoration: none;">${
+              props.supplierInfo.contactInfo.phone
+            }</a></p>
+            ${
+              props.supplierInfo.contactInfo.website
+                ? `<p><strong>Website:</strong> <a href="https://${props.supplierInfo.contactInfo.website}" style="color: #2563eb; text-decoration: none;" target="_blank">${props.supplierInfo.contactInfo.website}</a></p>`
+                : ""
+            }
           </div>
         </div>
       </div>
-      ` : ''}
+      `
+          : ""
+      }
 
       <div class="summary">
         <h3>📊 Return Summary</h3>
@@ -4544,7 +4577,11 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
           <li>Update inventory status in the system</li>
           <li>Process any applicable refunds or deposits</li>
           <li>Document the return in the transaction log</li>
-          ${props.supplierInfo && props.supplierInfo.companyName ? '<li>Contact the renter if any follow-up is required</li>' : ''}
+          ${
+            props.supplierInfo && props.supplierInfo.companyName
+              ? "<li>Contact the renter if any follow-up is required</li>"
+              : ""
+          }
         </ul>
       </div>
 
@@ -4764,41 +4801,78 @@ const termsAndConditionsAcceptanceMessageHtml = (props) => {
         <p>Thank you for accepting the terms and conditions for the event. Your participation is now confirmed!</p>
       </div>
 
-      <p>Dear ${props.consumer ? `${props.consumer.name} ${props.consumer.lastName}` : 'Valued Participant'},</p>
+      <p>Dear ${
+        props.consumer
+          ? `${props.consumer.name} ${props.consumer.lastName}`
+          : "Valued Participant"
+      },</p>
       <p>This email confirms that you have successfully accepted the terms and conditions for the event. Your digital signature has been recorded and your participation is now officially confirmed.</p>
 
-      ${props.event ? `
+      ${
+        props.event
+          ? `
       <div class="event-info">
         <h3>📅 Event Information</h3>
         <div class="event-details">
           <div class="detail-item">
             <h4>Event Name</h4>
-            <p>${props.event.eventInfoDetail?.eventName || 'Event Name'}</p>
+            <p>${props.event.eventInfoDetail?.eventName || "Event Name"}</p>
           </div>
           
           <div class="detail-item">
             <h4>Company</h4>
-            <p>${props.company?.company_name || 'Company Name'}</p>
+            <p>${props.company?.company_name || "Company Name"}</p>
           </div>
           
           <div class="detail-item">
             <h4>Event Date</h4>
-            <p>${props.event.eventInfoDetail?.dateBegin ? new Date(props.event.eventInfoDetail.dateBegin).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Event Date'}</p>
+            <p>${
+              props.event.eventInfoDetail?.dateBegin
+                ? new Date(
+                    props.event.eventInfoDetail.dateBegin
+                  ).toLocaleDateString("en-US", {
+                    weekday: "long",
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })
+                : "Event Date"
+            }</p>
           </div>
           
           <div class="detail-item">
             <h4>Location</h4>
-            <p>${props.event.eventInfoDetail?.address || 'Event Location'}</p>
+            <p>${props.event.eventInfoDetail?.address || "Event Location"}</p>
           </div>
         </div>
       </div>
-      ` : ''}
+      `
+          : ""
+      }
 
       <div class="signature-info">
         <h3>📝 Signature Details</h3>
-        <p><strong>Signature Date:</strong> ${props.signature?.date ? new Date(props.signature.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-        <p><strong>Signature Time:</strong> ${new Date().toLocaleTimeString('en-US')}</p>
-        <p><strong>Status:</strong> ${props.signature?.accepted ? 'Accepted' : 'Pending'}</p>
+        <p><strong>Signature Date:</strong> ${
+          props.signature?.date
+            ? new Date(props.signature.date).toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+            : new Date().toLocaleDateString("en-US", {
+                weekday: "long",
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+              })
+        }</p>
+        <p><strong>Signature Time:</strong> ${new Date().toLocaleTimeString(
+          "en-US"
+        )}</p>
+        <p><strong>Status:</strong> ${
+          props.signature?.accepted ? "Accepted" : "Pending"
+        }</p>
       </div>
 
       <div class="next-steps">
