@@ -30,6 +30,7 @@ const {
   lostDeviceFeeReceipt,
   liabilityContractStaffNotificationMessageHtml,
   returnedItemsToRenterNotificationMessageHtml,
+  termsAndConditionsAcceptanceMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 // const e = require("express");
@@ -803,7 +804,9 @@ const returnedItemsToRenterNotification = async (request, response) => {
 
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const invalidEmails = staffEmails.filter((email) => !emailRegex.test(email));
+    const invalidEmails = staffEmails.filter(
+      (email) => !emailRegex.test(email)
+    );
     if (invalidEmails.length > 0) {
       return response.status(400).json({
         ok: false,
@@ -885,6 +888,66 @@ const returnedItemsToRenterNotification = async (request, response) => {
   }
 };
 
+const termsAndConditionsAcceptanceNotification = async (request, response) => {
+  try {
+    const { consumer, event, company, signature } = request.body;
+
+    // Validate required fields
+    if (!consumer || !consumer.email) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Consumer information with email is required",
+      });
+    }
+
+    if (!consumer.name || !consumer.lastName) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Consumer first name and last name are required",
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(consumer.email)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Invalid email format",
+      });
+    }
+
+    const msg = {
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `${consumer.name} ${consumer.lastName} <${consumer.email}>`,
+      subject: "Terms and Conditions Acceptance Confirmation",
+      html: termsAndConditionsAcceptanceMessageHtml({
+        consumer,
+        event,
+        company,
+        signature,
+      }),
+    };
+
+    await sgMail.send(msg);
+
+    return response.status(201).json({
+      ok: true,
+      notification: "Terms and conditions acceptance email sent successfully",
+      recipient: consumer.email,
+    });
+  } catch (error) {
+    console.error(
+      "Error sending terms and conditions acceptance notification:",
+      error
+    );
+    return response.status(500).json({
+      ok: false,
+      msg: "Failed to send notification email",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   assingDeviceNotification,
   returningDeviceNotification,
@@ -913,4 +976,5 @@ module.exports = {
   errorFeedbackEmailNotification,
   liabilityContractStaffNotification,
   returnedItemsToRenterNotification,
+  termsAndConditionsAcceptanceNotification,
 };
