@@ -6,6 +6,8 @@ const {
 const Document = require("../models/Document");
 const Company = require("../models/Company");
 const Signatures = require("../models/Signatures");
+const Folder = require("../models/Folder");
+const EventSignature = require("../models/EventSignature");
 
 const uploadDocument = async (req, res) => {
   try {
@@ -328,14 +330,228 @@ const collectingSignatures = async (req, res) => {
     });
   }
 };
+
+const stampEventConsumerSignatures = async (req, res) => {
+  try {
+    const { signature, date, contract_url, company_id, event_id, accepted, consumer_id } =
+      req.body;
+    const signatureData = new EventSignature({
+      signature,
+      date,
+      contract_url,
+      company_id,
+      event_id,
+      accepted,
+      consumer_id,
+    });
+    await signatureData.save();
+    res.status(200).json({
+      ok: true,
+      msg: "Signatures saved successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
+
+const getConsumerSignatures = async (req, res) => {
+  try {
+    const { event_id, company_id, consumer_id } = req.body;
+    const signatures = await EventSignature.find({ event_id, company_id, consumer_id });
+    res.json({
+      ok: true,
+      signatures,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
+
+const createNewFolder = async (req, res) => {
+  try {
+    const {
+      folder_name,
+      folder_description,
+      company_id,
+      documents,
+      trigger_action,
+    } = req.body;
+    if (
+      !folder_name ||
+      !folder_description ||
+      !company_id ||
+      !documents ||
+      !trigger_action
+    ) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Missing required fields",
+      });
+    }
+
+    const folder = new Folder({
+      folder_name,
+      folder_description,
+      documents,
+      trigger_action,
+      company_id,
+    });
+    await folder.save();
+    res.status(201).json({
+      ok: true,
+      folder,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const getFolders = async (req, res) => {
+  try {
+    const { company_id } = req.body;
+    const folders = await Folder.find({ company_id });
+    if (folders.length === 0) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Folder not found",
+      });
+    }
+    let structureResponse = [];
+    for (let i = 0; i < folders.length; i++) {
+      const folder = folders[i];
+      const documents = await Document.find({
+        _id: { $in: folder.documents.map((doc) => doc.document_id) },
+      });
+      structureResponse.push({
+        folder_name: folder.folder_name,
+        folder_description: folder.folder_description,
+        folder_trigger_action: folder.trigger_action,
+        folder_id: folder._id,
+        documents: [
+          ...documents.map((doc) => ({
+            document_url: doc.document_url,
+            document_id: doc._id,
+            document_title: doc.title,
+            trigger_action: doc.trigger_action,
+          })),
+        ],
+      });
+    }
+    res.json({
+      ok: true,
+      folders: structureResponse,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const getFolderByID = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const folder = await Folder.findById(id); //.populate("documents");
+    res.json({
+      ok: true,
+      folder,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const updateFolder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { folder_name, folder_description, documents, trigger_action } =
+      req.body;
+    if (!folder_name || !folder_description || !documents || !trigger_action) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Missing required fields",
+      });
+    }
+
+    const folder = await Folder.findById(id);
+    if (!folder) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Folder not found",
+      });
+    }
+
+    folder.folder_name = folder_name;
+    folder.folder_description = folder_description;
+    folder.documents = documents;
+    folder.trigger_action = trigger_action;
+
+    await folder.save();
+    res.status(200).json({
+      ok: true,
+      folder,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const deleteFolder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const folder = await Folder.findById(id);
+    if (!folder) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Folder not found",
+      });
+    }
+    await Folder.findByIdAndDelete(id);
+    res.status(200).json({
+      ok: true,
+      msg: "Folder deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
 module.exports = {
+  collectingSignatures,
+  createNewFolder,
   deleteDocument,
+  deleteFolder,
+  stampEventConsumerSignatures,
   generateTemporaryDownloadUrl,
   getCompanyDocumentByID,
   getCompanyDocuments,
+  getConsumerSignatures,
   getDocumentDownloadUrl,
   getDocumentTypes,
+  getFolderByID,
+  getFolders,
   getTriggerActions,
+  updateFolder,
   uploadDocument,
-  collectingSignatures,
 };
