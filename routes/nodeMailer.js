@@ -26,6 +26,7 @@ const {
   devitrakFeedbackEmailNotification,
   liabilityContractStaffNotification,
   returnedItemsToRenterNotification,
+  termsAndConditionsAcceptanceNotification
 } = require("../nodeMailer/notifications");
 const router = Router();
 
@@ -116,7 +117,9 @@ router.post(
   liabilityContractStaffNotification
 );
 
-
 //send email notification to staff about returned items to renter
 router.post("/returned-items-to-renter-notification", returnedItemsToRenterNotification);
+
+//terms and condition in event accepted for consumer
+router.post("/terms-and-conditions-acceptance", termsAndConditionsAcceptanceNotification);
 module.exports = router;
