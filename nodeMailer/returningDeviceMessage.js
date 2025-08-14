@@ -4560,6 +4560,268 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
   `;
 };
 
+const termsAndConditionsAcceptanceMessageHtml = (props) => {
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Terms and Conditions Acceptance Confirmation</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding: 20px 0;
+        border-bottom: 2px solid #e0e0e0;
+      }
+
+      .header img {
+        max-width: 200px;
+        height: auto;
+        margin-bottom: 10px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 24px;
+        line-height: 1.5;
+      }
+
+      .confirmation-box {
+        background-color: #f0fdf4;
+        border: 1px solid #22c55e;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .confirmation-box h3 {
+        color: #15803d;
+        margin: 0 0 8px 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .confirmation-box p {
+        color: #15803d;
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .event-info {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .event-info h3 {
+        color: #1e293b;
+        margin: 0 0 12px 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .event-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-top: 12px;
+      }
+
+      .detail-item {
+        background-color: #ffffff;
+        padding: 12px;
+        border-radius: 6px;
+        border: 1px solid #e2e8f0;
+      }
+
+      .detail-item h4 {
+        color: #374151;
+        margin: 0 0 4px 0;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .detail-item p {
+        color: #1f2937;
+        margin: 0;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .signature-info {
+        background-color: #fffbeb;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .signature-info h3 {
+        color: #92400e;
+        margin: 0 0 8px 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .signature-info p {
+        color: #92400e;
+        margin: 4px 0;
+        font-size: 14px;
+      }
+
+      .next-steps {
+        background-color: #eff6ff;
+        border: 1px solid #3b82f6;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .next-steps h3 {
+        color: #1e40af;
+        margin: 0 0 8px 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .next-steps ul {
+        color: #1e40af;
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+
+      .next-steps li {
+        margin: 4px 0;
+        font-size: 14px;
+      }
+
+      .footer {
+        font-size: 12px;
+        color: #6b7280;
+        text-align: center;
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      @media (max-width: 600px) {
+        .container {
+          padding: 10px;
+        }
+        
+        .event-details {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-name" style="max-width: 150px; height: auto;" />
+        <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo"  style="max-width: 200px; height: auto; margin-left: 10px;" />
+      </div>
+
+      <h1>✅ Terms and Conditions Accepted</h1>
+      
+      <div class="confirmation-box">
+        <h3>🎉 Confirmation Successful</h3>
+        <p>Thank you for accepting the terms and conditions for the event. Your participation is now confirmed!</p>
+      </div>
+
+      <p>Dear ${props.consumer ? `${props.consumer.name} ${props.consumer.lastName}` : 'Valued Participant'},</p>
+      <p>This email confirms that you have successfully accepted the terms and conditions for the event. Your digital signature has been recorded and your participation is now officially confirmed.</p>
+
+      ${props.event ? `
+      <div class="event-info">
+        <h3>📅 Event Information</h3>
+        <div class="event-details">
+          <div class="detail-item">
+            <h4>Event Name</h4>
+            <p>${props.event.eventInfoDetail?.eventName || 'Event Name'}</p>
+          </div>
+          
+          <div class="detail-item">
+            <h4>Company</h4>
+            <p>${props.company?.company_name || 'Company Name'}</p>
+          </div>
+          
+          <div class="detail-item">
+            <h4>Event Date</h4>
+            <p>${props.event.eventInfoDetail?.dateBegin ? new Date(props.event.eventInfoDetail.dateBegin).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : 'Event Date'}</p>
+          </div>
+          
+          <div class="detail-item">
+            <h4>Location</h4>
+            <p>${props.event.eventInfoDetail?.address || 'Event Location'}</p>
+          </div>
+        </div>
+      </div>
+      ` : ''}
+
+      <div class="signature-info">
+        <h3>📝 Signature Details</h3>
+        <p><strong>Signature Date:</strong> ${props.signature?.date ? new Date(props.signature.date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) : new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        <p><strong>Signature Time:</strong> ${new Date().toLocaleTimeString('en-US')}</p>
+        <p><strong>Status:</strong> ${props.signature?.accepted ? 'Accepted' : 'Pending'}</p>
+      </div>
+
+      <div class="next-steps">
+        <h3>📋 What's Next?</h3>
+        <ul>
+          <li>You can now proceed with device rentals and event participation</li>
+          <li>Keep this email as confirmation of your acceptance</li>
+          <li>Contact event staff if you have any questions or need assistance</li>
+          <li>Review the event details and prepare for your participation</li>
+        </ul>
+      </div>
+
+      <p style="font-size: 14px; color: #6b7280; font-style: italic;">This is an automated confirmation email. Please keep this for your records. If you have any questions, please contact the event organizers.</p>
+
+      <div class="footer">
+        <p>© 2025 DevitrakAI. All rights reserved.</p>
+        <p>This email confirms your acceptance of the event terms and conditions.</p>
+      </div>
+    </div>
+  </body>
+</html>
+  `;
+};
 
 module.exports = {
   returnConfirmationMessageHtml,
@@ -4589,4 +4851,5 @@ module.exports = {
   lostDeviceFeeReceipt,
   liabilityContractStaffNotificationMessageHtml,
   returnedItemsToRenterNotificationMessageHtml,
+  termsAndConditionsAcceptanceMessageHtml,
 };
