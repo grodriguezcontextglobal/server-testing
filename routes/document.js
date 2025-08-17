@@ -15,7 +15,10 @@ const {
   getFolders,
   getFolderByID,
   updateFolder,
-  deleteFolder
+  deleteFolder,
+  createStaffMemberVerification,
+  staffMemberVerificationSignedDocumentForAssignmentDevices,
+  addSignatureToDocument,
 } = require("../controller/document");
 
 // Configure multer
@@ -84,5 +87,8 @@ router.post("/folders", getFolders);
 router.get("/folder/:id", getFolderByID);
 router.put("/folder/:id", updateFolder);
 router.delete("/folder/:id", deleteFolder);
+router.post("/verification/staff_member/signed_document", createStaffMemberVerification)
+router.post("/verification/staff_member/check_signed_document", staffMemberVerificationSignedDocumentForAssignmentDevices)
+router.patch("/verification/staff_member/signing_document", addSignatureToDocument)
 
 module.exports = router;
