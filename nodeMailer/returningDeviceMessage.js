@@ -4005,6 +4005,7 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
     items,
     subject,
     company_id,
+    date_reference,
   } = props;
 
   const renderContractLinks = () => {
@@ -4014,7 +4015,7 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
       <tr>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title}</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">
-          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&contract_url=${contract.view_url}" style="color: #155eef; text-decoration: none; font-weight: 600;">Download Contract</a>
+          <a href="http://localhost:5522/display-contracts?company_id=${company_id}&staff_member_id=${staff.staff_member_id}&date_reference=${date_reference}&contract_url=${contract.view_url}">View</a>
         </td>
       </tr>
     `
@@ -4897,33 +4898,333 @@ const termsAndConditionsAcceptanceMessageHtml = (props) => {
   `;
 };
 
+const documentSigningCompletionMessageHtml = (props) => {
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document Signing Completion Notification</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding: 20px 0;
+        border-bottom: 2px solid #e0e0e0;
+      }
+
+      .header img {
+        max-width: 200px;
+        height: auto;
+        margin-bottom: 10px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 24px;
+        line-height: 1.5;
+      }
+
+      .success-box {
+        background-color: #f0fdf4;
+        border: 1px solid #22c55e;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .success-box h3 {
+        color: #15803d;
+        margin: 0 0 8px 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .success-box p {
+        color: #15803d;
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .staff-info {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .staff-info h3 {
+        color: #1e293b;
+        margin: 0 0 12px 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .staff-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-top: 12px;
+      }
+
+      .detail-item {
+        background-color: #ffffff;
+        padding: 12px;
+        border-radius: 6px;
+        border: 1px solid #e2e8f0;
+      }
+
+      .detail-item h4 {
+        color: #374151;
+        margin: 0 0 4px 0;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .detail-item p {
+        color: #1f2937;
+        margin: 0;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .contract-summary {
+        background-color: #fffbeb;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .contract-summary h3 {
+        color: #92400e;
+        margin: 0 0 8px 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .contract-list {
+        list-style: none;
+        padding: 0;
+        margin: 8px 0;
+      }
+
+      .contract-list li {
+        background-color: #ffffff;
+        padding: 8px 12px;
+        margin: 4px 0;
+        border-radius: 4px;
+        border: 1px solid #e2e8f0;
+        font-size: 14px;
+        color: #374151;
+      }
+
+      .contract-list li::before {
+        content: "✅";
+        margin-right: 8px;
+      }
+
+      .next-steps {
+        background-color: #eff6ff;
+        border: 1px solid #3b82f6;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .next-steps h3 {
+        color: #1e40af;
+        margin: 0 0 8px 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .next-steps ul {
+        color: #1e40af;
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+
+      .next-steps li {
+        margin: 4px 0;
+        font-size: 14px;
+      }
+
+      .footer {
+        font-size: 12px;
+        color: #6b7280;
+        text-align: center;
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      @media (max-width: 600px) {
+        .container {
+          padding: 10px;
+        }
+        
+        .staff-details {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-name" style="max-width: 150px; height: auto;" />
+        <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo"  style="max-width: 200px; height: auto; margin-left: 10px;" />
+      </div>
+
+      <h1>📋 All Documents Signed Successfully</h1>
+      
+      <div class="success-box">
+        <h3>🎉 Document Signing Complete</h3>
+        <p>All required documents have been signed by the staff member. Equipment delivery can now proceed.</p>
+      </div>
+
+      <p>Dear ${props.recipientType === 'assigner' ? 'Equipment Assigner' : 'Team Member'},</p>
+      <p>This email confirms that all required liability contracts and documents have been successfully signed by the assigned staff member. ${props.recipientType === 'assigner' ? 'You can now proceed with equipment delivery.' : 'All your document signing requirements have been completed.'}</p>
+
+      <div class="staff-info">
+        <h3>👤 Staff Member Information</h3>
+        <div class="staff-details">
+          <div class="detail-item">
+            <h4>Staff Name</h4>
+            <p>${props.staff?.name || 'Staff Member'}</p>
+          </div>
+          
+          <div class="detail-item">
+            <h4>Email</h4>
+            <p>${props.staff?.email || 'staff@company.com'}</p>
+          </div>
+          
+          <div class="detail-item">
+            <h4>Signing Date</h4>
+            <p>${new Date().toLocaleDateString("en-US", {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}</p>
+          </div>
+          
+          <div class="detail-item">
+            <h4>Signing Time</h4>
+            <p>${new Date().toLocaleTimeString("en-US")}</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="contract-summary">
+        <h3>📄 Signed Documents</h3>
+        <p><strong>Total Documents:</strong> ${props.contract_list ? props.contract_list.length : 0}</p>
+        <ul class="contract-list">
+          ${
+            props.contract_list
+              ? props.contract_list
+                  .map(
+                    (contract) => `
+            <li>${contract.document_name || 'Document'} - Signed on ${contract.date || new Date().toLocaleDateString()}</li>
+          `
+                  )
+                  .join("")
+              : '<li>No contracts found</li>'
+          }
+        </ul>
+      </div>
+
+      <div class="next-steps">
+        <h3>📋 Next Steps</h3>
+        <ul>
+          ${props.recipientType === 'assigner' ? `
+          <li>Proceed with equipment delivery to the staff member</li>
+          <li>Update equipment assignment records in the system</li>
+          <li>Provide equipment usage instructions and guidelines</li>
+          <li>Schedule equipment return date if applicable</li>
+          ` : `
+          <li>Await equipment delivery from the assigner</li>
+          <li>Review equipment usage guidelines when received</li>
+          <li>Contact the assigner if you have any questions</li>
+          <li>Keep this email as confirmation of completed documentation</li>
+          `}
+        </ul>
+      </div>
+
+      <p style="font-size: 14px; color: #6b7280; font-style: italic;">This is an automated notification. Please keep this email for your records. For any questions, please contact the system administrator.</p>
+
+      <div class="footer">
+        <p>© 2025 DevitrakAI. All rights reserved.</p>
+        <p>This email confirms the completion of document signing process.</p>
+      </div>
+    </div>
+  </body>
+</html>
+  `;
+};
+
 module.exports = {
-  returnConfirmationMessageHtml,
   assigningDeviceMessageHtml,
   cancelingDepositMessageHtml,
   capturingDepositMessageHtml,
-  staffNotificationMessageHtml,
-  staffInternalNotificationMessageHtml,
-  editingDeviceAdminMessageHtml,
-  lostDeviceFeeCollectedMessageHtml,
-  linkToLoginExistingConsumerMessageHtml,
-  linkToResetUserPassword,
-  returnReminderMessageHtml,
   confirmationNewConsumerAccountMessageHtml,
   customizedEmailMessageHtml,
-  singleEmailMessageHtml,
-  newUserInvitationMessageHtml,
-  eventBeginsReminderHtmlMessage,
-  reportBugMessageHtml,
-  itemInfoStaffNotificationMessageHtml,
-  eventLinkEventHtml,
-  serviceChargeInvoiceEmailHtml,
-  serviceRefundConfirmationEmailHtml,
   deviceReportPerTransactionMessageHtml,
   devitrakFeedbackEmailMessageHtml,
-  nrffInterpretationFeedbackEmailMessageHtml,
-  lostDeviceFeeReceipt,
+  documentSigningCompletionMessageHtml,
+  editingDeviceAdminMessageHtml,
+  eventBeginsReminderHtmlMessage,
+  eventLinkEventHtml,
+  itemInfoStaffNotificationMessageHtml,
   liabilityContractStaffNotificationMessageHtml,
+  linkToLoginExistingConsumerMessageHtml,
+  linkToResetUserPassword,
+  lostDeviceFeeCollectedMessageHtml,
+  lostDeviceFeeReceipt,
+  newUserInvitationMessageHtml,
+  nrffInterpretationFeedbackEmailMessageHtml,
+  reportBugMessageHtml,
+  returnConfirmationMessageHtml,
   returnedItemsToRenterNotificationMessageHtml,
+  returnReminderMessageHtml,
+  serviceChargeInvoiceEmailHtml,
+  serviceRefundConfirmationEmailHtml,
+  singleEmailMessageHtml,
+  staffInternalNotificationMessageHtml,
+  staffNotificationMessageHtml,
   termsAndConditionsAcceptanceMessageHtml,
 };
