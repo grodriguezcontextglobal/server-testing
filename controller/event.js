@@ -19,7 +19,8 @@ const createEvent = async (request, response = express.response) => {
   } catch (error) {
     return response.status(500).json({
       ok: false,
-      msg: "Please contact Administrator",
+      msg: error.message,
+      err:JSON.stringify(error),
     });
   }
 };
