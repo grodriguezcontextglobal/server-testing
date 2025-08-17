@@ -8,6 +8,11 @@ const Company = require("../models/Company");
 const Signatures = require("../models/Signatures");
 const Folder = require("../models/Folder");
 const EventSignature = require("../models/EventSignature");
+const Verification = require("../models/Verification");
+const {
+  documentSigningCompletionNotification,
+} = require("../nodeMailer/notifications");
+const AdminUser = require("../models/AdminUser");
 
 const uploadDocument = async (req, res) => {
   try {
@@ -333,8 +338,15 @@ const collectingSignatures = async (req, res) => {
 
 const stampEventConsumerSignatures = async (req, res) => {
   try {
-    const { signature, date, contract_url, company_id, event_id, accepted, consumer_id } =
-      req.body;
+    const {
+      signature,
+      date,
+      contract_url,
+      company_id,
+      event_id,
+      accepted,
+      consumer_id,
+    } = req.body;
     const signatureData = new EventSignature({
       signature,
       date,
@@ -361,7 +373,11 @@ const stampEventConsumerSignatures = async (req, res) => {
 const getConsumerSignatures = async (req, res) => {
   try {
     const { event_id, company_id, consumer_id } = req.body;
-    const signatures = await EventSignature.find({ event_id, company_id, consumer_id });
+    const signatures = await EventSignature.find({
+      event_id,
+      company_id,
+      consumer_id,
+    });
     res.json({
       ok: true,
       signatures,
@@ -537,6 +553,190 @@ const deleteFolder = async (req, res) => {
   }
 };
 
+const createStaffMemberVerification = async (req, res) => {
+  try {
+    const {
+      company_id,
+      contract_list,
+      staff_member_id,
+      date,
+      assigner_staff_member_id,
+    } = req.body;
+    console.log(req.body);
+    const new_contract_verification = new Verification({
+      date,
+      company_id,
+      staff_member_id,
+      assigner_staff_member_id,
+      contract_list: [
+        ...contract_list.map((item) => {
+          return {
+            document_url: item.view_url,
+            signature: false,
+            date: Date.now().toLocaleString(),
+          };
+        }),
+      ],
+    });
+    await new_contract_verification.save();
+    res.status(201).json({
+      ok: true,
+      msg: "Contract created successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+const staffMemberVerificationSignedDocumentForAssignmentDevices = async (
+  req,
+  res
+) => {
+  try {
+    const { company_id, contract_url, staff_member_id, date_reference } =
+      req.body;
+    const contract = await Verification.findOne({
+      company_id,
+      staff_member_id,
+      date: date_reference,
+    });
+    if (!contract) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Contract not found",
+      });
+    }
+    const contractList = contract.contract_list;
+    const document = contractList.find(
+      (doc) => doc.document_url === contract_url
+    );
+    if (!document) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Document not found",
+      });
+    }
+    if (document.signature === false) {
+      return res.status(200).json({
+        ok: true,
+        msg: "Document pending for signature",
+        document,
+        contract_info: contract,
+      });
+    }
+    return res.status(200).json({
+      ok: true,
+      msg: "Document signed successfully",
+      document,
+      contract_info: contract,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
+
+const addSignatureToDocument = async (req, res) => {
+  try {
+    const { verification_id, contract_url } = req.body;
+    const contract = await Verification.findById(verification_id);
+    if (!contract) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Contract not found",
+      });
+    }
+    const contractList = contract.contract_list;
+    const document = contractList.findIndex(
+      (doc) => doc.document_url === contract_url
+    );
+    if (document < 0) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Document not found",
+      });
+    }
+
+    let signature = contractList[document];
+    signature.signature = true;
+    signature.date = new Date().toLocaleString();
+    contractList[document] = signature;
+    const updatedVerification = await Verification.findByIdAndUpdate(
+      verification_id,
+      {
+        contract_list: contractList,
+      },
+      {
+        new: true,
+      }
+    );
+    const checkIfAllContractsSigned = updatedVerification.contract_list.every(
+      (item) => item.signature === true
+    );
+    if (checkIfAllContractsSigned) {
+      // Send email notifications to both assigner and staff member
+      try {
+        const assigner = await AdminUser.findById(
+          updatedVerification.assigner_staff_member_id
+        );
+        const staff = await AdminUser.findById(updatedVerification.staff_member_id);
+        const notificationPayload = {
+          assigner: {
+            name:
+              `${assigner.name} ${assigner.lastName}` || "Equipment Assigner",
+            email: assigner.email,
+          },
+          staff: {
+            name: `${staff.name} ${staff.lastName}` || "Staff Member",
+            email: staff.email,
+          },
+          contract_list: updatedVerification.contract_list,
+          verification_id: updatedVerification._id,
+        };
+
+        // Call the notification function directly (internal call)
+        await documentSigningCompletionNotification(
+          { body: notificationPayload },
+          {
+            status: (code) => ({
+              json: (data) => {
+                console.log(`Notification response: ${code}`, data);
+                return data;
+              },
+            }),
+          }
+        );
+      } catch (notificationError) {
+        console.error(
+          "Failed to send completion notifications:",
+          notificationError
+        );
+        // Don't fail the main operation if notification fails
+      }
+    }
+
+    return res.status(200).json({
+      ok: true,
+      msg: "Document signed successfully",
+      document,
+      contract_info: updatedVerification,
+      all_signed: checkIfAllContractsSigned,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
+
 module.exports = {
   collectingSignatures,
   createNewFolder,
@@ -554,4 +754,7 @@ module.exports = {
   getTriggerActions,
   updateFolder,
   uploadDocument,
+  createStaffMemberVerification,
+  staffMemberVerificationSignedDocumentForAssignmentDevices,
+  addSignatureToDocument,
 };
