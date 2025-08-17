@@ -31,6 +31,7 @@ const {
   liabilityContractStaffNotificationMessageHtml,
   returnedItemsToRenterNotificationMessageHtml,
   termsAndConditionsAcceptanceMessageHtml,
+  documentSigningCompletionMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 // const e = require("express");
@@ -948,33 +949,112 @@ const termsAndConditionsAcceptanceNotification = async (request, response) => {
   }
 };
 
+const documentSigningCompletionNotification = async (request, response) => {
+  try {
+    const { assigner, staff, contract_list, verification_id } = request.body;
+
+    // Validate required fields
+    if (!assigner || !assigner.email || !staff || !staff.email) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Both assigner and staff information with emails are required",
+      });
+    }
+
+    if (!contract_list || contract_list.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Contract list is required",
+      });
+    }
+
+    // Validate email formats
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(assigner.email) || !emailRegex.test(staff.email)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Invalid email format",
+      });
+    }
+
+    // Send email to assigner
+    const assignerMsg = {
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `${assigner.name || 'Assigner'} <${assigner.email}>`,
+      subject: "Document Signing Complete - Equipment Ready for Delivery",
+      html: documentSigningCompletionMessageHtml({
+        recipientType: 'assigner',
+        staff,
+        contract_list,
+        verification_id,
+      }),
+    };
+
+    // Send email to staff member
+    const staffMsg = {
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `${staff.name || 'Staff Member'} <${staff.email}>`,
+      subject: "Document Signing Complete - Awaiting Equipment Delivery",
+      html: documentSigningCompletionMessageHtml({
+        recipientType: 'staff',
+        staff,
+        contract_list,
+        verification_id,
+      }),
+    };
+
+    // Send both emails
+    await Promise.all([
+      sgMail.send(assignerMsg),
+      sgMail.send(staffMsg)
+    ]);
+
+    return response.status(201).json({
+      ok: true,
+      notification: "Document signing completion emails sent successfully",
+      recipients: [assigner.email, staff.email],
+    });
+  } catch (error) {
+    console.error(
+      "Error sending document signing completion notifications:",
+      error
+    );
+    return response.status(500).json({
+      ok: false,
+      msg: "Failed to send notification emails",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   assingDeviceNotification,
-  returningDeviceNotification,
   cancelDepositNotification,
   captureDepositNotification,
-  earlierReturningNotification,
-  eventStaffNotification,
-  lostDeviceFeeCollectedNotification,
-  confirmationLinkNewConsumerNotification,
-  loginLinkExistingConsumerNotification,
-  linkToResetPassword,
-  editingDeviceAdminNotification,
-  customizedEmailNotification,
-  singleEmailNotification,
-  newUserInvitationNotification,
-  internalNotification,
-  eventBeginsReminderNotification,
-  staffInternalNotification,
-  itemInfoStaffNotification,
-  eventLinkEvent,
   chargeInvoice,
-  refundInvoice,
-  massiveEventCustomerNotification,
+  confirmationLinkNewConsumerNotification,
+  customizedEmailNotification,
   deviceReportPerTransaction,
   devitrakFeedbackEmailNotification,
+  documentSigningCompletionNotification,
+  earlierReturningNotification,
+  editingDeviceAdminNotification,
   errorFeedbackEmailNotification,
+  eventBeginsReminderNotification,
+  eventLinkEvent,
+  eventStaffNotification,
+  internalNotification,
+  itemInfoStaffNotification,
   liabilityContractStaffNotification,
+  linkToResetPassword,
+  loginLinkExistingConsumerNotification,
+  lostDeviceFeeCollectedNotification,
+  massiveEventCustomerNotification,
+  newUserInvitationNotification,
+  refundInvoice,
   returnedItemsToRenterNotification,
+  returningDeviceNotification,
+  singleEmailNotification,
+  staffInternalNotification,
   termsAndConditionsAcceptanceNotification,
 };
