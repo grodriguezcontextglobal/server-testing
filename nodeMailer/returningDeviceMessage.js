@@ -4015,7 +4015,7 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
       <tr>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title}</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">
-          <a href="http://localhost:5522/display-contracts?company_id=${company_id}&staff_member_id=${staff.staff_member_id}&date_reference=${date_reference}&contract_url=${contract.view_url}">View</a>
+          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&staff_member_id=${staff.staff_member_id}&date_reference=${date_reference}&contract_url=${contract.view_url}">View</a>
         </td>
       </tr>
     `
