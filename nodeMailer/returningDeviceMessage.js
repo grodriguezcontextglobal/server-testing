@@ -5110,15 +5110,15 @@ const documentSigningCompletionMessageHtml = (props) => {
         <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo"  style="max-width: 200px; height: auto; margin-left: 10px;" />
       </div>
 
-      <h1>📋 All Documents Signed Successfully</h1>
+      <h1>📋 Agreed and checked All Documents Successfully</h1>
       
       <div class="success-box">
-        <h3>🎉 Document Signing Complete</h3>
-        <p>All required documents have been signed by the staff member. Equipment delivery can now proceed.</p>
+        <h3>🎉 Document Checking Complete</h3>
+        <p>All required documents have been checked and signed by the staff member. Equipment delivery can now proceed.</p>
       </div>
 
       <p>Dear ${props.recipientType === 'assigner' ? 'Equipment Assigner' : 'Team Member'},</p>
-      <p>This email confirms that all required liability contracts and documents have been successfully signed by the assigned staff member. ${props.recipientType === 'assigner' ? 'You can now proceed with equipment delivery.' : 'All your document signing requirements have been completed.'}</p>
+      <p>This email confirms that all required liability contracts and documents have been successfully checked and signed by the assigned staff member. ${props.recipientType === 'assigner' ? 'You can now proceed with equipment delivery.' : 'All your document signing requirements have been completed.'}</p>
 
       <div class="staff-info">
         <h3>👤 Staff Member Information</h3>
@@ -5144,14 +5144,14 @@ const documentSigningCompletionMessageHtml = (props) => {
           </div>
           
           <div class="detail-item">
-            <h4>Signing Time</h4>
+            <h4>Checking Time</h4>
             <p>${new Date().toLocaleTimeString("en-US")}</p>
           </div>
         </div>
       </div>
 
       <div class="contract-summary">
-        <h3>📄 Signed Documents</h3>
+        <h3>📄 Checked Documents</h3>
         <p><strong>Total Documents:</strong> ${props.contract_list ? props.contract_list.length : 0}</p>
         <ul class="contract-list">
           ${
