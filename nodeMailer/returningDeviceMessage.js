@@ -5042,7 +5042,7 @@ const documentSigningCompletionMessageHtml = (props) => {
         margin: 8px 0;
       }
 
-      .contract-list li {
+.contract-list li {
         background-color: #ffffff;
         padding: 8px 12px;
         margin: 4px 0;
@@ -5050,6 +5050,9 @@ const documentSigningCompletionMessageHtml = (props) => {
         border: 1px solid #e2e8f0;
         font-size: 14px;
         color: #374151;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
       }
 
       .contract-list li::before {
@@ -5057,6 +5060,34 @@ const documentSigningCompletionMessageHtml = (props) => {
         margin-right: 8px;
       }
 
+      .contract-link {
+        color: #3b82f6;
+        text-decoration: none;
+        font-weight: 500;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background-color: #eff6ff;
+        border: 1px solid #3b82f6;
+        font-size: 12px;
+        transition: all 0.2s ease;
+      }
+
+      .contract-link:hover {
+        background-color: #3b82f6;
+        color: #ffffff;
+        text-decoration: none;
+      }
+
+      .contract-info {
+        flex: 1;
+      }
+
+      .contract-date {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 2px;
+      }
+        
       .next-steps {
         background-color: #eff6ff;
         border: 1px solid #3b82f6;
@@ -5150,7 +5181,7 @@ const documentSigningCompletionMessageHtml = (props) => {
         </div>
       </div>
 
-      <div class="contract-summary">
+<div class="contract-summary">
         <h3>📄 Checked Documents</h3>
         <p><strong>Total Documents:</strong> ${props.contract_list ? props.contract_list.length : 0}</p>
         <ul class="contract-list">
@@ -5159,15 +5190,20 @@ const documentSigningCompletionMessageHtml = (props) => {
               ? props.contract_list
                   .map(
                     (contract) => `
-            <li>${contract.document_name || 'Document'} - Signed on ${contract.date || new Date().toLocaleDateString()}</li>
+            <li>
+              <div class="contract-info">
+                <div>${contract.document_name || 'Document'}</div>
+                <div class="contract-date">Signed on ${contract.date || new Date().toLocaleDateString()}</div>
+              </div>
+              ${contract.document_url ? `<a href="${contract.document_url}" class="contract-link" target="_blank">View Document</a>` : '<span class="contract-link" style="opacity: 0.5; cursor: not-allowed;">No Link Available</span>'}
+            </li>
           `
                   )
                   .join("")
-              : '<li>No contracts found</li>'
+              : '<li><div class="contract-info">No contracts found</div></li>'
           }
         </ul>
       </div>
-
       <div class="next-steps">
         <h3>📋 Next Steps</h3>
         <ul>
