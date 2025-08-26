@@ -669,15 +669,18 @@ const advanceSearchingQuery = async (request, response) => {
       referenceDateEnds,
       result
     );
+    console.log({ filteredEvents });
     const checkingItem = await returnSerialNumberUsedInEvent({
       renderingData: filteredEvents,
       group: group,
     });
+    console.log({ checkingItem });
     const serialNumbers = [...checkingItem];
     const eventInventory = await checkEventInventoryActivity({
       filteredEvents,
       group,
     });
+    console.log({ eventInventory });
     const sqlItemInfoAvailable = await returnItemsInfoInUsedInEvents({
       serialNumbers,
       companySqlId,
@@ -687,14 +690,14 @@ const advanceSearchingQuery = async (request, response) => {
       brand,
       category,
     });
-
+    console.log({ sqlItemInfoAvailable });
     const checkPlannedEventInventory = await checkPlannedEventInventoryActivity(
       {
         events: filteredEvents,
         group: group,
       }
     );
-
+    console.log({ checkPlannedEventInventory });
     const displayPlannedEventInventoryData = await displayPlannedEventInventory(
       {
         checkPlannedEventInventory,
@@ -705,6 +708,33 @@ const advanceSearchingQuery = async (request, response) => {
         category,
       }
     );
+    console.log({ displayPlannedEventInventoryData });
+    
+    // Check if any inventory data is available
+    const hasInventoryData = (
+      (sqlItemInfoAvailable && sqlItemInfoAvailable.length > 0) ||
+      (eventInventory && eventInventory.length > 0) ||
+      (displayPlannedEventInventoryData && displayPlannedEventInventoryData.length > 0)
+    );
+    
+    if (!hasInventoryData) {
+      return response.status(200).json({
+        ok: true,
+        msg: "There is no availability for the item checked for the period of time",
+        advanceSearchResult: [],
+        events: [],
+        plannedInventoryToUseInEvents: [],
+        period: {
+          start: date_start,
+          end: date_end,
+        },
+        availability: {
+          status: "no_availability",
+          message: "No inventory items are available for the specified period and criteria"
+        }
+      });
+    }
+    
     return response.status(201).json({
       ok: true,
       advanceSearchResult: sqlItemInfoAvailable,
