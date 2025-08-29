@@ -73,7 +73,7 @@ const insertingRecordInEventRefactored = async (request, response) => {
         ? AS activity,
         ? AS event,
         ? AS payment_id
-      FROM item_invt AS ii
+      FROM item_inv AS ii
       JOIN consumer_info AS ci ON ci.email = ?
       WHERE ii.item_group = ? AND ii.category_name = ? AND ii.serial_number = ?`;
 
