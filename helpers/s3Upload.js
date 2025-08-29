@@ -76,14 +76,6 @@ const uploadPdfToS3 = async (file, options) => {
     if (file && file.path) {
       await unlinkFile(file.path).catch(console.error);
     }
-    console.error('S3 Upload Error:', {
-      error: error.message,
-      code: error.code,
-      statusCode: error.statusCode,
-      requestId: error.$metadata?.requestId,
-      file: file?.originalname,
-      options
-    });
     throw error;
   }
 };
