@@ -722,7 +722,6 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
   response
 ) => {
   try {
-    let resultAffectedRows = [];
     const connection = getConnection();
     // const cache_connection = await clientRedis();
     const {
@@ -731,58 +730,82 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
       companyId,
       update_at,
     } = request.body;
+
     const company_id = companyId;
     const groupingDevicesFromNoSQLParsed = JSON.parse(groupingDevicesFromNoSQL);
     const allInventoryOfEventParsed = JSON.parse(allInventoryOfEvent);
-    const query = ` UPDATE
-                    item_inv
-                    SET
-                    warehouse = true,
-                    status =?,
-                    update_at =?
-                    WHERE
-                    serial_number =?
-                    and category_name = ?
-                    and item_group = ?
-                    and company_id = ?;`;
-    for (let data of allInventoryOfEventParsed) {
-      if (groupingDevicesFromNoSQLParsed[data.serial_number]) {
-        const values = [
-          groupingDevicesFromNoSQLParsed[data.serial_number].at(-1).status,
-          update_at,
-          data.serial_number,
-          data.category_name,
-          data.item_group,
-          company_id,
-        ];
-        const [result] = await connection.execute(query, values);
-        resultAffectedRows = [...resultAffectedRows, result.affectedRows];
-      } else {
-        const values = [
-          data.status,
-          update_at,
-          data.serial_number,
-          data.category_name,
-          data.item_group,
-          company_id,
-        ];
-        const [result] = await connection.execute(query, values);
-        resultAffectedRows = [...resultAffectedRows, result.affectedRows];
-      }
+
+    if (!allInventoryOfEventParsed || allInventoryOfEventParsed.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "No inventory data provided",
+      });
     }
+
+    // Process in smaller batches to avoid parameter limits
+    const BATCH_SIZE = 100;
+    let totalAffectedRows = 0;
+
+    for (let i = 0; i < allInventoryOfEventParsed.length; i += BATCH_SIZE) {
+      const batch = allInventoryOfEventParsed.slice(i, i + BATCH_SIZE);
+
+      // Create IN clause for serial numbers
+      const serialNumbers = batch.map((data) => data.serial_number);
+      const placeholders = serialNumbers.map(() => "?").join(",");
+
+      // Build CASE statement for status updates
+      const statusCases = batch
+        .map(() => "WHEN serial_number = ? THEN ?")
+        .join(" ");
+
+      // Prepare values in correct order: [caseValues, company_id, serialNumbers]
+      const values = [];
+
+      // Add CASE values first (serial_number, status pairs)
+      batch.forEach((data) => {
+        const status = groupingDevicesFromNoSQLParsed[data.serial_number]
+          ? groupingDevicesFromNoSQLParsed[data.serial_number].at(-1).status
+          : data.status;
+        values.push(data.serial_number, status);
+      });
+
+      // Add WHERE clause values
+      values.push(company_id);
+      values.push(...serialNumbers);
+
+      const bulkQuery = `
+        UPDATE item_inv 
+        SET 
+          warehouse = 1,
+          status = CASE 
+            ${statusCases}
+            ELSE status 
+          END,
+          update_at = ${update_at}
+        WHERE 
+          company_id = ? 
+          AND serial_number IN (${placeholders})
+      `;
+      const [result] = await connection.execute(bulkQuery, values);
+      totalAffectedRows += result.affectedRows;
+    }
+
     // cache_connection
     //   .promise()
     //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
     // cache_connection
     //   .promise()
     //   .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
-    return response.status(201)?.json({
+
+    return response.status(201).json({
       ok: true,
-      // items: result,
+      affectedRows: totalAffectedRows,
+      msg: `Successfully updated ${totalAffectedRows} items`,
     });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
+    console.error("Stack:", error.stack);
+    return response.status(500).json({
       ok: false,
       msg: `${error.message}`,
     });
@@ -822,54 +845,86 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
 ) => {
   try {
     const connection = getConnection();
-    let finalResult = [];
     const {
       groupingDevicesFromNoSQL,
       allInventoryOfEvent,
       eventId,
       update_at,
     } = request.body;
+
     const groupingDevicesFromNoSQLParsed = JSON.parse(groupingDevicesFromNoSQL);
     const allInventoryOfEventParsed = JSON.parse(allInventoryOfEvent);
     const event_id = eventId;
     const updated_at = update_at;
-    const query = `
-    UPDATE item_inv_assigned_event iiae
-    JOIN item_inv ii ON iiae.item_id = ii.item_id
-    SET iiae.status = ?, iiae.condition = ?, iiae.updated_at = ?, active = false
-                WHERE ii.serial_number = ?
-                AND iiae.event_id = ?;
-                    `;
-    for (let data of allInventoryOfEventParsed) {
-      if (groupingDevicesFromNoSQLParsed[data.serial_number]) {
-        const values = [
-          groupingDevicesFromNoSQLParsed[data.serial_number].at(-1).status,
-          groupingDevicesFromNoSQLParsed[data.serial_number].at(-1).status,
-          updated_at,
-          data.serial_number,
-          event_id,
-        ];
-        const [result] = await connection.execute(query, values);
-        finalResult = [...finalResult, result];
-      } else {
-        const values = [
-          data.status,
-          data.condition,
-          updated_at,
-          data.serial_number,
-          event_id,
-        ];
-        const [result] = await connection.execute(query, values);
-        finalResult = [...finalResult, result];
-      }
+
+    if (!allInventoryOfEventParsed || allInventoryOfEventParsed.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "No inventory data provided",
+      });
     }
-    return response.status(201)?.json({
+
+    // Process in batches of 500 items to avoid query size limits
+    const BATCH_SIZE = 500;
+    let totalAffectedRows = 0;
+
+    for (let i = 0; i < allInventoryOfEventParsed.length; i += BATCH_SIZE) {
+      const batch = allInventoryOfEventParsed.slice(i, i + BATCH_SIZE);
+
+      // Build CASE statements for bulk update
+      const statusCases = [];
+      const serialNumbers = [];
+      const categoryNames = [];
+      const itemGroups = [];
+      const values = [updated_at, event_id];
+
+      batch.forEach((data) => {
+        const status = groupingDevicesFromNoSQLParsed[data.serial_number]
+          ? groupingDevicesFromNoSQLParsed[data.serial_number].at(-1).status
+          : data.status;
+
+        statusCases.push(`WHEN serial_number = ? THEN ?`);
+        serialNumbers.push(data.serial_number);
+        values.push(data.serial_number, status);
+      });
+
+      // Add parameters for WHERE clause
+      const placeholders = batch.map(() => "?").join(", ");
+      batch.forEach((data) => {
+        values.push(data.serial_number);
+      });
+
+      const bulkQuery = `
+        UPDATE item_inv_assigned_event iiae
+        JOIN item_inv ii ON iiae.item_id = ii.item_id
+        SET 
+          iiae.status = CASE ii.serial_number 
+            ${statusCases.join(" ")} 
+            ELSE iiae.status 
+          END,
+          iiae.condition = CASE ii.serial_number 
+            ${statusCases.join(" ")} 
+            ELSE iiae.condition 
+          END,
+          iiae.updated_at = ?,
+          active = false
+        WHERE 
+          iiae.event_id = ? AND
+          ii.serial_number IN (${placeholders})
+      `;
+
+      const [result] = await connection.execute(bulkQuery, values);
+      totalAffectedRows += result.affectedRows;
+    }
+
+    return response.status(201).json({
       ok: true,
-      // items: finalResult,
+      affectedRows: totalAffectedRows,
+      msg: `Successfully updated ${totalAffectedRows} items`,
     });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({
+    return response.status(500).json({
       ok: false,
       msg: `${error.message}`,
     });
@@ -1946,7 +2001,6 @@ const updateAllItemsInInventory = async (request, response) => {
       update_at: update_at,
       warehouse: warehouse,
       supplier_info: supplier_info ?? null,
-
     };
 
     const keys = Object.keys(queryToUpdateParams);
@@ -2928,6 +2982,7 @@ const filterSuppliersInfoItems = async (request, response) => {
     });
   }
 };
+
 module.exports = {
   checkingIfCompanyHasInventory,
   checkingInventoryCurrentState,
