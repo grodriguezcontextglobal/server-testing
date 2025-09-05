@@ -758,7 +758,7 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
         .map(() => "WHEN serial_number = ? THEN ?")
         .join(" ");
 
-      // Prepare values in correct order: [caseValues, company_id, serialNumbers]
+      // Prepare values in correct order: [caseValues, update_at, company_id, serialNumbers]
       const values = [];
 
       // Add CASE values first (serial_number, status pairs)
@@ -769,6 +769,9 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
         values.push(data.serial_number, status);
       });
 
+      // Add update_at parameter
+      values.push(update_at);
+      
       // Add WHERE clause values
       values.push(company_id);
       values.push(...serialNumbers);
@@ -781,11 +784,12 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
             ${statusCases}
             ELSE status 
           END,
-          update_at = ${update_at}
+          update_at = ?
         WHERE 
           company_id = ? 
           AND serial_number IN (${placeholders})
       `;
+      
       const [result] = await connection.execute(bulkQuery, values);
       totalAffectedRows += result.affectedRows;
     }
@@ -820,7 +824,7 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
     const query = `
     UPDATE item_inv_assigned_event iiae
     JOIN item_inv ii ON iiae.item_id = ii.item_id
-    SET iiae.status = ?, iiae.condition = ?, iiae.updated_at = ?, active = false
+    SET iiae.status = ?, iiae.condition = ?, iiae.updated_at = ?, active = 0
                 WHERE ii.serial_number = ?
                 AND iiae.event_id = ?;
                     `;
