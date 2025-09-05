@@ -31,10 +31,24 @@ const configureMiddleware = (app) => {
     // Handle pre-flight requests
     app.options("*", cors(corsOptions));
     app.use(compression());
+    
+    // Route-specific high JSON limits (100MB) for bulk operations
+    const highLimitRoutes = [
+        '/api/db_event/device-final-status-refactored',
+        '/api/db_event/returning-item-refactored',
+        '/api/db_record/inserting-record-refactored'
+    ];
+    
+    // Apply 100MB limits to specific routes
+    highLimitRoutes.forEach(route => {
+        app.use(route, express.json({ limit: '100mb' }));
+        app.use(route, express.urlencoded({ limit: '100mb', extended: true }));
+    });
+    
+    // Default JSON limits (50MB) for all other routes
     app.use(express.json({ limit: '50mb' }));
     app.use(express.urlencoded({ limit: '50mb', extended: true }));
     app.use(express.static("public"));
-
 };
 
 // Route configuration
