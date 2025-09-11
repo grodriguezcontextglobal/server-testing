@@ -4570,22 +4570,6 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
         <p>Please check the attached Excel spreadsheet for the complete list of returned items including serial numbers, item groups, and status information.</p>
       </div>
 
-      <div style="background-color: #f3f4f6; padding: 16px; border-radius: 8px; margin: 20px 0;">
-        <h3 style="color: #374151; margin: 0 0 8px 0; font-size: 16px;">📝 Next Steps</h3>
-        <ul style="color: #4b5563; margin: 8px 0; padding-left: 20px;">
-          <li>Review the attached Excel file for detailed item information</li>
-          <li>Verify the physical return of all listed items</li>
-          <li>Update inventory status in the system</li>
-          <li>Process any applicable refunds or deposits</li>
-          <li>Document the return in the transaction log</li>
-          ${
-            props.supplierInfo && props.supplierInfo.companyName
-              ? "<li>Contact the renter if any follow-up is required</li>"
-              : ""
-          }
-        </ul>
-      </div>
-
       <p style="font-size: 14px; color: #6b7280; font-style: italic;">This is an automated notification. Please do not reply to this email. For any questions or concerns, please contact the system administrator.</p>
 
       <div class="footer">
