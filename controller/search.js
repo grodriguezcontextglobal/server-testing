@@ -359,394 +359,1044 @@ const moreDeviceTransaction = async (req, res) => {
   }
 };
 
-const filterEventsByDate = (referenceStartStr, referenceEndStr, events) => {
-  // Create reference moments
-  const refStart = moment(referenceStartStr, "YYYY-MM-DD").startOf("day");
-  const refEnd = moment(referenceEndStr, "YYYY-MM-DD").endOf("day");
-  // Define the extended period: 5 days before refStart and 5 days after refEnd
-  const periodStart = refStart.clone().subtract(5, "days");
-  const periodEnd = refEnd.clone().add(5, "days");
-
-  // Process events: Here we filter events that overlap with the extended period.
-  // You can add additional status labeling if needed.
-  return events
-    .map((event) => {
-      const {
-        event: eventName,
-        startTime,
-        endTime,
-        inventory,
-        eventId,
-        companyId,
-      } = event;
-
-      // Convert event times to moment objects
-      const eventStart = moment(startTime);
-      const eventEnd = moment(endTime);
-
-      // If the event ends before the extended period starts or starts after it ends,
-      // then skip this event.
-      if (eventEnd.isBefore(periodStart) || eventStart.isAfter(periodEnd)) {
-        return null;
-      }
-
-      // Optionally, determine a status based on the event's position relative to the reference period.
-      let status = "";
-      if (eventStart.isBefore(refStart) && eventEnd.isAfter(refEnd)) {
-        status = "Spans entire reference period";
-      } else if (
-        eventStart.isBefore(refStart) &&
-        eventEnd.isBetween(refStart, refEnd, null, "[]")
-      ) {
-        status = "Started before but ends during reference period";
-      } else if (
-        eventStart.isBetween(refStart, refEnd, null, "[]") &&
-        eventEnd.isAfter(refEnd)
-      ) {
-        status = "Starts during but ends after reference period";
-      } else if (
-        eventStart.isBetween(refStart, refEnd, null, "[]") &&
-        eventEnd.isBetween(refStart, refEnd, null, "[]")
-      ) {
-        status = "Occurs entirely within reference period";
-      } else {
-        status = "Within extended period";
-      }
-
-      return { eventName, status, inventory, eventId, companyId };
-    })
-    .filter(Boolean); // Remove any null values (i.e. events outside the extended period)
-};
-
-const returnSerialNumberUsedInEvent = async ({ renderingData, group }) => {
-  const result = new Set();
-  let collection = [];
-  for (let data of renderingData) {
-    const deviceInfo = await ReceiversPool.find(
-      {
-        company: data.companyId,
-        eventSelected: data.eventName,
-      },
-      { device: 1 }
-    ).lean();
-    if (deviceInfo.length > 0) {
-      deviceInfo.forEach((device) => result.add(device.device));
-    }
-  }
-  collection = [...collection, ...Array.from(result)];
-  return collection;
-};
-
-const returnItemsInfoInUsedInEvents = async ({
-  serialNumbers,
-  companySqlId,
-  dateRef2,
-  location = null,
-  group = null,
-  brand = null,
-  category = null,
-}) => {
-  const connection = getConnection();
-  // const cache_connection = await clientRedis();
-  // const cacheKey = `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers.join(
-  //   ","
-  // )}`;
-  // const cachedData = await cache_connection.get(cacheKey);
-
-  // if (cachedData) {
-  //   return JSON.parse(cachedData);
-  // }
-
-  // Start building the base query and parameter array
-  let query = "SELECT * FROM item_inv WHERE company_id = ?";
-  const params = [companySqlId];
-
-  // If serialNumbers are provided, add a NOT IN clause
-  if (serialNumbers && serialNumbers.length > 0) {
-    const placeholders = serialNumbers.map(() => "?").join(", ");
-    query += ` AND serial_number NOT IN (${placeholders})`;
-    params.push(...serialNumbers);
-  }
-
-  // Add optional filters dynamically
-  if (location !== null) {
-    query += " AND location = ?";
-    params.push(location);
-  }
-  if (group !== null) {
-    query += " AND item_group = ?"; // Wrap group with backticks since it's a reserved word
-    params.push(group);
-  }
-  if (brand !== null) {
-    query += " AND brand = ?";
-    params.push(brand);
-  }
-  if (category !== null) {
-    query += " AND category_name = ?";
-    params.push(category);
-  }
-
+const inventoryQuery = async (payload) => {
   try {
-    const [result] = await connection.execute(query, params);
-    // Cache the result with a 60-second expiry
-    // await cache_connection.set(cacheKey, JSON.stringify(result));
-    // await cache_connection.expire(cacheKey, 60);
-    return result;
-  } catch (error) {
-    console.error("Database error:", error);
-    return [];
-  }
-};
-
-const checkEventInventoryActivity = async ({ filteredEvents, group }) => {
-  const result = new Map();
-  for (let data of filteredEvents) {
-    const deviceInfo = await ReceiversPool.find(
-      {
-        company: data.companyId,
-        eventSelected: data.eventName,
-      },
-      { type: 1 }
-    ).lean();
-    if (deviceInfo.length > 0) {
-      const groupingInfo = groupBy(deviceInfo, "type");
-      if (group) {
-        result.set(data.eventId, {
-          type: group,
-          count: groupingInfo[group].length,
-        });
-      } else {
-        result.set(data.eventId, {
-          ...Object.keys(groupingInfo).map((key) => ({
-            type: key,
-            count: groupingInfo[key].length,
-          })),
-        });
-      }
-    }
-  }
-  return result;
-};
-
-const checkPlannedEventInventoryActivity = async ({ events, group }) => {
-  const result = new Map();
-  for (let data of events) {
-    const { inventory } = data;
-    if (group) {
-      const foundGroup = inventory.find((item) => item.group === group);
-      if (foundGroup) {
-        if (!result.has(group)) {
-          result.set(group, Number(foundGroup.quantity));
-        } else {
-          result.set(
-            group,
-            Number(result.get(group)) + Number(foundGroup.quantity)
-          );
-        }
-      }
-    } else {
-      for (let item of inventory) {
-        if (!result.has(item.group)) {
-          result.set(item.group, Number(item.quantity));
-        } else {
-          result.set(
-            item.group,
-            result.get(item.group) + Number(item.quantity)
-          );
-        }
-      }
-    }
-  }
-  return result;
-};
-
-const displayPlannedEventInventory = async ({
-  checkPlannedEventInventory,
-  companySqlId,
-  location = null,
-  group = null,
-  brand = null,
-  category = null,
-  dateRef2 = 0o0,
-}) => {
-  const connection = getConnection();
-  const formattedResult = new Set();
-  try {
-    if (checkPlannedEventInventory.size === 0) {
-      let query =
-        "SELECT item_group, COUNT(*) FROM item_inv WHERE company_id = ?";
-      const params = [companySqlId];
-
-      if (location !== null) {
-        query += " AND location = ?";
-        params.push(location);
-      }
-      if (group !== null) {
-        query += " AND item_group = ?"; // Wrap group with backticks since it's a reserved word
-        params.push(group);
-      }
-      if (brand !== null) {
-        query += " AND brand = ?";
-        params.push(brand);
-      }
-      if (category !== null) {
-        query += " AND category_name = ?";
-        params.push(category);
-      }
-
-      query += " GROUP BY item_group";
-      const [results] = await connection.execute(query, params);
-      for (let data of results) {
-        formattedResult.add({
-          group: data.item_group,
-          available: data["count(*)"],
-          notAvailable: 0,
-        });
-      }
-      return new Array(...formattedResult);
-    }
-    const result = new Map();
-    for (let [key, value] of checkPlannedEventInventory) {
-      let query =
-        "SELECT COUNT(*) FROM item_inv WHERE company_id = ? AND item_group = ?";
-      const params = [companySqlId, key];
-      const [results] = await connection.execute(query, params);
-      result.set(key, {
-        available: Number(results[0]["count(*)"]) - Number(value),
-        notAvailable: Number(value),
-      });
-    }
-    for (let [key, value] of result) {
-      formattedResult.add({
-        group: key,
-        available: value.available,
-        notAvailable: value.notAvailable,
-      });
-    }
-    return new Array(...formattedResult);
-  } catch (error) {
-    return [];
-  }
-};
-const advanceSearchingQuery = async (request, response) => {
-  try {
-    const companyId = request.query.company_id;
-    const date_start = request.query.date_start;
-    const date_end = request.query.date_end;
-    const location =
-      request.query.location !== "undefined" ? request.query.location : null;
-    const group =
-      request.query.group !== "undefined" ? request.query.group : null;
-    const brand =
-      request.query.brand !== "undefined" ? request.query.brand : null;
-    const category =
-      request.query.category !== "undefined" ? request.query.category : null;
-    const companySqlId = request.query.company_sql_id;
-    const eventInfo = await Event.find({
-      company_id: companyId,
-      active: true,
-      type: "event",
-    }).lean();
-    const result = [];
-    const referenceDateStarts = moment(date_start, "YYYY-MM-DD").startOf("day");
-    const referenceDateEnds = moment(date_end, "YYYY-MM-DD").startOf("day");
-    for (let data of eventInfo) {
-      const startTime = new Date(data.eventInfoDetail.dateBegin).getTime();
-      const endTime = new Date(data.eventInfoDetail.dateEnd).getTime();
-      result.push({
-        referenceDateStarts,
-        referenceDateEnds,
-        event: data.eventInfoDetail.eventName,
-        startTime,
-        endTime,
-        inventory: data.deviceSetup,
-        eventId: `${data._id}`,
-        companyId: `${data.company_id}`,
-      });
-    }
-    const filteredEvents = await filterEventsByDate(
-      referenceDateStarts,
-      referenceDateEnds,
-      result
-    );
-    console.log({ filteredEvents });
-    const checkingItem = await returnSerialNumberUsedInEvent({
-      renderingData: filteredEvents,
-      group: group,
-    });
-    console.log({ checkingItem });
-    const serialNumbers = [...checkingItem];
-    const eventInventory = await checkEventInventoryActivity({
-      filteredEvents,
-      group,
-    });
-    console.log({ eventInventory });
-    const sqlItemInfoAvailable = await returnItemsInfoInUsedInEvents({
-      serialNumbers,
-      companySqlId,
-      date_start,
-      location,
-      group,
+    const {
+      category_name,
+      item_group,
       brand,
-      category,
-    });
-    console.log({ sqlItemInfoAvailable });
-    const checkPlannedEventInventory = await checkPlannedEventInventoryActivity(
-      {
-        events: filteredEvents,
-        group: group,
+      location,
+      company_sql_id,
+      ownership,
+    } = payload;
+    const connection = getConnection();
+
+    // Build dynamic query with proper parameterization
+    let query = `SELECT category_name, item_group, location, current_location, image_url, serial_number, main_warehouse, return_date, brand, cost, status FROM item_inv WHERE ownership = ? ${ownership === "Rent" ? "AND return_date IS NOT NULL AND " : "AND"} company_id = ?`;
+    const params = [ownership, company_sql_id];
+
+    if (category_name && category_name !== "undefined") {
+      query += ` AND category_name = ?`;
+      params.push(category_name);
+    }
+    if (item_group && item_group !== "undefined") {
+      query += ` AND item_group = ?`;
+      params.push(item_group);
+    }
+    if (brand && brand !== "undefined") {
+      query += ` AND brand = ?`;
+      params.push(brand);
+    }
+    if (location && location !== "undefined") {
+      query += ` AND location = ?`;
+      params.push(location);
+    }
+
+    // Add ORDER BY to sort by location
+    query += ` ORDER BY location ASC, item_group ASC, brand ASC`;
+
+    const [results] = await connection.execute(query, params);
+
+    // Group results by location for better organization
+    const groupedByLocation = results.reduce((acc, item) => {
+      const loc = item.location || "unknown_location";
+      if (!acc[loc]) {
+        acc[loc] = {
+          location: loc,
+          items: [],
+          total_count: 0,
+        };
       }
+      acc[loc].items.push(item);
+      acc[loc].total_count += 1;
+      return acc;
+    }, {});
+
+    // Convert to array and sort by location name
+    const sortedLocations = Object.values(groupedByLocation).sort((a, b) =>
+      a.location.localeCompare(b.location)
     );
-    console.log({ checkPlannedEventInventory });
-    const displayPlannedEventInventoryData = await displayPlannedEventInventory(
-      {
-        checkPlannedEventInventory,
-        companySqlId,
-        location,
-        group,
-        brand,
-        category,
-      }
+
+    console.log(
+      `Found ${results.length} ${ownership} inventory items across ${sortedLocations.length} locations`
     );
-    console.log({ displayPlannedEventInventoryData });
-    
-    // Check if any inventory data is available
-    const hasInventoryData = (
-      (sqlItemInfoAvailable && sqlItemInfoAvailable.length > 0) ||
-      (eventInventory && eventInventory.length > 0) ||
-      (displayPlannedEventInventoryData && displayPlannedEventInventoryData.length > 0)
-    );
-    
-    if (!hasInventoryData) {
-      return response.status(200).json({
-        ok: true,
-        msg: "There is no availability for the item checked for the period of time",
-        advanceSearchResult: [],
-        events: [],
-        plannedInventoryToUseInEvents: [],
-        period: {
-          start: date_start,
-          end: date_end,
-        },
-        availability: {
-          status: "no_availability",
-          message: "No inventory items are available for the specified period and criteria"
-        }
-      });
+
+    return {
+      total_items: results.length,
+      locations: sortedLocations,
+      raw_results: results,
+    };
+  } catch (error) {
+    console.error("Error in ownedInventoryQuery:", error);
+    return {
+      total_items: 0,
+      locations: [],
+      raw_results: [],
+      error: error.message,
+    };
+  }
+};
+
+const eventInventoryInPeriod = async (payload) => {
+  try {
+    const { company_id, item_group, category_name, brand, date_start, date_end } =
+      payload;
+    const params = {
+      company_id,
+      active: true,
+      "eventInfoDetail.dateBegin": { $gte: date_start, $lte: date_end },
+      type: "event",
+    };
+    if (category_name && category_name !== "undefined") {
+      params["deviceSetup.category"] = category_name;
+    }
+    if (brand && brand !== "undefined") {
+      params["deviceSetup.brand"] = brand;
+    }
+    if (item_group && item_group !== "undefined") {
+      params["deviceSetup.group"] = item_group;
     }
     
-    return response.status(201).json({
-      ok: true,
-      advanceSearchResult: sqlItemInfoAvailable,
-      events: eventInventory,
-      plannedInventoryToUseInEvents: displayPlannedEventInventoryData,
+    const eventList = await Event.find({ ...params })
+      .populate("deviceSetup")
+      .lean();
+    
+    // Group and count devices by category and group
+    const deviceCounts = eventList.reduce((acc, event) => {
+      if (event.deviceSetup && Array.isArray(event.deviceSetup)) {
+        event.deviceSetup.forEach(device => {
+          const category = device.category || "unknown_category";
+          const group = device.group || "unknown_group";
+          const brand = device.brand || "unknown_brand";
+          
+          // Create unique key for grouping
+          const key = `${category}_${group}_${brand}`;
+          
+          if (!acc[key]) {
+            acc[key] = {
+              category: category,
+              group: group,
+              brand: brand,
+              count: 0,
+              events: []
+            };
+          }
+          
+          acc[key].count += device.quantity || 1;
+          acc[key].events.push({
+            event_id: event._id,
+            event_name: event.eventInfoDetail?.eventName || "Unknown Event",
+            date_begin: event.eventInfoDetail?.dateBegin,
+            date_end: event.eventInfoDetail?.dateEnd
+          });
+        });
+      }
+      return acc;
+    }, {});
+    
+    // Convert to array and sort by category, then group
+    const sortedCounts = Object.values(deviceCounts).sort((a, b) => {
+      if (a.category !== b.category) {
+        return a.category.localeCompare(b.category);
+      }
+      return a.group.localeCompare(b.group);
+    });
+    
+    // Calculate totals
+    const totalDevices = sortedCounts.reduce((sum, item) => sum + item.count, 0);
+    const totalEvents = eventList.length;
+    
+    console.log(`Found ${totalDevices} devices across ${totalEvents} events in period`);
+    
+    return {
+      total_devices: totalDevices,
+      total_events: totalEvents,
+      device_counts: sortedCounts,
+      period: {
+        date_start,
+        date_end
+      },
+      raw_events: eventList
+    };
+  } catch (error) {
+    console.error("Error in eventInventoryInPeriod:", error);
+    return {
+      total_devices: 0,
+      total_events: 0,
+      device_counts: [],
+      period: { date_start: payload.date_start, date_end: payload.date_end },
+      raw_events: [],
+      error: error.message
+    };
+  }
+};
+
+const subtractRentedInventoryPerDate = async (payload) => {
+  try {
+    console.log('Processing rental inventory for date analysis:', payload);
+    
+    const { raw_results, date_start, date_end, total_items, locations } = payload;
+    
+    // Convert date strings to Date objects for comparison
+    const periodStart = new Date(date_start);
+    const periodEnd = new Date(date_end);
+    
+    // Initialize counters
+    const analysis = {
+      before_period: [],
+      within_period: [],
+      after_period: [],
+      no_return_date: [],
+      summary: {
+        before_count: 0,
+        within_count: 0,
+        after_count: 0,
+        no_return_date_count: 0,
+        total_analyzed: 0
+      },
       period: {
         start: date_start,
-        end: date_end,
+        end: date_end
+      }
+    };
+    
+    // Analyze each rental item
+    raw_results.forEach((item, index) => {
+      const returnDate = item.return_date ? new Date(item.return_date) : null;
+      
+      const itemInfo = {
+        item_id: item.item_id,
+        serial_number: item.serial_number,
+        item_group: item.item_group,
+        brand: item.brand,
+        category_name: item.category_name,
+        location: item.location,
+        return_date: item.return_date,
+        cost: item.cost,
+        status: item.status
+      };
+      
+      if (!returnDate) {
+        // No return date specified
+        analysis.no_return_date.push(itemInfo);
+        analysis.summary.no_return_date_count++;
+      } else if (returnDate < periodStart) {
+        // Return date is before the period
+        analysis.before_period.push(itemInfo);
+        analysis.summary.before_count++;
+      } else if (returnDate >= periodStart && returnDate <= periodEnd) {
+        // Return date is within the period
+        analysis.within_period.push(itemInfo);
+        analysis.summary.within_count++;
+      } else {
+        // Return date is after the period
+        analysis.after_period.push(itemInfo);
+        analysis.summary.after_count++;
+      }
+    });
+    
+    analysis.summary.total_analyzed = raw_results.length;
+    
+    // Group by location for detailed breakdown
+    const locationBreakdown = {};
+    locations.forEach(loc => {
+      locationBreakdown[loc.location] = {
+        location: loc.location,
+        total_items: loc.total_count,
+        before_period: 0,
+        within_period: 0,
+        after_period: 0,
+        no_return_date: 0
+      };
+      
+      loc.items.forEach(item => {
+        const returnDate = item.return_date ? new Date(item.return_date) : null;
+        
+        if (!returnDate) {
+          locationBreakdown[loc.location].no_return_date++;
+        } else if (returnDate < periodStart) {
+          locationBreakdown[loc.location].before_period++;
+        } else if (returnDate >= periodStart && returnDate <= periodEnd) {
+          locationBreakdown[loc.location].within_period++;
+        } else {
+          locationBreakdown[loc.location].after_period++;
+        }
+      });
+    });
+    
+    analysis.location_breakdown = Object.values(locationBreakdown);
+    
+    // Log summary
+    console.log(`Rental Inventory Analysis for period ${date_start} to ${date_end}:`);
+    console.log(`- Items returning before period: ${analysis.summary.before_count}`);
+    console.log(`- Items returning within period: ${analysis.summary.within_count}`);
+    console.log(`- Items returning after period: ${analysis.summary.after_count}`);
+    console.log(`- Items with no return date: ${analysis.summary.no_return_date_count}`);
+    console.log(`- Total items analyzed: ${analysis.summary.total_analyzed}`);
+    
+    return analysis;
+  } catch (error) {
+    console.error('Error in subtractRentedInventoryPerDate:', error);
+    return {
+      error: error.message,
+      summary: {
+        before_count: 0,
+        within_count: 0,
+        after_count: 0,
+        no_return_date_count: 0,
+        total_analyzed: 0
+      }
+    };
+  }
+};
+
+const calculateInventoryAvailabilityProjection = async (payload) => {
+  try {
+    const {
+      category_name,
+      item_group,
+      brand,
+      location,
+      date_start,
+      date_end,
+      company_id,
+      company_sql_id,
+    } = payload;
+
+    console.log(`Calculating inventory availability projection for period: ${date_start} to ${date_end}`);
+
+    // Get owned inventory (permanent assets)
+    const ownedInventory = await inventoryQuery({
+      ...payload,
+      ownership: "Permanent",
+    });
+
+    // Get rental inventory and analyze return dates
+    const rentedInventory = await inventoryQuery({
+      ...payload,
+      ownership: "Rent",
+    });
+
+    const rentalAnalysis = await subtractRentedInventoryPerDate({
+      ...rentedInventory,
+      date_start,
+      date_end,
+    });
+
+    // Get event inventory requirements for the period
+    const eventInventory = await eventInventoryInPeriod(payload);
+
+    // Calculate availability by location and item group
+    const availabilityProjection = {};
+
+    // Process owned inventory
+    ownedInventory.locations.forEach(loc => {
+      if (!availabilityProjection[loc.location]) {
+        availabilityProjection[loc.location] = {};
+      }
+
+      loc.items.forEach(item => {
+        const key = `${item.category_name}_${item.item_group}_${item.brand}`;
+        if (!availabilityProjection[loc.location][key]) {
+          availabilityProjection[loc.location][key] = {
+            category: item.category_name,
+            group: item.item_group,
+            brand: item.brand,
+            location: loc.location,
+            owned_count: 0,
+            rental_available_after_period: 0,
+            rental_unavailable_before_within_period: 0,
+            rental_no_return_date: 0,
+            event_demand: 0,
+            total_available: 0,
+            net_availability: 0,
+            restock_needed: false,
+            availability_status: 'sufficient'
+          };
+        }
+        availabilityProjection[loc.location][key].owned_count += 1;
+      });
+    });
+
+    // Process rental analysis
+    if (rentalAnalysis.location_breakdown) {
+      rentalAnalysis.location_breakdown.forEach(locBreakdown => {
+        const location = locBreakdown.location;
+        
+        // Group rental items by category, group, and brand
+        const rentalByType = {};
+        
+        // Items returning AFTER period (AVAILABLE - count in total)
+        rentalAnalysis.after_period.forEach(item => {
+          if (item.location === location) {
+            const key = `${item.category_name}_${item.item_group}_${item.brand}`;
+            if (!rentalByType[key]) rentalByType[key] = { available_after: 0, unavailable_before_within: 0, no_date: 0 };
+            rentalByType[key].available_after += 1;
+          }
+        });
+
+        // Items returning BEFORE or WITHIN period (UNAVAILABLE - exclude from total)
+        rentalAnalysis.before_period.forEach(item => {
+          if (item.location === location) {
+            const key = `${item.category_name}_${item.item_group}_${item.brand}`;
+            if (!rentalByType[key]) rentalByType[key] = { available_after: 0, unavailable_before_within: 0, no_date: 0 };
+            rentalByType[key].unavailable_before_within += 1;
+          }
+        });
+
+        rentalAnalysis.within_period.forEach(item => {
+          if (item.location === location) {
+            const key = `${item.category_name}_${item.item_group}_${item.brand}`;
+            if (!rentalByType[key]) rentalByType[key] = { available_after: 0, unavailable_before_within: 0, no_date: 0 };
+            rentalByType[key].unavailable_before_within += 1;
+          }
+        });
+
+        // Items with no return date (UNAVAILABLE - exclude from total)
+        rentalAnalysis.no_return_date.forEach(item => {
+          if (item.location === location) {
+            const key = `${item.category_name}_${item.item_group}_${item.brand}`;
+            if (!rentalByType[key]) rentalByType[key] = { available_after: 0, unavailable_before_within: 0, no_date: 0 };
+            rentalByType[key].no_date += 1;
+          }
+        });
+
+        // Update availability projection with rental data
+        Object.keys(rentalByType).forEach(key => {
+          if (!availabilityProjection[location]) {
+            availabilityProjection[location] = {};
+          }
+          if (!availabilityProjection[location][key]) {
+            const [category, group, brand] = key.split('_');
+            availabilityProjection[location][key] = {
+              category,
+              group,
+              brand,
+              location,
+              owned_count: 0,
+              rental_available_before_period: 0,
+              rental_available_within_period: 0,
+              rental_unavailable_after_period: 0,
+              rental_no_return_date: 0,
+              event_demand: 0,
+              total_available: 0,
+              net_availability: 0,
+              restock_needed: false,
+              availability_status: 'sufficient'
+            };
+          }
+          
+          availabilityProjection[location][key].rental_available_after_period = rentalByType[key].available_after;
+          availabilityProjection[location][key].rental_unavailable_before_within_period = rentalByType[key].unavailable_before_within;
+          availabilityProjection[location][key].rental_no_return_date = rentalByType[key].no_date;
+        });
+      });
+    }
+
+    // Process event demand
+    if (eventInventory.device_counts) {
+      eventInventory.device_counts.forEach(deviceCount => {
+        // For events, we need to estimate location impact
+        // Since events might not have specific location data, distribute demand across all locations
+        const locations = Object.keys(availabilityProjection);
+        const demandPerLocation = Math.ceil(deviceCount.count / (locations.length || 1));
+        
+        locations.forEach(location => {
+          const key = `${deviceCount.category}_${deviceCount.group}_${deviceCount.brand}`;
+          if (availabilityProjection[location] && availabilityProjection[location][key]) {
+            availabilityProjection[location][key].event_demand += demandPerLocation;
+          }
+        });
+      });
+    }
+
+    // Calculate final availability and recommendations
+    const projectionSummary = {
+      locations: [],
+      overall_summary: {
+        total_locations: 0,
+        total_item_types: 0,
+        sufficient_inventory: 0,
+        restock_needed: 0,
+        critical_shortage: 0
       },
+      period: {
+        start: date_start,
+        end: date_end
+      },
+      chart_data: {
+        availability_by_location: [],
+        inventory_composition: [],
+        demand_vs_supply: []
+      }
+    };
+
+    Object.keys(availabilityProjection).forEach(location => {
+      const locationData = {
+        location,
+        items: [],
+        location_summary: {
+          total_items: 0,
+          available_items: 0,
+          restock_needed: 0,
+          availability_percentage: 0
+        }
+      };
+
+      Object.keys(availabilityProjection[location]).forEach(key => {
+        const item = availabilityProjection[location][key];
+        
+        // Calculate total available inventory (owned + rental items returning AFTER period)
+        item.total_available = item.owned_count + item.rental_available_after_period;
+        
+        // Calculate net availability (available - demand)
+        item.net_availability = item.total_available - item.event_demand;
+        
+        // Determine restock needs and status
+        if (item.net_availability < 0) {
+          item.restock_needed = true;
+          item.availability_status = 'critical_shortage';
+        } else if (item.net_availability < item.event_demand * 0.2) {
+          item.restock_needed = true;
+          item.availability_status = 'low_stock';
+        } else {
+          item.availability_status = 'sufficient';
+        }
+
+        locationData.items.push(item);
+        locationData.location_summary.total_items += 1;
+        
+        if (item.availability_status === 'sufficient') {
+          locationData.location_summary.available_items += 1;
+        } else {
+          locationData.location_summary.restock_needed += 1;
+        }
+      });
+
+      locationData.location_summary.availability_percentage = 
+        locationData.location_summary.total_items > 0 
+          ? Math.round((locationData.location_summary.available_items / locationData.location_summary.total_items) * 100)
+          : 0;
+
+      projectionSummary.locations.push(locationData);
+      
+      // Update overall summary
+      projectionSummary.overall_summary.total_item_types += locationData.location_summary.total_items;
+      projectionSummary.overall_summary.sufficient_inventory += locationData.location_summary.available_items;
+      projectionSummary.overall_summary.restock_needed += locationData.location_summary.restock_needed;
+    });
+
+    projectionSummary.overall_summary.total_locations = Object.keys(availabilityProjection).length;
+
+    // Prepare chart data for client-side visualization
+    projectionSummary.chart_data.availability_by_location = projectionSummary.locations.map(loc => ({
+      location: loc.location,
+      available: loc.location_summary.available_items,
+      restock_needed: loc.location_summary.restock_needed,
+      availability_percentage: loc.location_summary.availability_percentage
+    }));
+
+    projectionSummary.chart_data.inventory_composition = projectionSummary.locations.flatMap(loc => 
+      loc.items.map(item => ({
+        location: item.location,
+        category: item.category,
+        group: item.group,
+        brand: item.brand,
+        owned: item.owned_count,
+        rental_available: item.rental_available_after_period,
+        rental_unavailable: item.rental_unavailable_before_within_period + item.rental_no_return_date,
+        total_available: item.total_available,
+        demand: item.event_demand,
+        net_availability: item.net_availability
+      }))
+    );
+
+    projectionSummary.chart_data.demand_vs_supply = projectionSummary.locations.flatMap(loc => 
+      loc.items.map(item => ({
+        item_key: `${item.category}_${item.group}_${item.brand}`,
+        location: item.location,
+        supply: item.total_available,
+        demand: item.event_demand,
+        surplus_deficit: item.net_availability,
+        status: item.availability_status
+      }))
+    );
+
+    console.log(`Inventory projection completed:`);
+    console.log(`- Total locations analyzed: ${projectionSummary.overall_summary.total_locations}`);
+    console.log(`- Items with sufficient inventory: ${projectionSummary.overall_summary.sufficient_inventory}`);
+    console.log(`- Items needing restock: ${projectionSummary.overall_summary.restock_needed}`);
+
+    return projectionSummary;
+  } catch (error) {
+    console.error('Error in calculateInventoryAvailabilityProjection:', error);
+    return {
+      error: error.message,
+      locations: [],
+      overall_summary: {
+        total_locations: 0,
+        total_item_types: 0,
+        sufficient_inventory: 0,
+        restock_needed: 0,
+        critical_shortage: 0
+      },
+      chart_data: {
+        availability_by_location: [],
+        inventory_composition: [],
+        demand_vs_supply: []
+      }
+    };
+  }
+};
+
+// Update the advanceSearchingQuery to include the availability projection
+const comprehensiveInventoryAnalysis = async (payload) => {
+  try {
+    const {
+      category_name,
+      item_group,
+      brand,
+      location,
+      company_sql_id,
+      date_start,
+      date_end
+    } = payload;
+    
+    console.log('Starting comprehensive inventory analysis...');
+    
+    // Get all inventory (both Permanent and Rent)
+    const permanentInventory = await inventoryQuery({
+      ...payload,
+      ownership: "Permanent",
+    });
+    
+    const rentalInventory = await inventoryQuery({
+      ...payload,
+      ownership: "Rent",
+    });
+    
+    // Analyze rental return dates if date range provided
+    let rentalAnalysis = null;
+    if (date_start && date_end) {
+      rentalAnalysis = await subtractRentedInventoryPerDate({
+        ...rentalInventory,
+        date_start,
+        date_end,
+      });
+    }
+    
+    // Structure the comprehensive analysis
+    const analysis = {
+      summary: {
+        total_permanent_items: permanentInventory.total_items,
+        total_rental_items: rentalInventory.total_items,
+        total_locations: new Set([
+          ...permanentInventory.locations.map(loc => loc.location),
+          ...rentalInventory.locations.map(loc => loc.location)
+        ]).size,
+        analysis_period: date_start && date_end ? { start: date_start, end: date_end } : null
+      },
+      
+      inventory_by_ownership: {
+        permanent: {
+          total_items: permanentInventory.total_items,
+          locations: permanentInventory.locations.map(loc => ({
+            location: loc.location,
+            total_count: loc.total_count,
+            items_by_category: comprehensiveInventoryAnalysis.groupItemsByCategory(loc.items),
+            raw_items: loc.items.map(item => ({
+              serial_number: item.serial_number,
+              location: item.location,
+              current_location: item.current_location,
+              item_group: item.item_group,
+              category_name: item.category_name,
+              brand: item.brand || 'Unknown',
+              image_url: item.image_url,
+              main_warehouse: item.main_warehouse,
+              ownership: 'Permanent'
+            }))
+          }))
+        },
+        
+        rental: {
+          total_items: rentalInventory.total_items,
+          locations: rentalInventory.locations.map(loc => ({
+            location: loc.location,
+            total_count: loc.total_count,
+            items_by_category: comprehensiveInventoryAnalysis.groupItemsByCategory(loc.items),
+            items_by_return_date: comprehensiveInventoryAnalysis.groupRentalItemsByReturnDate(loc.items, date_start, date_end),
+            raw_items: loc.items.map(item => ({
+              serial_number: item.serial_number,
+              location: item.location,
+              current_location: item.current_location,
+              item_group: item.item_group,
+              category_name: item.category_name,
+              brand: item.brand || 'Unknown',
+              return_date: item.return_date,
+              cost: item.cost,
+              status: item.status,
+              image_url: item.image_url,
+              main_warehouse: item.main_warehouse,
+              ownership: 'Rent',
+              return_status: comprehensiveInventoryAnalysis.categorizeReturnDate(item.return_date, date_start, date_end)
+            }))
+          })),
+          
+          return_date_analysis: rentalAnalysis ? {
+            before_period: {
+              count: rentalAnalysis.summary.before_count,
+              items: rentalAnalysis.before_period
+            },
+            within_period: {
+              count: rentalAnalysis.summary.within_count,
+              items: rentalAnalysis.within_period
+            },
+            after_period: {
+              count: rentalAnalysis.summary.after_count,
+              items: rentalAnalysis.after_period
+            },
+            no_return_date: {
+              count: rentalAnalysis.summary.no_return_date_count,
+              items: rentalAnalysis.no_return_date
+            }
+          } : null
+        }
+      },
+      
+      location_summary: comprehensiveInventoryAnalysis.createLocationSummary(permanentInventory.locations, rentalInventory.locations),
+      
+      restock_recommendations: comprehensiveInventoryAnalysis.generateRestockRecommendations(
+        permanentInventory.locations,
+        rentalInventory.locations,
+        rentalAnalysis,
+        date_start,
+        date_end
+      )
+    };
+    
+    console.log(`Comprehensive analysis completed:`);
+    console.log(`- Total permanent items: ${analysis.summary.total_permanent_items}`);
+    console.log(`- Total rental items: ${analysis.summary.total_rental_items}`);
+    console.log(`- Total locations: ${analysis.summary.total_locations}`);
+    
+    return analysis;
+    
+  } catch (error) {
+    console.error('Error in comprehensiveInventoryAnalysis:', error);
+    return {
+      error: error.message,
+      summary: {
+        total_permanent_items: 0,
+        total_rental_items: 0,
+        total_locations: 0
+      },
+      inventory_by_ownership: {
+        permanent: { total_items: 0, locations: [] },
+        rental: { total_items: 0, locations: [], return_date_analysis: null }
+      }
+    };
+  }
+};
+
+// Helper function to group items by category
+comprehensiveInventoryAnalysis.groupItemsByCategory = function(items) {
+  return items.reduce((acc, item) => {
+    const category = item.category_name || 'Unknown';
+    const group = item.item_group || 'Unknown';
+    const brand = item.brand || 'Unknown';
+    
+    const key = `${category}_${group}_${brand}`;
+    
+    if (!acc[key]) {
+      acc[key] = {
+        category_name: category,
+        item_group: group,
+        brand: brand,
+        count: 0,
+        items: []
+      };
+    }
+    
+    acc[key].count += 1;
+    acc[key].items.push({
+      serial_number: item.serial_number,
+      location: item.location,
+      return_date: item.return_date || null
+    });
+    
+    return acc;
+  }, {});
+};
+
+// Helper function to group rental items by return date
+comprehensiveInventoryAnalysis.groupRentalItemsByReturnDate = function(items, dateStart, dateEnd) {
+  const groups = {
+    no_return_date: { count: 0, items: [] },
+    before_period: { count: 0, items: [] },
+    within_period: { count: 0, items: [] },
+    after_period: { count: 0, items: [] },
+    all_dates: {}
+  };
+  
+  items.forEach(item => {
+    const returnDate = item.return_date ? new Date(item.return_date) : null;
+    const itemData = {
+      serial_number: item.serial_number,
+      item_group: item.item_group,
+      category_name: item.category_name,
+      brand: item.brand,
+      return_date: item.return_date,
+      cost: item.cost,
+      status: item.status
+    };
+    
+    if (!returnDate) {
+      groups.no_return_date.count += 1;
+      groups.no_return_date.items.push(itemData);
+    } else {
+      // Group by specific return date
+      const dateKey = returnDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+      if (!groups.all_dates[dateKey]) {
+        groups.all_dates[dateKey] = { count: 0, items: [] };
+      }
+      groups.all_dates[dateKey].count += 1;
+      groups.all_dates[dateKey].items.push(itemData);
+      
+      // Categorize by period if date range provided
+      if (dateStart && dateEnd) {
+        const periodStart = new Date(dateStart);
+        const periodEnd = new Date(dateEnd);
+        
+        if (returnDate < periodStart) {
+          groups.before_period.count += 1;
+          groups.before_period.items.push(itemData);
+        } else if (returnDate >= periodStart && returnDate <= periodEnd) {
+          groups.within_period.count += 1;
+          groups.within_period.items.push(itemData);
+        } else {
+          groups.after_period.count += 1;
+          groups.after_period.items.push(itemData);
+        }
+      }
+    }
+  });
+  
+  return groups;
+};
+
+// Helper function to categorize return date status
+comprehensiveInventoryAnalysis.categorizeReturnDate = function(returnDate, dateStart, dateEnd) {
+  if (!returnDate) return 'no_return_date';
+  if (!dateStart || !dateEnd) return 'unknown_period';
+  
+  const returnDateObj = new Date(returnDate);
+  const periodStart = new Date(dateStart);
+  const periodEnd = new Date(dateEnd);
+  
+  if (returnDateObj < periodStart) return 'before_period';
+  if (returnDateObj >= periodStart && returnDateObj <= periodEnd) return 'within_period';
+  return 'after_period';
+};
+
+// Helper function to create location summary
+comprehensiveInventoryAnalysis.createLocationSummary = function(permanentLocations, rentalLocations) {
+  const locationMap = new Map();
+  
+  // Process permanent inventory locations
+  permanentLocations.forEach(loc => {
+    if (!locationMap.has(loc.location)) {
+      locationMap.set(loc.location, {
+        location: loc.location,
+        permanent_count: 0,
+        rental_count: 0,
+        total_count: 0,
+        categories: new Set(),
+        item_groups: new Set(),
+        brands: new Set()
+      });
+    }
+    
+    const locData = locationMap.get(loc.location);
+    locData.permanent_count = loc.total_count;
+    locData.total_count += loc.total_count;
+    
+    loc.items.forEach(item => {
+      locData.categories.add(item.category_name || 'Unknown');
+      locData.item_groups.add(item.item_group || 'Unknown');
+      locData.brands.add(item.brand || 'Unknown');
+    });
+  });
+  
+  // Process rental inventory locations
+  rentalLocations.forEach(loc => {
+    if (!locationMap.has(loc.location)) {
+      locationMap.set(loc.location, {
+        location: loc.location,
+        permanent_count: 0,
+        rental_count: 0,
+        total_count: 0,
+        categories: new Set(),
+        item_groups: new Set(),
+        brands: new Set()
+      });
+    }
+    
+    const locData = locationMap.get(loc.location);
+    locData.rental_count = loc.total_count;
+    locData.total_count += loc.total_count;
+    
+    loc.items.forEach(item => {
+      locData.categories.add(item.category_name || 'Unknown');
+      locData.item_groups.add(item.item_group || 'Unknown');
+      locData.brands.add(item.brand || 'Unknown');
+    });
+  });
+  
+  // Convert to array and format
+  return Array.from(locationMap.values()).map(loc => ({
+    location: loc.location,
+    permanent_count: loc.permanent_count,
+    rental_count: loc.rental_count,
+    total_count: loc.total_count,
+    categories: Array.from(loc.categories),
+    item_groups: Array.from(loc.item_groups),
+    brands: Array.from(loc.brands),
+    diversity_score: loc.categories.size + loc.item_groups.size + loc.brands.size
+  })).sort((a, b) => b.total_count - a.total_count);
+};
+
+// Helper function to generate restock recommendations
+comprehensiveInventoryAnalysis.generateRestockRecommendations = function(
+  permanentLocations, 
+  rentalLocations, 
+  rentalAnalysis, 
+  dateStart, 
+  dateEnd
+) {
+  const recommendations = [];
+  
+  // Analyze each location
+  const allLocations = new Set([
+    ...permanentLocations.map(loc => loc.location),
+    ...rentalLocations.map(loc => loc.location)
+  ]);
+  
+  allLocations.forEach(location => {
+    const permLoc = permanentLocations.find(loc => loc.location === location);
+    const rentLoc = rentalLocations.find(loc => loc.location === location);
+    
+    const permanentCount = permLoc ? permLoc.total_count : 0;
+    const rentalCount = rentLoc ? rentLoc.total_count : 0;
+    const totalInventory = permanentCount + rentalCount;
+    
+    // Calculate rental availability if analysis provided
+    let availableRentals = rentalCount;
+    if (rentalAnalysis && rentalAnalysis.location_breakdown) {
+      const locAnalysis = rentalAnalysis.location_breakdown.find(loc => loc.location === location);
+      if (locAnalysis) {
+        // Items returning after period are available
+        availableRentals = locAnalysis.after_period + locAnalysis.no_return_date;
+      }
+    }
+    
+    const effectiveInventory = permanentCount + availableRentals;
+    
+    // Generate recommendations based on inventory levels
+    let recommendation = {
+      location: location,
+      permanent_inventory: permanentCount,
+      rental_inventory: rentalCount,
+      available_rentals: availableRentals,
+      effective_inventory: effectiveInventory,
+      recommendation_level: 'sufficient',
+      actions: [],
+      priority: 'low'
+    };
+    
+    // Determine recommendation level
+    if (effectiveInventory === 0) {
+      recommendation.recommendation_level = 'critical';
+      recommendation.priority = 'high';
+      recommendation.actions.push('Immediate restocking required - no available inventory');
+    } else if (effectiveInventory < 5) {
+      recommendation.recommendation_level = 'low_stock';
+      recommendation.priority = 'medium';
+      recommendation.actions.push('Consider restocking - low inventory levels');
+    } else if (permanentCount === 0 && rentalCount > 0) {
+      recommendation.recommendation_level = 'rental_dependent';
+      recommendation.priority = 'medium';
+      recommendation.actions.push('Consider acquiring permanent inventory to reduce rental dependency');
+    }
+    
+    // Add specific category/group recommendations if available
+    if (permLoc) {
+      const categoryGroups = comprehensiveInventoryAnalysis.groupItemsByCategory(permLoc.items);
+      Object.values(categoryGroups).forEach(group => {
+        if (group.count < 2) {
+          recommendation.actions.push(`Low stock in ${group.category_name} - ${group.item_group} (${group.count} items)`);
+        }
+      });
+    }
+    
+    recommendations.push(recommendation);
+  });
+  
+  return recommendations.sort((a, b) => {
+    const priorityOrder = { 'high': 3, 'medium': 2, 'low': 1 };
+    return priorityOrder[b.priority] - priorityOrder[a.priority];
+  });
+};
+
+const advanceSearchingQuery = async (request, response) => {
+  try {
+    const payload = {
+      category_name: request.query.category,
+      item_group: request.query.group,
+      brand: request.query.brand,
+      location: request.query.location,
+      date_start: request.query.date_start,
+      date_end: request.query.date_end,
+      company_id: request.query.company_id,
+      company_sql_id: request.query.company_sql_id,
+    };
+    
+    const ownedInventory = await inventoryQuery({
+      ...payload,
+      ownership: "Permanent",
+    });
+    
+    const rentedInventory = await inventoryQuery({
+      ...payload,
+      ownership: "Rent",
+    });
+    
+    const rentalAnalysis = await subtractRentedInventoryPerDate({ 
+      ...rentedInventory, 
+      date_start: payload.date_start, 
+      date_end: payload.date_end 
+    });
+    
+    const eventInventory = await eventInventoryInPeriod(payload);
+    
+    // Calculate comprehensive availability projection
+    const availabilityProjection = await calculateInventoryAvailabilityProjection(payload);
+    
+    // Get comprehensive inventory analysis
+    const comprehensiveAnalysis = await comprehensiveInventoryAnalysis(payload);
+    
+    response.status(200).json({
+      ok: true,
+      ownedInventory,
+      rentedInventory,
+      rentalAnalysis,
+      eventInventory,
+      availabilityProjection,
+      comprehensiveAnalysis,
+      // Chart-ready data for client-side visualization
+      chartData: availabilityProjection.chart_data
     });
   } catch (error) {
-    return response.status(500).json({
+    response.status(500).json({
       ok: false,
       msg: error.message,
       error: JSON.stringify(error),
