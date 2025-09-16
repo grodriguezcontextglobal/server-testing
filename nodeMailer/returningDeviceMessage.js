@@ -4302,7 +4302,7 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Returned Items to Renter Notification</title>
+    <title>Returned Items to Rental Company Notification</title>
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
 
@@ -4488,7 +4488,7 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
         <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo"  style="max-width: 200px; height: auto; margin-left: 10px;" />
       </div>
 
-      <h1>🔄 Items Returned to Renter</h1>
+      <h1>🔄 Items Returned to Rental Company</h1>
       
       <div class="alert-box">
         <h3>⚠️ Admin Notification</h3>
@@ -4496,13 +4496,13 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
       </div>
 
       <p>Dear Admin Team,</p>
-      <p>This is an automated notification to inform you that rented items have been returned to the renter. Please find the renter details below and check the attached Excel file for the complete list of returned items.</p>
+      <p>This is an automated notification to inform you that rented items have been returned to the rental company. Please find the rental company details below and check the attached Excel file for the complete list of returned items.</p>
 
       ${
         props.supplierInfo
           ? `
       <div class="supplier-info">
-        <h3>🏢 Renter Information</h3>
+        <h3>🏢 Rental Company Information</h3>
         <div style="background-color: #ffffff; padding: 12px; border-radius: 6px; border: 1px solid #d1fae5; margin-bottom: 12px;">
           <h4 style="color: #166534; margin: 0 0 8px 0; font-size: 16px; font-weight: 600;">${
             props.supplierInfo.companyName
