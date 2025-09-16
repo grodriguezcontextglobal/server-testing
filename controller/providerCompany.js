@@ -57,7 +57,8 @@ const createProviderCompany = async (req, res) => {
         country: address.country || "USA",
       },
       contactInfo: {
-        email: contactInfo.email.toLowerCase(),
+        name: String(contactInfo.name).toLowerCase(),
+        email: String(contactInfo.email).toLowerCase(),
         phone: contactInfo.phone,
         website: contactInfo.website || "",
       },
@@ -137,7 +138,6 @@ const getSpecificProviderCompany = async (req, res) => {
   try {
     const cache_connection = await clientRedis();
     const { creator, provider_id } = req.body;
-    console.log(req.body);
     // Validate creator parameter
     if (!creator) {
       return res.status(400).json({
@@ -277,7 +277,6 @@ const updateProviderCompany = async (req, res) => {
       providerCompany: updatedProvider,
     });
   } catch (error) {
-    console.error("Error updating provider company:", error);
     return res.status(500).json({
       ok: false,
       msg: "Error updating provider company",
