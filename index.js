@@ -36,7 +36,8 @@ const configureMiddleware = (app) => {
     const highLimitRoutes = [
         '/api/db_event/device-final-status-refactored',
         '/api/db_event/returning-item-refactored',
-        '/api/db_record/inserting-record-refactored'
+        '/api/db_record/inserting-record-refactored',
+        '/api/nodemailer/returned-items-summary-notification'
     ];
     
     // Apply 100MB limits to specific routes
