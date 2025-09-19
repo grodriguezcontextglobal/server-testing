@@ -529,7 +529,7 @@ const eventInventoryInPeriod = async (payload) => {
     });
     
     // Calculate totals
-    const totalDevices = sortedCounts.reduce((sum, item) => sum + item.count, 0);
+    const totalDevices = sortedCounts.reduce((sum, item) => Number(sum) + Number(item.count), 0);
     const totalEvents = eventList.length;
         
     return {
