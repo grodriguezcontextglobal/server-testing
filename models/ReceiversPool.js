@@ -42,6 +42,12 @@ const ReceiversPoolSchema = new Schema({
     type: String,
     required: true,
   },
+  contract_type:{
+    type: String,
+    required: true,
+    unique: false,
+    default: "event",
+  }
 });
 
 ReceiversPoolSchema.method("toJSON", function () {
