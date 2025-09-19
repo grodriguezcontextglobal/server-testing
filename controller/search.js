@@ -417,10 +417,6 @@ const inventoryQuery = async (payload) => {
       a.location.localeCompare(b.location)
     );
 
-    console.log(
-      `Found ${results.length} ${ownership} inventory items across ${sortedLocations.length} locations`
-    );
-
     return {
       total_items: results.length,
       locations: sortedLocations,
@@ -440,13 +436,43 @@ const inventoryQuery = async (payload) => {
 const eventInventoryInPeriod = async (payload) => {
   try {
     const { company_id, item_group, category_name, brand, date_start, date_end } =
-      payload;
+      payload;    
+    // Convert dates to proper ISO format for MongoDB comparison
+    const startDate = new Date(date_start);
+    const endDate = new Date(date_end);
+        
+    // Build the base query - note: removed active: true filter to include all events
     const params = {
-      company_id,
-      active: true,
-      "eventInfoDetail.dateBegin": { $gte: date_start, $lte: date_end },
+      company_id: company_id, // Keep as string since it matches the data structure
       type: "event",
+      active:true,
+      // Check for events that overlap with the period
+      $or: [
+        {
+          // Event starts within the period
+          "eventInfoDetail.dateBegin": { 
+            $gte: startDate.toISOString(), 
+            $lte: endDate.toISOString() 
+          }
+        },
+        {
+          // Event ends within the period  
+          "eventInfoDetail.dateEnd": { 
+            $gte: startDate.toISOString(), 
+            $lte: endDate.toISOString() 
+          }
+        },
+        {
+          // Event spans the entire period (starts before, ends after)
+          $and: [
+            { "eventInfoDetail.dateBegin": { $lte: startDate.toISOString() } },
+            { "eventInfoDetail.dateEnd": { $gte: endDate.toISOString() } }
+          ]
+        }
+      ]
     };
+    
+    // Add device setup filters if specified
     if (category_name && category_name !== "undefined") {
       params["deviceSetup.category"] = category_name;
     }
@@ -456,27 +482,25 @@ const eventInventoryInPeriod = async (payload) => {
     if (item_group && item_group !== "undefined") {
       params["deviceSetup.group"] = item_group;
     }
-    
-    const eventList = await Event.find({ ...params })
-      .populate("deviceSetup")
-      .lean();
-    
+        
+    const eventList = await Event.find(params).lean();
+        
     // Group and count devices by category and group
     const deviceCounts = eventList.reduce((acc, event) => {
       if (event.deviceSetup && Array.isArray(event.deviceSetup)) {
         event.deviceSetup.forEach(device => {
           const category = device.category || "unknown_category";
           const group = device.group || "unknown_group";
-          const brand = device.brand || "unknown_brand";
+          const deviceBrand = device.brand || "unknown_brand";
           
           // Create unique key for grouping
-          const key = `${category}_${group}_${brand}`;
+          const key = `${category}_${group}_${deviceBrand}`;
           
           if (!acc[key]) {
             acc[key] = {
               category: category,
               group: group,
-              brand: brand,
+              brand: deviceBrand,
               count: 0,
               events: []
             };
@@ -487,7 +511,9 @@ const eventInventoryInPeriod = async (payload) => {
             event_id: event._id,
             event_name: event.eventInfoDetail?.eventName || "Unknown Event",
             date_begin: event.eventInfoDetail?.dateBegin,
-            date_end: event.eventInfoDetail?.dateEnd
+            date_end: event.eventInfoDetail?.dateEnd,
+            active: event.active,
+            ownership: device.ownership
           });
         });
       }
@@ -505,9 +531,7 @@ const eventInventoryInPeriod = async (payload) => {
     // Calculate totals
     const totalDevices = sortedCounts.reduce((sum, item) => sum + item.count, 0);
     const totalEvents = eventList.length;
-    
-    console.log(`Found ${totalDevices} devices across ${totalEvents} events in period`);
-    
+        
     return {
       total_devices: totalDevices,
       total_events: totalEvents,
@@ -532,9 +556,7 @@ const eventInventoryInPeriod = async (payload) => {
 };
 
 const subtractRentedInventoryPerDate = async (payload) => {
-  try {
-    console.log('Processing rental inventory for date analysis:', payload);
-    
+  try {    
     const { raw_results, date_start, date_end, total_items, locations } = payload;
     
     // Convert date strings to Date objects for comparison
@@ -624,16 +646,7 @@ const subtractRentedInventoryPerDate = async (payload) => {
       });
     });
     
-    analysis.location_breakdown = Object.values(locationBreakdown);
-    
-    // Log summary
-    console.log(`Rental Inventory Analysis for period ${date_start} to ${date_end}:`);
-    console.log(`- Items returning before period: ${analysis.summary.before_count}`);
-    console.log(`- Items returning within period: ${analysis.summary.within_count}`);
-    console.log(`- Items returning after period: ${analysis.summary.after_count}`);
-    console.log(`- Items with no return date: ${analysis.summary.no_return_date_count}`);
-    console.log(`- Total items analyzed: ${analysis.summary.total_analyzed}`);
-    
+    analysis.location_breakdown = Object.values(locationBreakdown);    
     return analysis;
   } catch (error) {
     console.error('Error in subtractRentedInventoryPerDate:', error);
@@ -662,8 +675,6 @@ const calculateInventoryAvailabilityProjection = async (payload) => {
       company_id,
       company_sql_id,
     } = payload;
-
-    console.log(`Calculating inventory availability projection for period: ${date_start} to ${date_end}`);
 
     // Get owned inventory (permanent assets)
     const ownedInventory = await inventoryQuery({
@@ -922,11 +933,6 @@ const calculateInventoryAvailabilityProjection = async (payload) => {
       }))
     );
 
-    console.log(`Inventory projection completed:`);
-    console.log(`- Total locations analyzed: ${projectionSummary.overall_summary.total_locations}`);
-    console.log(`- Items with sufficient inventory: ${projectionSummary.overall_summary.sufficient_inventory}`);
-    console.log(`- Items needing restock: ${projectionSummary.overall_summary.restock_needed}`);
-
     return projectionSummary;
   } catch (error) {
     console.error('Error in calculateInventoryAvailabilityProjection:', error);
@@ -961,9 +967,7 @@ const comprehensiveInventoryAnalysis = async (payload) => {
       date_start,
       date_end
     } = payload;
-    
-    console.log('Starting comprehensive inventory analysis...');
-    
+        
     // Get all inventory (both Permanent and Rent)
     const permanentInventory = await inventoryQuery({
       ...payload,
@@ -1073,12 +1077,7 @@ const comprehensiveInventoryAnalysis = async (payload) => {
         date_end
       )
     };
-    
-    console.log(`Comprehensive analysis completed:`);
-    console.log(`- Total permanent items: ${analysis.summary.total_permanent_items}`);
-    console.log(`- Total rental items: ${analysis.summary.total_rental_items}`);
-    console.log(`- Total locations: ${analysis.summary.total_locations}`);
-    
+        
     return analysis;
     
   } catch (error) {
