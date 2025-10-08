@@ -22,6 +22,30 @@ const corsOptions = {
         "Authorization",
         "x-token",
         "token",
+        // Client information headers (both cases for compatibility)
+        "User-Agent",
+        "Accept-Language",
+        "X-Timezone",
+        "x-timezone",
+        "X-Request-Timestamp",
+        "x-request-timestamp",
+        "X-Request-ID",
+        "x-request-id",
+        // IP and proxy headers
+        "X-Forwarded-For",
+        "x-forwarded-for",
+        "X-Real-IP",
+        "x-real-ip",
+        "X-Client-IP",
+        "x-client-ip",
+        // Standard headers
+        "Accept",
+        "Accept-Encoding",
+        "Cache-Control",
+        "Connection",
+        "Host",
+        "Origin",
+        "Referer"
         // "Cookie",
         // "Set-Cookie",
         // "credentials"
