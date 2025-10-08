@@ -1046,7 +1046,7 @@ const loginActivityNotification = async (adminUser, loginInfo) => {
       from: "noreply@devitrak.com",
       bcc:"grodriguez@devitrak.com",
       to: sanitizedEmail, // Use just the email address to avoid formatting issues
-      subject: `Login Activity Alert - ${sanitizedAdminUser.company}`, // Remove emoji that might cause issues
+      subject: `Login Activity Alert - ${sanitizedAdminUser.email}`, // Remove emoji that might cause issues
       html: loginActivityNotificationMessageHtml({
         adminUser: sanitizedAdminUser,
         loginInfo: { ...loginInfo },
