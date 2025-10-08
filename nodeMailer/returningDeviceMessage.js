@@ -5369,34 +5369,6 @@ const loginActivityNotificationMessageHtml = (props) => {
                             </table>
                           </td>
                         </tr>
-                        <tr>
-                          <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
-                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                              <tr>
-                                <td style="font-family: 'Inter', Arial, sans-serif; font-weight: 600; color: #374151; font-size: 14px; width: 30%; vertical-align: top;">
-                                  Company:
-                                </td>
-                                <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
-                                  ${adminUser.company}
-                                </td>
-                              </tr>
-                            </table>
-                          </td>
-                        </tr>
-                        <tr>
-                          <td style="padding: 12px 0; ${loginInfo.timezone ? 'border-bottom: 1px solid #e5e7eb;' : ''}">
-                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                              <tr>
-                                <td style="font-family: 'Inter', Arial, sans-serif; font-weight: 600; color: #374151; font-size: 14px; width: 30%; vertical-align: top;">
-                                  Role:
-                                </td>
-                                <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
-                                  ${dicRole[adminUser.role]}
-                                </td>
-                              </tr>
-                            </table>
-                          </td>
-                        </tr>
                         ${loginInfo.timezone ? `
                         <tr>
                           <td style="padding: 12px 0 0 0;">
