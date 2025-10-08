@@ -32,8 +32,10 @@ const {
   returnedItemsToRenterNotificationMessageHtml,
   termsAndConditionsAcceptanceMessageHtml,
   documentSigningCompletionMessageHtml,
+  loginActivityNotificationMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
+const logger = require("../helpers/logger");
 // const e = require("express");
 const assingDeviceNotification = async (request, response) => {
   try {
@@ -50,7 +52,6 @@ const assingDeviceNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -73,7 +74,6 @@ const returningDeviceNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -119,7 +119,6 @@ const cancelDepositNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -143,7 +142,6 @@ const captureDepositNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -183,7 +181,6 @@ const earlierReturningNotification = async (request, response) => {
       rejectedEmails: info.rejected,
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -207,7 +204,6 @@ const eventStaffNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -231,7 +227,6 @@ const editingDeviceAdminNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -255,7 +250,6 @@ const lostDeviceFeeCollectedNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -279,7 +273,6 @@ const confirmationLinkNewConsumerNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -303,7 +296,6 @@ const loginLinkExistingConsumerNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -326,7 +318,7 @@ const linkToResetPassword = async (request, response) => {
       });
     });
   } catch (error) {
-    console.error("Error fetching access token:", error.response.data);
+    logger.error("Error fetching access token:", error.response.data);
   }
 };
 
@@ -346,7 +338,6 @@ const customizedEmailNotification = (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -370,7 +361,6 @@ const singleEmailNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -394,7 +384,6 @@ const newUserInvitationNotification = (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`read the following error: ${error}`);
     response.status(500).json({
       ok: false,
       error: error,
@@ -418,7 +407,6 @@ const internalNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log("🚀 ~ internalNotification ~ error:", error);
     response.status(500).json({
       ok: false,
       message: error.message,
@@ -442,7 +430,6 @@ const eventBeginsReminderNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log("🚀 ~ internalNotification ~ error:", error);
     response.status(500).json({
       ok: false,
       message: error.message,
@@ -466,7 +453,6 @@ const staffInternalNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log("🚀 ~ internalNotification ~ error:", error);
     response.status(500).json({
       ok: false,
       message: error.message,
@@ -490,7 +476,7 @@ const itemInfoStaffNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log("🚀 ~ internalNotification ~ error:", error);
+    logger.error("🚀 ~ internalNotification ~ error:", error);
     response.status(500).json({
       ok: false,
       message: error.message,
@@ -514,7 +500,7 @@ const eventLinkEvent = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log("🚀 ~ internalNotification ~ error:", error);
+    logger.error("🚀 ~ internalNotification ~ error:", error);
     response.status(500).json({
       ok: false,
       message: error.message,
@@ -538,7 +524,7 @@ const chargeInvoice = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log("🚀 ~ internalNotification ~ error:", error);
+    logger.error("🚀 ~ internalNotification ~ error:", error);
     response.status(500).json({
       ok: false,
       message: error.message,
@@ -561,7 +547,7 @@ const refundInvoice = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log("🚀 ~ internalNotification ~ error:", error);
+    logger.error("🚀 ~ internalNotification ~ error:", error);
     response.status(500).json({
       ok: false,
       message: error.message,
@@ -598,7 +584,7 @@ const massiveEventCustomerNotification = async (request, response) => {
       });
     }
   } catch (error) {
-    console.log(error);
+    logger.error(error);
   }
 };
 
@@ -611,7 +597,6 @@ const devitrakFeedbackEmailNotification = async (request, response) => {
       },
       { email: 1, name: 1, lastName: 1, _id: 0 }
     ).lean();
-    console.log(consumerEventList);
     if (consumerEventList.length > 0) {
       const msg = {
         from: "Devitrak Notifications <noreply@devitrak.com>",
@@ -731,7 +716,7 @@ const errorFeedbackEmailNotification = async (props) => {
       };
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
   }
 };
 
@@ -775,7 +760,7 @@ const liabilityContractStaffNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    console.log(`Error sending liability contract email: ${error}`);
+    logger.log(`Error sending liability contract email: ${error}`);
     response.status(500).json({
       ok: false,
       error: error.message,
@@ -879,7 +864,7 @@ const returnedItemsToRenterNotification = async (request, response) => {
       attachmentsCount: msg.attachments ? msg.attachments.length : 0,
     });
   } catch (error) {
-    console.error("Error sending returned items notification:", error);
+    logger.error("Error sending returned items notification:", error);
 
     return response.status(500).json({
       ok: false,
@@ -937,7 +922,7 @@ const termsAndConditionsAcceptanceNotification = async (request, response) => {
       recipient: consumer.email,
     });
   } catch (error) {
-    console.error(
+    logger.error(
       "Error sending terms and conditions acceptance notification:",
       error
     );
@@ -980,10 +965,10 @@ const documentSigningCompletionNotification = async (request, response) => {
     // Send email to assigner
     const assignerMsg = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${assigner.name || 'Assigner'} <${assigner.email}>`,
+      to: `${assigner.name || "Assigner"} <${assigner.email}>`,
       subject: "Document Signing Complete - Equipment Ready for Delivery",
       html: documentSigningCompletionMessageHtml({
-        recipientType: 'assigner',
+        recipientType: "assigner",
         staff,
         contract_list,
         verification_id,
@@ -993,10 +978,10 @@ const documentSigningCompletionNotification = async (request, response) => {
     // Send email to staff member
     const staffMsg = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${staff.name || 'Staff Member'} <${staff.email}>`,
+      to: `${staff.name || "Staff Member"} <${staff.email}>`,
       subject: "Document Signing Complete - Awaiting Equipment Delivery",
       html: documentSigningCompletionMessageHtml({
-        recipientType: 'staff',
+        recipientType: "staff",
         staff,
         contract_list,
         verification_id,
@@ -1004,10 +989,7 @@ const documentSigningCompletionNotification = async (request, response) => {
     };
 
     // Send both emails
-    await Promise.all([
-      sgMail.send(assignerMsg),
-      sgMail.send(staffMsg)
-    ]);
+    await Promise.all([sgMail.send(assignerMsg), sgMail.send(staffMsg)]);
 
     return response.status(201).json({
       ok: true,
@@ -1015,7 +997,7 @@ const documentSigningCompletionNotification = async (request, response) => {
       recipients: [assigner.email, staff.email],
     });
   } catch (error) {
-    console.error(
+    logger.error(
       "Error sending document signing completion notifications:",
       error
     );
@@ -1024,6 +1006,65 @@ const documentSigningCompletionNotification = async (request, response) => {
       msg: "Failed to send notification emails",
       error: error.message,
     });
+  }
+};
+
+const loginActivityNotification = async (adminUser, loginInfo) => {
+  try {
+    // Validate required data
+    if (!adminUser || !adminUser.email) {
+      throw new Error("Admin user email is required");
+    }
+    if (!loginInfo) {
+      throw new Error("Login info is required");
+    }
+    // Sanitize and validate email components
+    const sanitizedName = (adminUser.name || "").replace(
+      /[<>]/g,
+      ""
+    );
+    const sanitizedLastName = (adminUser.lastName || "").replace(
+      /[<>]/g,
+      ""
+    );
+    const sanitizedEmail = adminUser.email.trim();
+    // Sanitize admin user data
+    const sanitizedAdminUser = {
+      ...adminUser,
+      name: sanitizedName,
+      lastName: sanitizedLastName,
+      email: sanitizedEmail,
+      company: (adminUser.company || "Unknown").replace(
+        /[<>]/g,
+        ""
+      ),
+      role: (adminUser.role || "Admin").replace(/[<>]/g, ""),
+    };
+
+    // Create email info object
+    const info = {
+      from: "noreply@devitrak.com",
+      to: sanitizedEmail, // Use just the email address to avoid formatting issues
+      subject: `Login Activity Alert - ${sanitizedAdminUser.company}`, // Remove emoji that might cause issues
+      html: loginActivityNotificationMessageHtml({
+        adminUser: sanitizedAdminUser,
+        loginInfo: { ...loginInfo },
+      }),
+    };
+    const result = await sgMail.send(info);
+    return {
+      success: true,
+      message: `Login activity notification sent to ${sanitizedEmail}`,
+      result,
+    };
+  } catch (error) {
+    logger.error("Error sending login activity notification:", error);
+    return {
+      success: false,
+      message: "Failed to send login activity notification",
+      error: error.message,
+      details: error.response?.body || null,
+    };
   }
 };
 
@@ -1047,6 +1088,7 @@ module.exports = {
   itemInfoStaffNotification,
   liabilityContractStaffNotification,
   linkToResetPassword,
+  loginActivityNotification,
   loginLinkExistingConsumerNotification,
   lostDeviceFeeCollectedNotification,
   massiveEventCustomerNotification,
