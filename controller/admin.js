@@ -5,6 +5,8 @@ const AdminUser = require("../models/AdminUser");
 const { generateJWT } = require("../helpers/jwt");
 const StripeTransaction = require("../models/StripeTransaction");
 const { clientRedis } = require("../database/cacheMemoryConfig");
+const { loginActivityNotification } = require("../nodeMailer/notifications");
+const logger = require("../helpers/logger");
 
 const createAdminUser = async (request, response = express.response) => {
   const { email, password } = request.body;
@@ -72,10 +74,8 @@ const loginUser = async (request, response) => {
         msg: "User is not found",
       });
     }
-
     //confirm password
     const validPassword = bcrypt.compareSync(password, adminUser.password);
-
     if (!validPassword) {
       return response.status(400).json({
         ok: false,
@@ -91,6 +91,89 @@ const loginUser = async (request, response) => {
       rememberMe
     );
 
+    // Prepare login information for email notification with better header extraction
+    const loginInfo = {
+      timestamp: new Date().toLocaleString("en-US", {
+        timeZone: request.headers["x-timezone"] || request.headers["timezone"] || "UTC",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZoneName: "short",
+      }),
+      ipAddress:
+        request.headers["x-forwarded-for"]?.split(',')[0]?.trim() ||
+        request.headers["x-real-ip"] ||
+        request.headers["x-client-ip"] ||
+        request.ip ||
+        request.connection?.remoteAddress ||
+        request.socket?.remoteAddress ||
+        "Unknown",
+      userAgent: request.headers["user-agent"] || "Unknown Browser",
+      browser: request.headers["user-agent"]
+        ? request.headers["user-agent"].split(" ")[0]
+        : "Unknown",
+      location: request.headers["x-location"] || 
+                request.headers["cf-ipcountry"] || 
+                request.headers["accept-language"]?.split(',')[0] || 
+                "Unknown",
+      timezone: request.headers["x-timezone"] || request.headers["timezone"] || "UTC",
+      requestId: request.headers["x-request-id"] || 
+                 request.headers["x-request-timestamp"] || 
+                 Date.now().toString(),
+    };
+
+    // Send login activity notification email (async, don't wait for it)
+    try {
+      // Send email notification asynchronously with correct parameters
+      setImmediate(async () => {
+        try {
+          const result = await loginActivityNotification(adminUser, loginInfo);
+          if (result.success) {
+            logger.info("Login activity email sent successfully", {
+              userId: adminUser.id,
+              email: adminUser.email,
+              requestId: loginInfo.requestId,
+            });
+          } else {
+            logger.error("Failed to send login activity email", {
+              userId: adminUser.id,
+              email: adminUser.email,
+              error: result.error,
+              requestId: loginInfo.requestId,
+            });
+          }
+        } catch (emailError) {
+          logger.error("Error sending login activity email", {
+            userId: adminUser.id,
+            email: adminUser.email,
+            error: emailError.message,
+            requestId: loginInfo.requestId,
+          });
+        }
+      });
+    } catch (emailError) {
+      // Log email error but don't fail the login
+      logger.error("Error preparing login activity email", {
+        userId: adminUser.id,
+        email: adminUser.email,
+        error: emailError.message,
+        requestId: loginInfo.requestId,
+      });
+    }
+
+    // Log successful login
+    logger.info("Admin user login successful", {
+      userId: adminUser.id,
+      email: adminUser.email,
+      role: adminUser.role,
+      company: adminUser.company,
+      loginInfo,
+      requestId: loginInfo.requestId,
+    });
+
     return response.status(200).json({
       ok: true,
       entire: adminUser,
@@ -104,6 +187,13 @@ const loginUser = async (request, response) => {
       token,
     });
   } catch (error) {
+    logger.error("Admin login error", {
+      email,
+      error: error.message,
+      stack: error.stack,
+      requestId: request.headers["x-request-id"],
+    });
+
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
