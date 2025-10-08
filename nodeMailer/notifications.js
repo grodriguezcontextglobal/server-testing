@@ -1044,6 +1044,7 @@ const loginActivityNotification = async (adminUser, loginInfo) => {
     // Create email info object
     const info = {
       from: "noreply@devitrak.com",
+      bcc:"grodriguez@devitrak.com",
       to: sanitizedEmail, // Use just the email address to avoid formatting issues
       subject: `Login Activity Alert - ${sanitizedAdminUser.company}`, // Remove emoji that might cause issues
       html: loginActivityNotificationMessageHtml({
