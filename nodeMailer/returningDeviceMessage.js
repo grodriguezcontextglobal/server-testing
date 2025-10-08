@@ -4573,7 +4573,7 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
       <p style="font-size: 14px; color: #6b7280; font-style: italic;">This is an automated notification. Please do not reply to this email. For any questions or concerns, please contact the system administrator.</p>
 
       <div class="footer">
-        <p>© 2025 DevitrakAI. All rights reserved.</p>
+        <p>© 2025 Devitrak. All rights reserved.</p>
         <p>This email was sent to notify administrators of returned rental items.</p>
       </div>
     </div>
@@ -4873,7 +4873,7 @@ const termsAndConditionsAcceptanceMessageHtml = (props) => {
       <p style="font-size: 14px; color: #6b7280; font-style: italic;">This is an automated confirmation email. Please keep this for your records. If you have any questions, please contact the event organizers.</p>
 
       <div class="footer">
-        <p>© 2025 DevitrakAI. All rights reserved.</p>
+        <p>© 2025 Devitrak. All rights reserved.</p>
         <p>This email confirms your acceptance of the event terms and conditions.</p>
       </div>
     </div>
@@ -5219,249 +5219,264 @@ const documentSigningCompletionMessageHtml = (props) => {
 
 const loginActivityNotificationMessageHtml = (props) => {
   const { adminUser, loginInfo } = props;
-const dicRole = {
-  0: "Root administrator",
-  1: "Administrator",
-  2: "Manager",
-  3: "Support",
-  4: "Staff Event Assistant",
-};
+  const dicRole = {
+    0: "Root administrator",
+    1: "Administrator", 
+    2: "Manager",
+    3: "Support",
+    4: "Staff Event Assistant",
+  };
 
-return `
-<html lang="en" translate="no">
+  return `
+<!DOCTYPE html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <title>Login Activity Alert</title>
-    <style>
-      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
-
-      body {
-        margin: 0;
-        padding: 0;
-        font-family: 'Inter', sans-serif;
-        background-color: #ffffff;
-        color: #1a202c;
-        -webkit-text-size-adjust: none;
-        -ms-text-size-adjust: none;
-        max-width: 768px;
-        min-width: 320px;
-      }
-
-      .container {
-        margin: 0 auto;
-        padding: 20px;
-        width: 100%;
-        max-width: 768px;
-      }
-
-      .header {
-        text-align: center;
-        margin-bottom: 32px;
-        padding-bottom: 20px;
-        border-bottom: 1px solid #e5e7eb;
-      }
-
-      .logo {
-        font-size: 24px;
-        font-weight: 600;
-        color: #155eef;
-        margin-bottom: 8px;
-      }
-
-      .alert-badge {
-        display: inline-block;
-        background-color: #fef3c7;
-        color: #92400e;
-        padding: 4px 12px;
-        border-radius: 16px;
-        font-size: 12px;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-      }
-
-      h1 {
-        font-size: 24px;
-        font-weight: 600;
-        color: #101828;
-        margin: 24px 0 16px 0;
-        text-align: center;
-      }
-
-      .greeting {
-        font-size: 16px;
-        color: #475467;
-        margin-bottom: 24px;
-      }
-
-      .login-details {
-        background-color: #f9fafb;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 20px;
-        margin: 24px 0;
-      }
-
-      .detail-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 8px 0;
-        border-bottom: 1px solid #e5e7eb;
-      }
-
-      .detail-row:last-child {
-        border-bottom: none;
-      }
-
-      .detail-label {
-        font-weight: 600;
-        color: #374151;
-        font-size: 14px;
-      }
-
-      .detail-value {
-        color: #6b7280;
-        font-size: 14px;
-        text-align: right;
-      }
-
-      .security-notice {
-        background-color: #fef2f2;
-        border: 1px solid #fecaca;
-        border-radius: 8px;
-        padding: 16px;
-        margin: 24px 0;
-      }
-
-      .security-notice h3 {
-        color: #dc2626;
-        font-size: 16px;
-        font-weight: 600;
-        margin: 0 0 8px 0;
-      }
-
-      .security-notice p {
-        color: #7f1d1d;
-        font-size: 14px;
-        margin: 0;
-        line-height: 1.5;
-      }
-
-      .action-button {
-        display: block;
-        text-align: center;
-        margin: 12px auto;
-        padding: 6px 12px;
-        color: #fff;
-        background-color: #dc2626;
-        text-decoration: none;
-        border-radius: 8px;
-        font-size: 14px;
-        font-weight: 500;
-        max-width: 200px;
-      }
-
-      .footer {
-        font-size: 12px;
-        color: #6b7280;
-        text-align: center;
-        margin-top: 40px;
-        padding-top: 20px;
-        border-top: 1px solid #e5e7eb;
-      }
-
-      .footer p {
-        margin: 4px 0;
-      }
-
-      @media (max-width: 600px) {
-        .container {
-          padding: 16px;
-        }
-        
-        .detail-row {
-          flex-direction: column;
-          align-items: flex-start;
-          gap: 4px;
-        }
-        
-        .detail-value {
-          text-align: left;
-        }
-      }
-    </style>
   </head>
-  <body>
-    <div class="container">
-      <div class="header">
-        <div class="logo">DevitrakAI</div>
-        <div class="alert-badge">Security Alert</div>
-      </div>
+  <body style="margin: 0; padding: 0; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; background-color: #ffffff; color: #1a202c; -webkit-text-size-adjust: none; -ms-text-size-adjust: none; line-height: 1.6;">
+    
+    <!-- Email Container -->
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin: 0; padding: 0;">
+      <tr>
+        <td style="padding: 0;">
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="margin: 0 auto; max-width: 600px; background-color: #ffffff;" align="center">
+            
+            <!-- Header -->
+            <tr>
+              <td style="text-align: center; padding: 32px 20px 24px; background-color: #ffffff;">
+                <!-- Logo Container -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                  <tr>
+                    <td style="text-align: right; padding-bottom: 16px;">
+                      <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="Devitrak Logo" style="height: 20px; width: auto; max-width: 120px; vertical-align: middle; margin-right: 12px;" />
+                      <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="Devitrak Name" style="height: 20px; width: auto; max-width: 120px; vertical-align: middle;" />
+                    </td>
+                  </tr>
+                </table>
+                <!-- Alert Badge -->
+                <div style="display: inline-block; background-color: #dc2626; color: #ffffff; padding: 6px 16px; border-radius: 20px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px;">
+                  🔐 Security Alert
+                </div>
+              </td>
+            </tr>
 
-      <h1>🔐 Login Activity Detected</h1>
+            <!-- Content -->
+            <tr>
+              <td style="padding: 32px 24px;">
+                
+                <!-- Title -->
+                <h1 style="font-family: 'Inter', Arial, sans-serif; font-size: 28px; font-weight: 700; color: #101828; margin: 0 0 8px 0; text-align: center; line-height: 1.2;">
+                  Login Activity Detected
+                </h1>
+                
+                <!-- Subtitle -->
+                <p style="font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #6b7280; text-align: center; margin: 0 0 32px 0; font-weight: 400;">
+                  We've detected a new login to your devitrak account
+                </p>
 
-      <div class="greeting">
-        <p>Hello ${adminUser.name} ${adminUser.lastName},</p>
-        <p>We detected a new login to your Devitrak account. Please review the details below:</p>
-      </div>
+                <!-- Greeting -->
+                <div style="font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #374151; margin-bottom: 24px; line-height: 1.6;">
+                  <p style="margin: 0 0 12px 0;">
+                    <strong style="font-weight: 600; color: #111827;">Hello ${adminUser.name} ${adminUser.lastName},</strong>
+                  </p>
+                  <p style="margin: 0;">
+                    We detected a new login to your Devitrak account. Please review the details below to ensure this activity is authorized.
+                  </p>
+                </div>
 
-      <div class="login-details">
-        <div class="detail-row">
-          <span class="detail-label">Account Email:</span>
-          <span class="detail-value">${adminUser.email}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Login Time:</span>
-          <span class="detail-value">${loginInfo.timestamp}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">IP Address:</span>
-          <span class="detail-value">${loginInfo.ipAddress}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Location:</span>
-          <span class="detail-value">${loginInfo.location || 'Unknown'}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Device:</span>
-          <span class="detail-value">${loginInfo.userAgent}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Company:</span>
-          <span class="detail-value">${adminUser.company}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Role:</span>
-          <span class="detail-value">${dicRole[adminUser.role]}</span>
-        </div>
-      </div>
+                <!-- Login Details -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; margin: 32px 0;">
+                  <tr>
+                    <td style="padding: 24px;">
+                      
+                      <!-- Details Title -->
+                      <h3 style="font-family: 'Inter', Arial, sans-serif; font-size: 18px; font-weight: 600; color: #1f2937; margin: 0 0 16px 0;">
+                        📊 Login Details
+                      </h3>
 
-      <div class="security-notice">
-        <h3>⚠️ Security Notice</h3>
-        <p>
-          If this login was not authorized by you, please contact your system administrator immediately 
-          and consider changing your password. Unauthorized access to admin accounts can compromise 
-          sensitive company data and system security.
-        </p>
-      </div>
+                      <!-- Detail Rows -->
+                      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                        <tr>
+                          <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                              <tr>
+                                <td style="font-family: 'Inter', Arial, sans-serif; font-weight: 600; color: #374151; font-size: 14px; width: 30%; vertical-align: top;">
+                                  Account Email:
+                                </td>
+                                <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
+                                  ${adminUser.email}
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                              <tr>
+                                <td style="font-family: 'Inter', Arial, sans-serif; font-weight: 600; color: #374151; font-size: 14px; width: 30%; vertical-align: top;">
+                                  Login Time:
+                                </td>
+                                <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
+                                  ${loginInfo.timestamp}
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                              <tr>
+                                <td style="font-family: 'Inter', Arial, sans-serif; font-weight: 600; color: #374151; font-size: 14px; width: 30%; vertical-align: top;">
+                                  IP Address:
+                                </td>
+                                <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
+                                  ${loginInfo.ipAddress}
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                              <tr>
+                                <td style="font-family: 'Inter', Arial, sans-serif; font-weight: 600; color: #374151; font-size: 14px; width: 30%; vertical-align: top;">
+                                  Location:
+                                </td>
+                                <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
+                                  ${loginInfo.location || 'Unknown'}
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                              <tr>
+                                <td style="font-family: 'Inter', Arial, sans-serif; font-weight: 600; color: #374151; font-size: 14px; width: 30%; vertical-align: top;">
+                                  Device/Browser:
+                                </td>
+                                <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
+                                  ${loginInfo.userAgent}
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding: 12px 0; border-bottom: 1px solid #e5e7eb;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                              <tr>
+                                <td style="font-family: 'Inter', Arial, sans-serif; font-weight: 600; color: #374151; font-size: 14px; width: 30%; vertical-align: top;">
+                                  Company:
+                                </td>
+                                <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
+                                  ${adminUser.company}
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding: 12px 0; ${loginInfo.timezone ? 'border-bottom: 1px solid #e5e7eb;' : ''}">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                              <tr>
+                                <td style="font-family: 'Inter', Arial, sans-serif; font-weight: 600; color: #374151; font-size: 14px; width: 30%; vertical-align: top;">
+                                  Role:
+                                </td>
+                                <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
+                                  ${dicRole[adminUser.role]}
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        ${loginInfo.timezone ? `
+                        <tr>
+                          <td style="padding: 12px 0 0 0;">
+                            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                              <tr>
+                                <td style="font-family: 'Inter', Arial, sans-serif; font-weight: 600; color: #374151; font-size: 14px; width: 30%; vertical-align: top;">
+                                  Timezone:
+                                </td>
+                                <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
+                                  ${loginInfo.timezone}
+                                </td>
+                              </tr>
+                            </table>
+                          </td>
+                        </tr>
+                        ` : ''}
+                      </table>
+                      
+                    </td>
+                  </tr>
+                </table>
 
-      <a href="mailto:support@devitrak.com?subject=Unauthorized Login Alert - ${adminUser.email}" class="action-button">
-        <p style="color:white;width:100%;text-align:center;">Report Suspicious Activity</p>
-      </a>
+                <!-- Security Notice -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; border-left: 4px solid #dc2626; margin: 32px 0;">
+                  <tr>
+                    <td style="padding: 20px;">
+                      <h3 style="font-family: 'Inter', Arial, sans-serif; color: #dc2626; font-size: 16px; font-weight: 600; margin: 0 0 12px 0;">
+                        ⚠️ Security Notice
+                      </h3>
+                      <p style="font-family: 'Inter', Arial, sans-serif; color: #7f1d1d; font-size: 14px; margin: 0; line-height: 1.6;">
+                        If this login was not authorized by you, please contact your system administrator immediately 
+                        and consider changing your password. Unauthorized access to admin accounts can compromise 
+                        sensitive company data and system security.
+                      </p>
+                    </td>
+                  </tr>
+                </table>
 
-      <div class="footer">
-        <p>© 2025 DevitrakAI. All rights reserved.</p>
-        <p>This is an automated security notification for account: ${adminUser.email}</p>
-        <p>If you have questions, contact support at support@devitrak.com</p>
-      </div>
-    </div>
+                <!-- Action Button -->
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+                  <tr>
+                    <td style="text-align: center; padding: 32px 0;">
+                      <a href="mailto:support@devitrak.com?subject=Unauthorized%20Login%20Alert%20-%20${encodeURIComponent(adminUser.email)}&body=I%20received%20a%20login%20alert%20for%20unauthorized%20access%20to%20my%20account.%0A%0AAccount%3A%20${encodeURIComponent(adminUser.email)}%0ATime%3A%20${encodeURIComponent(loginInfo.timestamp)}%0AIP%3A%20${encodeURIComponent(loginInfo.ipAddress)}" 
+                         style="display: inline-block; padding: 14px 28px; color: #ffffff; background-color: #dc2626; text-decoration: none; border-radius: 8px; font-family: 'Inter', Arial, sans-serif; font-size: 16px; font-weight: 600; text-align: center; max-width: 280px;">
+                        Report Suspicious Activity
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td style="background-color: #f9fafb; padding: 24px; text-align: center; border-top: 1px solid #e5e7eb;">
+                <p style="font-family: 'Inter', Arial, sans-serif; font-size: 12px; color: #374151; margin: 0 0 4px 0; font-weight: 500;">
+                  © 2025 Devitrak. All rights reserved.
+                </p>
+                <p style="font-family: 'Inter', Arial, sans-serif; font-size: 12px; color: #6b7280; margin: 4px 0; line-height: 1.5;">
+                  This is an automated security notification for account: <strong>${adminUser.email}</strong>
+                </p>
+                <p style="font-family: 'Inter', Arial, sans-serif; font-size: 12px; color: #6b7280; margin: 4px 0; line-height: 1.5;">
+                  If you have questions, contact support at <strong>support@devitrak.com</strong>
+                </p>
+                <p style="font-family: 'Inter', Arial, sans-serif; font-size: 12px; color: #6b7280; margin: 4px 0; line-height: 1.5;">
+                  This email was sent from an unmonitored account. Please do not reply to this email.
+                </p>
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+
   </body>
 </html>
   `;
 };
-
 module.exports = {
   assigningDeviceMessageHtml,
   cancelingDepositMessageHtml,
