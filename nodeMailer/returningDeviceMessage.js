@@ -5217,6 +5217,251 @@ const documentSigningCompletionMessageHtml = (props) => {
   `;
 };
 
+const loginActivityNotificationMessageHtml = (props) => {
+  const { adminUser, loginInfo } = props;
+const dicRole = {
+  0: "Root administrator",
+  1: "Administrator",
+  2: "Manager",
+  3: "Support",
+  4: "Staff Event Assistant",
+};
+
+return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login Activity Alert</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 32px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .logo {
+        font-size: 24px;
+        font-weight: 600;
+        color: #155eef;
+        margin-bottom: 8px;
+      }
+
+      .alert-badge {
+        display: inline-block;
+        background-color: #fef3c7;
+        color: #92400e;
+        padding: 4px 12px;
+        border-radius: 16px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin: 24px 0 16px 0;
+        text-align: center;
+      }
+
+      .greeting {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 24px;
+      }
+
+      .login-details {
+        background-color: #f9fafb;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 20px;
+        margin: 24px 0;
+      }
+
+      .detail-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .detail-row:last-child {
+        border-bottom: none;
+      }
+
+      .detail-label {
+        font-weight: 600;
+        color: #374151;
+        font-size: 14px;
+      }
+
+      .detail-value {
+        color: #6b7280;
+        font-size: 14px;
+        text-align: right;
+      }
+
+      .security-notice {
+        background-color: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 24px 0;
+      }
+
+      .security-notice h3 {
+        color: #dc2626;
+        font-size: 16px;
+        font-weight: 600;
+        margin: 0 0 8px 0;
+      }
+
+      .security-notice p {
+        color: #7f1d1d;
+        font-size: 14px;
+        margin: 0;
+        line-height: 1.5;
+      }
+
+      .action-button {
+        display: block;
+        text-align: center;
+        margin: 12px auto;
+        padding: 6px 12px;
+        color: #fff;
+        background-color: #dc2626;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        max-width: 200px;
+      }
+
+      .footer {
+        font-size: 12px;
+        color: #6b7280;
+        text-align: center;
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .footer p {
+        margin: 4px 0;
+      }
+
+      @media (max-width: 600px) {
+        .container {
+          padding: 16px;
+        }
+        
+        .detail-row {
+          flex-direction: column;
+          align-items: flex-start;
+          gap: 4px;
+        }
+        
+        .detail-value {
+          text-align: left;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <div class="logo">DevitrakAI</div>
+        <div class="alert-badge">Security Alert</div>
+      </div>
+
+      <h1>🔐 Login Activity Detected</h1>
+
+      <div class="greeting">
+        <p>Hello ${adminUser.name} ${adminUser.lastName},</p>
+        <p>We detected a new login to your DevitrakAI admin account. Please review the details below:</p>
+      </div>
+
+      <div class="login-details">
+        <div class="detail-row">
+          <span class="detail-label">Account Email:</span>
+          <span class="detail-value">${adminUser.email}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Login Time:</span>
+          <span class="detail-value">${loginInfo.timestamp}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">IP Address:</span>
+          <span class="detail-value">${loginInfo.ipAddress}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Location:</span>
+          <span class="detail-value">${loginInfo.location || 'Unknown'}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Device:</span>
+          <span class="detail-value">${loginInfo.userAgent}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Company:</span>
+          <span class="detail-value">${adminUser.company}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Role:</span>
+          <span class="detail-value">${dicRole[adminUser.role]}</span>
+        </div>
+      </div>
+
+      <div class="security-notice">
+        <h3>⚠️ Security Notice</h3>
+        <p>
+          If this login was not authorized by you, please contact your system administrator immediately 
+          and consider changing your password. Unauthorized access to admin accounts can compromise 
+          sensitive company data and system security.
+        </p>
+      </div>
+
+      <a href="mailto:support@devitrak.com?subject=Unauthorized Login Alert - ${adminUser.email}" class="action-button">
+        <p style="color:white;width:100%;text-align:center;">Report Suspicious Activity</p>
+      </a>
+
+      <div class="footer">
+        <p>© 2025 DevitrakAI. All rights reserved.</p>
+        <p>This is an automated security notification for account: ${adminUser.email}</p>
+        <p>If you have questions, contact support at support@devitrak.com</p>
+      </div>
+    </div>
+  </body>
+</html>
+  `;
+};
+
 module.exports = {
   assigningDeviceMessageHtml,
   cancelingDepositMessageHtml,
@@ -5233,6 +5478,7 @@ module.exports = {
   liabilityContractStaffNotificationMessageHtml,
   linkToLoginExistingConsumerMessageHtml,
   linkToResetUserPassword,
+  loginActivityNotificationMessageHtml,
   lostDeviceFeeCollectedMessageHtml,
   lostDeviceFeeReceipt,
   newUserInvitationMessageHtml,
