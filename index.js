@@ -10,6 +10,8 @@ require("dotenv").config();
 
 // Configuration imports
 const { corsOptions } = require("./config/cors");
+const { requestLogger, securityLogger } = require("./middlewares/requestLogger");
+const logger = require("./helpers/logger");
 
 // Constants
 const NUM_CPU = OS.cpus().length;
@@ -17,7 +19,7 @@ const PORT = process.env.PORT || 34001;
 
 // Initialize database connection
 dbConnection().catch(err => {
-    console.error('Database connection failed:', err);
+    logger.error('Database connection failed:', { error: err.message, stack: err.stack });
     process.exit(1);
 });
 
@@ -26,6 +28,10 @@ const app = express();
 
 // Middleware configuration
 const configureMiddleware = (app) => {
+    // Request logging middleware (should be first to capture all requests)
+    app.use(requestLogger);
+    app.use(securityLogger);
+    
     // Security and parsing middleware
     app.use(cors(corsOptions));
     // Handle pre-flight requests
@@ -122,10 +128,27 @@ const configureRoutes = (app) => {
 // Error handling middleware
 const configureErrorHandling = (app) => {
     app.use((err, req, res, next) => {
-        console.error(err.stack);
+        const clientInfo = {
+            userAgent: req.get('User-Agent'),
+            requestId: req.get('X-Request-ID'),
+            realIP: req.get('X-Real-IP') || req.get('X-Forwarded-For') || req.ip,
+            timezone: req.get('X-Timezone')
+        };
+
+        logger.error('Unhandled Error', {
+            type: 'unhandled_error',
+            error: err.message,
+            stack: err.stack,
+            method: req.method,
+            url: req.originalUrl,
+            clientInfo,
+            timestamp: new Date().toISOString()
+        });
+
         res.status(500).json({
             error: 'Something went wrong!',
-            message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error'
+            message: process.env.NODE_ENV === 'development' ? err.message : 'Internal server error',
+            requestId: clientInfo.requestId
         });
     });
 };
@@ -141,6 +164,8 @@ const initializeApp = () => {
 // Cluster configuration
 const startServer = () => {
     if (cluster.isPrimary) {
+        logger.info(`Starting server with ${NUM_CPU} workers on port ${PORT}`);
+        
         // Fork workers based on CPU cores
         for (let i = 0; i < NUM_CPU; i++) {
             cluster.fork();
@@ -148,14 +173,19 @@ const startServer = () => {
 
         // Handle worker events
         cluster.on("exit", (worker, code, signal) => {
+            logger.warn(`Worker ${worker.process.pid} died. Restarting...`);
             cluster.fork();
         });
     } else {
-        const server = initializeApp().listen(PORT);
+        const server = initializeApp().listen(PORT, () => {
+            logger.info(`Worker ${process.pid} started on port ${PORT}`);
+        });
 
         // Graceful shutdown
         process.on('SIGTERM', () => {
+            logger.info('SIGTERM received. Shutting down gracefully...');
             server.close(() => {
+                logger.info('Process terminated');
                 process.exit(0);
             });
         });
