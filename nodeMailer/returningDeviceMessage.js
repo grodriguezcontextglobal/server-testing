@@ -5404,7 +5404,7 @@ return `
 
       <div class="greeting">
         <p>Hello ${adminUser.name} ${adminUser.lastName},</p>
-        <p>We detected a new login to your DevitrakAI admin account. Please review the details below:</p>
+        <p>We detected a new login to your Devitrak account. Please review the details below:</p>
       </div>
 
       <div class="login-details">
