@@ -25,7 +25,7 @@ const insertingEvent = async (request, response) => {
       state_address,
       zip_address,
       email_company,
-      phone_number,
+      phone_number = "000-000-0000",
       company_assigned_event_id,
     } = request.body;
     const query = `insert into event_info
