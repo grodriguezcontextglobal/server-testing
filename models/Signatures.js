@@ -18,6 +18,11 @@ const SignatureSchema = new Schema({
     ref: "Company",
     required: true,
   },
+  staff_member_id: {
+    type: Schema.Types.ObjectId,
+    ref: "AdminUser",
+    required: true,
+  },
 });
 
 module.exports = model("Signature", SignatureSchema);
