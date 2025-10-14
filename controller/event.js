@@ -5,6 +5,7 @@ const AdminUser = require("../models/AdminUser");
 const moment = require("moment");
 const getConnection = require("../mysql/database/config");
 const ReceiversPool = require("../models/ReceiversPool");
+const logger = require("../helpers/logger");
 
 const createEvent = async (request, response = express.response) => {
   try {
@@ -20,7 +21,7 @@ const createEvent = async (request, response = express.response) => {
     return response.status(500).json({
       ok: false,
       msg: error.message,
-      err:JSON.stringify(error),
+      err: JSON.stringify(error),
     });
   }
 };
@@ -56,7 +57,7 @@ const editEvent = async (request, response = response) => {
       event: staffEventEdited,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
@@ -99,22 +100,22 @@ const editSubscriptionEvent = async (request, response = response) => {
 
 const deleteEvent = async (request, response) => {
   try {
-    const adminUserId = request.params.id;
-    const adminUser = await AdminUser.findByIdAndDelete(adminUserId);
-    if (!adminUser) {
+    const eventId = request.params.id;
+    const event = await Event.findByIdAndDelete(eventId);
+    if (!event) {
       return response.status(404).json({
         ok: false,
-        msg: "Admin user/id do not match",
+        msg: "Event does not exist",
       });
     }
 
     return response.status(201).json({
       ok: true,
-      adminUser,
-      msg: "admin user deleted",
+      event,
+      msg: "event deleted",
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -314,7 +315,7 @@ const returnSerialNumberUsedInEvent = async (props) => {
 const returnItemsInfoInUsedInEvents = async ({
   serialNumbers,
   companySqlId,
-  dateRef2
+  dateRef2,
 }) => {
   const connection = getConnection();
   const cache_connection = await clientRedis();
@@ -397,7 +398,7 @@ const inventoryEventBasedOnPeriod = async (request, response) => {
     const sqlItemInfoAvailable = await returnItemsInfoInUsedInEvents({
       serialNumbers,
       companySqlId,
-      dateRef2
+      dateRef2,
     });
     return response.status(201).json({
       ok: true,
@@ -421,4 +422,5 @@ module.exports = {
   gettingEventListPerCompany,
   eventStaffDetailInfo,
   inventoryEventBasedOnPeriod,
+  deleteEvent,
 };

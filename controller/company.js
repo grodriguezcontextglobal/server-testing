@@ -1,6 +1,7 @@
 const express = require("express");
 const Company = require("../models/Company");
 const { clientRedis } = require("../database/cacheMemoryConfig");
+const logger = require("../helpers/logger");
 
 const createCompany = async (request, response = express.response) => {
   try {
@@ -63,7 +64,7 @@ const createCompany = async (request, response = express.response) => {
       });
     }
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -98,7 +99,7 @@ const updatingCompany = async (request, response = express.response) => {
       company: companyInfoUpdated,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -120,7 +121,7 @@ const searchingCompany = async (request, response = express.response) => {
       company: companyInfo,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -166,7 +167,7 @@ const searchingGetCompanyInfo = async (
       });
     }
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -189,7 +190,7 @@ const getCompanyList = async (request, response = express.response) => {
       company: companyInfo,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",

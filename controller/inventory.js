@@ -1,5 +1,6 @@
 const express = require("express");
 const Inventory = require("../models/Inventory");
+const logger = require("../helpers/logger");
 
 const createInventory = async (request, response = express.response) => {
   try {
@@ -10,7 +11,7 @@ const createInventory = async (request, response = express.response) => {
       savedItem: item,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -44,7 +45,7 @@ const editInventory = async (request, response = response) => {
       itemUpdated: staffEventEdited,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
@@ -68,7 +69,7 @@ const deleteInventory = async (request, response) => {
       msg: "Item deleted",
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -84,7 +85,7 @@ const listOfInventories = async (request, response) => {
       listOfItems: items,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",

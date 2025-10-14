@@ -6,6 +6,7 @@ const StripeTransaction = require("../models/StripeTransaction");
 // const Transaction = require("../models/Transaction");
 const StripeCompany = require("../models/StripeCompany");
 require("dotenv").config();
+const logger = require("../helpers/logger");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
@@ -36,7 +37,7 @@ const stripeCustomer = async (request, response) => {
       customer,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(400).json({
       ok: false,
       msg: error,
@@ -102,7 +103,7 @@ const stripeAccountLink = async (request, response) => {
       account: accountLink,
     });
   } catch (error) {
-    console.log(error.message);
+    logger.error(error.message);
     return response.status(500).json({
       ok: false,
       error: error.message,
@@ -173,7 +174,7 @@ const companyInformationAccountStripe = async (request, response) => {
       companyCustomer: savingNewCompanyCustomer,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error.msg,
@@ -224,7 +225,7 @@ const stripePaymentIntentCustomized = async (request, response) => {
       paymentIntentCustomized,
     });
   } catch (error) {
-    console.log(error.message);
+    logger.error(error.message);
     return response.status(500).json({
       msg: error.message,
     });
@@ -591,7 +592,7 @@ const listAllPaymentIntents = async (request, response) => {
       paymentIntents,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -607,7 +608,7 @@ const listAllCustomers = async (request, response) => {
       stripeCustomerSaved,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -643,7 +644,7 @@ const saveStripeTransaction = async (request, response) => {
       stripeTransaction: stripeTransactionSaved,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact administrator",
@@ -661,7 +662,7 @@ const saveStripeTransactionAdmin = async (request, response) => {
       stripeTransaction: stripeTransactionSaved,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -681,7 +682,7 @@ const captureStripePaymentIntent = async (request, response) => {
       paymentIntent,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(404).json({
       ok: false,
       msg: "Transaction failed",
@@ -700,7 +701,7 @@ const cancelStripePaymentIntent = async (request, response) => {
       status: paymentIntent.status,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
@@ -732,7 +733,7 @@ const partialRefundStripePaymentIntent = async (request, response) => {
     const { paymentIntent, total } = request.body;
     const refund = await stripe.refunds.create({
       payment_intent: paymentIntent,
-      amount: Number(total)*100,
+      amount: Number(total) * 100,
     });
     return response.status(201).json({
       ok: true,
@@ -745,7 +746,6 @@ const partialRefundStripePaymentIntent = async (request, response) => {
     });
   }
 };
-
 
 const saveStripeTransactionTemplateForNoRegularUser = async (
   request,
@@ -760,7 +760,7 @@ const saveStripeTransactionTemplateForNoRegularUser = async (
       stripeTransaction: stripeTransactionSaved,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact administrator",
@@ -861,7 +861,7 @@ const stripeCompanyAccountFound = async (request, response) => {
       companyAccountStripeFound,
     });
   } catch (error) {
-    console.log("🚀 ~ stripeCompanyAccountFound ~ error:", error);
+    logger.error("🚀 ~ stripeCompanyAccountFound ~ error:", error);
     return response.status(500).json({
       ok: false,
       message: error.message,
