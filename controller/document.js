@@ -13,6 +13,7 @@ const {
   documentSigningCompletionNotification,
 } = require("../nodeMailer/notifications");
 const AdminUser = require("../models/AdminUser");
+const logger = require("../helpers/logger");
 
 const uploadDocument = async (req, res) => {
   try {
@@ -110,7 +111,7 @@ const uploadDocument = async (req, res) => {
       document,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     res.status(500).json({
       ok: false,
       msg: error.message,
@@ -315,12 +316,14 @@ const generateTemporaryDownloadUrl = async (req, res) => {
 
 const collectingSignatures = async (req, res) => {
   try {
-    const { signature, date, contract_url, company_id } = req.body;
+    const { signature, date, contract_url, company_id, staff_member_id } =
+      req.body;
     const signatureData = new Signatures({
       signature,
       date,
       contract_url,
       company_id,
+      staff_member_id,
     });
     await signatureData.save();
     res.status(200).json({
@@ -562,7 +565,7 @@ const createStaffMemberVerification = async (req, res) => {
       date,
       assigner_staff_member_id,
     } = req.body;
-    console.log(req.body);
+    logger.error(req.body);
     const new_contract_verification = new Verification({
       date,
       company_id,
@@ -579,9 +582,14 @@ const createStaffMemberVerification = async (req, res) => {
       ],
     });
     await new_contract_verification.save();
+    logger.info(
+      "Staff member verification created successfully",
+      new_contract_verification
+    );
     res.status(201).json({
       ok: true,
       msg: "Contract created successfully",
+      verificationInfo: new_contract_verification,
     });
   } catch (error) {
     res.status(500).json({
@@ -591,47 +599,132 @@ const createStaffMemberVerification = async (req, res) => {
   }
 };
 
+// staffMemberVerificationSignedDocumentForAssignmentDevices
 const staffMemberVerificationSignedDocumentForAssignmentDevices = async (
   req,
   res
 ) => {
   try {
-    const { company_id, contract_url, staff_member_id, date_reference } =
-      req.body;
-    const contract = await Verification.findOne({
+    const {
+      company_id,
+      contract_url,
+      staff_member_id,
+      date_reference,
+      verificationID,
+    } = req.body;
+    let matchedDoc = null;
+    let matchedContract = null;
+    let closestDelta = Infinity;
+
+    if (verificationID) {
+      const contract = await Verification.findById(verificationID).lean();
+      if (!contract || contract.length === 0) return;
+      if (
+        Array.isArray(contract.contract_list) &&
+        contract.contract_list.some((item) => item.signature === false)
+      ) {
+        return res.status(200).json({
+          ok: true,
+          msg: "Documents pending for signature",
+          document: contract.contract_list.filter((item) => item.signature === false),
+          contract_info: contract,
+        });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        msg: "Document signed successfully",
+        document: contract.contract_list.filter((item) => item.signature === true),
+        contract_info: contract,
+      });
+    }
+    const parseDateSafe = (value) => {
+      if (!value) return NaN;
+      if (value instanceof Date) {
+        const t = value.getTime();
+        return Number.isNaN(t) ? NaN : t;
+      }
+      if (typeof value === "number") {
+        return Number.isNaN(value) ? NaN : value;
+      }
+      const asNumber = Number(value);
+      if (!Number.isNaN(asNumber) && asNumber > 1000000000) {
+        return asNumber; // likely epoch ms or seconds (heuristic)
+      }
+      const d = new Date(value);
+      const t = d.getTime();
+      return Number.isNaN(t) ? NaN : t;
+    };
+    const refTs = parseDateSafe(date_reference);
+    if (Number.isNaN(refTs)) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Invalid date_reference. Provide a parsable date or epoch ms.",
+      });
+    }
+
+    const windowStart = refTs - 10 * 60 * 1000; // -10 minutes
+    const windowEnd = refTs + 10 * 60 * 1000; // +10 minutes
+
+    // Find all contracts for staff and company (date is stored as String, so range queries won't be reliable at DB level)
+    const contracts = await Verification.find({
       company_id,
       staff_member_id,
-      date: date_reference,
-    });
-    if (!contract) {
-      return res.status(404).json({
+    }).lean();
+
+    if (!contracts || contracts.length === 0) {
+      return res.status(201).json({
         ok: false,
         msg: "Contract not found",
       });
     }
-    const contractList = contract.contract_list;
-    const document = contractList.find(
-      (doc) => doc.document_url === contract_url
-    );
-    if (!document) {
-      return res.status(404).json({
+
+    for (const contract of contracts) {
+      const contractList = Array.isArray(contract.contract_list)
+        ? contract.contract_list
+        : [];
+
+      for (const doc of contractList) {
+        if (doc.document_url !== contract_url) continue;
+
+        // Prefer document date, fallback to contract date
+        const contractTs = parseDateSafe(contract?.date);
+        const tsCandidate = contractTs;
+
+        if (Number.isNaN(tsCandidate)) continue;
+
+        if (contractTs >= windowStart && contractTs <= windowEnd) {
+          const delta = Math.abs(tsCandidate - refTs);
+          if (delta < closestDelta) {
+            closestDelta = delta;
+            matchedDoc = contract_url;
+            matchedContract = contract;
+          }
+        }
+      }
+    }
+
+    if (!matchedDoc) {
+      return res.status(201).json({
         ok: false,
-        msg: "Document not found",
+        msg: "Document not found within the ±10 minute window",
       });
     }
-    if (document.signature === false) {
+
+    if (matchedDoc.signature === false) {
       return res.status(200).json({
         ok: true,
         msg: "Document pending for signature",
-        document,
-        contract_info: contract,
+        document: matchedDoc,
+        contract_info: matchedContract,
       });
     }
+
     return res.status(200).json({
       ok: true,
       msg: "Document signed successfully",
-      document,
-      contract_info: contract,
+      document: matchedDoc,
+      contract_info: matchedContract,
     });
   } catch (error) {
     res.status(500).json({
@@ -685,7 +778,9 @@ const addSignatureToDocument = async (req, res) => {
         const assigner = await AdminUser.findById(
           updatedVerification.assigner_staff_member_id
         );
-        const staff = await AdminUser.findById(updatedVerification.staff_member_id);
+        const staff = await AdminUser.findById(
+          updatedVerification.staff_member_id
+        );
         const notificationPayload = {
           assigner: {
             name:
@@ -706,7 +801,7 @@ const addSignatureToDocument = async (req, res) => {
           {
             status: (code) => ({
               json: (data) => {
-                console.log(`Notification response: ${code}`, data);
+                logger.error(`Notification response: ${code}`, data);
                 return data;
               },
             }),
