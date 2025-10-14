@@ -2,6 +2,7 @@ const express = require("express");
 const CashReport = require("../models/CashReport");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const { default: mongoose } = require("mongoose");
+const logger = require("../helpers/logger");
 
 const createReport = async (request, response = express.response) => {
   try {
@@ -15,7 +16,7 @@ const createReport = async (request, response = express.response) => {
       report,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -44,7 +45,7 @@ const cashReport = async (request, response) => {
     });
     // }
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -72,7 +73,7 @@ const removeCashReportAfterRefund = async (request, response) => {
 const updateCashReport = async (request, response) => {
   try {
     const { id, template } = request.body;
-    console.log(request.body);
+    logger.error(request.body);
     const cashReport = await CashReport.findByIdAndUpdate(id, template, {
       new: true,
     });

@@ -5,6 +5,7 @@ const { generateJWT } = require("../helpers/jwt");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const { groupBy } = require("lodash");
 const mongoose = require("mongoose");
+const logger = require("../helpers/logger");
 
 const showAllUsers = async (request, response) => {
   try {
@@ -14,7 +15,7 @@ const showAllUsers = async (request, response) => {
       users,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -78,7 +79,7 @@ const getUser = async (request, response = response) => {
       user,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
@@ -107,7 +108,7 @@ const checkUser = async (request, response = response) => {
       });
     }
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
@@ -155,7 +156,7 @@ const newUser = async (request, response = response) => {
       token,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact administrator",
@@ -206,7 +207,7 @@ const editUser = async (request, response = response) => {
       token,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
@@ -268,7 +269,7 @@ const getListOfUsersAndTransactionsPerEvent = async (request, response) => {
       data: JSON.stringify(result),
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Contact Administrator",
@@ -281,7 +282,9 @@ const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
   try {
     const cache_connection = await clientRedis();
     const { companyID } = request.params;
-    const cachedList = await cache_connection.get(`consumersInfoPerCompany=${companyID}`);
+    const cachedList = await cache_connection.get(
+      `consumersInfoPerCompany=${companyID}`
+    );
     if (cachedList) {
       return response.status(200).json({
         cached: true,
@@ -334,11 +337,14 @@ const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
         result.activeTransactions += activeTransactions;
         result.total += inactiveTransactions + activeTransactions;
       }
-      cache_connection.set(`consumersInfoPerCompany=${companyID}`, JSON.stringify(result));
+      cache_connection.set(
+        `consumersInfoPerCompany=${companyID}`,
+        JSON.stringify(result)
+      );
       cache_connection.expire(`consumersInfoPerCompany=${companyID}`, 180);
       return response.status(200).json({
         ok: true,
-        cache:false,
+        cache: false,
         result: {
           ...result,
           usersList: JSON.stringify(result.usersList),
