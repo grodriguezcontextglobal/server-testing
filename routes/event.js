@@ -13,7 +13,8 @@ const {
     searchStaffAllEvents,
     gettingEventListPerCompany,
     eventStaffDetailInfo,
-    inventoryEventBasedOnPeriod
+    inventoryEventBasedOnPeriod,
+    deleteEvent
 } = require("../controller/event");
 const { getListOfUsersAndTransactionsPerEvent } = require("../controller/auth");
 
@@ -54,5 +55,8 @@ router.get('/event-staff-detail/:id', eventStaffDetailInfo)
 
 //check event inventory based on timeframe selected
 router.get('/event-inventory-based-on-period', inventoryEventBasedOnPeriod)
+
+// delete event
+router.delete("/delete-event/:id", deleteEvent);
 
 module.exports = router;
