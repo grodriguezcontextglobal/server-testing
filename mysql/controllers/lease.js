@@ -1,31 +1,68 @@
 require("dotenv").config();
+const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
 
+// insertingNewLease
 const insertingNewLease = async (request, response) => {
-  try {
-    const connection = getConnection();
-    const subscription_initial_date = new Date();
-    const {
-      staff_admin_id,
-      company_id,
-      subscription_expected_return_data,
-      location,
-      staff_member_id,
-      device_id,
-    } = request.body;
+  const connection = getConnection();
+  const subscription_initial_date = new Date();
+  const {
+    staff_admin_id,
+    company_id,
+    subscription_expected_return_data,
+    location,
+    staff_member_id,
+    device_id,
+    verification_id, // added
+  } = request.body;
 
-    const query = `
-      INSERT INTO lease_info (
-        staff_admin_id,
-        company_id,
-        subscription_expected_return_data,
-        subscription_initial_date,
-        location,
-        staff_member_id,
-        device_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+  // Basic validation to avoid undefined/empty values
+  const fields = {
+    staff_admin_id,
+    company_id,
+    subscription_expected_return_data,
+    location,
+    staff_member_id,
+    device_id,
+    verification_id,
+  };
 
-    const values = [
+  const isEmpty = (v) =>
+    v === undefined ||
+    v === null ||
+    (typeof v === "string" && v.trim().length === 0) ||
+    v === "undefined" ||
+    v === "null";
+
+  const missing = Object.entries(fields)
+    .filter(([, value]) => isEmpty(value))
+    .map(([key]) => key);
+
+  if (missing.length > 0) {
+    logger.warn(`Missing required fields: ${missing.join(", ")}`);
+    return response
+      .status(400)
+      .json({ ok: false, msg: `Missing required fields: ${missing.join(", ")}` });
+  }
+
+  // Normalize date: allow string/Date; ensure it’s parsable
+  const normalizeDate = (v) => {
+    if (v instanceof Date) return v;
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return null;
+    return d;
+  };
+
+  const expectedReturnDate = normalizeDate(subscription_expected_return_data);
+  if (!expectedReturnDate) {
+    return response.status(400).json({
+      ok: false,
+      msg: "Invalid subscription_expected_return_data. Provide a valid date.",
+    });
+  }
+
+  const query = `
+    INSERT INTO lease_info (
       staff_admin_id,
       company_id,
       subscription_expected_return_data,
@@ -33,15 +70,23 @@ const insertingNewLease = async (request, response) => {
       location,
       staff_member_id,
       device_id,
-    ];
+      verification_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    const [result] = await connection.execute(query, values);
+  const values = [
+    staff_admin_id,
+    company_id,
+    subscription_expected_return_data,
+    subscription_initial_date,
+    location,
+    staff_member_id,
+    device_id,
+    verification_id, // added
+  ];
 
-    return response.status(201).json({ ok: true, lease: result });
-  } catch (error) {
-    console.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
-  }
+  const [result] = await connection.execute(query, values);
+
+  return response.status(201).json({ ok: true, lease: result });
 };
 
 const insertingNewLeaseConsumer = async (request, response) => {
@@ -82,7 +127,7 @@ const insertingNewLeaseConsumer = async (request, response) => {
 
     return response.status(201).json({ ok: true, lease: result });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -98,7 +143,7 @@ const consultingLease = async (request, response) => {
 
     return response.status(200).json({ ok: true, lease: result });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -114,7 +159,7 @@ const consultingConsumerLease = async (request, response) => {
 
     return response.status(200).json({ ok: true, lease: result });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -151,7 +196,7 @@ const updateLeaseInfo = async (request, response) => {
 
     return response.status(200).json({ ok: true, items: result.affectedRows });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -188,7 +233,7 @@ const updateConsumerLeaseInfo = async (request, response) => {
 
     return response.status(200).json({ ok: true, items: result.affectedRows });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -208,7 +253,7 @@ const deleteLeaseInfo = async (request, response) => {
 
     return response.status(200).json({ ok: true, items: result.affectedRows });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -228,7 +273,7 @@ const deleteConsumerLeaseInfo = async (request, response) => {
 
     return response.status(200).json({ ok: true, items: result.affectedRows });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
   }
 };
