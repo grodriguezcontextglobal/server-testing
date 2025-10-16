@@ -724,6 +724,7 @@ const liabilityContractStaffNotification = async (request, response) => {
   try {
     const { staff, contract_list, subject, items } = request.body;
 
+    console.log(request.body);
     // Validate required fields
     if (!staff || !staff.email || !staff.name) {
       return response.status(400).json({
@@ -1019,14 +1020,8 @@ const loginActivityNotification = async (adminUser, loginInfo) => {
       throw new Error("Login info is required");
     }
     // Sanitize and validate email components
-    const sanitizedName = (adminUser.name || "").replace(
-      /[<>]/g,
-      ""
-    );
-    const sanitizedLastName = (adminUser.lastName || "").replace(
-      /[<>]/g,
-      ""
-    );
+    const sanitizedName = (adminUser.name || "").replace(/[<>]/g, "");
+    const sanitizedLastName = (adminUser.lastName || "").replace(/[<>]/g, "");
     const sanitizedEmail = adminUser.email.trim();
     // Sanitize admin user data
     const sanitizedAdminUser = {
@@ -1034,17 +1029,14 @@ const loginActivityNotification = async (adminUser, loginInfo) => {
       name: sanitizedName,
       lastName: sanitizedLastName,
       email: sanitizedEmail,
-      company: (adminUser.company || "Unknown").replace(
-        /[<>]/g,
-        ""
-      ),
+      company: (adminUser.company || "Unknown").replace(/[<>]/g, ""),
       role: (adminUser.role || "Admin").replace(/[<>]/g, ""),
     };
 
     // Create email info object
     const info = {
       from: "noreply@devitrak.com",
-      bcc:"grodriguez@devitrak.com",
+      bcc: "grodriguez@devitrak.com",
       to: sanitizedEmail, // Use just the email address to avoid formatting issues
       subject: `Login Activity Alert - ${sanitizedAdminUser.email}`, // Remove emoji that might cause issues
       html: loginActivityNotificationMessageHtml({
