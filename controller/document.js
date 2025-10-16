@@ -316,7 +316,7 @@ const generateTemporaryDownloadUrl = async (req, res) => {
 
 const collectingSignatures = async (req, res) => {
   try {
-    const { signature, date, contract_url, company_id, staff_member_id } =
+    const { signature, date, contract_url, company_id, staff_member_id, item_ids = [], verification_id } = req.body;
       req.body;
     const signatureData = new Signatures({
       signature,
@@ -324,6 +324,8 @@ const collectingSignatures = async (req, res) => {
       contract_url,
       company_id,
       staff_member_id,
+      item_ids,
+      verification_id
     });
     await signatureData.save();
     res.status(200).json({
@@ -332,6 +334,65 @@ const collectingSignatures = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
+
+// consultingSignaturesStaffMember
+const consultingSignaturesStaffMember = async (req, res) => {
+  try {
+    const { staff_member_id, item_ids = [], company_id, contract_url, verification_id = null   } = req.body;
+
+    // Normalize item_ids to strings (schema expects [String])
+    const normalizedItemIds = Array.isArray(item_ids)
+      ? item_ids.map((v) => String(v)).filter((v) => v.length > 0)
+      : [];
+
+    // Safely handle encoded contract_url
+    const safeDecode = (s) => {
+      if (typeof s !== "string") return s;
+      try {
+        return decodeURIComponent(s);
+      } catch {
+        return s;
+      }
+    };
+    const decodedContractUrl = safeDecode(contract_url);
+
+    // Use ObjectId where applicable
+    const { Types } = require("mongoose");
+    const normalizeObjectId = (v) =>
+      typeof v === "string" && Types.ObjectId.isValid(v) ? new Types.ObjectId(v) : v;
+
+    const query = {
+      staff_member_id: normalizeObjectId(staff_member_id),
+      company_id: normalizeObjectId(company_id),
+      // Accept both encoded and decoded forms to avoid mismatch
+      contract_url:
+        typeof contract_url === "string" && contract_url.includes("%")
+          ? { $in: [contract_url, decodedContractUrl] }
+          : decodedContractUrl,
+    };
+
+    if(verification_id){
+      query.verification_id = verification_id
+    }
+    // Require that the signature covers all requested items
+    if (normalizedItemIds.length > 0) {
+      query.item_ids = { $all: normalizedItemIds };
+    }
+
+    const consultingSignatures = await Signatures.find(query).lean();
+
+    return res.status(200).json({
+      ok: true,
+      data: consultingSignatures,
+    });
+  } catch (error) {
+    return res.status(500).json({
       ok: false,
       msg: error.message,
       err: JSON.stringify(error),
@@ -833,11 +894,13 @@ const addSignatureToDocument = async (req, res) => {
 };
 
 module.exports = {
+  addSignatureToDocument,
   collectingSignatures,
+  consultingSignaturesStaffMember,
   createNewFolder,
+  createStaffMemberVerification,
   deleteDocument,
   deleteFolder,
-  stampEventConsumerSignatures,
   generateTemporaryDownloadUrl,
   getCompanyDocumentByID,
   getCompanyDocuments,
@@ -847,9 +910,8 @@ module.exports = {
   getFolderByID,
   getFolders,
   getTriggerActions,
+  staffMemberVerificationSignedDocumentForAssignmentDevices,
+  stampEventConsumerSignatures,
   updateFolder,
   uploadDocument,
-  createStaffMemberVerification,
-  staffMemberVerificationSignedDocumentForAssignmentDevices,
-  addSignatureToDocument,
 };
