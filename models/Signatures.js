@@ -23,6 +23,17 @@ const SignatureSchema = new Schema({
     ref: "AdminUser",
     required: true,
   },
+  item_ids:{
+    type: [String],
+    required: true,
+    default: []
+  },
+  verification_id:{
+    type: Schema.Types.ObjectId,
+    ref: "Verification",
+    required: true,
+
+  }
 });
 
 module.exports = model("Signature", SignatureSchema);
