@@ -24,6 +24,7 @@ const {
   collectingSignatures,
   getConsumerSignatures,
   stampEventConsumerSignatures,
+  consultingSignaturesStaffMember,
 } = require("../controller/document");
 
 // Configure multer
@@ -88,6 +89,9 @@ router.get("/provider-companies", getProviderCompanies);
 
 //signatures contract
 router.post("/signatures", collectingSignatures);
+
+//consulting staff signatures
+router.post("/consulting-signatures", consultingSignaturesStaffMember);
 
 //get consumer signatures
 router.post("/consumer-signatures", getConsumerSignatures);
