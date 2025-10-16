@@ -4006,7 +4006,22 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
     subject,
     company_id,
     date_reference,
+    verification_id,
   } = props;
+
+  const itemIds = Array.isArray(items)
+    ? Array.from(
+        new Set(
+          items
+            .map((it) => it.item_id ?? it.id ?? it.key ?? it.serial_number)
+            .filter(Boolean)
+        )
+      )
+    : [];
+
+  const itemIdsParam = itemIds.length
+    ? itemIds.map((id) => encodeURIComponent(id)).join(",")
+    : "";
 
   const renderContractLinks = () => {
     return contract_list
@@ -4015,7 +4030,7 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
       <tr>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title}</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">
-          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&staff_member_id=${staff.staff_member_id}&date_reference=${date_reference}&contract_url=${contract.view_url}">View</a>
+          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&staff_member_id=${staff.staff_member_id}&date_reference=${date_reference}&contract_url=${encodeURIComponent(contract.view_url)}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
         </td>
       </tr>
     `
