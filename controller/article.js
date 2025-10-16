@@ -1,5 +1,6 @@
 const express = require("express");
 const Article = require("../models/Article");
+const logger = require("../helpers/logger");
 
 const articleSetup = async (request, response) => {
   const newArticle = new Article(request.body);
@@ -13,7 +14,7 @@ const articleSetup = async (request, response) => {
       newArticle,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     response.status(500).json({
       ok: false,
       msg: error,
@@ -29,7 +30,7 @@ const displayArticles = async (request, response) => {
       articles,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     response.status(500).json({
       ok: false,
       msg: error.response.data,
@@ -39,48 +40,48 @@ const displayArticles = async (request, response) => {
 const deleteArticle = async (request, response) => {
   try {
     const deleteArticleId = await request.params.id;
-    const articleToDelete = await Article.findByIdAndDelete(deleteArticleId)
+    const articleToDelete = await Article.findByIdAndDelete(deleteArticleId);
 
     response.status(201).json({
       ok: true,
-      articleToDelete
-    })
+      articleToDelete,
+    });
   } catch (error) {
     response.status(500).json({
       ok: false,
-      msg: "There was an error in the request. Please try it later"
-    })
+      msg: "There was an error in the request. Please try it later",
+    });
   }
-}
+};
 
 const editArticle = async (request, response) => {
   try {
     const articleIdToEdit = request.params.id;
     const contentToEditArticle = {
-      ...request.body
-    }
+      ...request.body,
+    };
     const articleEdited = await Article.findByIdAndUpdate(
       articleIdToEdit,
       contentToEditArticle,
       {
-        new: true
+        new: true,
       }
-    )
+    );
     response.status(201).json({
       ok: true,
-      article: articleEdited
-    })
+      article: articleEdited,
+    });
   } catch (error) {
-    console.log(error)
+    logger.error(error);
     response.status(500).json({
       ok: false,
-      msg: "There was an error in the request. Please try it later"
-    })
+      msg: "There was an error in the request. Please try it later",
+    });
   }
-}
+};
 module.exports = {
   articleSetup,
   displayArticles,
   deleteArticle,
-  editArticle
+  editArticle,
 };
