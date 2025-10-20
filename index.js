@@ -85,7 +85,8 @@ const configureRoutes = (app) => {
         feedback: require("./routes/feedback"),
         'error_log': require("./routes/errorLog"),
         post: require("./routes/post"),
-        document: require("./routes/document")
+        document: require("./routes/document"),
+        devitrak: require("./routes/devitrakApp"),
     };
 
     // MySQL Routes
