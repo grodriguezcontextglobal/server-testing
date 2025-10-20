@@ -11,6 +11,7 @@ const acceptancePoliciesAndTermsApp = async (request, response) => {
       return response.status(201).json({
         ok: true,
         msg: "Staff member already accepted platform's policies and terms.",
+        info: acceptanceFound,
       });
     }
     const acceptance = new DevitrakApp(request.body);
