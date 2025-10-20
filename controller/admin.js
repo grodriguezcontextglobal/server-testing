@@ -269,6 +269,35 @@ const logoutUser = async (request, response) => {
   }
 };
 
+const manuallyLogoutUser = async (request, response) => {
+  try {
+    const redis = await clientRedis();
+    logger.info('request', request.body)
+    // Safely read token from cookies or fall back to header
+      const sessionKey = `staff_session:${request.body.uid}`;
+      redis.del(sessionKey);
+
+    // Clear cookie if it existed (name is required)
+    response.clearCookie("token", {
+      httpOnly: true,
+      sameSite: "none",
+      secure: true,
+    });
+
+    return response.status(201).json({
+      ok: true,
+      msg: "user logged out",
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: error,
+    });
+  }
+};
+
+
 const editAdminUser = async (request, response = response) => {
   const adminUserId = request.params.id;
   try {
@@ -571,4 +600,5 @@ module.exports = {
   displayArticles,
   checkStatus,
   logoutUser,
+  manuallyLogoutUser,
 };
