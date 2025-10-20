@@ -6,8 +6,9 @@ const DevitrakAppSchema = new Schema({
     required: true,
   },
   date: {
-    type: String,
+    type: Date,
     required: true,
+    default: Date.now,
   },
   staff_id: {
     type: Schema.Types.ObjectId,
