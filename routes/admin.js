@@ -16,6 +16,8 @@ const {
   updatePassword,
   editOtherAdminUser,
   checkStatus,
+  logoutUser,
+  manuallyLogoutUser,
 } = require("../controller/admin");
 const {
   addReceiverToTransaction,
@@ -23,8 +25,12 @@ const {
 } = require("../controller/receiver");
 const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 
-
+//protected route
+router.get('/protected', validateJWT, checkTokenVersion, (req, res) => {
+  res.json({ message: 'This is a protected route', user: req.user });
+});
 
 //create admin user
 router.post(
@@ -54,6 +60,12 @@ router.post(
   ],
   loginUser
 );
+
+//logout user
+router.post("/logout", logoutUser);
+
+//router for manually log out user
+router.post('/manually_logout', manuallyLogoutUser)
 
 //renovar token
 router.get("/renew", validateJWT, renewToken);
