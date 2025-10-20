@@ -9,10 +9,14 @@ const DevitrakAppSchema = new Schema({
     type: String,
     required: true,
   },
-  staff_id:{
-        type: Schema.Types.ObjectId,
-        ref: "AdminUser",
-        required: false,
+  staff_id: {
+    type: Schema.Types.ObjectId,
+    ref: "AdminUser",
+    required: false,
+  },
+  email: {
+    type: String,
+    required: true,
   },
   documentsAndPolicies: [
     {
