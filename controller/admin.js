@@ -83,18 +83,50 @@ const loginUser = async (request, response) => {
       });
     }
 
+    // Enforce single active session using Redis (atomic claim)
+    const redis = await clientRedis();
+    const sessionKey = `staff_session:${adminUser.id ?? adminUser.uid}`;
+    const ttlSeconds = rememberMe ? 30 * 24 * 60 * 60 : 12 * 60 * 60;
+
+    // Attempt to claim the session atomically; if it exists, block login
+    const claimed = await redis.set(sessionKey, "active", {
+      EX: ttlSeconds,
+      NX: true,
+    });
+    if (!claimed) {
+      return response.status(409).json({
+        ok: false,
+        msg: "Active session already exists for this account. Please logout first.",
+      });
+    }
+
     //generate jwt (json web token)
-    const token = await generateJWT(
-      adminUser.id,
-      adminUser.name,
-      adminUser.tokenVersion,
-      rememberMe
-    );
+    let token;
+    try {
+      token = await generateJWT(
+        adminUser.id,
+        adminUser.name,
+        adminUser.tokenVersion,
+        rememberMe
+      );
+    } catch (e) {
+      // Rollback the claim if token generation fails
+      try {
+        await redis.del(sessionKey);
+      } catch {}
+      throw e;
+    }
+
+    // Optionally store token as the session value (presence is what matters)
+    try {
+      await redis.set(sessionKey, token, { EX: ttlSeconds });
+    } catch {}
 
     // Prepare login information for email notification with better header extraction
     const loginInfo = {
       timestamp: new Date().toLocaleString("en-US", {
-        timeZone: request.headers["x-timezone"] || request.headers["timezone"] || "UTC",
+        timeZone:
+          request.headers["x-timezone"] || request.headers["timezone"] || "UTC",
         year: "numeric",
         month: "long",
         day: "numeric",
@@ -104,7 +136,7 @@ const loginUser = async (request, response) => {
         timeZoneName: "short",
       }),
       ipAddress:
-        request.headers["x-forwarded-for"]?.split(',')[0]?.trim() ||
+        request.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
         request.headers["x-real-ip"] ||
         request.headers["x-client-ip"] ||
         request.ip ||
@@ -115,14 +147,17 @@ const loginUser = async (request, response) => {
       browser: request.headers["user-agent"]
         ? request.headers["user-agent"].split(" ")[0]
         : "Unknown",
-      location: request.headers["x-location"] || 
-                request.headers["cf-ipcountry"] || 
-                request.headers["accept-language"]?.split(',')[0] || 
-                "Unknown",
-      timezone: request.headers["x-timezone"] || request.headers["timezone"] || "UTC",
-      requestId: request.headers["x-request-id"] || 
-                 request.headers["x-request-timestamp"] || 
-                 Date.now().toString(),
+      location:
+        request.headers["x-location"] ||
+        request.headers["cf-ipcountry"] ||
+        request.headers["accept-language"]?.split(",")[0] ||
+        "Unknown",
+      timezone:
+        request.headers["x-timezone"] || request.headers["timezone"] || "UTC",
+      requestId:
+        request.headers["x-request-id"] ||
+        request.headers["x-request-timestamp"] ||
+        Date.now().toString(),
     };
 
     // Send login activity notification email (async, don't wait for it)
@@ -197,6 +232,38 @@ const loginUser = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      err: error,
+    });
+  }
+};
+
+const logoutUser = async (request, response) => {
+  try {
+    const redis = await clientRedis();
+    // Safely read token from cookies or fall back to header
+    const token = request.cookies?.token || request.headers["x-token"];
+    let decoded = {};
+    if (token) {
+      decoded = jwt.decode(token);
+      const sessionKey = `staff_session:${decoded.id ?? decoded.uid}`;
+      redis.del(sessionKey);
+    }
+
+    // Clear cookie if it existed (name is required)
+    response.clearCookie("token", {
+      httpOnly: true,
+      sameSite: "none",
+      secure: true,
+    });
+
+    return response.status(201).json({
+      ok: true,
+      msg: "user logged out",
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
       err: error,
     });
   }
@@ -479,27 +546,6 @@ const checkStatus = async (request, response) => {
       ok: true,
       cached: false,
       online: checkOnlineStatus.online,
-    });
-  } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: error,
-    });
-  }
-};
-
-const logoutUser = async (request, response) => {
-  try {
-    const token = request.cookies.token;
-    if (token) {
-      const decoded = jwt.decode(token);
-      console.log(decoded);
-    }
-    response.clearCookie();
-    return response.status(201).json({
-      ok: true,
-      msg: "user logged out",
     });
   } catch (error) {
     return response.status(500).json({
