@@ -1,6 +1,7 @@
 const express = require("express");
 const Subscription = require("../models/Subscription");
 const Company = require("../models/Company");
+const logger = require("../helpers/logger");
 
 const createSubscription = async (request, response = express.response) => {
   try {
@@ -11,7 +12,7 @@ const createSubscription = async (request, response = express.response) => {
       subscription: subscription,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
@@ -39,7 +40,7 @@ const updateSubscription = async (request, response) => {
       subscription: subscription,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     response.status(500).json({
       ok: false,
       msg: "Please contact the administrator",
@@ -63,7 +64,7 @@ const searchSubscription = async (request, response) => {
       subscription: subscription,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     response.status(500).json({
       ok: false,
       msg: "Please contact the administrator",
@@ -73,7 +74,7 @@ const searchSubscription = async (request, response) => {
 const populateSubscriptionCompany = async (request, response) => {
   try {
     // Find the subscription by company name and update it
-    const { companyName } = request.body
+    const { companyName } = request.body;
     let subscription = await Subscription.findOne({
       company: companyName,
     });
@@ -91,7 +92,7 @@ const populateSubscriptionCompany = async (request, response) => {
       });
     }
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     response.status(500).json({
       ok: false,
       msg: "Please contact the administrator",

@@ -5,6 +5,7 @@ const { clientRedis } = require("../database/cacheMemoryConfig");
 require("dotenv").config();
 const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const logger = require("../helpers/logger");
 
 const saveTransaction = async (request, response) => {
   try {
@@ -22,7 +23,7 @@ const saveTransaction = async (request, response) => {
       transaction: transactionSaved,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -46,7 +47,7 @@ const saveTransactionAdmin = async (request, response) => {
       transaction: transactionSaved,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -69,7 +70,7 @@ const saveTransactionTemplateForNoRegularUser = async (request, response) => {
       Transaction: TransactionSaved,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact administrator",
@@ -102,7 +103,7 @@ const updateTransaction = async (request, response) => {
       transaction: updatedTransaction,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -118,7 +119,7 @@ const getListOfAllSavedTransaction = async (request, response) => {
       list: listOfTransactionsSaved,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -154,7 +155,7 @@ const gettingListOfSavedTransaction = async (request, response) => {
       });
     }
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -172,7 +173,7 @@ const updateMultipleDocuments = async (request, response) => {
       list: updateDocuments,
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -208,7 +209,7 @@ const removeDuplicateEntry = async (request, response) => {
       });
     }
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     return response.status(500).json({
       ok: false,
       msg: error,
