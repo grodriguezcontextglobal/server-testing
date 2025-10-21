@@ -370,7 +370,6 @@ const inventoryQuery = async (payload) => {
       company_sql_id,
       ownership,
     } = payload;
-    console.log("inventoryQuery", payload);
     const connection = getConnection();
 
     // Build dynamic query with proper parameterization
@@ -489,7 +488,6 @@ const eventInventoryInPeriod = async (payload) => {
 
     // Group and count devices by category, group, and brand
     const deviceCounts = eventList.reduce((acc, event) => {
-      // console.log(`Processing event: ${event.eventInfoDetail?.eventName}`);
 
       if (event.deviceSetup && Array.isArray(event.deviceSetup)) {
         event.deviceSetup.forEach((device) => {
@@ -506,9 +504,6 @@ const eventInventoryInPeriod = async (payload) => {
             category_name !== "undefined" &&
             category !== category_name
           ) {
-            console.log(
-              `Filtering out device - category mismatch: ${category} !== ${category_name}`
-            );
             includeDevice = false;
           }
 
@@ -517,16 +512,10 @@ const eventInventoryInPeriod = async (payload) => {
             item_group !== "undefined" &&
             group !== item_group
           ) {
-            console.log(
-              `Filtering out device - group mismatch: ${group} !== ${item_group}`
-            );
             includeDevice = false;
           }
 
           if (brand && brand !== "undefined" && deviceBrand !== brand) {
-            console.log(
-              `Filtering out device - brand mismatch: ${deviceBrand} !== ${brand}`
-            );
             includeDevice = false;
           }
 
@@ -564,10 +553,6 @@ const eventInventoryInPeriod = async (payload) => {
           }
         });
       } else {
-        console.log(
-          "No deviceSetup found for event:",
-          event.eventInfoDetail?.eventName
-        );
       }
 
       return acc;
