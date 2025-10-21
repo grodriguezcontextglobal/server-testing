@@ -242,23 +242,42 @@ const logoutUser = async (request, response) => {
     const redis = await clientRedis();
     // Safely read token from cookies or fall back to header
     const token = request.cookies?.token || request.headers["x-token"];
+    const staffID = request.body.uid;
     let decoded = {};
     if (token) {
       decoded = jwt.decode(token);
       const sessionKey = `staff_session:${decoded.id ?? decoded.uid}`;
       redis.del(sessionKey);
+      // Clear cookie if it existed (name is required)
+      response.clearCookie("token", {
+        httpOnly: true,
+        sameSite: "none",
+        secure: true,
+      });
+
+      return response.status(201).json({
+        ok: true,
+        msg: "user logged out",
+      });
+    } 
+    if(staffID) {
+      const sessionKey = `staff_session:${staffID}`;
+      redis.del(sessionKey);
+      // Clear cookie if it existed (name is required)
+      response.clearCookie("token", {
+        httpOnly: true,
+        sameSite: "none",
+        secure: true,
+      });
+
+      return response.status(201).json({
+        ok: true,
+        msg: "user logged out",
+      });
     }
-
-    // Clear cookie if it existed (name is required)
-    response.clearCookie("token", {
-      httpOnly: true,
-      sameSite: "none",
-      secure: true,
-    });
-
-    return response.status(201).json({
-      ok: true,
-      msg: "user logged out",
+    response.status(401).json({
+      ok: false,
+      msg: "No token/Staff Member UID provided",
     });
   } catch (error) {
     return response.status(500).json({
@@ -272,10 +291,10 @@ const logoutUser = async (request, response) => {
 const manuallyLogoutUser = async (request, response) => {
   try {
     const redis = await clientRedis();
-    logger.info('request', request.body)
+    logger.info("request", request.body);
     // Safely read token from cookies or fall back to header
-      const sessionKey = `staff_session:${request.body.uid}`;
-      redis.del(sessionKey);
+    const sessionKey = `staff_session:${request.body.uid}`;
+    redis.del(sessionKey);
 
     // Clear cookie if it existed (name is required)
     response.clearCookie("token", {
@@ -296,7 +315,6 @@ const manuallyLogoutUser = async (request, response) => {
     });
   }
 };
-
 
 const editAdminUser = async (request, response = response) => {
   const adminUserId = request.params.id;
