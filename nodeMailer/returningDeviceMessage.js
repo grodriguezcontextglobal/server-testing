@@ -4195,6 +4195,18 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
         border-left: 4px solid #f59e0b;
       }
 
+      /* Action Required banner for contract signing */
+      .action-required {
+        background-color: #fff1f2; /* subtle red */
+        padding: 16px;
+        border-radius: 8px;
+        margin: 20px 0;
+        border-left: 4px solid #ef4444; /* red accent */
+      }
+      .action-required h2 {
+        margin-top: 0;
+      }
+
       @media screen and (max-width: 425px) {
         body {
           margin: 0;
@@ -4245,20 +4257,29 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
       </div>
 
       <p>Dear ${staff.name},</p>
+
+      <!-- Action Required: signing contracts is mandatory before device issuance -->
+      <div class="action-required">
+        <h2>Action Required</h2>
+        <p>To receive your assigned device, you must sign the liability contracts linked in this email.</p>
+        <ul style="color: #475467; line-height: 1.6; margin: 0;">
+          <li>Open each contract using the "View" link provided.</li>
+          <li>Complete the signature workflow for all contracts listed.</li>
+          <li>Devices will not be issued until all contracts are signed.</li>
+        </ul>
+      </div>
       
-      <p>You are receiving this email regarding device liability contracts that require your attention. Please review and download the contracts listed below for the assigned devices.</p>
-      
-      <p>This email contains important liability information for device assignments. Please ensure you download and review all contracts before proceeding with device usage.</p>
+      <p>This email contains important liability information for device assignments. You must sign all contracts before device pickup or usage.</p>
 
       <div class="info-section">
         <h2>Liability Contracts</h2>
-        <p>Please click on the download links below to access your liability contracts:</p>
+        <p>You must open each link and complete the signature for every contract listed below:</p>
         
         <table>
           <thead>
             <tr>
               <th>Contract Title</th>
-              <th>Download Link</th>
+              <th>Sign & Open</th>
             </tr>
           </thead>
           <tbody>
@@ -4287,16 +4308,16 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
       <div class="info-section">
         <h2>Important Notes</h2>
         <ul style="color: #475467; line-height: 1.6;">
-          <li>Please download and review all liability contracts before using the assigned devices</li>
-          <li>Keep a copy of the contracts for your records</li>
-          <li>Contact the administrator if you have any questions about the contracts or device assignments</li>
-          <li>Report any device issues immediately to avoid liability concerns</li>
+          <li>Devices will not be issued until all contracts are signed.</li>
+          <li>Use each "View" link above to sign and retain a copy.</li>
+          <li>Contact the administrator if you have any questions about the contracts or device assignments.</li>
+          <li>Report any device issues immediately to avoid liability concerns.</li>
         </ul>
       </div>
 
       <p>If you have any questions or concerns regarding these contracts or device assignments, please contact the administrator at ${email_admin}.</p>
       
-      <p>Thank you for your attention to this matter.</p>
+      <p>Thank you for your prompt attention to this matter.</p>
       
       <p>Best regards,<br/>
       ${company_name} Administration Team</p>
