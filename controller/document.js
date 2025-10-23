@@ -316,8 +316,47 @@ const generateTemporaryDownloadUrl = async (req, res) => {
 
 const collectingSignatures = async (req, res) => {
   try {
-    const { signature, date, contract_url, company_id, staff_member_id, item_ids = [], verification_id } = req.body;
-      req.body;
+    const {
+      signature,
+      date,
+      contract_url,
+      company_id,
+      staff_member_id,
+      item_ids = [],
+      verification_id,
+    } = req.body;
+    req.body;
+    const loginInfo = {
+      timestamp: new Date().toLocaleString("en-US", {
+        timeZone: req.headers["x-timezone"] || req.headers["timezone"] || "UTC",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZoneName: "short",
+      }),
+      ipAddress:
+        req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+        req.headers["x-real-ip"] ||
+        req.headers["x-client-ip"] ||
+        req.ip ||
+        req.connection?.remoteAddress ||
+        req.socket?.remoteAddress ||
+        "Unknown",
+      userAgent: req.headers["user-agent"] || "Unknown Browser",
+      browser: req.headers["user-agent"]
+        ? req.headers["user-agent"].split(" ")[0]
+        : "Unknown",
+      location:
+        req.headers["x-location"] ||
+        req.headers["cf-ipcountry"] ||
+        req.headers["accept-language"]?.split(",")[0] ||
+        "Unknown",
+      timezone: req.headers["x-timezone"] || req.headers["timezone"] || "UTC",
+    };
+
     const signatureData = new Signatures({
       signature,
       date,
@@ -325,7 +364,14 @@ const collectingSignatures = async (req, res) => {
       company_id,
       staff_member_id,
       item_ids,
-      verification_id
+      verification_id,
+      device_signature: {
+        device_agent: loginInfo.userAgent,
+        device_browser: loginInfo.browser,
+        device_location: loginInfo.location,
+        device_timezone: loginInfo.timezone,
+        device_ip_address: loginInfo.ipAddress,
+      },
     });
     await signatureData.save();
     res.status(200).json({
@@ -344,7 +390,13 @@ const collectingSignatures = async (req, res) => {
 // consultingSignaturesStaffMember
 const consultingSignaturesStaffMember = async (req, res) => {
   try {
-    const { staff_member_id, item_ids = [], company_id, contract_url, verification_id = null   } = req.body;
+    const {
+      staff_member_id,
+      item_ids = [],
+      company_id,
+      contract_url,
+      verification_id = null,
+    } = req.body;
 
     // Normalize item_ids to strings (schema expects [String])
     const normalizedItemIds = Array.isArray(item_ids)
@@ -365,7 +417,9 @@ const consultingSignaturesStaffMember = async (req, res) => {
     // Use ObjectId where applicable
     const { Types } = require("mongoose");
     const normalizeObjectId = (v) =>
-      typeof v === "string" && Types.ObjectId.isValid(v) ? new Types.ObjectId(v) : v;
+      typeof v === "string" && Types.ObjectId.isValid(v)
+        ? new Types.ObjectId(v)
+        : v;
 
     const query = {
       staff_member_id: normalizeObjectId(staff_member_id),
@@ -377,8 +431,8 @@ const consultingSignaturesStaffMember = async (req, res) => {
           : decodedContractUrl,
     };
 
-    if(verification_id){
-      query.verification_id = verification_id
+    if (verification_id) {
+      query.verification_id = verification_id;
     }
     // Require that the signature covers all requested items
     if (normalizedItemIds.length > 0) {
@@ -687,7 +741,9 @@ const staffMemberVerificationSignedDocumentForAssignmentDevices = async (
         return res.status(200).json({
           ok: true,
           msg: "Documents pending for signature",
-          document: contract.contract_list.filter((item) => item.signature === false),
+          document: contract.contract_list.filter(
+            (item) => item.signature === false
+          ),
           contract_info: contract,
         });
       }
@@ -695,7 +751,9 @@ const staffMemberVerificationSignedDocumentForAssignmentDevices = async (
       return res.status(200).json({
         ok: true,
         msg: "Document signed successfully",
-        document: contract.contract_list.filter((item) => item.signature === true),
+        document: contract.contract_list.filter(
+          (item) => item.signature === true
+        ),
         contract_info: contract,
       });
     }
