@@ -5255,14 +5255,6 @@ const documentSigningCompletionMessageHtml = (props) => {
 
 const loginActivityNotificationMessageHtml = (props) => {
   const { adminUser, loginInfo } = props;
-  const dicRole = {
-    0: "Root administrator",
-    1: "Administrator", 
-    2: "Manager",
-    3: "Support",
-    4: "Staff Event Assistant",
-  };
-
   return `
 <!DOCTYPE html>
 <html lang="en">
