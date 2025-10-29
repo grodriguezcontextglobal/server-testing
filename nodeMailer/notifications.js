@@ -106,15 +106,15 @@ const deviceReportPerTransaction = async (request, response) => {
 const cancelDepositNotification = async (request, response) => {
   try {
     const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
+      from: "noreply@devitrak.com",
       to: `${request.body.consumer.email}>`,
       subject: "Deposit returned notification",
       html: cancelingDepositMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
-        notification: `Email sent`,
+        notification: `Email notification`,
         ok: true,
       });
     });
@@ -135,7 +135,7 @@ const captureDepositNotification = async (request, response) => {
       html: capturingDepositMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -151,34 +151,17 @@ const captureDepositNotification = async (request, response) => {
 
 const earlierReturningNotification = async (request, response) => {
   try {
-    const transport = await nodeMailer.createTransport({
-      service: "Outlook365",
-      host: "smtp.office365.com",
-      port: "587",
-      tls: {
-        ciphers: "SSLv3",
-        rejectUnauthorized: false,
-      },
-      auth: {
-        user: "noreply@devitrak.com",
-        pass: "@dmin.Devitr@k",
-      },
-      // tls: {
-      //   ciphers: "SSLv3",
-      // },
-    });
-
-    const info = await transport.sendMail({
+    const info = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `<${request.body.consumer}>`,
       subject: "Returning device reminder",
       html: returnReminderMessageHtml,
-    });
-
-    response.status(201).json({
-      notification: info.messageId,
-      acceptedEmails: info.accepted,
-      rejectedEmails: info.rejected,
+    };
+    return sgMail.send(msg).then(() => {
+      response.status(201).json({
+        notification: `Email notification was sent.`,
+        ok: true,
+      });
     });
   } catch (error) {
     response.status(500).json({
@@ -197,7 +180,7 @@ const eventStaffNotification = async (request, response) => {
       html: staffNotificationMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -220,7 +203,7 @@ const editingDeviceAdminNotification = async (request, response) => {
       html: editingDeviceAdminMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -243,7 +226,7 @@ const lostDeviceFeeCollectedNotification = async (request, response) => {
       html: lostDeviceFeeReceipt(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -266,7 +249,7 @@ const confirmationLinkNewConsumerNotification = async (request, response) => {
       html: confirmationNewConsumerAccountMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -289,7 +272,7 @@ const loginLinkExistingConsumerNotification = async (request, response) => {
       html: linkToLoginExistingConsumerMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -311,7 +294,7 @@ const linkToResetPassword = async (request, response) => {
       html: linkToResetUserPassword(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -331,7 +314,7 @@ const customizedEmailNotification = (request, response) => {
       html: customizedEmailMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -354,7 +337,7 @@ const singleEmailNotification = async (request, response) => {
       html: singleEmailMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -377,7 +360,7 @@ const newUserInvitationNotification = (request, response) => {
       html: newUserInvitationMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -400,7 +383,7 @@ const internalNotification = async (request, response) => {
       html: staffNotificationMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -423,7 +406,7 @@ const eventBeginsReminderNotification = async (request, response) => {
       html: eventBeginsReminderHtmlMessage(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -446,7 +429,7 @@ const staffInternalNotification = async (request, response) => {
       html: staffInternalNotificationMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -469,7 +452,7 @@ const itemInfoStaffNotification = async (request, response) => {
       html: itemInfoStaffNotificationMessageHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -493,7 +476,7 @@ const eventLinkEvent = async (request, response) => {
       html: eventLinkEventHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -517,7 +500,7 @@ const chargeInvoice = async (request, response) => {
       html: serviceChargeInvoiceEmailHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -540,7 +523,7 @@ const refundInvoice = async (request, response) => {
       html: serviceRefundConfirmationEmailHtml(request.body),
     };
 
-    sgMail.send(msg).then(() => {
+    return sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email sent`,
         ok: true,
@@ -571,7 +554,7 @@ const massiveEventCustomerNotification = async (request, response) => {
         subject: `Event ${eventSelected} - ${subject}`,
         html: customizedEmailMessageHtml(request.body),
       };
-      sgMail.sendMultiple(msg).then(() => {
+      return sgMail.sendMultiple(msg).then(() => {
         response.status(201).json({
           notification: `Email sent to ${consumerEventList.length} consumers`,
           ok: true,
@@ -604,7 +587,7 @@ const devitrakFeedbackEmailNotification = async (request, response) => {
         subject: `Share Your Feedback – Help Us Improve Your Experience!`,
         html: nrffInterpretationFeedbackEmailMessageHtml(),
       };
-      sgMail.sendMultiple(msg).then(() => {
+      return sgMail.sendMultiple(msg).then(() => {
         response.status(201).json({
           notification: `Email sent to ${consumerEventList.length} consumers`,
           ok: true,
@@ -724,7 +707,6 @@ const liabilityContractStaffNotification = async (request, response) => {
   try {
     const { staff, contract_list, subject, items } = request.body;
 
-    console.log(request.body);
     // Validate required fields
     if (!staff || !staff.email || !staff.name) {
       return response.status(400).json({
