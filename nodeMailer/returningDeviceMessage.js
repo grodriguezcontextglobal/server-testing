@@ -426,7 +426,6 @@ const returnConfirmationMessageHtml = (props) => {
           <tr>
             <th>Device type</th>
             <th>Serial number</th>
-            <th>Device status</th>
             <th>Transaction ID</th>
             <th>Date</th>
           </tr>
@@ -438,9 +437,6 @@ const returnConfirmationMessageHtml = (props) => {
             <tr>
               <td>${device.device.deviceType}</td>
               <td>${device.device.serialNumber}</td>
-              <td class="${
-                device.device.status ? "text-danger" : "text-success"
-              }">${rendering(device.device.status)}</td>
               <td>${device.paymentIntent}</td>
               <td>${new Date().toLocaleDateString()}</td>
             </tr>
