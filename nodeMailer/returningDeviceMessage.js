@@ -591,7 +591,7 @@ const cancelingDepositMessageHtml = (props) => {
                 </h1>
                 <p style="font-size: 16px; line-height: 1.5; margin-bottom: 16px;">
                   This email confirms that the 
-                  <strong>$${props.amount}</strong> 
+                  $<strong>${props.amount}</strong> 
                   deposit has been released and returned to you from the
                   transaction detailed below.
                 </p>
@@ -796,7 +796,7 @@ const capturingDepositMessageHtml = (props) => {
                 </h1>
                 <p style="font-size: 16px; line-height: 1.5; margin-bottom: 16px;">
                   This email confirms that 
-                  <strong>$${props.amount}</strong> 
+                  $<strong>${props.amount}</strong> 
                   of your deposit has been charged due to the lost devices from
                   the transaction detailed below.
                 </p>
