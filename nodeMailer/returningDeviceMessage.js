@@ -637,7 +637,7 @@ const cancelingDepositMessageHtml = (props) => {
                   In the application you will be able to request new devices,
                   review your transactions, request support, and get answers to
                   frequently asked questions. For any specific questions please
-                  contact the staff at {props.company}.
+                  contact the staff at ${props.company}.
                 </p>
               </td>
             </tr>
@@ -842,7 +842,7 @@ const capturingDepositMessageHtml = (props) => {
                   In the application you will be able to request new devices,
                   review your transactions, request support, and get answers to
                   frequently asked questions. For any specific questions please
-                  contact the staff at {props.company}.
+                  contact the staff at ${props.company}.
                 </p>
               </td>
             </tr>
