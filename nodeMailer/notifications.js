@@ -105,19 +105,21 @@ const deviceReportPerTransaction = async (request, response) => {
 
 const cancelDepositNotification = async (request, response) => {
   try {
+    console.log(request.body)
     const msg = {
-      from: "noreply@devitrak.com",
-      to: `${request.body.consumer.email}>`,
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to:request.body.consumer.email,
       subject: "Deposit returned notification",
       html: cancelingDepositMessageHtml(request.body),
     };
 
-    return sgMail.send(msg).then(() => {
+    sgMail.send(msg).then(() => {
       response.status(201).json({
         notification: `Email notification`,
         ok: true,
       });
     });
+
   } catch (error) {
     response.status(500).json({
       ok: false,
@@ -130,17 +132,18 @@ const captureDepositNotification = async (request, response) => {
   try {
     const msg = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${request.body.consumer.email}>`,
+      to: request.body.consumer.email,
       subject: "Deposit captured",
       html: capturingDepositMessageHtml(request.body),
     };
 
     return sgMail.send(msg).then(() => {
       response.status(201).json({
-        notification: `Email sent`,
+        notification: `Email was sent.`,
         ok: true,
-      });
-    });
+      })
+    })
+
   } catch (error) {
     response.status(500).json({
       ok: false,
@@ -332,7 +335,7 @@ const singleEmailNotification = async (request, response) => {
   try {
     const msg = {
       to: request.body.consumer,
-      from: "noreply@devitrak.com", // "notification@devitrak.net",
+      from: "Devitrak Notifications <noreply@devitrak.com>", // "notification@devitrak.net",
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: singleEmailMessageHtml(request.body),
     };
