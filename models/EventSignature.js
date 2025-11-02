@@ -39,8 +39,7 @@ const EventSignatureSchema = new Schema({
     required: true,
   },
   transaction_id: {
-    type: Schema.Types.ObjectId,
-    ref: "Transaction",
+    type: String,
     required: false,
   },
 });
