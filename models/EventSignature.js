@@ -38,6 +38,11 @@ const EventSignatureSchema = new Schema({
     ref: "User",
     required: true,
   },
+  transaction_id: {
+    type: Schema.Types.ObjectId,
+    ref: "Transaction",
+    required: false,
+  },
 });
 
 module.exports = model("EventSignature", EventSignatureSchema);
