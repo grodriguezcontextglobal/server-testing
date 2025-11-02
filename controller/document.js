@@ -478,6 +478,7 @@ const stampEventConsumerSignatures = async (req, res) => {
     res.status(200).json({
       ok: true,
       msg: "Signatures saved successfully",
+      signature: signatureData,
     });
   } catch (error) {
     res.status(500).json({
@@ -487,6 +488,27 @@ const stampEventConsumerSignatures = async (req, res) => {
     });
   }
 };
+
+const updateStampEventConsumerSignatures = async (request, response) => {
+  try {
+    const { signatureID, transactionID }  = request.body
+    const signature = await EventSignature.findById(signatureID)
+    if (!signature) {
+      return response.status(404).json({
+        ok: false,
+        msg: "Signature not found",
+      })
+    }
+    signature.transaction_id = transactionID
+    await signature.save()
+    return response.status(200).json({
+      ok: true,
+      msg: "Signature updated successfully",
+    })
+  } catch (error) {
+    
+  }
+}
 
 const getConsumerSignatures = async (req, res) => {
   try {
@@ -971,5 +993,6 @@ module.exports = {
   staffMemberVerificationSignedDocumentForAssignmentDevices,
   stampEventConsumerSignatures,
   updateFolder,
+  updateStampEventConsumerSignatures,
   uploadDocument,
 };
