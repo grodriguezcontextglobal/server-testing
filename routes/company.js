@@ -25,6 +25,7 @@ const {
   getConsumerSignatures,
   stampEventConsumerSignatures,
   consultingSignaturesStaffMember,
+  updateStampEventConsumerSignatures,
 } = require("../controller/document");
 
 // Configure multer
@@ -98,6 +99,9 @@ router.post("/consumer-signatures", getConsumerSignatures);
 
 //event consumer signatures
 router.post("/event-consumer-signatures", stampEventConsumerSignatures);
+
+//transaction id added to event consumer signatures
+router.patch("/update-signatures", updateStampEventConsumerSignatures);
 
 //get specific provider company
 router.post("/provider-company/:id", getSpecificProviderCompany);
