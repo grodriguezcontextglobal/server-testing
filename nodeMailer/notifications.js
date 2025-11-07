@@ -40,9 +40,9 @@ const logger = require("../helpers/logger");
 const assingDeviceNotification = async (request, response) => {
   try {
     const info = {
-      from: "noreply@devitrak.com",
+      from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${request.body.consumer.firstName} ${request.body.consumer.lastName} <${request.body.consumer.email}>`,
-      subject: "Assigned device notification",
+      subject: "Assignment device notification",
       html: assigningDeviceMessageHtml(request.body),
     };
     return sgMail.send(info).then(() => {
@@ -62,7 +62,7 @@ const assingDeviceNotification = async (request, response) => {
 const returningDeviceNotification = async (request, response) => {
   try {
     const info = {
-      from: "noreply@devitrak.com",
+      from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${request.body.consumer.firstName} ${request.body.consumer.lastName} <${request.body.consumer.email}>`,
       subject: "Returned device notification",
       html: returnConfirmationMessageHtml(request.body),
