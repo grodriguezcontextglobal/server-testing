@@ -102,7 +102,7 @@ const insertingItem = async (request, response) => {
       item: result,
     });
   } catch (error) {
-    console.error("Error:", error);
+    logger.error("Error:", error);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -375,7 +375,7 @@ const consultingItem = async (request, response) => {
       items: result,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -394,7 +394,7 @@ const deleteItem = async (request, response) => {
       item_deleted: result,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -413,7 +413,7 @@ const consultingItemTable = async (request, response) => {
       items: result,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -535,7 +535,7 @@ const updateItemInTable = async (request, response) => {
       where_fields: whereParts.map((w) => w.split(" = ")[0]),
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -593,7 +593,7 @@ const returningLeasedEquipmentToCompany = async (request, response) => {
       });
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({
       ok: false,
       msg: `${error.message}`,
@@ -671,7 +671,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
       msg: "Items updated successfully",
     });
   } catch (error) {
-    console.error(
+    logger.error(
       "Error in updateItemInWarehouseAfterBeingAddedToEvent:",
       error
     );
@@ -721,7 +721,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
       items: result,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({
       ok: false,
       msg: `${error.message}`,
@@ -819,8 +819,8 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
       msg: `Successfully updated ${totalAffectedRows} items`,
     });
   } catch (error) {
-    console.error("Error:", error.message);
-    console.error("Stack:", error.stack);
+    logger.error("Error:", error.message);
+    logger.error("Stack:", error.stack);
     return response.status(500).json({
       ok: false,
       msg: `${error.message}`,
@@ -847,7 +847,7 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
       items: result,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({
       ok: false,
       msg: `${error.message}`,
@@ -939,7 +939,7 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
       msg: `Successfully updated ${totalAffectedRows} items`,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: `${error.message}`,
@@ -966,7 +966,7 @@ const consultingInventoryTracking = async (request, response) => {
       result,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({
       ok: false,
       msg: `${error.message}`,
@@ -994,7 +994,7 @@ const checkingInventoryCurrentState = async (request, response) => {
       result,
     });
   } catch (error) {
-    console.error("Error:", error);
+    logger.error("Error:", error);
     response.status(500).json({
       ok: false,
       msg: `${error}`,
@@ -1031,7 +1031,7 @@ const checkingItem = async (request, response) => {
     });
     // }
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({
       ok: false,
       msg: `${error.message}`,
@@ -1269,7 +1269,7 @@ const checkInventoryCompanyExists = async (request, response) => {
       items: JSON.stringify(result),
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -1311,7 +1311,7 @@ const containerItemsDetails = async (props) => {
       await connection.execute(query, values);
     }
   } catch (error) {
-    console.error("Error:", error);
+    logger.error("Error:", error);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -1341,7 +1341,7 @@ const updateContentInContainerItem = async (request, response) => {
       items: result,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -1374,7 +1374,7 @@ const updateItemInTableAfterBeingAddedToEventFromContainer = async (
       msg: "Items updated successfully in the warehouse",
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -2149,7 +2149,7 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
       result: finalResult,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -2245,7 +2245,7 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (
       result: finalResult,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -2296,7 +2296,7 @@ const insertContainerItems = async (request, response) => {
     ]);
 
     if ((err, results.affectedRows === 0)) {
-      console.error("Error inserting container items:", err);
+      logger.error("Error inserting container items:", err);
       return response.status(500).json({
         ok: false,
         msg: "Error inserting container items",
@@ -2311,7 +2311,7 @@ const insertContainerItems = async (request, response) => {
       child_ids,
     });
   } catch (error) {
-    console.error("Error in insertContainerItems:", error);
+    logger.error("Error in insertContainerItems:", error);
     return response.status(500).json({
       ok: false,
       msg: "Internal server error",
@@ -2361,7 +2361,7 @@ const getContainerItems = async (request, response) => {
         childIds = [childIds].filter((id) => id != null);
       }
     } catch (parseError) {
-      console.error(
+      logger.error(
         "Parse error details:",
         parseError,
         "\nRaw child_ids:",
@@ -2424,7 +2424,7 @@ const getContainerItems = async (request, response) => {
       container: containerData,
     });
   } catch (error) {
-    console.error("Error in getContainerItems:", error);
+    logger.error("Error in getContainerItems:", error);
     return response.status(500).json({
       ok: false,
       msg: "Error retrieving container items",
@@ -2480,7 +2480,7 @@ const deleteContainerItem = async (request, response) => {
       container_item_id: parseInt(container_item_id),
     });
   } catch (error) {
-    console.error("Error in deleteContainerItem:", error);
+    logger.error("Error in deleteContainerItem:", error);
     return response.status(500).json({
       ok: false,
       msg: "Error deleting container",
@@ -2548,7 +2548,7 @@ const updateContainerItems = async (request, response) => {
       },
     });
   } catch (error) {
-    console.error("Error in updateContainerItems:", error);
+    logger.error("Error in updateContainerItems:", error);
     return response.status(500).json({
       ok: false,
       msg: "Error updating container",
@@ -2570,7 +2570,7 @@ const checkLargeData = async (request, response) => {
       result: results,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({
       ok: false,
       msg: error.message,
@@ -2591,7 +2591,7 @@ const updateLargeData = async (request, response) => {
       result: results,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({
       ok: false,
       msg: error.message,
@@ -2689,7 +2689,7 @@ const updateSubLocation = async (req, res) => {
       affectedRows: updateResult.affectedRows,
     });
   } catch (error) {
-    console.error("Error updating sub location:", error);
+    logger.error("Error updating sub location:", error);
     return res.status(500).json({
       ok: false,
       message: "Internal server error while updating sub location",
@@ -2991,7 +2991,7 @@ const filterSuppliersInfoItems = async (request, response) => {
       result: filteredResult,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({
       ok: false,
       msg: error.message,
