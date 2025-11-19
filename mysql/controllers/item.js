@@ -2,6 +2,7 @@ const { response, request } = require("express");
 const getConnection = require("../database/config");
 // const { clientRedis } = require("../../database/cacheMemoryConfig");
 const { groupBy } = require("lodash");
+const logger = require("../../helpers/logger");
 require("dotenv").config();
 const connection = getConnection();
 
@@ -434,7 +435,7 @@ const consultingItemInWarehouseTable = async (request, response) => {
       items: result,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({
       ok: false,
       msg: error.message,
@@ -445,82 +446,93 @@ const consultingItemInWarehouseTable = async (request, response) => {
 const updateItemInTable = async (request, response) => {
   try {
     const connection = getConnection();
-    const {
-      item_id,
-      category_name,
-      item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial_number,
-      warehouse,
-      status,
-      main_warehouse,
-      update_at,
-      company,
-      location,
-      sub_location,
-      current_location,
-      return_date,
-      extra_serial_number,
-      container,
-      containerSpotLimit,
-      image_url,
-    } = request.body;
-    const query = `
-      UPDATE item_inv 
-      SET category_name=?,
-      item_group=?,
-      cost=?,
-      brand=?,
-      descript_item=?,
-      ownership=?,
-      serial_number=?,
-      warehouse=?,
-      status=?,
-      main_warehouse=?,
-      update_at=?,
-      company=?,
-      location=?,
-      sub_location=?,
-      current_location=?,
-      return_date=?,
-      extra_serial_number=?,
-      container=?,
-      containerSpotLimit=?,
-      image_url=?
-      WHERE item_id = ?;
-    `;
+    const body = request.body || {};
 
-    const values = [
-      category_name,
-      item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial_number,
-      warehouse,
-      status,
-      main_warehouse,
-      update_at,
-      company,
-      location,
-      sub_location,
-      current_location,
-      return_date,
-      extra_serial_number,
-      container,
-      containerSpotLimit,
-      image_url,
-      item_id,
-    ];
+    // Identifier keys to locate the target item (flexible WHERE clause)
+    const identifierKeys = new Set([
+      "item_id",
+      "serial_number",
+      "company_id",
+    ]);
+
+    // Whitelist of known columns in item_inv to prevent invalid updates
+    const allowedColumns = new Set([
+      "category_name",
+      "item_group",
+      "cost",
+      "brand",
+      "descript_item",
+      "ownership",
+      "serial_number",
+      "warehouse",
+      "status",
+      "main_warehouse",
+      "update_at",
+      "company",
+      "location",
+      "sub_location",
+      "current_location",
+      "return_date",
+      "extra_serial_number",
+      "container",
+      "container_items",
+      "isItInContainer",
+      "containerSpotLimit",
+      "container_id",
+      "display_item",
+      "image_url",
+      "company_id",
+      "enableAssignFeature",
+      "returnedRentedInfo",
+      "supplier_info",
+    ]);
+
+    // Build WHERE clause from any provided identifiers
+    const whereParts = [];
+    const whereValues = [];
+    for (const [key, value] of Object.entries(body)) {
+      if (identifierKeys.has(key) && value !== undefined && value !== null) {
+        whereParts.push(`${key} = ?`);
+        whereValues.push(value);
+      }
+    }
+    
+    if (whereParts.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg:
+          "Provide at least one identifying field to target the item (e.g., item_id or serial_number with company_id).",
+      });
+    }
+
+    // Build SET clause from provided updatable fields (excluding identifiers)
+    const setParts = [];
+    const setValues = [];
+    for (const [key, value] of Object.entries(body)) {
+      if (identifierKeys.has(key)) continue; // identifiers are used in WHERE, not SET
+      if (!allowedColumns.has(key)) continue; // ignore unknown columns
+      if (value === undefined) continue; // skip undefined, allow null
+      setParts.push(`${key} = ?`);
+      setValues.push(value);
+    }
+
+    if (setParts.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "No valid fields provided to update.",
+      });
+    }
+
+    const query = `UPDATE item_inv SET ${setParts.join(", ")} WHERE ${whereParts.join(" AND ")};`;
+    const values = [...setValues, ...whereValues];
 
     const [result] = await connection.execute(query, values);
+
     return response.status(201).json({
       ok: true,
       items: result,
+      updated_fields: setParts.map((u) => u.split(" = ")[0]),
+      where_fields: whereParts.map((w) => w.split(" = ")[0]),
     });
   } catch (error) {
     console.error("Error:", error.message);
