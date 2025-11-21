@@ -19,6 +19,9 @@ const {
   createStaffMemberVerification,
   staffMemberVerificationSignedDocumentForAssignmentDevices,
   addSignatureToDocument,
+  createConsumerVerification,
+  consumerMemberVerificationSignedDocumentForAssignmentDevices,
+  addSignatureToConsumerDocument,
 } = require("../controller/document");
 
 // Configure multer
@@ -87,8 +90,31 @@ router.post("/folders", getFolders);
 router.get("/folder/:id", getFolderByID);
 router.put("/folder/:id", updateFolder);
 router.delete("/folder/:id", deleteFolder);
-router.post("/verification/staff_member/signed_document", createStaffMemberVerification)
-router.post("/verification/staff_member/check_signed_document", staffMemberVerificationSignedDocumentForAssignmentDevices)
-router.patch("/verification/staff_member/signing_document", addSignatureToDocument)
+router.post(
+  "/verification/staff_member/signed_document",
+  createStaffMemberVerification
+);
+router.post(
+  "/verification/staff_member/check_signed_document",
+  staffMemberVerificationSignedDocumentForAssignmentDevices
+);
+router.patch(
+  "/verification/staff_member/signing_document",
+  addSignatureToDocument
+);
+
+//verification consumer contract
+router.post(
+  "/verification/consumer_member/signed_document",
+  createConsumerVerification
+);
+router.post(
+  "/verification/consumer_member/check_signed_document",
+  consumerMemberVerificationSignedDocumentForAssignmentDevices
+);
+router.patch(
+  "/verification/consumer_member/signing_document",
+  addSignatureToConsumerDocument
+);
 
 module.exports = router;
