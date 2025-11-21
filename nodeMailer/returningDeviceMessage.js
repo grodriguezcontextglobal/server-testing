@@ -4186,7 +4186,7 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
         border-bottom: 2px solid #155eef;
       }
 
-      .staff-info {
+      .consumer-info {
         background-color: #fff7ed;
         padding: 16px;
         border-radius: 8px;
@@ -4256,6 +4256,342 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
       </div>
 
       <p>Dear ${staff.name},</p>
+
+      <!-- Action Required: signing contracts is mandatory before device issuance -->
+      <div class="action-required">
+        <h2>Action Required</h2>
+        <p>To receive your assigned device, you must sign the liability contracts linked in this email.</p>
+        <ul style="color: #475467; line-height: 1.6; margin: 0;">
+          <li>Open each contract using the "View" link provided.</li>
+          <li>Complete the signature workflow for all contracts listed.</li>
+          <li>Devices will not be issued until all contracts are signed.</li>
+        </ul>
+      </div>
+      
+      <p>This email contains important liability information for device assignments. You must sign all contracts before device pickup or usage.</p>
+
+      <div class="info-section">
+        <h2>Liability Contracts</h2>
+        <p>You must open each link and complete the signature for every contract listed below:</p>
+        
+        <table>
+          <thead>
+            <tr>
+              <th>Contract Title</th>
+              <th>Sign & Open</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${renderContractLinks()}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="info-section">
+        <h2>Assigned Device Information</h2>
+        <p>The following devices have been assigned to you:</p>
+        
+        <table>
+          <thead>
+            <tr>
+              <th>Serial Number</th>
+              <th>Device Type</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${renderItemsTable()}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="info-section">
+        <h2>Important Notes</h2>
+        <ul style="color: #475467; line-height: 1.6;">
+          <li>Devices will not be issued until all contracts are signed.</li>
+          <li>Use each "View" link above to sign and retain a copy.</li>
+          <li>Contact the administrator if you have any questions about the contracts or device assignments.</li>
+          <li>Report any device issues immediately to avoid liability concerns.</li>
+        </ul>
+      </div>
+
+      <p>If you have any questions or concerns regarding these contracts or device assignments, please contact the administrator at ${email_admin}.</p>
+      
+      <p>Thank you for your prompt attention to this matter.</p>
+      
+      <p>Best regards,<br/>
+      ${company_name} Administration Team</p>
+
+      <div class="footer">
+        <p>This is an automated message from ${company_name}. Please do not reply to this email.</p>
+        <p>For support, contact: ${email_admin}</p>
+      </div>
+    </div>
+  </body>
+</html>
+  `;
+};
+
+const liabilityContractConsumerNotificationMessageHtml = (props) => {
+  const {
+    company_name,
+    email_admin,
+    consumer,
+    contract_list,
+    items,
+    subject,
+    company_id,
+    date_reference,
+    verification_id,
+  } = props;
+
+  const itemIds = Array.isArray(items)
+    ? Array.from(
+        new Set(
+          items
+            .map((it) => it.item_id ?? it.id ?? it.key ?? it.serial_number)
+            .filter(Boolean)
+        )
+      )
+    : [];
+
+  const itemIdsParam = itemIds.length
+    ? itemIds.map((id) => encodeURIComponent(id)).join(",")
+    : "";
+
+  const renderContractLinks = () => {
+    return contract_list
+      .map(
+        (contract) => `
+      <tr>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title}</td>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">
+          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&consumer_member_id=${consumer.consumer_member_id}&date_reference=${date_reference}&contract_url=${encodeURIComponent(contract.view_url)}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
+        </td>
+      </tr>
+    `
+      )
+      .join("");
+  };
+
+  const renderItemsTable = () => {
+    return items
+      .map(
+        (item) => `
+      <tr>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${item.serial_number}</td>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${item.type}</td>
+      </tr>
+    `
+      )
+      .join("");
+  };
+
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Device Liability Contract</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      .container_one {
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+        margin-bottom: 2.5rem;
+        width: 100%;
+      }
+      
+      .container_one_title p {
+        text-align: left;
+        width: 100%;
+        color: #475467;
+        font-size: 9px;
+        font-weight: 500;
+        line-height: 9px;
+      }
+      
+      .container_one_logo {
+        display: flex;
+        align-items: center;
+        margin-top: 2.5px;
+      }
+      
+      .container_one_logo img {
+        align-self: flex-start;
+        display: flex;
+        align-items: center;
+        max-width: 100px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+      }
+
+      h2 {
+        font-size: 20px;
+        font-weight: 600;
+        color: #101828;
+        margin: 24px 0 16px 0;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 16px;
+        line-height: 1.5;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        font-size: 14px;
+      }
+
+      th, td {
+        padding: 12px;
+        border: 1px solid #e0e0e0;
+        text-align: left;
+      }
+
+      th {
+        background-color: #f2f2f2;
+        font-weight: 600;
+        color: #475467;
+      }
+
+      .download-link {
+        color: #155eef;
+        text-decoration: none;
+        font-weight: 600;
+        padding: 8px 16px;
+        background-color: #f0f7ff;
+        border-radius: 6px;
+        display: inline-block;
+        transition: background-color 0.2s;
+      }
+
+      .download-link:hover {
+        background-color: #e0f0ff;
+      }
+
+      .info-section {
+        background-color: #f8fafc;
+        padding: 16px;
+        border-radius: 8px;
+        margin: 20px 0;
+      }
+
+      .footer {
+        font-size: 12px;
+        color: #475467;
+        text-align: center;
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid #e0e0e0;
+      }
+
+      .company-header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #155eef;
+      }
+
+      .staff-info {
+        background-color: #fff7ed;
+        padding: 16px;
+        border-radius: 8px;
+        margin: 20px 0;
+        border-left: 4px solid #f59e0b;
+      }
+
+      /* Action Required banner for contract signing */
+      .action-required {
+        background-color: #fff1f2; /* subtle red */
+        padding: 16px;
+        border-radius: 8px;
+        margin: 20px 0;
+        border-left: 4px solid #ef4444; /* red accent */
+      }
+      .action-required h2 {
+        margin-top: 0;
+      }
+
+      @media screen and (max-width: 425px) {
+        body {
+          margin: 0;
+          padding: 0;
+          width: 95%;
+        }
+        .container {
+          margin: 0;
+          padding: 1.2rem;
+          border-radius: 12px;
+        }
+        .container_one {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .container_one_logo {
+          margin-top: 10px;
+        }
+        .container_one_logo img {
+          max-width: 80px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="container_one">
+        <div class="container_one_title">
+          <p>Powered by</p>
+          <div class="container_one_logo">
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-name" />
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo" />
+          </div>
+        </div>
+      </div>
+      
+      <div class="company-header">
+        <h1>${company_name}</h1>
+        <p style="margin: 0; color: #155eef; font-weight: 600;">${email_admin}</p>
+      </div>
+
+      <h1>${subject}</h1>
+      
+      <div class="consumer-info">
+        <h2>Consumer Member Information</h2>
+        <p><strong>Name:</strong> ${consumer.name}</p>
+        <p><strong>Email:</strong> ${consumer.email}</p>
+      </div>
+
+      <p>Dear ${consumer.name},</p>
 
       <!-- Action Required: signing contracts is mandatory before device issuance -->
       <div class="action-required">
@@ -5489,6 +5825,7 @@ module.exports = {
   eventBeginsReminderHtmlMessage,
   eventLinkEventHtml,
   itemInfoStaffNotificationMessageHtml,
+  liabilityContractConsumerNotificationMessageHtml,
   liabilityContractStaffNotificationMessageHtml,
   linkToLoginExistingConsumerMessageHtml,
   linkToResetUserPassword,
