@@ -33,6 +33,7 @@ const {
   termsAndConditionsAcceptanceMessageHtml,
   documentSigningCompletionMessageHtml,
   loginActivityNotificationMessageHtml,
+  liabilityContractConsumerNotificationMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
@@ -754,6 +755,54 @@ const liabilityContractStaffNotification = async (request, response) => {
   }
 };
 
+const liabilityContractConsumerNotification = async (request, response) => {
+  try {
+    const { consumer, contract_list, subject, items } = request.body;
+
+    // Validate required fields
+    if (!consumer || !consumer.email || !consumer.name) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Consumer information (name and email) is required",
+      });
+    }
+
+    if (!contract_list || contract_list.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "At least one contract is required",
+      });
+    }
+
+    if (!items || items.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "At least one item is required",
+      });
+    }
+
+    const info = {
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `${consumer.name} <${consumer.email}>`,
+      subject: subject || "Device Liability Contract",
+      html: liabilityContractConsumerNotificationMessageHtml(request.body),
+    };
+
+    return sgMail.send(info).then(() => {
+      response.status(201).json({
+        notification: `Liability contract email sent to ${consumer.name} (${consumer.email})`,
+        ok: true,
+      });
+    });
+  } catch (error) {
+    logger.log(`Error sending liability contract email: ${error}`);
+    response.status(500).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+};
+
 const returnedItemsToRenterNotification = async (request, response) => {
   try {
     const { subject, staffEmails, supplierInfo, attachments } = request.body;
@@ -1065,6 +1114,7 @@ module.exports = {
   internalNotification,
   itemInfoStaffNotification,
   liabilityContractStaffNotification,
+  liabilityContractConsumerNotification,
   linkToResetPassword,
   loginActivityNotification,
   loginLinkExistingConsumerNotification,
