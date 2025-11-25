@@ -747,7 +747,7 @@ const liabilityContractStaffNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    logger.log(`Error sending liability contract email: ${error}`);
+    logger.info(`Error sending liability contract email: ${error}`);
     response.status(500).json({
       ok: false,
       error: error.message,
@@ -795,7 +795,7 @@ const liabilityContractConsumerNotification = async (request, response) => {
       });
     });
   } catch (error) {
-    logger.log(`Error sending liability contract email: ${error}`);
+    logger.error(`Error sending liability contract email: ${error}`);
     response.status(500).json({
       ok: false,
       error: error.message,
