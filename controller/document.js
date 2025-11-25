@@ -15,6 +15,7 @@ const {
 const AdminUser = require("../models/AdminUser");
 const logger = require("../helpers/logger");
 const VerificationConsumersLeaseContracts = require("../models/VerificationConsumersLeaseContracts");
+const SignatureConsumer = require("../models/SignatureConsumer");
 
 const uploadDocument = async (req, res) => {
   try {
@@ -364,6 +365,79 @@ const collectingSignatures = async (req, res) => {
       contract_url,
       company_id,
       staff_member_id,
+      item_ids,
+      verification_id,
+      device_signature: {
+        device_agent: loginInfo.userAgent,
+        device_browser: loginInfo.browser,
+        device_location: loginInfo.location,
+        device_timezone: loginInfo.timezone,
+        device_ip_address: loginInfo.ipAddress,
+      },
+    });
+    await signatureData.save();
+    res.status(200).json({
+      ok: true,
+      msg: "Signatures saved successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
+
+const collectingSignaturesForConsumerMember = async (req, res) => {
+  try {
+    const {
+      signature,
+      date,
+      contract_url,
+      company_id,
+      consumer_member_id,
+      item_ids = [],
+      verification_id,
+    } = req.body;
+    req.body;
+    const loginInfo = {
+      timestamp: new Date().toLocaleString("en-US", {
+        timeZone: req.headers["x-timezone"] || req.headers["timezone"] || "UTC",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        timeZoneName: "short",
+      }),
+      ipAddress:
+        req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+        req.headers["x-real-ip"] ||
+        req.headers["x-client-ip"] ||
+        req.ip ||
+        req.connection?.remoteAddress ||
+        req.socket?.remoteAddress ||
+        "Unknown",
+      userAgent: req.headers["user-agent"] || "Unknown Browser",
+      browser: req.headers["user-agent"]
+        ? req.headers["user-agent"].split(" ")[0]
+        : "Unknown",
+      location:
+        req.headers["x-location"] ||
+        req.headers["cf-ipcountry"] ||
+        req.headers["accept-language"]?.split(",")[0] ||
+        "Unknown",
+      timezone: req.headers["x-timezone"] || req.headers["timezone"] || "UTC",
+    };
+
+    const signatureData = new SignatureConsumer({
+      signature,
+      date,
+      contract_url,
+      company_id,
+      consumer_member_id,
       item_ids,
       verification_id,
       device_signature: {
@@ -1156,7 +1230,7 @@ const addSignatureToDocument = async (req, res) => {
 const addSignatureToConsumerDocument = async (req, res) => {
   try {
     const { verification_id, contract_url } = req.body;
-    const contract = await Verification.findById(verification_id);
+    const contract = await VerificationConsumersLeaseContracts.findById(verification_id);
     if (!contract) {
       return res.status(404).json({
         ok: false,
@@ -1178,7 +1252,7 @@ const addSignatureToConsumerDocument = async (req, res) => {
     signature.signature = true;
     signature.date = new Date().toLocaleString();
     contractList[document] = signature;
-    const updatedVerification = await Verification.findByIdAndUpdate(
+    const updatedVerification = await VerificationConsumersLeaseContracts.findByIdAndUpdate(
       verification_id,
       {
         contract_list: contractList,
@@ -1275,4 +1349,5 @@ module.exports = {
   updateFolder,
   updateStampEventConsumerSignatures,
   uploadDocument,
+  collectingSignaturesForConsumerMember,
 };
