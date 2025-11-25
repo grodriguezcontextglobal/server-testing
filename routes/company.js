@@ -22,6 +22,7 @@ const {
 } = require("../controller/providerCompany");
 const {
   collectingSignatures,
+  collectingSignaturesForConsumerMember,
   getConsumerSignatures,
   stampEventConsumerSignatures,
   consultingSignaturesStaffMember,
@@ -91,6 +92,8 @@ router.get("/provider-companies", getProviderCompanies);
 //signatures contract
 router.post("/signatures", collectingSignatures);
 
+//collecting signatures for consumer member
+router.post("/signatures-for-consumer-member", collectingSignaturesForConsumerMember);
 //consulting staff signatures
 router.post("/consulting-signatures", consultingSignaturesStaffMember);
 
