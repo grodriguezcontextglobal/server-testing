@@ -74,8 +74,8 @@ const createCompany = async (request, response = express.response) => {
 
 const updatingCompany = async (request, response = express.response) => {
   try {
-    const cache_connection = await clientRedis();
-    await cache_connection.del(`company_id=${request.params.id}`);
+    // const cache_connection = await clientRedis();
+    // await cache_connection.del(`company_id=${request.params.id}`);
     const paramsId = request.params.id;
     let companyInfo = await Company.findById(paramsId);
     if (!companyInfo) {
@@ -103,6 +103,7 @@ const updatingCompany = async (request, response = express.response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      err: JSON.stringify(error),
     });
   }
 };
