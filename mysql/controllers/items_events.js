@@ -1,4 +1,5 @@
 require("dotenv").config();
+const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
 
 const connection = getConnection();
@@ -36,7 +37,7 @@ const insertingItemInEvent = async (request, response) => {
       total_items: results.length,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -55,7 +56,7 @@ const insertingDeviceInEventDirectly = async (request, response) => {
       inserted_items: result.affectedRows,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -81,7 +82,7 @@ const deletingItemsInEventAfterDeviceInventoryIsUpdated = async (request, respon
       deleted_items: result.affectedRows,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -106,7 +107,7 @@ const consultingInventoryCurrentState = async (request, response) => {
     const [result] = await connection.execute(query, values);
     response.status(200).json({ ok: true, result });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -134,7 +135,7 @@ const checkingInventoryCurrentState = async (request, response) => {
     const [result] = await connection.execute(query, values);
     response.status(200).json({ ok: true, result });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -159,7 +160,7 @@ const consultingInventoryInEvent = async (request, response) => {
     const [result] = await connection.execute(query, [event_id]);
     response.status(200).json({ ok: true, result });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -175,7 +176,7 @@ const consultingRowInItemInvAssignedEventTable = async (request, response) => {
     const [result] = await connection.execute(query, [item_id, company_assigned_event_id]);
     response.status(200).json({ ok: true, result });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -192,7 +193,7 @@ const deletingRecordInItemInvAssignedEventRow = async (request, response) => {
       deleted_items: result.affectedRows,
     });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -210,7 +211,7 @@ const insertingDeviceInEventDirectlyFromContainer = async (request, response) =>
 
     response.status(201).json({ ok: true, msg: "Items inserted successfully into event" });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
