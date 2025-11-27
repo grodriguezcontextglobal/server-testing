@@ -42,7 +42,10 @@ const insertingNewLease = async (request, response) => {
     logger.warn(`Missing required fields: ${missing.join(", ")}`);
     return response
       .status(400)
-      .json({ ok: false, msg: `Missing required fields: ${missing.join(", ")}` });
+      .json({
+        ok: false,
+        msg: `Missing required fields: ${missing.join(", ")}`,
+      });
   }
 
   // Normalize date: allow string/Date; ensure it’s parsable
@@ -92,40 +95,81 @@ const insertingNewLease = async (request, response) => {
 const insertingNewLeaseConsumer = async (request, response) => {
   try {
     const connection = getConnection();
-    const {
-      staff_admin_id,
-      company_id,
-      subscription_expected_return_data,
-      subscription_initial_date,
-      location,
-      consumer_member_id,
-      device_id,
-    } = request.body;
+
+    // Whitelist of insertable columns to prevent SQL injection and invalid keys
+    const allowedColumns = [
+      "staff_admin_id",
+      "company_id",
+      "subscription_expected_return_data",
+      "subscription_initial_date",
+      "location",
+      "consumer_member_id",
+      "device_id",
+      "verification_id",
+      // Optional common flags
+      "subscription_current_in_use",
+      "active",
+    ];
+
+    // Pick only allowed keys that are present in request body
+    const body = request.body || {};
+    let columns = allowedColumns.filter((key) =>
+      Object.prototype.hasOwnProperty.call(body, key)
+    );
+
+    // Ensure we always set an initial date if not provided
+    if (!columns.includes("subscription_initial_date")) {
+      columns.push("subscription_initial_date");
+      body.subscription_initial_date = new Date();
+    }
+
+    // Fail fast if nothing usable was provided
+    if (columns.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "No valid fields provided to insert into lease_customer_info.",
+      });
+    }
+
+    // Normalize date fields when present
+    const normalizeDate = (v) => {
+      if (v instanceof Date) return v;
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    if (columns.includes("subscription_expected_return_data")) {
+      const normalized = normalizeDate(body.subscription_expected_return_data);
+      if (!normalized) {
+        return response.status(400).json({
+          ok: false,
+          msg: "Invalid subscription_expected_return_data. Provide a valid date.",
+        });
+      }
+      body.subscription_expected_return_data = normalized;
+    }
+    if (columns.includes("subscription_initial_date")) {
+      const normalized = normalizeDate(body.subscription_initial_date);
+      if (!normalized) {
+        body.subscription_initial_date = new Date();
+      } else {
+        body.subscription_initial_date = normalized;
+      }
+    }
+
+    const placeholders = columns.map(() => "?").join(", ");
+    const values = columns.map((key) => body[key]);
 
     const query = `
-      INSERT INTO lease_customer_info (
-        staff_admin_id,
-        company_id,
-        subscription_expected_return_data,
-        subscription_initial_date,
-        location,
-        consumer_member_id,
-        device_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)`;
-
-    const values = [
-      staff_admin_id,
-      company_id,
-      subscription_expected_return_data,
-      subscription_initial_date,
-      location,
-      consumer_member_id,
-      device_id,
-    ];
+      INSERT INTO lease_customer_info (${columns.join(", ")})
+      VALUES (${placeholders})`;
 
     const [result] = await connection.execute(query, values);
 
-    return response.status(201).json({ ok: true, lease: result });
+    return response.status(201).json({
+      ok: true,
+      lease: result,
+      inserted_fields: columns,
+    });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
@@ -135,7 +179,9 @@ const insertingNewLeaseConsumer = async (request, response) => {
 const consultingLease = async (request, response) => {
   try {
     const connection = getConnection();
-    const keys = Object.keys(request.body).map((key) => `${key}=?`).join(" AND ");
+    const keys = Object.keys(request.body)
+      .map((key) => `${key}=?`)
+      .join(" AND ");
     const values = Object.values(request.body);
 
     const query = `SELECT * FROM lease_info WHERE ${keys}`;
@@ -151,7 +197,9 @@ const consultingLease = async (request, response) => {
 const consultingConsumerLease = async (request, response) => {
   try {
     const connection = getConnection();
-    const keys = Object.keys(request.body).map((key) => `${key}=?`).join(" AND ");
+    const keys = Object.keys(request.body)
+      .map((key) => `${key}=?`)
+      .join(" AND ");
     const values = Object.values(request.body);
 
     const query = `SELECT * FROM lease_customer_info WHERE ${keys}`;
@@ -167,34 +215,78 @@ const consultingConsumerLease = async (request, response) => {
 const updateLeaseInfo = async (request, response) => {
   try {
     const connection = getConnection();
-    const {
-      subscription_returned_date,
-      staff_admin_id,
-      company_id,
-      subscription_current_in_use,
-      staff_member_id,
-      device_id,
-      active,
-    } = request.body;
+    const body = request.body || {};
 
-    const query = `
-      UPDATE lease_info 
-      SET subscription_returned_date=?, subscription_current_in_use=?, active=?
-      WHERE company_id=? AND staff_member_id=? AND staff_admin_id=? AND device_id=?`;
+    const allowedUpdateColumns = [
+      "subscription_returned_date",
+      "subscription_current_in_use",
+      "active",
+      "location",
+      "subscription_expected_return_data",
+      "subscription_initial_date",
+      "verification_id",
+      "staff_member_id",
+      "staff_admin_id",
+    ];
+    const identifierKeys = ["company_id", "device_id"];
 
+    const isDefined = (v) => v !== undefined;
+    const setKeys = allowedUpdateColumns.filter(
+      (k) => Object.prototype.hasOwnProperty.call(body, k) && isDefined(body[k])
+    );
+    if (setKeys.length === 0) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "No valid updatable fields provided." });
+    }
+
+    const missingIds = identifierKeys.filter(
+      (k) => !Object.prototype.hasOwnProperty.call(body, k)
+    );
+    if (missingIds.length > 0) {
+      return response
+        .status(400)
+        .json({
+          ok: false,
+          msg: `Missing identifiers: ${missingIds.join(", ")}`,
+        });
+    }
+
+    const normalizeDate = (v) => {
+      if (v === null) return null;
+      if (v instanceof Date) return v;
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const dateFields = [
+      "subscription_expected_return_data",
+      "subscription_initial_date",
+      "subscription_returned_date",
+    ];
+    for (const k of setKeys) {
+      if (dateFields.includes(k)) {
+        const normalized = normalizeDate(body[k]);
+        if (normalized === null && body[k] !== null) {
+          return response
+            .status(400)
+            .json({ ok: false, msg: `Invalid date value for ${k}.` });
+        }
+        body[k] = normalized;
+      }
+    }
+
+    const setClause = setKeys.map((k) => `${k}=?`).join(", ");
+    const whereClause = identifierKeys.map((k) => `${k}=?`).join(" AND ");
     const values = [
-      subscription_returned_date,
-      subscription_current_in_use,
-      active,
-      company_id,
-      staff_member_id,
-      staff_admin_id,
-      device_id,
+      ...setKeys.map((k) => body[k]),
+      ...identifierKeys.map((k) => body[k]),
     ];
 
+    const query = `UPDATE lease_info SET ${setClause} WHERE ${whereClause}`;
     const [result] = await connection.execute(query, values);
-
-    return response.status(200).json({ ok: true, items: result.affectedRows });
+    return response
+      .status(200)
+      .json({ ok: true, items: result.affectedRows, updated_fields: setKeys });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
@@ -204,34 +296,77 @@ const updateLeaseInfo = async (request, response) => {
 const updateConsumerLeaseInfo = async (request, response) => {
   try {
     const connection = getConnection();
-    const {
-      subscription_returned_date,
-      staff_admin_id,
-      company_id,
-      subscription_current_in_use,
-      consumer_member_id,
-      device_id,
-      active,
-    } = request.body;
+    const body = request.body || {};
 
-    const query = `
-      UPDATE lease_customer_info 
-      SET subscription_returned_date=?, subscription_current_in_use=?, active=?
-      WHERE company_id=? AND consumer_member_id=? AND staff_admin_id=? AND device_id=?`;
+    const allowedUpdateColumns = [
+      "subscription_returned_date",
+      "subscription_current_in_use",
+      "active",
+      "location",
+      "subscription_expected_return_data",
+      "subscription_initial_date",
+      "verification_id",
+      "staff_admin_id",
+    ];
+    const identifierKeys = ["company_id", "consumer_member_id", "device_id"];
 
+    const isDefined = (v) => v !== undefined;
+    const setKeys = allowedUpdateColumns.filter(
+      (k) => Object.prototype.hasOwnProperty.call(body, k) && isDefined(body[k])
+    );
+    if (setKeys.length === 0) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "No valid updatable fields provided." });
+    }
+
+    const missingIds = identifierKeys.filter(
+      (k) => !Object.prototype.hasOwnProperty.call(body, k)
+    );
+    if (missingIds.length > 0) {
+      return response
+        .status(400)
+        .json({
+          ok: false,
+          msg: `Missing identifiers: ${missingIds.join(", ")}`,
+        });
+    }
+
+    const normalizeDate = (v) => {
+      if (v === null) return null;
+      if (v instanceof Date) return v;
+      const d = new Date(v);
+      return isNaN(d.getTime()) ? null : d;
+    };
+    const dateFields = [
+      "subscription_expected_return_data",
+      "subscription_initial_date",
+      "subscription_returned_date",
+    ];
+    for (const k of setKeys) {
+      if (dateFields.includes(k)) {
+        const normalized = normalizeDate(body[k]);
+        if (normalized === null && body[k] !== null) {
+          return response
+            .status(400)
+            .json({ ok: false, msg: `Invalid date value for ${k}.` });
+        }
+        body[k] = normalized;
+      }
+    }
+
+    const setClause = setKeys.map((k) => `${k}=?`).join(", ");
+    const whereClause = identifierKeys.map((k) => `${k}=?`).join(" AND ");
     const values = [
-      subscription_returned_date,
-      subscription_current_in_use,
-      active,
-      company_id,
-      consumer_member_id,
-      staff_admin_id,
-      device_id,
+      ...setKeys.map((k) => body[k]),
+      ...identifierKeys.map((k) => body[k]),
     ];
 
+    const query = `UPDATE lease_customer_info SET ${setClause} WHERE ${whereClause}`;
     const [result] = await connection.execute(query, values);
-
-    return response.status(200).json({ ok: true, items: result.affectedRows });
+    return response
+      .status(200)
+      .json({ ok: true, items: result.affectedRows, updated_fields: setKeys });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
