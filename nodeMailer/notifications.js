@@ -34,6 +34,7 @@ const {
   documentSigningCompletionMessageHtml,
   loginActivityNotificationMessageHtml,
   liabilityContractConsumerNotificationMessageHtml,
+  consumerLeaseEndedDeviceReturnedNotificationMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
@@ -106,10 +107,10 @@ const deviceReportPerTransaction = async (request, response) => {
 
 const cancelDepositNotification = async (request, response) => {
   try {
-    console.log(request.body)
+    console.log(request.body);
     const msg = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
-      to:request.body.consumer.email,
+      to: request.body.consumer.email,
       subject: "Deposit returned notification",
       html: cancelingDepositMessageHtml(request.body),
     };
@@ -120,7 +121,6 @@ const cancelDepositNotification = async (request, response) => {
         ok: true,
       });
     });
-
   } catch (error) {
     response.status(500).json({
       ok: false,
@@ -142,9 +142,8 @@ const captureDepositNotification = async (request, response) => {
       response.status(201).json({
         notification: `Email was sent.`,
         ok: true,
-      })
-    })
-
+      });
+    });
   } catch (error) {
     response.status(500).json({
       ok: false,
@@ -1095,12 +1094,68 @@ const loginActivityNotification = async (adminUser, loginInfo) => {
   }
 };
 
+const consumerLeaseEndedDeviceReturnedNotification = async (
+  request,
+  response
+) => {
+  try {
+    const { consumer, devices, returnDate } = request.body;
+
+    // Validate required fields
+    if (!consumer || !consumer.email || !devices || !returnDate) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Consumer, devices, and return date are required",
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(consumer.email)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Invalid email format",
+      });
+    }
+
+    // Send email to consumer
+    const msg = {
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `${consumer.name || "Consumer"} <${consumer.email}>`,
+      subject: "Lease - Device Returned Notification",
+      html: consumerLeaseEndedDeviceReturnedNotificationMessageHtml({
+        consumer,
+        devices,
+        returnDate,
+      }),
+    };
+    const result = await sgMail.send(msg);
+    return response.status(201).json({
+      ok: true,
+      notification: `Consumer lease device returned notification sent successfully to ${consumer.email}`,
+      recipient: consumer.email,
+      result,
+    });
+  } catch (error) {
+    logger.error(
+      "Error sending consumer lease ended device returned notification:",
+      error
+    );
+    return response.status(500).json({
+      ok: false,
+      msg: "Failed to send notification email",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   assingDeviceNotification,
   cancelDepositNotification,
   captureDepositNotification,
   chargeInvoice,
   confirmationLinkNewConsumerNotification,
+  consumerLeaseEndedDeviceReturnedNotification,
   customizedEmailNotification,
   deviceReportPerTransaction,
   devitrakFeedbackEmailNotification,
@@ -1113,8 +1168,8 @@ module.exports = {
   eventStaffNotification,
   internalNotification,
   itemInfoStaffNotification,
-  liabilityContractStaffNotification,
   liabilityContractConsumerNotification,
+  liabilityContractStaffNotification,
   linkToResetPassword,
   loginActivityNotification,
   loginLinkExistingConsumerNotification,
