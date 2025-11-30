@@ -464,7 +464,7 @@ const returnConfirmationMessageHtml = (props) => {
 };
 
 const cancelingDepositMessageHtml = (props) => {
-  logger.info(props)
+  logger.info(props);
   return `
 <!DOCTYPE html>
 <html lang="en">
@@ -4027,9 +4027,15 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
       .map(
         (contract) => `
       <tr>
-        <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title}</td>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${
+          contract.title
+        }</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">
-          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&staff_member_id=${staff.staff_member_id}&date_reference=${date_reference}&contract_url=${encodeURIComponent(contract.view_url)}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
+          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&staff_member_id=${
+          staff.staff_member_id
+        }&date_reference=${date_reference}&contract_url=${encodeURIComponent(
+          contract.view_url
+        )}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
         </td>
       </tr>
     `
@@ -4363,9 +4369,15 @@ const liabilityContractConsumerNotificationMessageHtml = (props) => {
       .map(
         (contract) => `
       <tr>
-        <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title}</td>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${
+          contract.title
+        }</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">
-          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&consumer_member_id=${consumer.consumer_member_id}&date_reference=${date_reference}&contract_url=${encodeURIComponent(contract.view_url)}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
+          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&consumer_member_id=${
+          consumer.consumer_member_id
+        }&date_reference=${date_reference}&contract_url=${encodeURIComponent(
+          contract.view_url
+        )}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
         </td>
       </tr>
     `
@@ -5503,20 +5515,28 @@ const documentSigningCompletionMessageHtml = (props) => {
         <p>All required documents have been checked and signed by the staff member. Equipment delivery can now proceed.</p>
       </div>
 
-      <p>Dear ${props.recipientType === 'assigner' ? 'Equipment Assigner' : 'Team Member'},</p>
-      <p>This email confirms that all required liability contracts and documents have been successfully checked and signed by the assigned staff member. ${props.recipientType === 'assigner' ? 'You can now proceed with equipment delivery.' : 'All your document signing requirements have been completed.'}</p>
+      <p>Dear ${
+        props.recipientType === "assigner"
+          ? "Equipment Assigner"
+          : "Team Member"
+      },</p>
+      <p>This email confirms that all required liability contracts and documents have been successfully checked and signed by the assigned staff member. ${
+        props.recipientType === "assigner"
+          ? "You can now proceed with equipment delivery."
+          : "All your document signing requirements have been completed."
+      }</p>
 
       <div class="staff-info">
         <h3>👤 Staff Member Information</h3>
         <div class="staff-details">
           <div class="detail-item">
             <h4>Staff Name</h4>
-            <p>${props.staff?.name || 'Staff Member'}</p>
+            <p>${props.staff?.name || "Staff Member"}</p>
           </div>
           
           <div class="detail-item">
             <h4>Email</h4>
-            <p>${props.staff?.email || 'staff@company.com'}</p>
+            <p>${props.staff?.email || "staff@company.com"}</p>
           </div>
           
           <div class="detail-item">
@@ -5538,7 +5558,9 @@ const documentSigningCompletionMessageHtml = (props) => {
 
 <div class="contract-summary">
         <h3>📄 Checked Documents</h3>
-        <p><strong>Total Documents:</strong> ${props.contract_list ? props.contract_list.length : 0}</p>
+        <p><strong>Total Documents:</strong> ${
+          props.contract_list ? props.contract_list.length : 0
+        }</p>
         <ul class="contract-list">
           ${
             props.contract_list
@@ -5547,10 +5569,16 @@ const documentSigningCompletionMessageHtml = (props) => {
                     (contract) => `
             <li>
               <div class="contract-info">
-                <div>${contract.document_name || 'Document'}</div>
-                <div class="contract-date">Signed on ${contract.date || new Date().toLocaleDateString()}</div>
+                <div>${contract.document_name || "Document"}</div>
+                <div class="contract-date">Signed on ${
+                  contract.date || new Date().toLocaleDateString()
+                }</div>
               </div>
-              ${contract.document_url ? `<a href="${contract.document_url}" class="contract-link" target="_blank">View Document</a>` : '<span class="contract-link" style="opacity: 0.5; cursor: not-allowed;">No Link Available</span>'}
+              ${
+                contract.document_url
+                  ? `<a href="${contract.document_url}" class="contract-link" target="_blank">View Document</a>`
+                  : '<span class="contract-link" style="opacity: 0.5; cursor: not-allowed;">No Link Available</span>'
+              }
             </li>
           `
                   )
@@ -5562,17 +5590,21 @@ const documentSigningCompletionMessageHtml = (props) => {
       <div class="next-steps">
         <h3>📋 Next Steps</h3>
         <ul>
-          ${props.recipientType === 'assigner' ? `
+          ${
+            props.recipientType === "assigner"
+              ? `
           <li>Proceed with equipment delivery to the staff member</li>
           <li>Update equipment assignment records in the system</li>
           <li>Provide equipment usage instructions and guidelines</li>
           <li>Schedule equipment return date if applicable</li>
-          ` : `
+          `
+              : `
           <li>Await equipment delivery from the assigner</li>
           <li>Review equipment usage guidelines when received</li>
           <li>Contact the assigner if you have any questions</li>
           <li>Keep this email as confirmation of completed documentation</li>
-          `}
+          `
+          }
         </ul>
       </div>
 
@@ -5643,7 +5675,9 @@ const loginActivityNotificationMessageHtml = (props) => {
                 <!-- Greeting -->
                 <div style="font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #374151; margin-bottom: 24px; line-height: 1.6;">
                   <p style="margin: 0 0 12px 0;">
-                    <strong style="font-weight: 600; color: #111827;">Hello ${adminUser.name} ${adminUser.lastName},</strong>
+                    <strong style="font-weight: 600; color: #111827;">Hello ${
+                      adminUser.name
+                    } ${adminUser.lastName},</strong>
                   </p>
                   <p style="margin: 0;">
                     We detected a new login to your Devitrak account. Please review the details below to ensure this activity is authorized.
@@ -5712,7 +5746,7 @@ const loginActivityNotificationMessageHtml = (props) => {
                                   Location:
                                 </td>
                                 <td style="font-family: 'Inter', Arial, sans-serif; color: #6b7280; font-size: 14px; text-align: right; word-break: break-word;">
-                                  ${loginInfo.location || 'Unknown'}
+                                  ${loginInfo.location || "Unknown"}
                                 </td>
                               </tr>
                             </table>
@@ -5732,7 +5766,9 @@ const loginActivityNotificationMessageHtml = (props) => {
                             </table>
                           </td>
                         </tr>
-                        ${loginInfo.timezone ? `
+                        ${
+                          loginInfo.timezone
+                            ? `
                         <tr>
                           <td style="padding: 12px 0 0 0;">
                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
@@ -5747,7 +5783,9 @@ const loginActivityNotificationMessageHtml = (props) => {
                             </table>
                           </td>
                         </tr>
-                        ` : ''}
+                        `
+                            : ""
+                        }
                       </table>
                       
                     </td>
@@ -5774,7 +5812,13 @@ const loginActivityNotificationMessageHtml = (props) => {
                 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
                   <tr>
                     <td style="text-align: center; padding: 32px 0;">
-                      <a href="mailto:support@devitrak.com?subject=Unauthorized%20Login%20Alert%20-%20${encodeURIComponent(adminUser.email)}&body=I%20received%20a%20login%20alert%20for%20unauthorized%20access%20to%20my%20account.%0A%0AAccount%3A%20${encodeURIComponent(adminUser.email)}%0ATime%3A%20${encodeURIComponent(loginInfo.timestamp)}%0AIP%3A%20${encodeURIComponent(loginInfo.ipAddress)}" 
+                      <a href="mailto:support@devitrak.com?subject=Unauthorized%20Login%20Alert%20-%20${encodeURIComponent(
+                        adminUser.email
+                      )}&body=I%20received%20a%20login%20alert%20for%20unauthorized%20access%20to%20my%20account.%0A%0AAccount%3A%20${encodeURIComponent(
+    adminUser.email
+  )}%0ATime%3A%20${encodeURIComponent(
+    loginInfo.timestamp
+  )}%0AIP%3A%20${encodeURIComponent(loginInfo.ipAddress)}" 
                          style="display: inline-block; padding: 14px 28px; color: #ffffff; background-color: #dc2626; text-decoration: none; border-radius: 8px; font-family: 'Inter', Arial, sans-serif; font-size: 16px; font-weight: 600; text-align: center; max-width: 280px;">
                         Report Suspicious Activity
                       </a>
@@ -5792,7 +5836,9 @@ const loginActivityNotificationMessageHtml = (props) => {
                   © 2025 Devitrak. All rights reserved.
                 </p>
                 <p style="font-family: 'Inter', Arial, sans-serif; font-size: 12px; color: #6b7280; margin: 4px 0; line-height: 1.5;">
-                  This is an automated security notification for account: <strong>${adminUser.email}</strong>
+                  This is an automated security notification for account: <strong>${
+                    adminUser.email
+                  }</strong>
                 </p>
                 <p style="font-family: 'Inter', Arial, sans-serif; font-size: 12px; color: #6b7280; margin: 4px 0; line-height: 1.5;">
                   If you have questions, contact support at <strong>support@devitrak.com</strong>
@@ -5808,6 +5854,317 @@ const loginActivityNotificationMessageHtml = (props) => {
       </tr>
     </table>
 
+  </body>
+</html>
+  `;
+};
+
+const consumerLeaseEndedDeviceReturnedNotificationMessageHtml = (
+  propsOrAdminUser,
+  loginInfo,
+  deviceInfo
+) => {
+  // Support both object props signature and legacy positional args
+  const props =
+    typeof propsOrAdminUser === "object" && !Array.isArray(propsOrAdminUser)
+      ? propsOrAdminUser
+      : {
+          company_name: (loginInfo && loginInfo.company_name) || "",
+          email_admin: (loginInfo && loginInfo.email_admin) || "",
+          consumer: propsOrAdminUser || {},
+          subject:
+            (loginInfo && loginInfo.subject) ||
+            "Lease: Device Returned Confirmation",
+          devices: deviceInfo ? [deviceInfo] : [],
+          returned_at: (loginInfo && loginInfo.returned_at) || undefined,
+          return_location:
+            (loginInfo && loginInfo.return_location) || undefined,
+        };
+
+  const {
+    company_name = "",
+    email_admin = "",
+    consumer = {},
+    devices = [],
+    subject = "Lease: Device Returned",
+  } = props;
+
+  const normalizedDevices = Array.isArray(devices)
+    ? devices
+    : devices && typeof devices === "object"
+    ? [devices]
+    : [];
+
+  const renderReturnedItemsTable = () => {
+    if (!normalizedDevices.length) {
+      return `<tr><td colspan="3" style="padding: 12px; border: 1px solid #e0e0e0; color: #475467;">No device details available.</td></tr>`;
+    }
+    return normalizedDevices
+      .map(
+        (item) => `
+      <tr>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${
+          item.serial_number || item.item_id || item.id || "Unknown"
+        }</td>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${
+          item.type || item.device_type || "Device"
+        }</td>
+      </tr>
+    `
+      )
+      .join("");
+  };
+
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Device Return Confirmation</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      .container_one {
+        display: flex;
+        justify-content: flex-start;
+        align-items: center;
+        margin-bottom: 2.5rem;
+        width: 100%;
+      }
+      
+      .container_one_title p {
+        text-align: left;
+        width: 100%;
+        color: #475467;
+        font-size: 9px;
+        font-weight: 500;
+        line-height: 9px;
+      }
+      
+      .container_one_logo {
+        display: flex;
+        align-items: center;
+        margin-top: 2.5px;
+      }
+      
+      .container_one_logo img {
+        align-self: flex-start;
+        display: flex;
+        align-items: center;
+        max-width: 100px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+      }
+
+      h2 {
+        font-size: 20px;
+        font-weight: 600;
+        color: #101828;
+        margin: 24px 0 16px 0;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 16px;
+        line-height: 1.5;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        font-size: 14px;
+      }
+
+      th, td {
+        padding: 12px;
+        border: 1px solid #e0e0e0;
+        text-align: left;
+      }
+
+      th {
+        background-color: #f2f2f2;
+        font-weight: 600;
+        color: #475467;
+      }
+
+      .download-link {
+        color: #155eef;
+        text-decoration: none;
+        font-weight: 600;
+        padding: 8px 16px;
+        background-color: #f0f7ff;
+        border-radius: 6px;
+        display: inline-block;
+        transition: background-color 0.2s;
+      }
+
+      .download-link:hover {
+        background-color: #e0f0ff;
+      }
+
+      .info-section {
+        background-color: #f8fafc;
+        padding: 16px;
+        border-radius: 8px;
+        margin: 20px 0;
+      }
+
+      .footer {
+        font-size: 12px;
+        color: #475467;
+        text-align: center;
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid #e0e0e0;
+      }
+
+      .company-header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #155eef;
+      }
+
+      .consumer-info {
+        background-color: #eef6ff;
+        padding: 16px;
+        border-radius: 8px;
+        margin: 20px 0;
+        border-left: 4px solid #155eef;
+      }
+
+      .success-banner {
+        background-color: #ecfdf5; /* green */
+        padding: 16px;
+        border-radius: 8px;
+        margin: 20px 0;
+        border-left: 4px solid #10b981;
+      }
+
+      @media screen and (max-width: 425px) {
+        body {
+          margin: 0;
+          padding: 0;
+          width: 95%;
+        }
+        .container {
+          margin: 0;
+          padding: 1.2rem;
+          border-radius: 12px;
+        }
+        .container_one {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+        .container_one_logo {
+          margin-top: 10px;
+        }
+        .container_one_logo img {
+          max-width: 80px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="container_one">
+        <div class="container_one_title">
+          <p>Powered by</p>
+          <div class="container_one_logo">
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-name" />
+            <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo" />
+          </div>
+        </div>
+      </div>
+
+      <div class="company-header">
+        <h1>${company_name}</h1>
+        <p style="margin: 0; color: #155eef; font-weight: 600;">${email_admin}</p>
+      </div>
+
+      <h1>${subject}</h1>
+
+      <div class="consumer-info">
+        <h2>Consumer Member Information</h2>
+        <p><strong>Name:</strong> ${consumer.name || ""}</p>
+        <p><strong>Email:</strong> ${consumer.email || ""}</p>
+      </div>
+
+      <div class="success-banner">
+        <h2>Return Completed</h2>
+        <p>We confirm the leased device has been returned successfully${
+          email_admin ? ` received for <strong>${email_admin}</strong>` : ""
+        }.</p>
+        <ul style="color: #475467; line-height: 1.6; margin: 0;">
+          <li>No further action is required from you.</li>
+          <li>If you believe this is a mistake, contact the administrator immediately.</li>
+          <li>Keep this email for your records.</li>
+        </ul>
+      </div>
+
+      <p>Dear ${consumer.name || "Consumer"},</p>
+      <p>Thank you for returning your leased device. Below are the details recorded for the returned device(s).</p>
+
+      <div class="info-section">
+        <h2>Returned Device Information</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Serial Number</th>
+              <th>Device Type</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${renderReturnedItemsTable()}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="info-section">
+        <h2>What’s Next</h2>
+        <ul style="color: #475467; line-height: 1.6;">
+          <li>If you have another device in lease, you will receive separate notifications.</li>
+          <li>For any billing or deposit matters, please reach out to the administrator.</li>
+          <li>Contact support if you need documentation for your records.</li>
+        </ul>
+      </div>
+
+      <p>If you have any questions or concerns regarding this return, please contact the administrator at ${email_admin}.</p>
+      
+      <p>Best regards,<br/>
+      ${company_name} Administration Team</p>
+
+      <div class="footer">
+        <p>This is an automated message from ${company_name}. Please do not reply to this email.</p>
+        <p>For support, contact: ${email_admin}</p>
+      </div>
+    </div>
   </body>
 </html>
   `;
@@ -5835,6 +6192,7 @@ module.exports = {
   newUserInvitationMessageHtml,
   nrffInterpretationFeedbackEmailMessageHtml,
   reportBugMessageHtml,
+  consumerLeaseEndedDeviceReturnedNotificationMessageHtml,
   returnConfirmationMessageHtml,
   returnedItemsToRenterNotificationMessageHtml,
   returnReminderMessageHtml,
