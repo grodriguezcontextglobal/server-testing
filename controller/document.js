@@ -11,11 +11,13 @@ const EventSignature = require("../models/EventSignature");
 const Verification = require("../models/Verification");
 const {
   documentSigningCompletionNotification,
+  consumerDocumentSigningCompletionNotification,
 } = require("../nodeMailer/notifications");
 const AdminUser = require("../models/AdminUser");
 const logger = require("../helpers/logger");
 const VerificationConsumersLeaseContracts = require("../models/VerificationConsumersLeaseContracts");
 const SignatureConsumer = require("../models/SignatureConsumer");
+const User = require("../models/User");
 
 const uploadDocument = async (req, res) => {
   try {
@@ -1230,7 +1232,9 @@ const addSignatureToDocument = async (req, res) => {
 const addSignatureToConsumerDocument = async (req, res) => {
   try {
     const { verification_id, contract_url } = req.body;
-    const contract = await VerificationConsumersLeaseContracts.findById(verification_id);
+    const contract = await VerificationConsumersLeaseContracts.findById(
+      verification_id
+    );
     if (!contract) {
       return res.status(404).json({
         ok: false,
@@ -1252,15 +1256,16 @@ const addSignatureToConsumerDocument = async (req, res) => {
     signature.signature = true;
     signature.date = new Date().toLocaleString();
     contractList[document] = signature;
-    const updatedVerification = await VerificationConsumersLeaseContracts.findByIdAndUpdate(
-      verification_id,
-      {
-        contract_list: contractList,
-      },
-      {
-        new: true,
-      }
-    );
+    const updatedVerification =
+      await VerificationConsumersLeaseContracts.findByIdAndUpdate(
+        verification_id,
+        {
+          contract_list: contractList,
+        },
+        {
+          new: true,
+        }
+      );
     const checkIfAllContractsSigned = updatedVerification.contract_list.every(
       (item) => item.signature === true
     );
@@ -1270,7 +1275,7 @@ const addSignatureToConsumerDocument = async (req, res) => {
         const assigner = await AdminUser.findById(
           updatedVerification.assigner_staff_member_id
         );
-        const staff = await User.findById(
+        const consumer = await User.findById(
           updatedVerification.consumer_member_id
         );
         const notificationPayload = {
@@ -1279,26 +1284,33 @@ const addSignatureToConsumerDocument = async (req, res) => {
               `${assigner.name} ${assigner.lastName}` || "Equipment Assigner",
             email: assigner.email,
           },
-          staff: {
-            name: `${staff.name} ${staff.lastName}` || "Staff Member",
-            email: staff.email,
+          consumer: {
+            name: `${consumer.name} ${consumer.lastName}` || "Consumer Member",
+            email: consumer.email,
           },
           contract_list: updatedVerification.contract_list,
           verification_id: updatedVerification._id,
         };
 
         // Call the notification function directly (internal call)
-        await documentSigningCompletionNotification(
-          { body: notificationPayload },
-          {
-            status: (code) => ({
-              json: (data) => {
-                logger.error(`Notification response: ${code}`, data);
-                return data;
-              },
-            }),
-          }
-        );
+        try {
+          await consumerDocumentSigningCompletionNotification(
+            { body: notificationPayload },
+            {
+              status: (code) => ({
+                json: (data) => {
+                  logger.error(`Notification response: ${code}`, data);
+                  return data;
+                },
+              }),
+            }
+          );
+        } catch (error) {
+          logger.error(
+            "Failed to send completion notifications:",
+            error
+          );
+        }
       } catch (notificationError) {
         logger.error(
           "Failed to send completion notifications:",
