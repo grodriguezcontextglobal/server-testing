@@ -5611,7 +5611,7 @@ const documentSigningCompletionMessageHtml = (props) => {
       <p style="font-size: 14px; color: #6b7280; font-style: italic;">This is an automated notification. Please keep this email for your records. For any questions, please contact the system administrator.</p>
 
       <div class="footer">
-        <p>© 2025 DevitrakAI. All rights reserved.</p>
+        <p>© 2025 Devitrak. All rights reserved.</p>
         <p>This email confirms the completion of document signing process.</p>
       </div>
     </div>
@@ -5964,7 +5964,7 @@ const documentSigningCompletionConsumerLeaseMessageHtml = (props) => {
       <p style="font-size: 14px; color: #6b7280; font-style: italic;">This is an automated notification. Please keep this email for your records. For any questions, please contact the system administrator.</p>
 
       <div class="footer">
-        <p>© 2025 DevitrakAI. All rights reserved.</p>
+        <p>© 2025 Devitrak. All rights reserved.</p>
         <p>This email confirms the completion of document signing process.</p>
       </div>
     </div>
