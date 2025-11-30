@@ -216,6 +216,34 @@ const insertingDeviceInEventDirectlyFromContainer = async (request, response) =>
   }
 };
 
+const consultingLeaseInformationConsumer = async (request, response) => {
+  try {
+    const body = request.body || {};
+    const keys = Object.keys(body);
+
+    if (keys.length === 0) {
+      return response.status(400).json({ ok: false, msg: "No filters provided in request.body" });
+    }
+
+    // Guard against SQL injection via column names; allow typical identifier characters
+    const validKeys = keys.filter((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k));
+    if (validKeys.length === 0) {
+      return response.status(400).json({ ok: false, msg: "No valid filter keys provided" });
+    }
+
+    const formatting = validKeys.map((k) => `\`${k}\`=?`).join(" AND ");
+    const values = validKeys.map((k) => body[k]);
+
+    const query = `SELECT * FROM lease_customer_info WHERE ${formatting}`;
+    const [result] = await connection.execute(query, values);
+
+    return response.status(200).json({ ok: true, result });
+  } catch (error) {
+    logger.error("Error:", error.message);
+    return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 module.exports = {
   insertingItemInEvent,
   consultingInventoryCurrentState,
@@ -226,4 +254,5 @@ module.exports = {
   insertingDeviceInEventDirectly,
   checkingInventoryCurrentState,
   insertingDeviceInEventDirectlyFromContainer,
+  consultingLeaseInformationConsumer,
 };
