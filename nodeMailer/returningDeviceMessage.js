@@ -5620,6 +5620,359 @@ const documentSigningCompletionMessageHtml = (props) => {
   `;
 };
 
+const documentSigningCompletionConsumerLeaseMessageHtml = (props) => {
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document Signing Completion Notification</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+        padding: 20px 0;
+        border-bottom: 2px solid #e0e0e0;
+      }
+
+      .header img {
+        max-width: 200px;
+        height: auto;
+        margin-bottom: 10px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+        text-align: center;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 24px;
+        line-height: 1.5;
+      }
+
+      .success-box {
+        background-color: #f0fdf4;
+        border: 1px solid #22c55e;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .success-box h3 {
+        color: #15803d;
+        margin: 0 0 8px 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .success-box p {
+        color: #15803d;
+        margin: 0;
+        font-size: 14px;
+      }
+
+      .staff-info {
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .staff-info h3 {
+        color: #1e293b;
+        margin: 0 0 12px 0;
+        font-size: 18px;
+        font-weight: 600;
+      }
+
+      .staff-details {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-top: 12px;
+      }
+
+      .detail-item {
+        background-color: #ffffff;
+        padding: 12px;
+        border-radius: 6px;
+        border: 1px solid #e2e8f0;
+      }
+
+      .detail-item h4 {
+        color: #374151;
+        margin: 0 0 4px 0;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      .detail-item p {
+        color: #1f2937;
+        margin: 0;
+        font-size: 14px;
+        font-weight: 500;
+      }
+
+      .contract-summary {
+        background-color: #fffbeb;
+        border: 1px solid #f59e0b;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .contract-summary h3 {
+        color: #92400e;
+        margin: 0 0 8px 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .contract-list {
+        list-style: none;
+        padding: 0;
+        margin: 8px 0;
+      }
+
+.contract-list li {
+        background-color: #ffffff;
+        padding: 8px 12px;
+        margin: 4px 0;
+        border-radius: 4px;
+        border: 1px solid #e2e8f0;
+        font-size: 14px;
+        color: #374151;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .contract-list li::before {
+        content: "✅";
+        margin-right: 8px;
+      }
+
+      .contract-link {
+        color: #3b82f6;
+        text-decoration: none;
+        font-weight: 500;
+        padding: 4px 8px;
+        border-radius: 4px;
+        background-color: #eff6ff;
+        border: 1px solid #3b82f6;
+        font-size: 12px;
+        transition: all 0.2s ease;
+      }
+
+      .contract-link:hover {
+        background-color: #3b82f6;
+        color: #ffffff;
+        text-decoration: none;
+      }
+
+      .contract-info {
+        flex: 1;
+      }
+
+      .contract-date {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 2px;
+      }
+        
+      .next-steps {
+        background-color: #eff6ff;
+        border: 1px solid #3b82f6;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 20px 0;
+      }
+
+      .next-steps h3 {
+        color: #1e40af;
+        margin: 0 0 8px 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .next-steps ul {
+        color: #1e40af;
+        margin: 8px 0;
+        padding-left: 20px;
+      }
+
+      .next-steps li {
+        margin: 4px 0;
+        font-size: 14px;
+      }
+
+      .footer {
+        font-size: 12px;
+        color: #6b7280;
+        text-align: center;
+        margin-top: 40px;
+        padding-top: 20px;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      @media (max-width: 600px) {
+        .container {
+          padding: 10px;
+        }
+        
+        .staff-details {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-name" style="max-width: 150px; height: auto;" />
+        <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-logo"  style="max-width: 200px; height: auto; margin-left: 10px;" />
+      </div>
+
+      <h1>📋 Agreed and checked All Documents Successfully</h1>
+      
+      <div class="success-box">
+        <h3>🎉 Document Checking Complete</h3>
+        <p>All required documents have been checked and signed by the consumer. Equipment delivery can now proceed.</p>
+      </div>
+
+      <p>Dear ${
+        props.recipientType === "assigner" ? "Equipment Assigner" : "Consumer"
+      },</p>
+      <p>This email confirms that all required liability contracts and documents have been successfully checked and signed by the assigned consumer. ${
+        props.recipientType === "assigner"
+          ? "You can now proceed with equipment delivery."
+          : "All your document signing requirements have been completed."
+      }</p>
+
+      <div class="staff-info">
+        <h3>👤 Consumer Information</h3>
+        <div class="staff-details">
+          <div class="detail-item">
+            <h4>Consumer Name</h4>
+            <p>${props.consumer?.name || "Consumer"}</p>
+          </div>
+          
+          <div class="detail-item">
+            <h4>Email</h4>
+            <p>${props.consumer?.email || "consumer@company.com"}</p>
+          </div>
+          
+          <div class="detail-item">
+            <h4>Signing Date</h4>
+            <p>${new Date().toLocaleDateString("en-US", {
+              weekday: "long",
+              year: "numeric",
+              month: "long",
+              day: "numeric",
+            })}</p>
+          </div>
+          
+          <div class="detail-item">
+            <h4>Checking Time</h4>
+            <p>${new Date().toLocaleTimeString("en-US")}</p>
+          </div>
+        </div>
+      </div>
+
+<div class="contract-summary">
+        <h3>📄 Checked Documents</h3>
+        <p><strong>Total Documents:</strong> ${
+          props.contract_list ? props.contract_list.length : 0
+        }</p>
+        <ul class="contract-list">
+          ${
+            props.contract_list
+              ? props.contract_list
+                  .map(
+                    (contract) => `
+            <li>
+              <div class="contract-info">
+                <div>${contract.document_name || "Document"}</div>
+                <div class="contract-date">Signed on ${
+                  contract.date || new Date().toLocaleDateString()
+                }</div>
+              </div>
+              ${
+                contract.document_url
+                  ? `<a href="${contract.document_url}" class="contract-link" target="_blank">View Document</a>`
+                  : '<span class="contract-link" style="opacity: 0.5; cursor: not-allowed;">No Link Available</span>'
+              }
+            </li>
+          `
+                  )
+                  .join("")
+              : '<li><div class="contract-info">No contracts found</div></li>'
+          }
+        </ul>
+      </div>
+      <div class="next-steps">
+        <h3>📋 Next Steps</h3>
+        <ul>
+          ${
+            props.recipientType === "assigner"
+              ? `
+          <li>Proceed with equipment delivery to the consumer</li>
+          <li>Update equipment assignment records in the system</li>
+          <li>Provide equipment usage instructions and guidelines</li>
+          <li>Schedule equipment return date if applicable</li>
+          `
+              : `
+          <li>Await equipment delivery from the assigner</li>
+          <li>Review equipment usage guidelines when received</li>
+          <li>Contact the assigner if you have any questions</li>
+          <li>Keep this email as confirmation of completed documentation</li>
+          `
+          }
+        </ul>
+      </div>
+
+      <p style="font-size: 14px; color: #6b7280; font-style: italic;">This is an automated notification. Please keep this email for your records. For any questions, please contact the system administrator.</p>
+
+      <div class="footer">
+        <p>© 2025 DevitrakAI. All rights reserved.</p>
+        <p>This email confirms the completion of document signing process.</p>
+      </div>
+    </div>
+  </body>
+</html>
+  `;
+};
+
 const loginActivityNotificationMessageHtml = (props) => {
   const { adminUser, loginInfo } = props;
   return `
@@ -6174,9 +6527,11 @@ module.exports = {
   cancelingDepositMessageHtml,
   capturingDepositMessageHtml,
   confirmationNewConsumerAccountMessageHtml,
+  consumerLeaseEndedDeviceReturnedNotificationMessageHtml,
   customizedEmailMessageHtml,
   deviceReportPerTransactionMessageHtml,
   devitrakFeedbackEmailMessageHtml,
+  documentSigningCompletionConsumerLeaseMessageHtml,
   documentSigningCompletionMessageHtml,
   editingDeviceAdminMessageHtml,
   eventBeginsReminderHtmlMessage,
@@ -6192,7 +6547,6 @@ module.exports = {
   newUserInvitationMessageHtml,
   nrffInterpretationFeedbackEmailMessageHtml,
   reportBugMessageHtml,
-  consumerLeaseEndedDeviceReturnedNotificationMessageHtml,
   returnConfirmationMessageHtml,
   returnedItemsToRenterNotificationMessageHtml,
   returnReminderMessageHtml,
