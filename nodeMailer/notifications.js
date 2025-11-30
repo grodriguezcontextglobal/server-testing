@@ -35,6 +35,7 @@ const {
   loginActivityNotificationMessageHtml,
   liabilityContractConsumerNotificationMessageHtml,
   consumerLeaseEndedDeviceReturnedNotificationMessageHtml,
+  documentSigningCompletionConsumerLeaseMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
@@ -1043,6 +1044,83 @@ const documentSigningCompletionNotification = async (request, response) => {
   }
 };
 
+const consumerDocumentSigningCompletionNotification = async (
+  request,
+  response
+) => {
+  try {
+    const { assigner, consumer, contract_list, verification_id } = request.body;
+    // Validate required fields
+    if (!assigner || !assigner.email || !consumer || !consumer.email) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Both assigner and consumer information with emails are required",
+      });
+    }
+
+    if (!contract_list || contract_list.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Contract list is required",
+      });
+    }
+
+    // Validate email formats
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(assigner.email) || !emailRegex.test(consumer.email)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Invalid email format",
+      });
+    }
+
+    // Send email to assigner
+    const assignerMsg = {
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `${assigner.name || "Assigner"} <${assigner.email}>`,
+      subject: "Document Signing Complete - Equipment Ready for Delivery",
+      html: documentSigningCompletionConsumerLeaseMessageHtml({
+        recipientType: "assigner",
+        consumer,
+        contract_list,
+        verification_id,
+      }),
+    };
+
+    // Send email to staff member
+    const staffMsg = {
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `${consumer.name || "Consumer"} <${consumer.email}>`,
+      subject: "Document Signing Complete - Awaiting Equipment Delivery",
+      html: documentSigningCompletionConsumerLeaseMessageHtml({
+        recipientType: "consumer",
+        consumer,
+        contract_list,
+        verification_id,
+      }),
+    };
+
+    // Send both emails
+    await Promise.all([sgMail.send(assignerMsg), sgMail.send(staffMsg)]);
+
+    return response.status(201).json({
+      ok: true,
+      notification: "Document signing completion emails sent successfully",
+      recipients: [assigner.email, consumer.email],
+    });
+  } catch (error) {
+    logger.error(
+      "Error sending document signing completion notifications:",
+      error
+    );
+    return response.status(500).json({
+      ok: false,
+      msg: "Failed to send notification emails",
+      error: error.message,
+    });
+  }
+};
+
 const loginActivityNotification = async (adminUser, loginInfo) => {
   try {
     // Validate required data
@@ -1155,6 +1233,7 @@ module.exports = {
   captureDepositNotification,
   chargeInvoice,
   confirmationLinkNewConsumerNotification,
+  consumerDocumentSigningCompletionNotification,
   consumerLeaseEndedDeviceReturnedNotification,
   customizedEmailNotification,
   deviceReportPerTransaction,
