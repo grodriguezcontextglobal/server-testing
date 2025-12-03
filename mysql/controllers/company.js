@@ -1,6 +1,8 @@
 require("dotenv").config();
 const { response } = require("express");
 const getConnection = require("../database/config");
+const logger = require("../../helpers/logger");
+const { groupBy } = require("lodash");
 
 const insertingCompany = async (request, response) => {
   try {
@@ -34,7 +36,7 @@ const insertingCompany = async (request, response) => {
     const [result] = await connection.execute(query, values);
     return response.status(201).json({ ok: true, company: result });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -48,7 +50,7 @@ const consultingCompany = async (request, response) => {
     const [result] = await connection.execute(query, values);
     return response.status(200).json({ ok: true, company: result });
   } catch (err) {
-    console.error("Error:", err.message);
+    logger.error("Error:", err.message);
     return response.status(500).json({ ok: false, msg: err.message });
   }
 };
@@ -61,7 +63,7 @@ const deleteCompany = async (request, response) => {
     const [result] = await connection.execute(query, values);
     return response.status(200).json({ ok: true, company_deleted: result });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     return response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -73,7 +75,7 @@ const consultingCompanyTable = async (request, response) => {
     const [result] = await connection.execute(query);
     return response.status(200).json({ ok: true, companies: result });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -81,11 +83,55 @@ const consultingCompanyTable = async (request, response) => {
 const consultingIndustryCompanyTable = async (request, response) => {
   try {
     const connection = await getConnection();
-    const query = "SELECT industry FROM company_info;";
+    const query = "SELECT industry FROM company_info ORDER BY industry;";
     const [result] = await connection.execute(query);
-    return response.status(200).json({ ok: true, industry: result });
+    const query1 =
+      "SELECT industry_name FROM industry_list ORDER BY industry_name;";
+    const [result1] = await connection.execute(query1);
+    // Extract and normalize industry names from both sources
+    const industriesFromCompanies = Array.isArray(result)
+      ? result
+          .map((row) =>
+            row && row.industry ? String(row.industry).trim() : ""
+          )
+          .filter((v) => v && v.length)
+      : [];
+
+    const industriesFromList = Array.isArray(result1)
+      ? result1
+          .map((row) =>
+            row && row.industry_name ? String(row.industry_name).trim() : ""
+          )
+          .filter((v) => v && v.length)
+      : [];
+
+    // Unique sets
+    const uniqueCompanyIndustries = Array.from(
+      new Set(industriesFromCompanies)
+    );
+    const uniqueListedIndustries = Array.from(new Set(industriesFromList));
+
+    // Merge and dedupe
+    const combined = Array.from(
+      new Set([...uniqueCompanyIndustries, ...uniqueListedIndustries])
+    );
+
+    // Sort for stable output
+    const collator = new Intl.Collator("en", { sensitivity: "base" });
+    combined.sort(collator.compare);
+    uniqueCompanyIndustries.sort(collator.compare);
+    uniqueListedIndustries.sort(collator.compare);
+
+    return response.status(200).json({
+      ok: true,
+      industry: combined,
+      totalResult: {
+        totalCompany: uniqueCompanyIndustries,
+        totalIndustry: uniqueListedIndustries,
+      },
+    });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -102,7 +148,7 @@ const updateCompanyData = async (request, response) => {
     const [result] = await connection.execute(query, values);
     return response.status(200).json({ ok: true, items: result.affectedRows });
   } catch (error) {
-    console.error("Error:", error.message);
+    logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -134,7 +180,7 @@ const updateGroupItems = async (request, response) => {
       data,
     } = request.body;
 
-    const copyData = JSON.parse(data).map(item => ({
+    const copyData = JSON.parse(data).map((item) => ({
       ...item,
       category_name,
       item_group,
@@ -197,9 +243,11 @@ const updateGroupItems = async (request, response) => {
       await connection.execute(query, values);
     }
 
-    return response.status(200).json({ ok: true, msg: "Items updated successfully" });
+    return response
+      .status(200)
+      .json({ ok: true, msg: "Items updated successfully" });
   } catch (error) {
-    console.error("Error in updateGroupItems controller:", error.message);
+    logger.error("Error in updateGroupItems controller:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
