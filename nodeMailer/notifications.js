@@ -87,7 +87,7 @@ const returningDeviceNotification = async (request, response) => {
 const deviceReportPerTransaction = async (request, response) => {
   try {
     const info = {
-      from: "noreply@devitrak.com",
+      from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${request.body.consumer.firstName} ${request.body.consumer.lastName} <${request.body.consumer.email}>`,
       subject: "Device Report Per Transaction",
       html: deviceReportPerTransactionMessageHtml(request.body),
@@ -313,7 +313,7 @@ const customizedEmailNotification = (request, response) => {
   try {
     const msg = {
       to: `${request.body.consumersList}`,
-      from: "noreply@devitrak.com",
+      from: "Devitrak Notifications <noreply@devitrak.com>",
       subject: `Devitrak Notification - ${request.body.subject}`,
       html: customizedEmailMessageHtml(request.body),
     };
@@ -1146,7 +1146,7 @@ const loginActivityNotification = async (adminUser, loginInfo) => {
 
     // Create email info object
     const info = {
-      from: "noreply@devitrak.com",
+      from: "Devitrak Notifications <noreply@devitrak.com>",
       bcc: "grodriguez@devitrak.com",
       to: sanitizedEmail, // Use just the email address to avoid formatting issues
       subject: `Login Activity Alert - ${sanitizedAdminUser.email}`, // Remove emoji that might cause issues
