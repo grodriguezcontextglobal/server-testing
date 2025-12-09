@@ -2182,7 +2182,11 @@ const singleEmailMessageHtml = (props) => {
       Message from ${props.company}
     </h1>
     <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-      This email was sent from ${props.company} related to the event ${props.eventSelected}.
+      This email was sent from ${props.company}${
+    props.eventSelected ?? props.eventSelected.length > 0
+      ? ` related to the event ${props.eventSelected}`
+      : "."
+  }.
     </p>
     <p
             style="
