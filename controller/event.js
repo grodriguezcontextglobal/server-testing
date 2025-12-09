@@ -413,6 +413,73 @@ const inventoryEventBasedOnPeriod = async (request, response) => {
   }
 };
 
+const updateLargeNumberOfEventsAtOnce = async (request, response) => {
+  try {
+    let { ids, newValues } = request.body;
+
+    // Basic validation and normalization
+    if (!ids) ids = [];
+    if (typeof ids === "string") ids = [ids];
+    if (!Array.isArray(ids)) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "ids must be an array of strings." });
+    }
+    const uniqueIds = Array.from(
+      new Set(ids.map((v) => String(v).trim()).filter(Boolean))
+    );
+
+    if (uniqueIds.length === 0) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "Ids must not be empty." });
+    }
+
+    if (!newValues || typeof newValues !== "object") {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "newValues must be an object." });
+    }
+
+    // Prevent illegal updates to id fields
+    const { _id, id, ...safeValues } = newValues;
+    if (Object.keys(safeValues).length === 0) {
+      return response
+        .status(400)
+        .json({
+          ok: false,
+          msg: "newValues must include at least one field to update.",
+        });
+    }
+
+    // Single efficient bulk update for all ids
+    const result = await Event.updateMany(
+      { _id: { $in: uniqueIds } },
+      { $set: safeValues },
+      { strict: false }
+    );
+
+    const matched = result.matchedCount ?? result.n ?? 0;
+    const modified = result.modifiedCount ?? result.nModified ?? 0;
+
+    // If not all IDs matched, inform the caller without an additional read
+    const unmatchedCount = Math.max(uniqueIds.length - matched, 0);
+
+    return response.status(200).json({
+      ok: true,
+      counts: {
+        requested: uniqueIds.length,
+        matched,
+        modified,
+        unmatched: unmatchedCount,
+      },
+      set: safeValues,
+    });
+  } catch (error) {
+    return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 module.exports = {
   createEvent,
   editSubscriptionEvent,
@@ -423,4 +490,5 @@ module.exports = {
   eventStaffDetailInfo,
   inventoryEventBasedOnPeriod,
   deleteEvent,
+  updateLargeNumberOfEventsAtOnce,
 };
