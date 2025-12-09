@@ -14,7 +14,8 @@ const {
     gettingEventListPerCompany,
     eventStaffDetailInfo,
     inventoryEventBasedOnPeriod,
-    deleteEvent
+    deleteEvent,
+    updateLargeNumberOfEventsAtOnce
 } = require("../controller/event");
 const { getListOfUsersAndTransactionsPerEvent } = require("../controller/auth");
 
@@ -58,5 +59,8 @@ router.get('/event-inventory-based-on-period', inventoryEventBasedOnPeriod)
 
 // delete event
 router.delete("/delete-event/:id", deleteEvent);
+
+//update large number of events at once
+router.patch("/update-events", updateLargeNumberOfEventsAtOnce);
 
 module.exports = router;
