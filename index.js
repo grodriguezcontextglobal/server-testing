@@ -101,6 +101,7 @@ const configureRoutes = (app) => {
         stripe: require("./mysql/routes/stripe"),
         lease: require("./mysql/routes/lease"),
         inventory: require("./mysql/routes/inventory"),
+        member: require("./mysql/routes/members"),
         // utils: require("./mysql/routes/utils")
     };
 
