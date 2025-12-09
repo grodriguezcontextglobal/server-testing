@@ -1,12 +1,12 @@
 
 /**
  * Auth Route
- * host + /api/db_record/inserting-record
+ * host + /api/db_record
  */
 
 const { Router } = require("express");
 const { insertingRecordInEvent, insertingRecordInEventRefactored } = require("../controllers/recordEvent");
-const { consultingRowInItemInvAssignedEventTable, deletingRecordInItemInvAssignedEventRow } = require("../controllers/items_events");
+const { consultingRowInItemInvAssignedEventTable, deletingRecordInItemInvAssignedEventRow, consultingLeaseInformationConsumer } = require("../controllers/items_events");
 const router = Router();
 
 //check item info
@@ -20,5 +20,7 @@ router.post("/checking", consultingRowInItemInvAssignedEventTable)
 
 //checking retrieve event info
 router.post("/removing-row-item-event-record", deletingRecordInItemInvAssignedEventRow)
+
+router.post("/checking-lease-information", consultingLeaseInformationConsumer)
 
 module.exports = router;
