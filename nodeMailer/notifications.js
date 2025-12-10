@@ -36,6 +36,7 @@ const {
   liabilityContractConsumerNotificationMessageHtml,
   consumerLeaseEndedDeviceReturnedNotificationMessageHtml,
   documentSigningCompletionConsumerLeaseMessageHtml,
+  liabilityContractMemberNotificationMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
@@ -707,15 +708,15 @@ const errorFeedbackEmailNotification = async (props) => {
   }
 };
 
-const liabilityContractStaffNotification = async (request, response) => {
+const liabilityContractMemberNotification = async (request, response) => {
   try {
-    const { staff, contract_list, subject, items } = request.body;
+    const { member, contract_list, subject, items } = request.body;
 
     // Validate required fields
-    if (!staff || !staff.email || !staff.name) {
+    if (!member || !member.email || !member.name) {
       return response.status(400).json({
         ok: false,
-        msg: "Staff information (name and email) is required",
+        msg: "Member information (name and email) is required",
       });
     }
 
@@ -735,14 +736,14 @@ const liabilityContractStaffNotification = async (request, response) => {
 
     const info = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${staff.name} <${staff.email}>`,
+      to: `${member.name} <${member.email}>`,
       subject: subject || "Device Liability Contract",
-      html: liabilityContractStaffNotificationMessageHtml(request.body),
+      html: liabilityContractMemberNotificationMessageHtml(request.body),
     };
 
     return sgMail.send(info).then(() => {
       response.status(201).json({
-        notification: `Liability contract email sent to ${staff.name} (${staff.email})`,
+        notification: `Liability contract email sent to ${member.name} (${member.email})`,
         ok: true,
       });
     });
@@ -796,6 +797,54 @@ const liabilityContractConsumerNotification = async (request, response) => {
     });
   } catch (error) {
     logger.error(`Error sending liability contract email: ${error}`);
+    response.status(500).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+};
+
+const liabilityContractStaffNotification = async (request, response) => {
+  try {
+    const { staff, contract_list, subject, items } = request.body;
+
+    // Validate required fields
+    if (!staff || !staff.email || !staff.name) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Staff information (name and email) is required",
+      });
+    }
+
+    if (!contract_list || contract_list.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "At least one contract is required",
+      });
+    }
+
+    if (!items || items.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "At least one item is required",
+      });
+    }
+
+    const info = {
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `${staff.name} <${staff.email}>`,
+      subject: subject || "Device Liability Contract",
+      html: liabilityContractStaffNotificationMessageHtml(request.body),
+    };
+
+    return sgMail.send(info).then(() => {
+      response.status(201).json({
+        notification: `Liability contract email sent to ${staff.name} (${staff.email})`,
+        ok: true,
+      });
+    });
+  } catch (error) {
+    logger.info(`Error sending liability contract email: ${error}`);
     response.status(500).json({
       ok: false,
       error: error.message,
@@ -1248,6 +1297,7 @@ module.exports = {
   internalNotification,
   itemInfoStaffNotification,
   liabilityContractConsumerNotification,
+  liabilityContractMemberNotification,
   liabilityContractStaffNotification,
   linkToResetPassword,
   loginActivityNotification,
