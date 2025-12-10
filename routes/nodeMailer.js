@@ -28,7 +28,8 @@ const {
   returnedItemsToRenterNotification,
   termsAndConditionsAcceptanceNotification,
   liabilityContractConsumerNotification,
-  consumerLeaseEndedDeviceReturnedNotification
+  consumerLeaseEndedDeviceReturnedNotification,
+  liabilityContractMemberNotification
 } = require("../nodeMailer/notifications");
 const router = Router();
 
@@ -123,6 +124,12 @@ router.post(
 router.post(
   "/liability-contract-consumer-email-notification",
   liabilityContractConsumerNotification
+);
+
+//send liability contract email notification to consumers
+router.post(
+  "/liability-contract-member-email-notification",
+  liabilityContractMemberNotification
 );
 
 
