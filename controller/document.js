@@ -18,6 +18,7 @@ const logger = require("../helpers/logger");
 const VerificationConsumersLeaseContracts = require("../models/VerificationConsumersLeaseContracts");
 const SignatureConsumer = require("../models/SignatureConsumer");
 const User = require("../models/User");
+const VerificationMemberLeaseContracts = require("../models/VerificationMemberLeaseContracts");
 
 const uploadDocument = async (req, res) => {
   try {
@@ -853,6 +854,50 @@ const createConsumerVerification = async (req, res) => {
   }
 };
 
+const createMemberVerification = async (req, res) => {
+  try {
+    const {
+      company_id,
+      contract_list,
+      member_id,
+      date,
+      assigner_staff_member_id,
+    } = req.body;
+    logger.error(req.body);
+    const new_contract_verification = new VerificationMemberLeaseContracts({
+      date,
+      company_id,
+      member_id,
+      assigner_staff_member_id,
+      contract_list: [
+        ...contract_list.map((item) => {
+          return {
+            document_url: item.view_url,
+            signature: false,
+            date: Date.now().toLocaleString(),
+          };
+        }),
+      ],
+    });
+    await new_contract_verification.save();
+    logger.info(
+      "Consumer member verification created successfully",
+      new_contract_verification
+    );
+    res.status(201).json({
+      ok: true,
+      msg: "Contract created successfully",
+      verificationInfo: new_contract_verification,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
+
 // staffMemberVerificationSignedDocumentForAssignmentDevices
 const staffMemberVerificationSignedDocumentForAssignmentDevices = async (
   req,
@@ -1010,6 +1055,147 @@ const consumerMemberVerificationSignedDocumentForAssignmentDevices = async (
 
     if (verificationID) {
       const contract = await VerificationConsumersLeaseContracts.findById(
+        verificationID
+      ).lean();
+      if (!contract || contract.length === 0) return;
+      if (
+        Array.isArray(contract.contract_list) &&
+        contract.contract_list.some((item) => item.signature === false)
+      ) {
+        return res.status(200).json({
+          ok: true,
+          msg: "Documents pending for signature",
+          document: contract.contract_list.filter(
+            (item) => item.signature === false
+          ),
+          contract_info: contract,
+        });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        msg: "Document signed successfully",
+        document: contract.contract_list.filter(
+          (item) => item.signature === true
+        ),
+        contract_info: contract,
+      });
+    }
+    const parseDateSafe = (value) => {
+      if (!value) return NaN;
+      if (value instanceof Date) {
+        const t = value.getTime();
+        return Number.isNaN(t) ? NaN : t;
+      }
+      if (typeof value === "number") {
+        return Number.isNaN(value) ? NaN : value;
+      }
+      const asNumber = Number(value);
+      if (!Number.isNaN(asNumber) && asNumber > 1000000000) {
+        return asNumber; // likely epoch ms or seconds (heuristic)
+      }
+      const d = new Date(value);
+      const t = d.getTime();
+      return Number.isNaN(t) ? NaN : t;
+    };
+    const refTs = parseDateSafe(date_reference);
+    if (Number.isNaN(refTs)) {
+      return res.status(400).json({
+        ok: false,
+        msg: "Invalid date_reference. Provide a parsable date or epoch ms.",
+      });
+    }
+
+    const windowStart = refTs - 10 * 60 * 1000; // -10 minutes
+    const windowEnd = refTs + 10 * 60 * 1000; // +10 minutes
+
+    // Find all contracts for staff and company (date is stored as String, so range queries won't be reliable at DB level)
+    const contracts = await VerificationConsumersLeaseContracts.find({
+      company_id,
+      consumer_member_id,
+    }).lean();
+
+    if (!contracts || contracts.length === 0) {
+      return res.status(201).json({
+        ok: false,
+        msg: "Contract not found",
+      });
+    }
+
+    for (const contract of contracts) {
+      const contractList = Array.isArray(contract.contract_list)
+        ? contract.contract_list
+        : [];
+
+      for (const doc of contractList) {
+        if (doc.document_url !== contract_url) continue;
+
+        // Prefer document date, fallback to contract date
+        const contractTs = parseDateSafe(contract?.date);
+        const tsCandidate = contractTs;
+
+        if (Number.isNaN(tsCandidate)) continue;
+
+        if (contractTs >= windowStart && contractTs <= windowEnd) {
+          const delta = Math.abs(tsCandidate - refTs);
+          if (delta < closestDelta) {
+            closestDelta = delta;
+            matchedDoc = contract_url;
+            matchedContract = contract;
+          }
+        }
+      }
+    }
+
+    if (!matchedDoc) {
+      return res.status(201).json({
+        ok: false,
+        msg: "Document not found within the ±10 minute window",
+      });
+    }
+
+    if (matchedDoc.signature === false) {
+      return res.status(200).json({
+        ok: true,
+        msg: "Document pending for signature",
+        document: matchedDoc,
+        contract_info: matchedContract,
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      msg: "Document signed successfully",
+      document: matchedDoc,
+      contract_info: matchedContract,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
+
+const memberVerificationSignedDocumentForAssignmentDevices = async (
+  req,
+  res
+) => {
+  try {
+    const {
+      company_id,
+      contract_url,
+      member_id,
+      date_reference,
+      verificationID,
+    } = req.body;
+    let matchedDoc = null;
+    let matchedContract = null;
+    let closestDelta = Infinity;
+
+    if (verificationID) {
+      const contract = await VerificationMemberLeaseContracts.findById(
         verificationID
       ).lean();
       if (!contract || contract.length === 0) return;
@@ -1336,15 +1522,85 @@ const addSignatureToConsumerDocument = async (req, res) => {
   }
 };
 
+const addSignatureToMemberDocument = async (req, res) => {
+  try {
+    const { verification_id, contract_url } = req.body;
+    const contract = await VerificationMemberLeaseContracts.findById(
+      verification_id
+    );
+    if (!contract) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Contract not found",
+      });
+    }
+    const contractList = contract.contract_list;
+    const document = contractList.findIndex(
+      (doc) => doc.document_url === contract_url
+    );
+    if (document < 0) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Document not found",
+      });
+    }
+
+    let signature = contractList[document];
+    signature.signature = true;
+    signature.date = new Date().toLocaleString();
+    contractList[document] = signature;
+    const updatedVerification =
+      await VerificationConsumersLeaseContracts.findByIdAndUpdate(
+        verification_id,
+        {
+          contract_list: contractList,
+        },
+        {
+          new: true,
+        }
+      );
+    const checkIfAllContractsSigned = updatedVerification.contract_list.every(
+      (item) => item.signature === true
+    );
+    if (checkIfAllContractsSigned) {
+      // Send email notifications to both assigner and staff member
+      return res.status(200).json({
+        ok: true,
+        msg: "All documents signed successfully",
+        document,
+        contract_info: updatedVerification,
+        all_signed: checkIfAllContractsSigned,
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      msg: "Document signed successfully",
+      document,
+      contract_info: updatedVerification,
+      all_signed: checkIfAllContractsSigned,
+    });
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: JSON.stringify(error),
+    });
+  }
+};
+
 module.exports = {
   addSignatureToConsumerDocument,
   addSignatureToDocument,
+  addSignatureToMemberDocument,
   collectingSignatures,
+  collectingSignaturesForConsumerMember,
   consultingSignaturesStaffMember,
   consumerMemberVerificationSignedDocumentForAssignmentDevices,
   createConsumerVerification,
   createNewFolder,
   createStaffMemberVerification,
+  createMemberVerification,
   deleteDocument,
   deleteFolder,
   generateTemporaryDownloadUrl,
@@ -1356,10 +1612,10 @@ module.exports = {
   getFolderByID,
   getFolders,
   getTriggerActions,
+  memberVerificationSignedDocumentForAssignmentDevices,
   staffMemberVerificationSignedDocumentForAssignmentDevices,
   stampEventConsumerSignatures,
   updateFolder,
   updateStampEventConsumerSignatures,
   uploadDocument,
-  collectingSignaturesForConsumerMember,
 };
