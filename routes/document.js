@@ -22,6 +22,9 @@ const {
   createConsumerVerification,
   consumerMemberVerificationSignedDocumentForAssignmentDevices,
   addSignatureToConsumerDocument,
+  createMemberVerification,
+  memberVerificationSignedDocumentForAssignmentDevices,
+  addSignatureToMemberDocument,
 } = require("../controller/document");
 
 // Configure multer
@@ -116,5 +119,22 @@ router.patch(
   "/verification/consumer_member/signing_document",
   addSignatureToConsumerDocument
 );
+
+router.post(
+  "/verification/member/signed_document",
+  createMemberVerification
+);
+
+router.post(
+  "/verification/member/check_signed_document",
+  memberVerificationSignedDocumentForAssignmentDevices
+);
+
+router.patch(
+  "/verification/member/signing_document",
+  addSignatureToMemberDocument
+);
+
+
 
 module.exports = router;
