@@ -37,9 +37,11 @@ const {
   consumerLeaseEndedDeviceReturnedNotificationMessageHtml,
   documentSigningCompletionConsumerLeaseMessageHtml,
   liabilityContractMemberNotificationMessageHtml,
+  returnConfirmationLeaseMemberMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
+const { request } = require("http");
 // const e = require("express");
 const assingDeviceNotification = async (request, response) => {
   try {
@@ -85,6 +87,29 @@ const returningDeviceNotification = async (request, response) => {
   }
 };
 
+const returningDeviceLeaseMemberNotification = async (request, response) => {
+  try {
+    logger.info("request body", request.body);
+    const info = {
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `${request.body.member.firstName} ${request.body.member.lastName} <${request.body.member.email}>`,
+      subject: "Returned device notification",
+      html: returnConfirmationLeaseMemberMessageHtml(request.body),
+    };
+    return sgMail.send(info).then(() => {
+      response.status(201).json({
+        notification: `Email sent`,
+        ok: true,
+      });
+    });
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      error: error,
+    });
+  }
+
+};
 const deviceReportPerTransaction = async (request, response) => {
   try {
     const info = {
@@ -1307,6 +1332,7 @@ module.exports = {
   newUserInvitationNotification,
   refundInvoice,
   returnedItemsToRenterNotification,
+  returningDeviceLeaseMemberNotification,
   returningDeviceNotification,
   singleEmailNotification,
   staffInternalNotification,
