@@ -6869,6 +6869,229 @@ const consumerLeaseEndedDeviceReturnedNotificationMessageHtml = (
 </html>
   `;
 };
+
+const returnConfirmationLeaseMemberMessageHtml = (props) => {
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Devices Returned Receipt</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 24px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        font-size: 14px;
+      }
+
+      th, td {
+        padding: 12px;
+        border: 1px solid #e0e0e0;
+        text-align: left;
+      }
+
+      th {
+        background-color: #f2f2f2;
+        font-weight: 600;
+        color: #475467;
+      }
+
+      a {
+        display: block;
+        text-align: center;
+        margin: 20px auto;
+        padding: 10px 20px;
+        color: #fff;
+        background-color: #155eef;
+        text-decoration: none;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+            .qr-code {
+        font-size: 12px;
+        color: #475467;
+        text-align: center;
+        margin-top: 40px;
+      }
+
+
+      .footer {
+        font-size: 12px;
+        color: #475467;
+        text-align: center;
+        margin-top: 40px;
+      }
+      
+      .text-success {
+        color: #155eef;
+        font-weight: bold;
+        padding:5px;
+        background-color:#fff;
+      }
+
+      .text-danger {
+        color: #ff0000;
+        font-weight: bold;
+        padding:5px;
+        background-color:#fff;
+      }
+
+
+      /* Responsive Design */
+      @media only screen and (max-width: 600px) {
+        h1 {
+          font-size: 20px;
+        }
+
+        p, th, td {
+          font-size: 12px;
+        }
+
+        a {
+          font-size: 14px;
+          padding: 8px 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+                  <div
+            style="
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2.5rem;
+            width: 100%;
+          "
+          >
+            <div style="align-self: flex-start">
+              <p
+                style="
+                text-align: left;
+                width: 100%;
+                color: #475467;
+                font-size: 9px;
+                font-style: normal;
+                font-weight: 500;
+                line-height: 9px;
+              "
+              >
+                Power by
+              </p>
+              <div
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
+            </div>
+          </div>
+
+      <h1>Devices Returned Receipt</h1>
+      <p>
+        Dear ${props.member.firstName} ${
+    props.member.lastName
+  }, this email confirms that all devices shown have been returned successfully.
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Device type</th>
+            <th>Serial number</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${props.devices
+            .map(
+              (device) => `
+            <tr>
+              <td>${device.device.deviceType}</td>
+              <td>${device.device.serialNumber}</td>
+              <td>${new Date().toLocaleDateString()}</td>
+            </tr>
+          `
+            )
+            .join("")}
+        </tbody>
+      </table>
+
+      <div class="qr-code">
+      </div>
+      <div class="footer">
+        <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
+      </div>
+    </div>
+  </body>
+</html>
+`;
+};
+
+
 module.exports = {
   assigningDeviceMessageHtml,
   cancelingDepositMessageHtml,
@@ -6885,8 +7108,8 @@ module.exports = {
   eventLinkEventHtml,
   itemInfoStaffNotificationMessageHtml,
   liabilityContractConsumerNotificationMessageHtml,
-  liabilityContractStaffNotificationMessageHtml,
   liabilityContractMemberNotificationMessageHtml,
+  liabilityContractStaffNotificationMessageHtml,
   linkToLoginExistingConsumerMessageHtml,
   linkToResetUserPassword,
   loginActivityNotificationMessageHtml,
@@ -6895,6 +7118,7 @@ module.exports = {
   newUserInvitationMessageHtml,
   nrffInterpretationFeedbackEmailMessageHtml,
   reportBugMessageHtml,
+  returnConfirmationLeaseMemberMessageHtml,
   returnConfirmationMessageHtml,
   returnedItemsToRenterNotificationMessageHtml,
   returnReminderMessageHtml,
