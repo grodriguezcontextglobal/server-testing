@@ -29,7 +29,8 @@ const {
   termsAndConditionsAcceptanceNotification,
   liabilityContractConsumerNotification,
   consumerLeaseEndedDeviceReturnedNotification,
-  liabilityContractMemberNotification
+  liabilityContractMemberNotification,
+  returningDeviceLeaseMemberNotification
 } = require("../nodeMailer/notifications");
 const router = Router();
 
@@ -132,7 +133,6 @@ router.post(
   liabilityContractMemberNotification
 );
 
-
 //send email notification to staff about returned items to renter
 router.post("/returned-items-to-renter-notification", returnedItemsToRenterNotification);
 
@@ -141,5 +141,8 @@ router.post("/terms-and-conditions-acceptance", termsAndConditionsAcceptanceNoti
 
 //notification for returned device in consumer lease
 router.post("/consumer-lease-return-device-notification", consumerLeaseEndedDeviceReturnedNotification)
+
+//notification for returned device in member lease
+router.post("/member-lease-return-device-notification", returningDeviceLeaseMemberNotification)
 
 module.exports = router;
