@@ -7,6 +7,9 @@ const StripeTransaction = require("../models/StripeTransaction");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const { loginActivityNotification } = require("../nodeMailer/notifications");
 const logger = require("../helpers/logger");
+const crypto = require("crypto");
+const speakeasy = require("speakeasy");
+const QRCode = require("qrcode");
 
 const createAdminUser = async (request, response = express.response) => {
   const { email, password } = request.body;
@@ -65,7 +68,7 @@ const createAdminUser = async (request, response = express.response) => {
 };
 
 const loginUser = async (request, response) => {
-  const { email, password, rememberMe } = request.body;
+  const { email, password, rememberMe, forceLogin, mfaCode } = request.body;
   try {
     let adminUser = await AdminUser.findOne({ email });
     if (!adminUser) {
@@ -83,21 +86,79 @@ const loginUser = async (request, response) => {
       });
     }
 
-    // Enforce single active session using Redis (atomic claim)
+    // MFA Check
+    if (adminUser.mfaEnabled) {
+      if (!mfaCode) {
+        return response.status(403).json({
+          ok: false,
+          msg: "MFA code required",
+          mfaRequired: true,
+        });
+      }
+
+      const userWithSecret = await AdminUser.findById(adminUser.id).select(
+        "+mfaSecret"
+      );
+
+      const verified = speakeasy.totp.verify({
+        secret: userWithSecret.mfaSecret.base32,
+        encoding: "base32",
+        token: mfaCode,
+      });
+
+      if (!verified) {
+        return response.status(400).json({
+          ok: false,
+          msg: "Invalid MFA code",
+        });
+      }
+    }
+
+    // Enforce single active session using Redis, with reclaim/force-login
     const redis = await clientRedis();
     const sessionKey = `staff_session:${adminUser.id ?? adminUser.uid}`;
+    const ownerKey = `${sessionKey}:owner`;
     const ttlSeconds = rememberMe ? 30 * 24 * 60 * 60 : 12 * 60 * 60;
 
-    // Attempt to claim the session atomically; if it exists, block login
+    // Build a simple fingerprint (UA + IP + user ID)
+    const userAgent = request.headers["user-agent"] || "Unknown";
+    const ipAddress =
+      request.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+      request.headers["x-real-ip"] ||
+      request.headers["x-client-ip"] ||
+      request.ip ||
+      request.connection?.remoteAddress ||
+      request.socket?.remoteAddress ||
+      "Unknown";
+    const fingerprint = crypto
+      .createHash("sha256")
+      .update(`${userAgent}|${ipAddress}|${adminUser.id ?? adminUser.uid}`)
+      .digest("hex");
+
+    // Try to claim; if it exists, allow reclaim for same owner or forceLogin
     const claimed = await redis.set(sessionKey, "active", {
       EX: ttlSeconds,
       NX: true,
     });
+
     if (!claimed) {
-      return response.status(409).json({
-        ok: false,
-        msg: "Active session already exists for this account. Please logout first.",
-      });
+      const currentOwner = await redis.get(ownerKey);
+      const isSameOwner = currentOwner && currentOwner === fingerprint;
+
+      if (isSameOwner || Boolean(forceLogin)) {
+        // Reclaim or force takeover: clear the existing session before proceeding
+        try {
+          await redis.del(sessionKey);
+          await redis.del(ownerKey);
+        } catch {}
+      } else {
+        return response.status(409).json({
+          ok: false,
+          msg:
+            "Active session already exists for this account. " +
+            "If this is you, please use 'Force Login' to end the previous session.",
+        });
+      }
     }
 
     //generate jwt (json web token)
@@ -113,13 +174,15 @@ const loginUser = async (request, response) => {
       // Rollback the claim if token generation fails
       try {
         await redis.del(sessionKey);
+        await redis.del(ownerKey);
       } catch {}
       throw e;
     }
 
-    // Optionally store token as the session value (presence is what matters)
+    // Store token and owner fingerprint with TTL
     try {
       await redis.set(sessionKey, token, { EX: ttlSeconds });
+      await redis.set(ownerKey, fingerprint, { EX: ttlSeconds });
     } catch {}
 
     // Prepare login information for email notification with better header extraction
@@ -160,9 +223,8 @@ const loginUser = async (request, response) => {
         Date.now().toString(),
     };
 
-    // Send login activity notification email (async, don't wait for it)
+    // Send login activity notification (async)
     try {
-      // Send email notification asynchronously with correct parameters
       setImmediate(async () => {
         try {
           const result = await loginActivityNotification(adminUser, loginInfo);
@@ -190,7 +252,6 @@ const loginUser = async (request, response) => {
         }
       });
     } catch (emailError) {
-      // Log email error but don't fail the login
       logger.error("Error preparing login activity email", {
         userId: adminUser.id,
         email: adminUser.email,
@@ -259,8 +320,8 @@ const logoutUser = async (request, response) => {
         ok: true,
         msg: "user logged out",
       });
-    } 
-    if(staffID) {
+    }
+    if (staffID) {
       const sessionKey = `staff_session:${staffID}`;
       redis.del(sessionKey);
       // Clear cookie if it existed (name is required)
@@ -603,6 +664,71 @@ const checkStatus = async (request, response) => {
   }
 };
 
+const generateMfaSecret = async (req, res) => {
+  try {
+    const adminUser = await AdminUser.findById(req.uid);
+    if (!adminUser)
+      return res.status(404).json({ ok: false, msg: "User not found" });
+
+    const secret = speakeasy.generateSecret({
+      name: `Devitrak:${adminUser.email}`,
+    });
+
+    adminUser.mfaSecret = secret;
+    await adminUser.save();
+
+    QRCode.toDataURL(secret.otpauth_url, (err, data_url) => {
+      if (err) throw err;
+      res.json({
+        ok: true,
+        secret: secret.base32,
+        qrCode: data_url,
+      });
+    });
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({ ok: false, msg: "Error generating MFA secret" });
+  }
+};
+
+const verifyMfaSetup = async (req, res) => {
+  const { token } = req.body;
+  try {
+    const adminUser = await AdminUser.findById(req.uid).select("+mfaSecret");
+    if (!adminUser)
+      return res.status(404).json({ ok: false, msg: "User not found" });
+
+    const verified = speakeasy.totp.verify({
+      secret: adminUser.mfaSecret.base32,
+      encoding: "base32",
+      token: token,
+    });
+
+    if (verified) {
+      adminUser.mfaEnabled = true;
+      await adminUser.save();
+      res.json({ ok: true, msg: "MFA enabled successfully" });
+    } else {
+      res.status(400).json({ ok: false, msg: "Invalid token" });
+    }
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({ ok: false, msg: "Error verifying MFA" });
+  }
+};
+
+const disableMfa = async (req, res) => {
+  try {
+    const adminUser = await AdminUser.findById(req.uid);
+    adminUser.mfaEnabled = false;
+    adminUser.mfaSecret = undefined;
+    await adminUser.save();
+    res.json({ ok: true, msg: "MFA disabled successfully" });
+  } catch (error) {
+    res.status(500).json({ ok: false, msg: "Error disabling MFA" });
+  }
+};
+
 module.exports = {
   renewToken,
   loginUser,
@@ -619,4 +745,7 @@ module.exports = {
   checkStatus,
   logoutUser,
   manuallyLogoutUser,
+  generateMfaSecret,
+  verifyMfaSetup,
+  disableMfa,
 };
