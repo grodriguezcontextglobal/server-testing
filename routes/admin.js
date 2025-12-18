@@ -18,6 +18,9 @@ const {
   checkStatus,
   logoutUser,
   manuallyLogoutUser,
+  generateMfaSecret,
+  verifyMfaSetup,
+  disableMfa,
 } = require("../controller/admin");
 const {
   addReceiverToTransaction,
@@ -28,8 +31,8 @@ const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 
 //protected route
-router.get('/protected', validateJWT, checkTokenVersion, (req, res) => {
-  res.json({ message: 'This is a protected route', user: req.user });
+router.get("/protected", validateJWT, checkTokenVersion, (req, res) => {
+  res.json({ message: "This is a protected route", user: req.user });
 });
 
 //create admin user
@@ -65,7 +68,7 @@ router.post(
 router.post("/logout", logoutUser);
 
 //router for manually log out user
-router.post('/manually_logout', manuallyLogoutUser)
+router.post("/manually_logout", manuallyLogoutUser);
 
 //renovar token
 router.get("/renew", validateJWT, renewToken);
@@ -95,6 +98,11 @@ router.post("/receiver-assignation", addReceiverToTransaction);
 router.get("/receiver-assigned", checkingReceiversAssigned);
 
 //check user online status
-router.get('/check-online-status/:email', checkStatus)
+router.get("/check-online-status/:email", checkStatus);
+
+// MFA Routes
+router.post("/mfa/generate", validateJWT, generateMfaSecret);
+router.post("/mfa/verify", validateJWT, verifyMfaSetup);
+router.post("/mfa/disable", validateJWT, disableMfa);
 
 module.exports = router;
