@@ -49,6 +49,14 @@ const AdminUserSchema = new Schema({
     type: String,
     default: "",
   },
+  mfaEnabled: {
+    type: Boolean,
+    default: false,
+  },
+  mfaSecret: {
+    type: Object, // Stores ASCII, hex, base32, otpauth_url
+    select: false, // Do not return by default
+  },
   emailNotifications: {
     type: Object,
     default: {
@@ -102,6 +110,10 @@ const AdminUserSchema = new Schema({
     },
   ],
   tokenVersion: { type: Number, default: 0 },
+  agreedPlatformConditions:{
+    type: Boolean,
+    default: false
+  }
 });
 
 AdminUserSchema.method("toJSON", function () {
