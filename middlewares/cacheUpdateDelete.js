@@ -1,4 +1,5 @@
 const { clientRedis } = require("../database/cacheMemoryConfig");
+const logger = require("../helpers/logger");
 
 const updateCache = async (request, response) => {
   try {
@@ -10,7 +11,7 @@ const updateCache = async (request, response) => {
       message: "Cache updated successfully",
     });
   } catch (error) {
-    console.log(error);
+    logger.error(error);
     response.status(500).json({
       ok: false,
       message: "Error updating cache",
@@ -20,17 +21,3 @@ const updateCache = async (request, response) => {
 };
 
 module.exports = updateCache;
-
-// app.post('/update-cache', async (req, res) => {
-//   const { key, value } = req.body;
-//   try {
-//     await setAsync(key, JSON.stringify(value), 'EX', 3600); // Set with TTL
-//     res.status(200).json({ message: 'Cache updated successfully' });
-//   } catch (error) {
-//     res.status(500).json({ message: 'Error updating cache', error });
-//   }
-// });
-
-// app.listen(3000, () => {
-//   console.log('Middleware server running on port 3000');
-// });
