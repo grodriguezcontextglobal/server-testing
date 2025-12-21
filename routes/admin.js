@@ -83,10 +83,10 @@ router.post("/users", showAllUsers);
 router.patch("/profile/:id", validateJWT, editAdminUser);
 
 //edit admin user
-router.patch("/admin-user/:id", editOtherAdminUser);
+router.patch("/admin-user/:id", validateJWT, editOtherAdminUser);
 
 //delete admin suer
-router.delete("/:id", deleteAdminUser);
+router.delete("/:id", validateJWT, deleteAdminUser);
 
 //update password
 router.patch("/update-password", updatePassword);
