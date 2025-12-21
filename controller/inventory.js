@@ -1,11 +1,24 @@
 const express = require("express");
 const Inventory = require("../models/Inventory");
 const logger = require("../helpers/logger");
+const { logStaffActivity } = require("./staffActivityLog");
 
 const createInventory = async (request, response = express.response) => {
   try {
     let item = new Inventory(request.body);
     await item.save();
+
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: item.company,
+      action: "CREATE",
+      target_model: "Inventory",
+      target_id: item.id,
+      details: { batch: item.batch, event: item.event },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
+
     return response.status(201).json({
       ok: true,
       savedItem: item,
@@ -40,6 +53,18 @@ const editInventory = async (request, response = response) => {
         new: true,
       }
     );
+
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: staffEventEdited.company,
+      action: "UPDATE",
+      target_model: "Inventory",
+      target_id: staffEventEdited.id,
+      details: { updates: request.body },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
+
     return response.json({
       ok: true,
       itemUpdated: staffEventEdited,
@@ -63,6 +88,18 @@ const deleteInventory = async (request, response) => {
         msg: "Item does not exist.",
       });
     }
+
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: itemToDelete.company,
+      action: "DELETE",
+      target_model: "Inventory",
+      target_id: itemToDelete.id,
+      details: { batch: itemToDelete.batch },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
+
     return response.status(201).json({
       ok: true,
       itemDeleted: itemToDelete,
