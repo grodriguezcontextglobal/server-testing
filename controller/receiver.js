@@ -5,26 +5,24 @@ const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
 const User = require("../models/User");
 const { clientRedis } = require("../database/cacheMemoryConfig");
+const runGoWorker = require("../helpers/goWorker");
 
 const addReceiverToTransaction = async (request, response) => {
   try {
-    Receivers.adminuser = request.body.adminUser;
-    const receiversAssignedPerUser = new Receivers(request.body);
-    await receiversAssignedPerUser.save();
-
+    const result = await runGoWorker("add-receiver-transaction", request.body);
     return response.status(201).json({
       ok: true,
       message: "ASSIGNED",
-      device: receiversAssignedPerUser.device,
-      paymentIntent: receiversAssignedPerUser.paymentIntent,
-      receiversAssignedPerUser,
+      device: result.device,
+      paymentIntent: result.paymentIntent,
+      receiversAssignedPerUser: result,
       date: new Date(),
     });
   } catch (error) {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
-      err: error,
+      err: error.message,
     });
   }
 };
@@ -82,32 +80,14 @@ const checkingReceiversExistInDatabase = async (request, response) => {
 };
 
 const udpateReceiverStatus = async (request, response) => {
-  const { id, device } = request.body;
   try {
-    const receiverAssigned = await Receivers.findById(id);
-    if (!receiverAssigned) {
-      return response.status(404).json({
-        ok: false,
-        msg: "Receiver ID do not match",
-      });
-    }
-    const receiverEdited = {
-      device,
-    };
-    const receiverUpdated = await Receivers.findByIdAndUpdate(
-      receiverAssigned,
-      receiverEdited,
-      {
-        new: true,
-      }
-    );
-
+    const result = await runGoWorker("update-receiver-status", request.body);
     return response.status(201).json({
       ok: true,
-      id: receiverUpdated.id,
-      user: receiverUpdated.user,
-      paymentIntent: receiverUpdated.paymentIntent,
-      device: receiverUpdated.device,
+      id: result.id,
+      user: result.user,
+      paymentIntent: result.paymentIntent,
+      device: result.device,
     });
   } catch (error) {
     return response.status(500).json({
@@ -118,20 +98,8 @@ const udpateReceiverStatus = async (request, response) => {
 };
 
 const updateBulkItemsInTransaction = async (request, response) => {
-  const { timeStamp, device } = request.body;
   try {
-    for (let item of device) {
-      await Receivers.findByIdAndUpdate(
-        item.key,
-        {
-          "device.status": false,
-          timeStamp: timeStamp,
-        },
-        {
-          new: true,
-        }
-      );
-    }
+    await runGoWorker("update-bulk-items-transaction", request.body);
     return response.status(201).json({
       ok: true,
     });
@@ -144,26 +112,8 @@ const updateBulkItemsInTransaction = async (request, response) => {
 };
 
 const updateBulkItemsInPool = async (request, response) => {
-  const { device, company, activity, eventSelected } = request.body;
   try {
-    const cache_connection = await clientRedis();
-    for (let item of device) {
-      await ReceiversPool.findOneAndUpdate(
-        {
-          company,
-          activity: !activity,
-          eventSelected: eventSelected,
-          type: item.deviceType ?? item.type,
-          device: item.serialNumber ?? item.device,
-        },
-        {
-          activity,
-        },
-        {
-          new: true,
-        }
-      );
-    }
+    await runGoWorker("update-bulk-items-pool", request.body);
     return response.status(201).json({
       ok: true,
     });
@@ -194,33 +144,10 @@ const poolReceivers = async (request, response) => {
 
 const poolReceiversBulk = async (request, response) => {
   try {
-    const {
-      deviceList,
-      status,
-      activity,
-      comment,
-      eventSelected,
-      provider,
-      type,
-      company,
-    } = request.body;
-    const list = JSON.parse(deviceList);
-    const receiversPoolData = list.map((item) => ({
-      device: item,
-      status,
-      activity,
-      comment,
-      eventSelected,
-      provider,
-      type,
-      company,
-    }));
-
-    const savedItems = await ReceiversPool.insertMany(receiversPoolData);
-
+    const result = await runGoWorker("pool-receivers-bulk", request.body);
     return response.status(201).json({
       ok: true,
-      receiversPool: savedItems,
+      receiversPool: result,
     });
   } catch (error) {
     return response.status(500).json({
@@ -230,7 +157,6 @@ const poolReceiversBulk = async (request, response) => {
     });
   }
 };
-
 const getListOfItemsInEventPool = async (request, response) => {
   try {
     const cache_connection = await clientRedis();
@@ -247,28 +173,28 @@ const getListOfItemsInEventPool = async (request, response) => {
         receiversInventory: cachedList, //JSON.parse(cachedList),
       });
     } else {
-    const formatting = [...params.split("&")];
-    let check = formatting.reduce(
-      (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
-      {}
-    );
-    if (check.eventSelected) {
-      check.eventSelected = eventID;
-    }
-    const items = await ReceiversPool.find(check).sort({ device: 1 });
-    cache_connection.set(
-      `eventSelected=${eventID}&company=${companyID}`,
-      JSON.stringify(items)
-    );
-    cache_connection.expire(
-      `eventSelected=${eventID}&company=${companyID}`,
-      120
-    );
-    return response.status(200).json({
-      ok: true,
-      cached: false,
-      receiversInventory: JSON.stringify(items),
-    });
+      const formatting = [...params.split("&")];
+      let check = formatting.reduce(
+        (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
+        {}
+      );
+      if (check.eventSelected) {
+        check.eventSelected = eventID;
+      }
+      const items = await ReceiversPool.find(check).sort({ device: 1 });
+      cache_connection.set(
+        `eventSelected=${eventID}&company=${companyID}`,
+        JSON.stringify(items)
+      );
+      cache_connection.expire(
+        `eventSelected=${eventID}&company=${companyID}`,
+        120
+      );
+      return response.status(200).json({
+        ok: true,
+        cached: false,
+        receiversInventory: JSON.stringify(items),
+      });
     }
   } catch (error) {
     return response.status(500).json({
@@ -281,31 +207,20 @@ const getListOfItemsInEventPool = async (request, response) => {
 
 const updatePoolReceivers = async (request, response) => {
   try {
-    const receiverAssigned = await ReceiversPool.findById(request.params.id);
-    if (!receiverAssigned) {
-      return response.status(404).json({
-        ok: false,
-        msg: "Receiver ID do not match",
-      });
-    }
-    const receiverEdited = {
-      ...request.body,
-    };
-    const receiverUpdated = await ReceiversPool.findByIdAndUpdate(
-      request.params.id,
-      receiverEdited,
-      {
-        new: true,
-      }
-    );
+    // Pass params.id into body or separate argument?
+    // Go worker expects full JSON.
+    // request.body usually doesn't have id if it's in params.
+    // We should merge them.
+    const payload = { ...request.body, id: request.params.id };
+    const result = await runGoWorker("update-pool-receivers", payload);
     return response.status(201).json({
       ok: true,
-      receiverUpdated: JSON.stringify(receiverUpdated),
+      receiverUpdated: JSON.stringify(result.receiverUpdated),
     });
   } catch (error) {
     return response.status(500).json({
       ok: false,
-      msg: error,
+      msg: error.message,
     });
   }
 };
@@ -329,58 +244,32 @@ const receiverPoolList = async (request, response) => {
 
 const receiverPoolFoundAndDelete = async (request, response) => {
   try {
-    const deviceDeleted = await ReceiversPool.findByIdAndDelete({
-      _id: request.params.id,
-    });
+    const payload = { id: request.params.id };
+    const result = await runGoWorker("receiver-pool-found-delete", payload);
     return response.status(201).json({
       ok: true,
-      deviceDeleted,
+      deviceDeleted: result.deviceDeleted,
     });
   } catch (error) {
     return response.status(500).json({
       ok: false,
-      msg: error,
+      msg: error.message,
     });
   }
 };
 
 const receiverPoolBulkDelete = async (request, response) => {
   try {
-    const { ids } = request.body;
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "No IDs provided for deletion.",
-      });
-    }
-
-    // Ensure only valid ObjectId strings are included
-    const validIds = ids
-      .filter(
-        (id) => typeof id === "string" && mongoose.Types.ObjectId.isValid(id)
-      )
-      .map((id) => new mongoose.Types.ObjectId(id));
-
-    if (validIds.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "No valid ObjectIds provided.",
-      });
-    }
-
-    const deleteResult = await ReceiversPool.deleteMany({
-      _id: { $in: validIds },
-    });
-
+    const result = await runGoWorker("receiver-pool-bulk-delete", request.body);
     return response.status(200).json({
       ok: true,
-      deletedCount: deleteResult.deletedCount,
+      deletedCount: result.deletedCount,
     });
   } catch (error) {
     return response.status(500).json({
       ok: false,
       msg: error.message,
-      debug: error, // Optional: Remove in production
+      debug: error,
     });
   }
 };
@@ -461,23 +350,8 @@ const getListOfReceiverReturnedByIssue = async (request, response) => {
 
 const updateIssueDevice = async (request, response) => {
   try {
-    const receiver = await ReceiverReturnedStatus.findById(request.params.id);
-    if (!receiver) {
-      return response.status(404).json({
-        ok: false,
-        msg: "Receiver ID do not match",
-      });
-    }
-    const updateIssueReceiver = {
-      ...request.body,
-    };
-    const receiverUpdated = await ReceiverReturnedStatus.findByIdAndUpdate(
-      request.params.id,
-      updateIssueReceiver,
-      {
-        new: true,
-      }
-    );
+    const payload = { ...request.body, id: request.params.id };
+    const receiverUpdated = await runGoWorker("update-issue-device", payload);
     return response.status(201).json({
       ok: true,
       receiverUpdated,
@@ -485,66 +359,21 @@ const updateIssueDevice = async (request, response) => {
   } catch (error) {
     return response.status(500).json({
       ok: false,
-      msg: error,
+      msg: error.message,
     });
   }
 };
 
 const updateBulkItemDataInPool = async (request, response) => {
   try {
-    const { startingSerialNumber, deviceData, qty } = request.body;
-    const devices = JSON.parse(deviceData);
-    const dataIndex = devices.findIndex(
-      (item) => item.device === startingSerialNumber
+    const result = await runGoWorker(
+      "update-bulk-item-data-pool",
+      request.body
     );
-    if (dataIndex === -1) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Starting serial number not found in device data.",
-      });
-    }
-    const data = devices.slice(dataIndex, dataIndex + Number(qty));
-
-    const dataPoolItems = await ReceiversPool.find({
-      company: data[0].company,
-      activity: false,
-      eventSelected: data[0].eventSelected,
-      type: data[0].type,
-      device: { $in: data.map((item) => item.device) },
-    });
-
-    const updateData = dataPoolItems.map((item) => {
-      return {
-        id: `${item._id}`,
-        type: item.type,
-        device: item.device,
-        status: request.body.status,
-        activity: request.body.activity,
-        provider: item.provider,
-        eventSelected: item.eventSelected,
-        company: item.company,
-        comment: request.body.comment,
-      };
-    });
-
-    const bulkOperations = updateData.map((item) => ({
-      updateOne: {
-        filter: { _id: item.id },
-        update: {
-          $set: {
-            status: item.status,
-            activity: true,
-            comment: item.comment,
-          },
-        },
-      },
-    }));
-
-    const result = await ReceiversPool.bulkWrite(bulkOperations);
     return response.status(201).json({
       ok: true,
-      msg: `Total items updated successfully: ${result.modifiedCount}`,
-      totalAssigned: result.modifiedCount,
+      message: `Total items updated successfully: ${result.modifiedCount}`,
+      modifiedCount: result.modifiedCount,
     });
   } catch (error) {
     return response.status(500).json({
@@ -556,26 +385,8 @@ const updateBulkItemDataInPool = async (request, response) => {
 };
 
 const returnAllItemsInTransactionInPool = async (request, response) => {
-  const { device, company, activity, eventSelected } = request.body;
   try {
-    for (let item of device) {
-      await ReceiversPool.findOneAndUpdate(
-        {
-          company,
-          activity: !activity,
-          eventSelected: eventSelected,
-          type: item.device.deviceType,
-          device: item.device.serialNumber ?? item.device,
-        },
-        {
-          activity,
-        },
-        {
-          new: true,
-        }
-      );
-    }
-
+    await runGoWorker("return-all-items-transaction-pool", request.body);
     return response.status(201).json({
       ok: true,
     });
@@ -588,20 +399,8 @@ const returnAllItemsInTransactionInPool = async (request, response) => {
 };
 
 const updateBulkItemsInTransactionPerUserAtOnce = async (request, response) => {
-  const { timeStamp, device } = request.body;
   try {
-    for (let item of device) {
-      await Receivers.findByIdAndUpdate(
-        item.id,
-        {
-          "device.status": false,
-          timeStamp: timeStamp,
-        },
-        {
-          new: true,
-        }
-      );
-    }
+    await runGoWorker("update-bulk-items-transaction-user", request.body);
     return response.status(201).json({
       ok: true,
     });
@@ -615,49 +414,20 @@ const updateBulkItemsInTransactionPerUserAtOnce = async (request, response) => {
 
 const createBulkItemTransactionInUser = async (request, response) => {
   try {
-    const {
-      serialNumbers,
-      deviceType,
-      status,
-      paymentIntent,
-      company,
-      user,
-      eventSelected,
-      provider,
-      event_id,
-      timestamp,
-    } = request.body;
-    const data = JSON.parse(serialNumbers);
-    const template = data.map((item) => {
-      return {
-        paymentIntent,
-        device: {
-          deviceType,
-          serialNumber: item.device,
-          status,
-        },
-        company,
-        user,
-        eventSelected,
-        provider,
-        timeStamp: timestamp,
-        event_id,
-      };
-    });
-    const bulkInsertedData = await Receivers.insertMany(template);
+    const result = await runGoWorker(
+      "create-bulk-item-transaction",
+      request.body
+    );
     return response.status(201).json({
       ok: true,
-      msg: `Items assigned successfully. Total items: ${bulkInsertedData.length}`,
-      data: bulkInsertedData,
-      device: bulkInsertedData.map((item) => item.device),
-      paymentIntent: paymentIntent,
-      receiversAssignedPerUser: bulkInsertedData,
-      date: new Date(),
+      message: "Receivers created",
+      receiversAssignedPerUser: result,
     });
   } catch (error) {
     return response.status(500).json({
       ok: false,
-      msg: error,
+      message: "Please contact Administrator",
+      err: error.message,
     });
   }
 };
@@ -683,24 +453,24 @@ module.exports = {
   addReceiverToTransaction,
   checkingReceiversAssigned,
   checkingReceiversExistInDatabase,
-  udpateReceiverStatus,
-  poolReceivers,
-  getListOfItemsInEventPool,
-  updatePoolReceivers,
-  receiverPoolList,
-  listOfAssignedReceiver,
-  trackReturnedReceiverWithIssue,
-  getListOfReceiverReturnedByIssue,
-  updateIssueDevice,
-  listOfAssignedReceiverPlusUserInformation,
-  receiverPoolFoundAndDelete,
-  receiverPoolBulkDelete,
-  updateBulkItemsInTransaction,
-  updateBulkItemsInPool,
-  poolReceiversBulk,
-  updateBulkItemDataInPool,
   createBulkItemTransactionInUser,
+  getListOfItemsInEventPool,
+  getListOfReceiverReturnedByIssue,
+  listOfAssignedReceiver,
+  listOfAssignedReceiverPlusUserInformation,
+  poolReceivers,
+  poolReceiversBulk,
+  receiverPoolBulkDelete,
+  receiverPoolFoundAndDelete,
+  receiverPoolList,
   removingItemFromTransaction,
   returnAllItemsInTransactionInPool,
+  trackReturnedReceiverWithIssue,
+  udpateReceiverStatus,
+  updateBulkItemDataInPool,
+  updateBulkItemsInPool,
+  updateBulkItemsInTransaction,
   updateBulkItemsInTransactionPerUserAtOnce,
+  updateIssueDevice,
+  updatePoolReceivers,
 };
