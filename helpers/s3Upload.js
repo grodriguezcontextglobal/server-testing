@@ -1,7 +1,13 @@
-const { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
-const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
-const fs = require('fs');
-const util = require('util');
+const {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  GetObjectCommand,
+} = require("@aws-sdk/client-s3");
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
+const fs = require("fs");
+const util = require("util");
+const logger = require("./logger");
 const unlinkFile = util.promisify(fs.unlink);
 
 // Configure S3 Client
@@ -9,8 +15,8 @@ const s3Client = new S3Client({
   region: process.env.AWS_REGION,
   credentials: {
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-  }
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
 });
 
 /**
@@ -25,23 +31,21 @@ const s3Client = new S3Client({
  */
 const uploadPdfToS3 = async (file, options) => {
   try {
-    const {
-      companyId,
-      documentType = 'general',
-      metadata = {}
-    } = options;
+    const { companyId, documentType = "general", metadata = {} } = options;
 
     if (!file || !companyId) {
-      throw new Error('Missing required parameters: file, companyId');
+      throw new Error("Missing required parameters: file, companyId");
     }
 
     // Validate file type
-    if (file.mimetype !== 'application/pdf') {
-      throw new Error('Only PDF files are allowed');
+    if (file.mimetype !== "application/pdf") {
+      throw new Error("Only PDF files are allowed");
     }
 
     // Construct the S3 key with organized folder structure
-    const key = `companies/${companyId}/${documentType}/${Date.now()}-${file.originalname}`;
+    const key = `companies/${companyId}/${documentType}/${Date.now()}-${
+      file.originalname
+    }`;
 
     // Read file content
     const fileContent = fs.readFileSync(file.path);
@@ -51,14 +55,14 @@ const uploadPdfToS3 = async (file, options) => {
       Bucket: process.env.AWS_S3_BUCKET_NAME,
       Key: key,
       Body: fileContent,
-      ContentType: 'application/pdf',
+      ContentType: "application/pdf",
       Metadata: {
         companyId,
         documentType,
         originalName: file.originalname,
         uploadDate: new Date().toISOString(),
-        ...metadata
-      }
+        ...metadata,
+      },
     });
 
     // Upload to S3
@@ -80,11 +84,81 @@ const uploadPdfToS3 = async (file, options) => {
   }
 };
 
+/**
+ * Uploads an Excel file to AWS S3 with organized folder structure
+ * @param {Object} file - The file object from multer
+ * @param {Object} options - Upload options
+ * @param {string} options.companyId - The company ID
+ * @param {string} options.companyName - The company name for folder organization
+ * @param {string} options.documentType - Type of document (e.g., 'inventory')
+ * @param {Object} options.metadata - Additional metadata for the file
+ * @returns {Promise<Object>} - The S3 upload result
+ */
+const uploadExcelToS3 = async (file, options) => {
+  try {
+    const { companyId, documentType = "inventory", metadata = {} } = options;
+
+    if (!file || !companyId) {
+      throw new Error("Missing required parameters: file, companyId");
+    }
+
+    // Validate file type
+    const allowedMimeTypes = [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+      "application/vnd.ms-excel", // .xls
+    ];
+
+    if (!allowedMimeTypes.includes(file.mimetype)) {
+      throw new Error("Only Excel files (.xlsx, .xls) are allowed");
+    }
+
+    // Construct the S3 key with organized folder structure
+    const key = `companies/${companyId}/${documentType}/${Date.now()}-${
+      file.originalname
+    }`;
+
+    // Read file content
+    const fileContent = fs.readFileSync(file.path);
+
+    // Prepare S3 upload command
+    const uploadCommand = new PutObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Key: key,
+      Body: fileContent,
+      ContentType: file.mimetype,
+      Metadata: {
+        companyId,
+        documentType,
+        originalName: file.originalname,
+        uploadDate: new Date().toISOString(),
+        ...metadata,
+      },
+    });
+
+    // Upload to S3
+    const uploadResult = await s3Client.send(uploadCommand);
+
+    // Clean up temporary file
+    await unlinkFile(file.path);
+
+    return {
+      ...uploadResult,
+      Location: `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`,
+      Key: key,
+    };
+  } catch (error) {
+    // Clean up temporary file if it exists
+    if (file && file.path) {
+      await unlinkFile(file.path).catch(console.error);
+    }
+    throw error;
+  }
+};
 
 function extractS3Key(fullUrl) {
-    // Extract everything after the .com/ or first forward slash if .com isn't present
-    const matches = fullUrl.match(/\.com\/(.*)|\/(.*)/);
-    return matches ? matches[1] || matches[2] : null;
+  // Extract everything after the .com/ or first forward slash if .com isn't present
+  const matches = fullUrl.match(/\.com\/(.*)|\/(.*)/);
+  return matches ? matches[1] || matches[2] : null;
 }
 
 /**
@@ -92,17 +166,28 @@ function extractS3Key(fullUrl) {
  * @param {string} key - The S3 object key
  * @param {number} expirationMinutes - URL expiration time in minutes (default: 5)
  * @returns {Promise<string>} - The temporary download URL
-*/
+ */
 const getTemporaryDownloadUrl = async (key, expirationMinutes = 5) => {
-  const sanitazedKey = extractS3Key(key);
+  let sanitazedKey = key;
+  const bucketName = process.env.AWS_S3_BUCKET_NAME;
+
+  // Only sanitize if it looks like a URL or starts with the bucket name
+  if (
+    key.includes(".com/") ||
+    (bucketName && key.startsWith(`${bucketName}/`))
+  ) {
+    sanitazedKey = extractS3Key(key);
+  }
+
   try {
+    logger.info(`Generating download URL for key: ${sanitazedKey}`);
     const command = new GetObjectCommand({
       Bucket: process.env.AWS_S3_BUCKET_NAME,
-      Key: sanitazedKey
+      Key: sanitazedKey,
     });
 
     const signedUrl = await getSignedUrl(s3Client, command, {
-      expiresIn: expirationMinutes * 60
+      expiresIn: expirationMinutes * 60,
     });
 
     return signedUrl;
@@ -119,12 +204,12 @@ const getTemporaryDownloadUrl = async (key, expirationMinutes = 5) => {
 const deleteDocumentFromS3 = async (key) => {
   try {
     if (!key) {
-      throw new Error('Missing required parameter: key');
+      throw new Error("Missing required parameter: key");
     }
 
     const command = new DeleteObjectCommand({
       Bucket: process.env.AWS_S3_BUCKET_NAME,
-      Key: key
+      Key: key,
     });
 
     const deleteResult = await s3Client.send(command);
@@ -134,4 +219,9 @@ const deleteDocumentFromS3 = async (key) => {
   }
 };
 
-module.exports = { uploadPdfToS3, getTemporaryDownloadUrl, deleteDocumentFromS3 };
+module.exports = {
+  uploadPdfToS3,
+  uploadExcelToS3,
+  getTemporaryDownloadUrl,
+  deleteDocumentFromS3,
+};
