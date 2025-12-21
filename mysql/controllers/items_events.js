@@ -4,37 +4,44 @@ const getConnection = require("../database/config");
 
 const connection = getConnection();
 
+const runGoWorker = require("../../helpers/goWorker");
+
 const insertingItemInEvent = async (request, response) => {
   try {
-    const { event_id, item_group, category_name, company_id, data } = request.body;
+    const { event_id, item_group, category_name, company_id, data } =
+      request.body;
 
-    if (!event_id || !item_group || !category_name || !company_id || !Array.isArray(data) || data.length === 0) {
-      return response.status(400).json({ ok: false, msg: "Missing required fields or invalid data format" });
+    if (
+      !event_id ||
+      !item_group ||
+      !category_name ||
+      !company_id ||
+      !Array.isArray(data) ||
+      data.length === 0
+    ) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Missing required fields or invalid data format",
+      });
     }
 
+    // Convert data to string array as Go worker expects
     const serialNumbers = data.map((item) => item.toString());
-    const placeholders = serialNumbers.map(() => "?").join(",");
-    const findIndexQuery = `
-      SELECT item_id, serial_number FROM item_inv
-      WHERE item_group = ? AND category_name = ? AND company_id = ? AND serial_number IN (${placeholders})`;
-    const findIndexValues = [item_group, category_name, company_id, ...serialNumbers];
 
-    const [results] = await connection.execute(findIndexQuery, findIndexValues);
-
-    if (!results.length) {
-      return response.status(404).json({ ok: false, msg: "No matching items found" });
-    }
-
-    const insertQuery = `INSERT INTO item_inv_assigned_event (item_id, event_id) VALUES ?`;
-    const insertValues = results.map((item) => [item.item_id, event_id]);
-
-    const [insertResult] = await connection.query(insertQuery, [insertValues]);
+    // Offload to Go Worker
+    const result = await runGoWorker("insert-item-event", {
+      event_id: String(event_id),
+      item_group,
+      category_name,
+      company_id: String(company_id),
+      data: serialNumbers,
+    });
 
     response.status(201).json({
       ok: true,
       msg: "Items inserted successfully into event",
-      inserted_items: insertResult.affectedRows,
-      total_items: results.length,
+      inserted_items: result.inserted_items,
+      total_items: result.total_items,
     });
   } catch (error) {
     logger.error("Error:", error.message);
@@ -45,23 +52,28 @@ const insertingItemInEvent = async (request, response) => {
 const insertingDeviceInEventDirectly = async (request, response) => {
   try {
     const { item_id, event_id } = request.body;
-    const insertQuery = `INSERT INTO item_inv_assigned_event (item_id, event_id) VALUES (?, ?)`;
-    const values = [item_id, event_id];
 
-    const [result] = await connection.execute(insertQuery, values);
+    // Offload to Go Worker (via HTTP, no process spawning per request)
+    const result = await runGoWorker("insert-device-event-directly", {
+      item_id,
+      event_id: String(event_id),
+    });
 
     response.status(201).json({
       ok: true,
       msg: "Item inserted successfully into event",
-      inserted_items: result.affectedRows,
+      inserted_items: result.inserted_items || 0,
     });
   } catch (error) {
-    logger.error("Error:", error.message);
+    logger.error("Error inserting device directly:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
   }
 };
 
-const deletingItemsInEventAfterDeviceInventoryIsUpdated = async (request, response) => {
+const deletingItemsInEventAfterDeviceInventoryIsUpdated = async (
+  request,
+  response
+) => {
   try {
     const { event_id, item_group, category_name, serial_number } = request.body;
 
@@ -89,7 +101,9 @@ const deletingItemsInEventAfterDeviceInventoryIsUpdated = async (request, respon
 
 const consultingInventoryCurrentState = async (request, response) => {
   try {
-    const formatting = Object.keys(request.body).map((item) => item + "=?").join(" AND ");
+    const formatting = Object.keys(request.body)
+      .map((item) => item + "=?")
+      .join(" AND ");
     const values = Object.values(request.body);
     const query = `
       SELECT ii.item_id, ii.serial_number, ii.warehouse, ii.category_name, ii.item_group, ii.cost, ii.ownership,
@@ -116,7 +130,9 @@ const checkingInventoryCurrentState = async (request, response) => {
   try {
     const params = request._parsedOriginalUrl.query;
     const splitting = params.split("&");
-    const formatting = splitting.map((item) => item.split("=")[0] + "=?").join(" AND ");
+    const formatting = splitting
+      .map((item) => item.split("=")[0] + "=?")
+      .join(" AND ");
     const values = splitting.map((item) => item.split("=")[1]);
 
     const query = `
@@ -173,7 +189,10 @@ const consultingRowInItemInvAssignedEventTable = async (request, response) => {
       JOIN item_inv_assigned_event iae ON ei.event_id = iae.event_id 
       WHERE iae.item_id = ? AND ei.company_assigned_event_id = ?`;
 
-    const [result] = await connection.execute(query, [item_id, company_assigned_event_id]);
+    const [result] = await connection.execute(query, [
+      item_id,
+      company_assigned_event_id,
+    ]);
     response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
@@ -198,18 +217,26 @@ const deletingRecordInItemInvAssignedEventRow = async (request, response) => {
   }
 };
 
-const insertingDeviceInEventDirectlyFromContainer = async (request, response) => {
+const insertingDeviceInEventDirectlyFromContainer = async (
+  request,
+  response
+) => {
   try {
     const { refDatabase, event_id } = request.body;
-    const database = typeof refDatabase === "string" ? JSON.parse(refDatabase) : refDatabase;
 
-    const insertQuery = `INSERT INTO item_inv_assigned_event (item_id, event_id) VALUES (?, ?)`;
+    // Parse refDatabase if string, else use as is
+    // Node.js logic handles both string and object. Go worker will need a structure.
+    // If it's a string, we can pass it as is. If object, pass as is.
 
-    for (const item of database) {
-      await connection.execute(insertQuery, [item.item_id, event_id]);
-    }
+    // Offload to Go Worker
+    await runGoWorker("insert-device-event-container", {
+      refDatabase,
+      event_id: String(event_id),
+    });
 
-    response.status(201).json({ ok: true, msg: "Items inserted successfully into event" });
+    response
+      .status(201)
+      .json({ ok: true, msg: "Items inserted successfully into event" });
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
@@ -222,13 +249,17 @@ const consultingLeaseInformationConsumer = async (request, response) => {
     const keys = Object.keys(body);
 
     if (keys.length === 0) {
-      return response.status(400).json({ ok: false, msg: "No filters provided in request.body" });
+      return response
+        .status(400)
+        .json({ ok: false, msg: "No filters provided in request.body" });
     }
 
     // Guard against SQL injection via column names; allow typical identifier characters
     const validKeys = keys.filter((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k));
     if (validKeys.length === 0) {
-      return response.status(400).json({ ok: false, msg: "No valid filter keys provided" });
+      return response
+        .status(400)
+        .json({ ok: false, msg: "No valid filter keys provided" });
     }
 
     const formatting = validKeys.map((k) => `\`${k}\`=?`).join(" AND ");
