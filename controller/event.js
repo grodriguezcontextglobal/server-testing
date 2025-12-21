@@ -6,12 +6,25 @@ const moment = require("moment");
 const getConnection = require("../mysql/database/config");
 const ReceiversPool = require("../models/ReceiversPool");
 const logger = require("../helpers/logger");
+const { logStaffActivity } = require("./staffActivityLog");
 
 const createEvent = async (request, response = express.response) => {
   try {
     const cache_connection = await clientRedis();
     let event = new Event(request.body);
     await event.save();
+
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: event.company,
+      action: "CREATE",
+      target_model: "Event",
+      target_id: event.id,
+      details: { name: event.eventName, type: event.type },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
+
     cache_connection.del(`company=${event.company}&type=${event.type}`);
     return response.status(201).json({
       ok: true,
@@ -48,6 +61,18 @@ const editEvent = async (request, response = response) => {
         new: true,
       }
     );
+
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: staffEventEdited.company,
+      action: "UPDATE",
+      target_model: "Event",
+      target_id: staffEventEdited.id,
+      details: { updates: request.body },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
+
     cache_connection.del(
       `company=${eventStaffToEdit.company}&type=${eventStaffToEdit.type}`
     );
@@ -86,6 +111,18 @@ const editSubscriptionEvent = async (request, response = response) => {
         new: true,
       }
     );
+
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: subscriptionEventEdited.company,
+      action: "UPDATE",
+      target_model: "Event",
+      target_id: subscriptionEventEdited.id,
+      details: { updates: request.body },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
+
     return response.json({
       ok: true,
       event: subscriptionEventEdited,
@@ -108,6 +145,17 @@ const deleteEvent = async (request, response) => {
         msg: "Event does not exist",
       });
     }
+
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: event.company,
+      action: "DELETE",
+      target_model: "Event",
+      target_id: event.id,
+      details: { name: event.eventName },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
 
     return response.status(201).json({
       ok: true,
@@ -134,6 +182,7 @@ const eventList = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      error:JSON.stringify(error),
     });
   }
 };
@@ -444,12 +493,10 @@ const updateLargeNumberOfEventsAtOnce = async (request, response) => {
     // Prevent illegal updates to id fields
     const { _id, id, ...safeValues } = newValues;
     if (Object.keys(safeValues).length === 0) {
-      return response
-        .status(400)
-        .json({
-          ok: false,
-          msg: "newValues must include at least one field to update.",
-        });
+      return response.status(400).json({
+        ok: false,
+        msg: "newValues must include at least one field to update.",
+      });
     }
 
     // Single efficient bulk update for all ids
