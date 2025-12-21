@@ -10,6 +10,7 @@ const logger = require("../helpers/logger");
 const crypto = require("crypto");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
+const { logStaffActivity } = require("./staffActivityLog");
 
 const createAdminUser = async (request, response = express.response) => {
   const { email, password } = request.body;
@@ -270,6 +271,17 @@ const loginUser = async (request, response) => {
       requestId: loginInfo.requestId,
     });
 
+    await logStaffActivity({
+      staff_member_id: adminUser.id,
+      company_id: adminUser.company,
+      action: "LOGIN",
+      target_model: "AdminUser",
+      target_id: adminUser.id,
+      details: { email: adminUser.email },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
+
     return response.status(200).json({
       ok: true,
       entire: adminUser,
@@ -399,6 +411,18 @@ const editAdminUser = async (request, response = response) => {
         new: true,
       }
     );
+
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: adminUserUpdated.company,
+      action: "UPDATE",
+      target_model: "AdminUser",
+      target_id: adminUserUpdated.id,
+      details: { updates: request.body, self_update: true },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
+
     return response.json({
       msg: "admin user updated",
       ok: true,
@@ -436,6 +460,17 @@ const editOtherAdminUser = async (request, response = response) => {
       }
     );
 
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: adminUserUpdated.company,
+      action: "UPDATE",
+      target_model: "AdminUser",
+      target_id: adminUserUpdated.id,
+      details: { updates: request.body, self_update: false },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
+
     return response.json({
       msg: "admin user updated",
       ok: true,
@@ -460,6 +495,18 @@ const deleteAdminUser = async (request, response) => {
         msg: "Admin user/id do not match",
       });
     }
+
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: adminUser.company,
+      action: "DELETE",
+      target_model: "AdminUser",
+      target_id: adminUser.id,
+      details: { email: adminUser.email },
+      ip_address: request.ip,
+      device_info: request.headers["user-agent"],
+    });
+
     return response.status(201).json({
       ok: true,
       adminUser,
