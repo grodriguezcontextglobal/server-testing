@@ -6,6 +6,7 @@ require("dotenv").config();
 const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const logger = require("../helpers/logger");
+const runGoWorker = require("../helpers/goWorker");
 
 const saveTransaction = async (request, response) => {
   try {
@@ -227,20 +228,28 @@ const checkingAndReleasingDepositTransactions = async (request, response) => {
       paymentIntent: { $exists: true },
       $expr: { $gt: [{ $strLenCP: "$paymentIntent" }, 15] },
     });
+
     let counting = [];
     if (findingTransactions.length > 0) {
-      for (let item of findingTransactions) {
-        if (!item.paymentIntent.includes("cash")) {
-          const paymentIntent = await stripe.paymentIntents.retrieve(
-            `${item.paymentIntent}`
-          );
-          if (paymentIntent.status === "requires_capture") {
-            counting.push(paymentIntent);
-            //!here needs to be the logic to release the transaction in stripe by passing the payment intent id in cancel function
-          }
+      // Filter valid payment intents that are not cash
+      const candidates = findingTransactions
+        .filter(
+          (item) => item.paymentIntent && !item.paymentIntent.includes("cash")
+        )
+        .map((item) => item.paymentIntent);
+
+      if (candidates.length > 0) {
+        // Offload checks to Go Worker (parallel processing)
+        const goResult = await runGoWorker("check-stripe-payment-intents", {
+          payment_intents: candidates,
+        });
+
+        if (goResult && goResult.paymentIntents) {
+          counting = goResult.paymentIntents;
         }
       }
     }
+
     return response.status(201).json({
       ok: true,
       msg: "Transactions found",
@@ -250,7 +259,7 @@ const checkingAndReleasingDepositTransactions = async (request, response) => {
   } catch (error) {
     return response.status(500).json({
       ok: false,
-      msg: error,
+      msg: error.message || error,
     });
   }
 };
