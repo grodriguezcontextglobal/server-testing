@@ -5,18 +5,19 @@
 
 const { Router } = require("express");
 const { createInventory, editInventory, deleteInventory, listOfInventories } = require("../controller/inventory");
+const { validateJWT } = require("../middlewares/validate-jwt");
 const router = Router();
 
 // create an event
-router.post("/create-inventory", createInventory);
+router.post("/create-inventory", validateJWT, createInventory);
 
 //edit/update a specific value of an event
-router.patch("/edit-inventory/:id", editInventory)
+router.patch("/edit-inventory/:id", validateJWT, editInventory)
 
 //edit/update a specific value of an event
-router.delete("/delete-inventory/:id", deleteInventory)
+router.delete("/delete-inventory/:id", validateJWT, deleteInventory)
 
 //display event list
-router.get("/list-inventories", listOfInventories);
+router.get("/list-inventories", validateJWT, listOfInventories);
 
 module.exports = router;
