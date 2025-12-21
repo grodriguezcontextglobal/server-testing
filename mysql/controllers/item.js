@@ -3,6 +3,7 @@ const getConnection = require("../database/config");
 // const { clientRedis } = require("../../database/cacheMemoryConfig");
 const { groupBy } = require("lodash");
 const logger = require("../../helpers/logger");
+const runGoWorker = require("../../helpers/goWorker");
 require("dotenv").config();
 const connection = getConnection();
 
@@ -257,106 +258,18 @@ const insertBulkItem = async (request, response) => {
 
 const insertBulkItemAlhpanumericFormat = async (request, response) => {
   try {
-    const {
-      category_name,
-      item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      list,
-      warehouse,
-      main_warehouse,
-      created_at,
-      update_at,
-      company,
-      location,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      containerId,
-      display_item,
-      enableAssignFeature,
-      image_url,
-      supplier_info,
-    } = request.body;
+    // Offload to Go Worker
+    await runGoWorker("insert-bulk-item-alpha", request.body);
 
-    const connection = getConnection();
-    const query = `
-    INSERT INTO item_inv (
-      category_name,
-      item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial_number,
-      warehouse,
-      main_warehouse,
-      create_at,
-      update_at,
-      company,
-      location,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      container_id,
-      display_item,
-      enableAssignFeature,
-      image_url,
-      supplier_info
-    ) VALUES ?`;
-
-    // Prepare an array of value arrays, each sub-array representing a row to be inserted
-    const values = list.map((serial_number) => [
-      category_name,
-      item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial_number,
-      warehouse,
-      main_warehouse,
-      created_at,
-      update_at,
-      company,
-      location,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      containerId,
-      display_item,
-      enableAssignFeature,
-      image_url || null, // Handle undefined image_url
-      supplier_info,
-    ]);
-
-    const [result] = await connection.query(query, [values]);
     return response.status(201).json({
       ok: true,
-      item: result,
+      msg: "Alpha bulk items inserted successfully via Go Worker",
     });
   } catch (error) {
+    logger.error("Error in insertBulkItemAlhpanumericFormat:", error);
     response.status(500).json({
       ok: false,
-      msg: `${error.message}`,
-      err: error,
+      msg: error.message,
     });
   }
 };
@@ -449,11 +362,7 @@ const updateItemInTable = async (request, response) => {
     const body = request.body || {};
 
     // Identifier keys to locate the target item (flexible WHERE clause)
-    const identifierKeys = new Set([
-      "item_id",
-      "serial_number",
-      "company_id",
-    ]);
+    const identifierKeys = new Set(["item_id", "serial_number", "company_id"]);
 
     // Whitelist of known columns in item_inv to prevent invalid updates
     const allowedColumns = new Set([
@@ -496,12 +405,11 @@ const updateItemInTable = async (request, response) => {
         whereValues.push(value);
       }
     }
-    
+
     if (whereParts.length === 0) {
       return response.status(400).json({
         ok: false,
-        msg:
-          "Provide at least one identifying field to target the item (e.g., item_id or serial_number with company_id).",
+        msg: "Provide at least one identifying field to target the item (e.g., item_id or serial_number with company_id).",
       });
     }
 
@@ -523,7 +431,9 @@ const updateItemInTable = async (request, response) => {
       });
     }
 
-    const query = `UPDATE item_inv SET ${setParts.join(", ")} WHERE ${whereParts.join(" AND ")};`;
+    const query = `UPDATE item_inv SET ${setParts.join(
+      ", "
+    )} WHERE ${whereParts.join(" AND ")};`;
     const values = [...setValues, ...whereValues];
 
     const [result] = await connection.execute(query, values);
@@ -734,8 +644,6 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
   response
 ) => {
   try {
-    const connection = getConnection();
-    // const cache_connection = await clientRedis();
     const {
       groupingDevicesFromNoSQL,
       allInventoryOfEvent,
@@ -743,80 +651,17 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
       update_at,
     } = request.body;
 
-    const company_id = companyId;
-    const groupingDevicesFromNoSQLParsed = JSON.parse(groupingDevicesFromNoSQL);
-    const allInventoryOfEventParsed = JSON.parse(allInventoryOfEvent);
-
-    if (!allInventoryOfEventParsed || allInventoryOfEventParsed.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "No inventory data provided",
-      });
-    }
-
-    // Process in smaller batches to avoid parameter limits
-    const BATCH_SIZE = 100;
-    let totalAffectedRows = 0;
-
-    for (let i = 0; i < allInventoryOfEventParsed.length; i += BATCH_SIZE) {
-      const batch = allInventoryOfEventParsed.slice(i, i + BATCH_SIZE);
-
-      // Create IN clause for serial numbers
-      const serialNumbers = batch.map((data) => data.serial_number);
-      const placeholders = serialNumbers.map(() => "?").join(",");
-
-      // Build CASE statement for status updates
-      const statusCases = batch
-        .map(() => "WHEN serial_number = ? THEN ?")
-        .join(" ");
-
-      // Prepare values in correct order: [caseValues, update_at, company_id, serialNumbers]
-      const values = [];
-
-      // Add CASE values first (serial_number, status pairs)
-      batch.forEach((data) => {
-        const status = groupingDevicesFromNoSQLParsed[data.serial_number]
-          ? groupingDevicesFromNoSQLParsed[data.serial_number].at(-1).status
-          : data.status;
-        values.push(data.serial_number, status);
-      });
-
-      // Add update_at parameter
-      values.push(update_at);
-      
-      // Add WHERE clause values
-      values.push(company_id);
-      values.push(...serialNumbers);
-
-      const bulkQuery = `
-        UPDATE item_inv 
-        SET 
-          warehouse = 1,
-          status = CASE 
-            ${statusCases}
-            ELSE status 
-          END,
-          update_at = ?
-        WHERE 
-          company_id = ? 
-          AND serial_number IN (${placeholders})
-      `;
-      
-      const [result] = await connection.execute(bulkQuery, values);
-      totalAffectedRows += result.affectedRows;
-    }
-
-    // cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
-    // cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
+    const result = await runGoWorker("returning-item-to-stock", {
+      groupingDevicesFromNoSQL: String(groupingDevicesFromNoSQL),
+      allInventoryOfEvent: String(allInventoryOfEvent),
+      companyId: String(companyId),
+      update_at: String(update_at),
+    });
 
     return response.status(201).json({
       ok: true,
-      affectedRows: totalAffectedRows,
-      msg: `Successfully updated ${totalAffectedRows} items`,
+      affectedRows: result.affectedRows,
+      msg: `Successfully updated ${result.affectedRows} items`,
     });
   } catch (error) {
     logger.error("Error:", error.message);
@@ -860,7 +705,6 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
   response
 ) => {
   try {
-    const connection = getConnection();
     const {
       groupingDevicesFromNoSQL,
       allInventoryOfEvent,
@@ -868,75 +712,17 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
       update_at,
     } = request.body;
 
-    const groupingDevicesFromNoSQLParsed = JSON.parse(groupingDevicesFromNoSQL);
-    const allInventoryOfEventParsed = JSON.parse(allInventoryOfEvent);
-    const event_id = eventId;
-    const updated_at = update_at;
-
-    if (!allInventoryOfEventParsed || allInventoryOfEventParsed.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "No inventory data provided",
-      });
-    }
-
-    // Process in batches of 500 items to avoid query size limits
-    const BATCH_SIZE = 500;
-    let totalAffectedRows = 0;
-
-    for (let i = 0; i < allInventoryOfEventParsed.length; i += BATCH_SIZE) {
-      const batch = allInventoryOfEventParsed.slice(i, i + BATCH_SIZE);
-
-      // Build CASE statements for bulk update
-      const statusCases = [];
-      const serialNumbers = [];
-      const categoryNames = [];
-      const itemGroups = [];
-      const values = [updated_at, event_id];
-
-      batch.forEach((data) => {
-        const status = groupingDevicesFromNoSQLParsed[data.serial_number]
-          ? groupingDevicesFromNoSQLParsed[data.serial_number].at(-1).status
-          : data.status;
-
-        statusCases.push(`WHEN serial_number = ? THEN ?`);
-        serialNumbers.push(data.serial_number);
-        values.push(data.serial_number, status);
-      });
-
-      // Add parameters for WHERE clause
-      const placeholders = batch.map(() => "?").join(", ");
-      batch.forEach((data) => {
-        values.push(data.serial_number);
-      });
-
-      const bulkQuery = `
-        UPDATE item_inv_assigned_event iiae
-        JOIN item_inv ii ON iiae.item_id = ii.item_id
-        SET 
-          iiae.status = CASE ii.serial_number 
-            ${statusCases.join(" ")} 
-            ELSE iiae.status 
-          END,
-          iiae.condition = CASE ii.serial_number 
-            ${statusCases.join(" ")} 
-            ELSE iiae.condition 
-          END,
-          iiae.updated_at = ?,
-          active = false
-        WHERE 
-          iiae.event_id = ? AND
-          ii.serial_number IN (${placeholders})
-      `;
-
-      const [result] = await connection.execute(bulkQuery, values);
-      totalAffectedRows += result.affectedRows;
-    }
+    const result = await runGoWorker("item-final-status", {
+      groupingDevicesFromNoSQL: String(groupingDevicesFromNoSQL),
+      allInventoryOfEvent: String(allInventoryOfEvent),
+      eventId: String(eventId),
+      update_at: String(update_at),
+    });
 
     return response.status(201).json({
       ok: true,
-      affectedRows: totalAffectedRows,
-      msg: `Successfully updated ${totalAffectedRows} items`,
+      affectedRows: result.affectedRows,
+      msg: `Successfully updated ${result.affectedRows} items`,
     });
   } catch (error) {
     logger.error("Error:", error.message);
@@ -1803,56 +1589,17 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
 
 const retrieveItemData = async (request, response) => {
   try {
-    const connection = getConnection();
     const { company_id } = request.body;
 
-    const query = `
-      SELECT 
-        item_id, category_name, item_group, serial_number, ownership, descript_item, 
-        warehouse, company, cost, create_at, update_at, status, location, 
-        main_warehouse, current_location, brand, extra_serial_number, company_id, 
-        return_date, returnedRentedInfo, enableAssignFeature, container, 
-        container_items, isItInContainer, containerSpotLimit, container_id, 
-        display_item, sub_location, image_url
-      FROM item_inv
-      WHERE company_id = ?
-    `;
-
-    const [items] = await connection.execute(query, [company_id]);
-
-    const totalAvailable = items.filter((item) => item.warehouse === 1).length;
-    const total = items.length;
-
-    const groupedData = {
-      category_name: groupBy(items, "category_name"),
-      item_group: groupBy(items, "item_group"),
-      brand: groupBy(items, "brand"),
-      ownership: groupBy(items, "ownership"),
-    };
-
-    // Format the total available and total for each group
-    const formatGroupData = (group) => {
-      return Object.entries(group).reduce((acc, [key, value]) => {
-        acc[key] = {
-          totalAvailable: value.filter((item) => item.warehouse === 1).length,
-          total: value.length,
-        };
-        return acc;
-      }, {});
-    };
-
-    const formattedGroupedData = {
-      category_name: formatGroupData(groupedData.category_name),
-      item_group: formatGroupData(groupedData.item_group),
-      brand: formatGroupData(groupedData.brand),
-      ownership: formatGroupData(groupedData.ownership),
-    };
+    const result = await runGoWorker("retrieve-item-data", {
+      company_id: String(company_id),
+    });
 
     return response.status(200).json({
       ok: true,
-      totalAvailable,
-      total,
-      groupedData: formattedGroupedData,
+      totalAvailable: result.totalAvailable,
+      total: result.total,
+      groupedData: result.groupedData,
     });
   } catch (error) {
     return response.status(500).json({
