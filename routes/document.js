@@ -4,6 +4,7 @@ const path = require("path");
 
 const {
   uploadDocument,
+  uploadExcelToS3,
   getCompanyDocuments,
   getDocumentTypes,
   getTriggerActions,
@@ -50,9 +51,31 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+const xlsxFileFilter = (req, file, cb) => {
+  // Accept XLSX files only
+  // Validate file type
+  const allowedMimeTypes = [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", // .xlsx
+    "application/vnd.ms-excel", // .xls
+  ];
+  if (allowedMimeTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error("Only XLSX files are allowed"), false);
+  }
+};
+
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+  },
+});
+
+const uploadXLSX = multer({
+  storage: storage,
+  fileFilter: xlsxFileFilter,
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB limit
   },
@@ -65,6 +88,7 @@ const router = Router();
 
 // Routes
 router.post("/upload", upload.single("document"), uploadDocument);
+router.post("/upload/xlsx", uploadXLSX.single("document"), uploadExcelToS3);
 router.get("/", getCompanyDocuments);
 router.get("/types", getDocumentTypes);
 router.get("/triggers", getTriggerActions);
@@ -120,10 +144,7 @@ router.patch(
   addSignatureToConsumerDocument
 );
 
-router.post(
-  "/verification/member/signed_document",
-  createMemberVerification
-);
+router.post("/verification/member/signed_document", createMemberVerification);
 
 router.post(
   "/verification/member/check_signed_document",
@@ -134,7 +155,5 @@ router.patch(
   "/verification/member/signing_document",
   addSignatureToMemberDocument
 );
-
-
 
 module.exports = router;
