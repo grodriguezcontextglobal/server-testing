@@ -85,6 +85,12 @@ const configureMiddleware = (app) => {
     max: 300, // limit each IP to 300 requests per windowMs
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    // Custom key generator to handle IPs with ports (common in some environments)
+    keyGenerator: (req, res) => {
+      // Handle undefined req.ip
+      if (!req.ip) return "unknown";
+      return req.ip.replace(/:\d+[^:]*$/, "");
+    },
     message: {
       ok: false,
       msg: "Too many requests from this IP, please try again later",
@@ -282,7 +288,10 @@ const startServer = () => {
     }
   }
 
-  if (isNativeMaster) {
+  // Disable native cluster mode to prevent infinite loops and simplify debugging
+  const ENABLE_NATIVE_CLUSTER = false;
+
+  if (isNativeMaster && ENABLE_NATIVE_CLUSTER) {
     logger.info(`Starting server with ${NUM_CPU} workers on port ${PORT}`);
 
     // Fork workers based on CPU cores
