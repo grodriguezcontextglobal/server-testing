@@ -39,28 +39,26 @@ process.on("unhandledRejection", (reason, promise) => {
 });
 
 // Initialize database connection
-if (!cluster.isMaster && !cluster.isPrimary) {
-  const connectWithRetry = (retries = 5, delay = 5000) => {
-    dbConnection().catch((err) => {
-      logger.error(`Database connection failed (Attempt ${6 - retries}/5):`, {
-        error: err.message,
-      });
-
-      if (retries > 0) {
-        logger.info(
-          `Retrying database connection in ${delay / 1000} seconds...`
-        );
-        setTimeout(() => connectWithRetry(retries - 1, delay), delay);
-      } else {
-        logger.error(
-          "All database connection attempts failed. Server will continue running but DB features will be unavailable."
-        );
-        // We do NOT exit here, to prevent PM2 crash loops.
-        // The application should handle missing DB connections gracefully (return 500s).
-      }
+const connectWithRetry = (retries = 5, delay = 5000) => {
+  dbConnection().catch((err) => {
+    logger.error(`Database connection failed (Attempt ${6 - retries}/5):`, {
+      error: err.message,
     });
-  };
 
+    if (retries > 0) {
+      logger.info(`Retrying database connection in ${delay / 1000} seconds...`);
+      setTimeout(() => connectWithRetry(retries - 1, delay), delay);
+    } else {
+      logger.error(
+        "All database connection attempts failed. Server will continue running but DB features will be unavailable."
+      );
+      // We do NOT exit here, to prevent PM2 crash loops.
+      // The application should handle missing DB connections gracefully (return 500s).
+    }
+  });
+};
+
+if (!cluster.isMaster && !cluster.isPrimary) {
   connectWithRetry();
 }
 
@@ -87,6 +85,7 @@ const configureMiddleware = (app) => {
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     // Custom key generator to handle IPs with ports (common in some environments)
     keyGenerator: (req, res) => {
+      logger.info(`Request IP: ${req.ip}`);
       // Handle undefined req.ip
       if (!req.ip) return "unknown";
       return req.ip.replace(/:\d+[^:]*$/, "");
@@ -312,6 +311,12 @@ const startServer = () => {
       }, 1000);
     });
   } else {
+    // If we are running in single-process mode (master), we need to connect to DB explicitly
+    // because the top-level connection logic is skipped for master
+    if (cluster.isMaster || cluster.isPrimary) {
+      connectWithRetry();
+    }
+
     const server = initializeApp().listen(PORT, () => {
       logger.info(`Worker ${process.pid} started on port ${PORT}`);
     });
