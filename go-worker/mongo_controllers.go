@@ -716,7 +716,7 @@ func UpdatePoolReceivers(db *mongo.Database, data []byte) (interface{}, error) {
 	res := db.Collection("receiverspools").FindOneAndUpdate(
 		context.TODO(),
 		bson.M{"_id": oid},
-		bson.M{"$set": raw},
+		bson.M{" $set": raw},
 		options.FindOneAndUpdate().SetReturnDocument(options.After),
 	)
 	if res.Err() != nil {
@@ -725,4 +725,147 @@ func UpdatePoolReceivers(db *mongo.Database, data []byte) (interface{}, error) {
 	var doc bson.M
 	res.Decode(&doc)
 	return map[string]interface{}{"ok": true, "receiverUpdated": doc}, nil // JS returns stringified, but JSON response will be object
+}
+
+func GetConsumerStats(db *mongo.Database, data []byte) (interface{}, error) {
+	var req struct {
+		CompanyID string `json:"companyID"`
+	}
+	if err := json.Unmarshal(data, &req); err != nil {
+		return nil, err
+	}
+
+	// 1. Get Users
+	cursor, err := db.Collection("users").Find(context.TODO(), bson.M{"company_providers": bson.M{"$in": []string{req.CompanyID}}})
+	if err != nil {
+		return nil, err
+	}
+	var users []map[string]interface{}
+	if err = cursor.All(context.TODO(), &users); err != nil {
+		return nil, err
+	}
+
+	// 2. Get Lease Count
+	leaseCount, err := db.Collection("events").CountDocuments(context.TODO(), bson.M{"company_id": req.CompanyID, "type": "lease"})
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Get Active Events for Company (ID set)
+	eventCursor, err := db.Collection("events").Find(context.TODO(), bson.M{"company_id": req.CompanyID, "active": true}, options.Find().SetProjection(bson.M{"_id": 1}))
+	if err != nil {
+		return nil, err
+	}
+	var activeEvents []struct {
+		ID primitive.ObjectID `bson:"_id"`
+	}
+	if err = eventCursor.All(context.TODO(), &activeEvents); err != nil {
+		return nil, err
+	}
+	activeEventMap := make(map[string]bool)
+	for _, e := range activeEvents {
+		activeEventMap[e.ID.Hex()] = true
+	}
+
+	// 4. Aggregation for Receivers
+	// Group by user and device.status
+	// Note: device.status is sometimes boolean, sometimes string in legacy data?
+	// JS code uses boolean: "device.status": false / true
+	pipeline := mongo.Pipeline{
+		{{Key: "$match", Value: bson.M{"company": req.CompanyID}}},
+		{{Key: "$group", Value: bson.M{
+			"_id":   bson.M{"user": "$user", "status": "$device.status"},
+			"count": bson.M{"$sum": 1},
+		}}},
+	}
+	recvCursor, err := db.Collection("receivers").Aggregate(context.TODO(), pipeline)
+	if err != nil {
+		return nil, err
+	}
+	var recvStats []struct {
+		ID struct {
+			User   string      `bson:"user"`
+			Status interface{} `bson:"status"` // Can be bool or maybe null?
+		} `bson:"_id"`
+		Count int `bson:"count"`
+	}
+	if err = recvCursor.All(context.TODO(), &recvStats); err != nil {
+		return nil, err
+	}
+
+	// Map: UserEmail -> Status(bool) -> Count
+	userRecvStats := make(map[string]map[bool]int)
+	for _, stat := range recvStats {
+		if _, ok := userRecvStats[stat.ID.User]; !ok {
+			userRecvStats[stat.ID.User] = make(map[bool]int)
+		}
+		// Convert status to bool if possible
+		var statusBool bool
+		switch v := stat.ID.Status.(type) {
+		case bool:
+			statusBool = v
+		default:
+			// If null or other type, treat as false?
+			// JS query specifically looks for `false` and `true`.
+			// If it's not strictly true/false, it won't be counted in JS.
+			// However, here we have aggregated everything.
+			// Let's only count if it matches boolean type, matching JS strict query?
+			// JS: find({ "device.status": false })
+			// Mongo $eq matches types.
+			continue
+		}
+		userRecvStats[stat.ID.User][statusBool] = stat.Count
+	}
+
+	// 5. Construct Result
+	var resultUsers []map[string]interface{}
+	var inactiveTotal, activeTotal int
+
+	for _, user := range users {
+		email, _ := user["email"].(string)
+
+		// Handle event_providers which can be []interface{}
+		var eventProviders []string
+		if epRaw, ok := user["event_providers"].(primitive.A); ok {
+			for _, v := range epRaw {
+				if s, ok := v.(string); ok {
+					eventProviders = append(eventProviders, s)
+				}
+			}
+		}
+
+		// Calculate Event Active Count
+		activeEventCount := 0
+		for _, epStr := range eventProviders {
+			if activeEventMap[epStr] {
+				activeEventCount++
+			}
+		}
+
+		// Calculate Receiver Counts
+		stats := userRecvStats[email]
+		inactive := stats[false]
+		active := stats[true]
+
+		inactiveTotal += inactive
+		activeTotal += active
+
+		// Add fields
+		user["totalDeviceRequested"] = inactive + active
+		user["totalEventsActive"] = activeEventCount
+
+		resultUsers = append(resultUsers, user)
+	}
+
+	result := map[string]interface{}{
+		"inactiveTransactions":     inactiveTotal,
+		"activeTransactions":       activeTotal,
+		"total":                    inactiveTotal + activeTotal,
+		"totalConsumers":           len(users),
+		"usersList":                resultUsers,
+		"totalConsumersFromEvents": len(users),
+		"lease":                    leaseCount,
+	}
+
+	return result, nil
 }
