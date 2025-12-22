@@ -762,28 +762,27 @@ const consultingInventoryTracking = async (request, response) => {
 
 const checkingInventoryCurrentState = async (request, response) => {
   try {
-    const connection = getConnection();
-    // const item_id = request.params.id;
     const company_id = request.params.company_id;
-    const query = `
-    SELECT ii.* , iiae.status, iiae.condition, ei.*
-    FROM item_inv ii
-    LEFT JOIN item_inv_assigned_event iiae ON iiae.item_id = ii.item_id
-    LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
-        WHERE ii.company_id = ${company_id}
-        ORDER by iiae.event_id DESC
-        `;
-    // const values = [company_id];
-    const [result] = await connection.execute(query); //, values
+    const workerResponse = await runGoWorker(
+      "checking-inventory-current-state",
+      {
+        company_id: company_id,
+      }
+    );
+
+    if (workerResponse.status === "error") {
+      throw new Error(workerResponse.message);
+    }
+
     return response.status(201).json({
       ok: true,
-      result,
+      result: workerResponse.data,
     });
   } catch (error) {
-    logger.error("Error:", error);
+    logger.error("Error:", error.message);
     response.status(500).json({
       ok: false,
-      msg: `${error}`,
+      msg: error.message,
     });
   }
 };
@@ -791,31 +790,26 @@ const checkingInventoryCurrentState = async (request, response) => {
 const checkingItem = async (request, response) => {
   try {
     //company_id=122&warehouse=true&enableAssignFeature=1
-    // const cache_connection = await clientRedis();
     const params = request._parsedUrl.query;
-    // const checkingInMemory = await cache_connection.get(`${params}`);
-    // if (checkingInMemory) {
-    //   return response.status(201).json({
-    //     cached: true,
-    //     ok: true,
-    //     items: JSON.parse(checkingInMemory),
-    //   });
-    // } else {
-    const splitting = params.split("&");
-    const formatting = splitting.map((item) => item.split("=")[0] + "=?");
-    const keys = formatting.toString().replaceAll(",", " AND ");
-    const values = [...splitting.map((item) => item.split("=")[1])];
-    const query = `select * from item_inv where ${keys};`;
-    const connection = getConnection();
-    const [result] = await connection.execute(query, values);
-    // cache_connection.set(`${params}`, JSON.stringify(result));
-    // cache_connection.expire(`${params}`, 60);
+
+    const filters = {};
+    if (params) {
+      const splitting = params.split("&");
+      splitting.forEach((item) => {
+        const [key, value] = item.split("=");
+        if (key) {
+          filters[key] = value;
+        }
+      });
+    }
+
+    const result = await runGoWorker("check-item", { filters });
+
     return response.status(201).json({
       cached: false,
       ok: true,
       items: result,
     });
-    // }
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({
