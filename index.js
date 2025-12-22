@@ -233,24 +233,35 @@ const startServer = () => {
   if (isNativeMaster || isPM2FirstInstance) {
     logger.info(`Starting Go worker...`);
 
-    // Start Go Worker
-    const workerPath = path.resolve(__dirname, "go-worker/processor.exe");
-    const goWorker = spawn(workerPath, [], {
-      cwd: path.resolve(__dirname, "go-worker"),
-      stdio: "inherit",
-    });
+    // Determine executable name based on platform
+    const isWindows = process.platform === "win32";
+    const execName = isWindows ? "processor.exe" : "processor";
+    const workerPath = path.resolve(__dirname, "go-worker", execName);
 
-    goWorker.on("error", (err) => {
-      logger.error("Failed to start Go worker", { error: err.message });
-    });
+    // Check if file exists
+    const fs = require("fs");
+    if (fs.existsSync(workerPath)) {
+      const goWorker = spawn(workerPath, [], {
+        cwd: path.resolve(__dirname, "go-worker"),
+        stdio: "inherit",
+      });
 
-    goWorker.on("exit", (code, signal) => {
-      logger.warn(`Go worker exited with code ${code} and signal ${signal}`);
-    });
+      goWorker.on("error", (err) => {
+        logger.error("Failed to start Go worker", { error: err.message });
+      });
 
-    process.on("exit", () => {
-      goWorker.kill();
-    });
+      goWorker.on("exit", (code, signal) => {
+        logger.warn(`Go worker exited with code ${code} and signal ${signal}`);
+      });
+
+      process.on("exit", () => {
+        goWorker.kill();
+      });
+    } else {
+      logger.warn(
+        `Go worker executable not found at ${workerPath}. Skipping start.`
+      );
+    }
   }
 
   if (isNativeMaster) {
@@ -276,6 +287,19 @@ const startServer = () => {
   } else {
     const server = initializeApp().listen(PORT, () => {
       logger.info(`Worker ${process.pid} started on port ${PORT}`);
+    });
+
+    server.on("error", (err) => {
+      if (err.code === "EADDRINUSE") {
+        logger.error(
+          `Port ${PORT} is already in use. Process ${process.pid} cannot start.`
+        );
+        // In cluster mode, this is fatal for this worker.
+        process.exit(1);
+      } else {
+        logger.error("Server failed to start:", err);
+        process.exit(1);
+      }
     });
 
     // Graceful shutdown
