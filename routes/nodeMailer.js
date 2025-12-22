@@ -30,7 +30,9 @@ const {
   liabilityContractConsumerNotification,
   consumerLeaseEndedDeviceReturnedNotification,
   liabilityContractMemberNotification,
-  returningDeviceLeaseMemberNotification
+  returningDeviceLeaseMemberNotification,
+  completedTask,
+  failedTask
 } = require("../nodeMailer/notifications");
 const router = Router();
 
@@ -144,5 +146,11 @@ router.post("/consumer-lease-return-device-notification", consumerLeaseEndedDevi
 
 //notification for returned device in member lease
 router.post("/member-lease-return-device-notification", returningDeviceLeaseMemberNotification)
+
+//notification for completed task
+router.post("/completed-task-notification", completedTask)
+
+//notification for failed task
+router.post("/failed-task-notification", failedTask)
 
 module.exports = router;
