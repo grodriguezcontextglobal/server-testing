@@ -9,14 +9,14 @@ module.exports = {
       // max_memory_restart: "200M",
       disable_metric: true,
     },
-    {
-      name: "go-worker",
-      script: "./go-worker/processor.exe",
-      cwd: "./",
-      instances: 1,
-      exec_mode: "fork",
-      autorestart: true,
-      watch: false,
-    },
+    // {
+    //   name: "go-worker",
+    //   script: "./go-worker/processor.exe",
+    //   cwd: "./",
+    //   instances: 1,
+    //   exec_mode: "fork",
+    //   autorestart: true,
+    //   watch: false,
+    // },
   ],
 };
