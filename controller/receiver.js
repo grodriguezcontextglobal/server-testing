@@ -9,21 +9,40 @@ const runGoWorker = require("../helpers/goWorker");
 
 const addReceiverToTransaction = async (request, response) => {
   try {
-    const result = await runGoWorker("add-receiver-transaction", request.body);
+    Receivers.adminuser = request.body.adminUser;
+    const receiversAssignedPerUser = new Receivers(request.body);
+    await receiversAssignedPerUser.save();
+
     return response.status(201).json({
       ok: true,
       message: "ASSIGNED",
-      device: result.device,
-      paymentIntent: result.paymentIntent,
-      receiversAssignedPerUser: result,
+      device: receiversAssignedPerUser.device,
+      paymentIntent: receiversAssignedPerUser.paymentIntent,
+      receiversAssignedPerUser,
       date: new Date(),
     });
   } catch (error) {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
-      err: error.message,
+      err: error,
     });
+    //   const result = await runGoWorker("add-receiver-transaction", request.body);
+    //   return response.status(201).json({
+    //     ok: true,
+    //     message: "ASSIGNED",
+    //     device: result.device,
+    //     paymentIntent: result.paymentIntent,
+    //     receiversAssignedPerUser: result,
+    //     date: new Date(),
+    //   });
+    // } catch (error) {
+    //   return response.status(500).json({
+    //     ok: false,
+    //     msg: "Please contact Administrator",
+    //     err: error.message,
+    //   });
+    // }
   }
 };
 
