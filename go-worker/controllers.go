@@ -647,12 +647,311 @@ func ItemFinalStatusWhenEventIsFinished(db *sql.DB, req ItemFinalStatusRequest) 
 	return totalAffectedRows, nil
 }
 
+// CheckItemRequest matches the Node.js request body for checking items
+type CheckItemRequest struct {
+	Filters map[string]string `json:"filters"`
+}
+
+// CheckItem handles dynamic filtering of items
+func CheckItem(db *sql.DB, req CheckItemRequest) ([]map[string]interface{}, error) {
+	// Start with base query
+	query := "SELECT * FROM item_inv WHERE 1=1"
+	var args []interface{}
+	var conditions []string
+
+	// Process filters
+	for key, value := range req.Filters {
+		// Prevent SQL injection by allowing only alphanumeric keys (and underscores)
+		// This is a basic check. For strict security, use a whitelist of allowed columns.
+		if !isValidColumnName(key) {
+			return nil, fmt.Errorf("invalid column name: %s", key)
+		}
+
+		conditions = append(conditions, fmt.Sprintf("%s = ?", key))
+		args = append(args, value)
+	}
+
+	if len(conditions) > 0 {
+		query += " AND " + strings.Join(conditions, " AND ")
+	}
+
+	LogInfo("Executing CheckItem query", map[string]interface{}{
+		"query": query,
+		"args":  args,
+	})
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanRowsToMap(rows)
+}
+
+// InventoryCurrentStateRequest matches request for checking inventory current state
+type InventoryCurrentStateRequest struct {
+	CompanyID interface{} `json:"company_id"`
+}
+
+// CheckingInventoryCurrentState handles the complex join query for inventory state
+func CheckingInventoryCurrentState(db *sql.DB, req InventoryCurrentStateRequest) ([]map[string]interface{}, error) {
+	var companyID string
+	switch v := req.CompanyID.(type) {
+	case string:
+		companyID = v
+	case float64:
+		companyID = fmt.Sprintf("%.0f", v)
+	case int:
+		companyID = strconv.Itoa(v)
+	case nil:
+		return nil, fmt.Errorf("company_id is required")
+	default:
+		return nil, fmt.Errorf("invalid type for company_id: %T", v)
+	}
+
+	if companyID == "" {
+		return nil, fmt.Errorf("company_id is required")
+	}
+
+	query := `
+    SELECT ii.* , iiae.status, iiae.condition, ei.*
+    FROM item_inv ii
+    LEFT JOIN item_inv_assigned_event iiae ON iiae.item_id = ii.item_id
+    LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
+    WHERE ii.company_id = ?
+    ORDER by iiae.event_id DESC
+    `
+
+	rows, err := db.Query(query, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanRowsToMap(rows)
+}
+
+// Helper to validate column names to prevent SQL injection in dynamic queries
+func isValidColumnName(col string) bool {
+	// Allow a-z, A-Z, 0-9, _
+	for _, r := range col {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// Helper to scan arbitrary rows into a map slice
+func scanRowsToMap(rows *sql.Rows) ([]map[string]interface{}, error) {
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	var results []map[string]interface{}
+
+	for rows.Next() {
+		// Create a slice of interface{} to hold values
+		columns := make([]interface{}, len(cols))
+		columnPointers := make([]interface{}, len(cols))
+		for i := range columns {
+			columnPointers[i] = &columns[i]
+		}
+
+		// Scan the result into the column pointers
+		if err := rows.Scan(columnPointers...); err != nil {
+			return nil, err
+		}
+
+		// Create our map, and retrieve all the values
+		m := make(map[string]interface{})
+		for i, colName := range cols {
+			val := columnPointers[i].(*interface{})
+
+			// Handle raw bytes (MySQL often returns text/blobs as []byte)
+			if val != nil {
+				v := *val
+				if b, ok := v.([]byte); ok {
+					m[colName] = string(b)
+				} else {
+					m[colName] = v
+				}
+			} else {
+				m[colName] = nil
+			}
+		}
+		results = append(results, m)
+	}
+	return results, nil
+}
+
 // ReturningItemRequest matches the request for ReturningItemToStockWhenEventIsFinished
 type ReturningItemRequest struct {
 	GroupingDevicesFromNoSQL string `json:"groupingDevicesFromNoSQL"` // JSON string
 	AllInventoryOfEvent      string `json:"allInventoryOfEvent"`      // JSON string
 	CompanyID                string `json:"companyId"`
 	UpdateAt                 string `json:"update_at"`
+}
+
+// HierarchyNode represents a node in the inventory hierarchy
+type HierarchyNode struct {
+	Total     int                       `json:"total"`
+	Available int                       `json:"available"`
+	Types     []string                  `json:"types"`
+	Children  map[string]*HierarchyNode `json:"children"`
+}
+
+// GetInventoryHierarchyRequest matches the request for GetInventoryHierarchyWithTypes
+type GetInventoryHierarchyRequest struct {
+	CompanyID interface{} `json:"company_id"`
+}
+
+// GetInventoryHierarchyWithTypes handles the hierarchical aggregation of inventory
+func GetInventoryHierarchyWithTypes(db *sql.DB, req GetInventoryHierarchyRequest) (map[string]*HierarchyNode, error) {
+	var companyID string
+	switch v := req.CompanyID.(type) {
+	case string:
+		companyID = v
+	case float64:
+		companyID = fmt.Sprintf("%.0f", v)
+	case int:
+		companyID = strconv.Itoa(v)
+	case nil:
+		return nil, fmt.Errorf("company_id is required")
+	default:
+		return nil, fmt.Errorf("invalid type for company_id: %T", v)
+	}
+
+	if companyID == "" {
+		return nil, fmt.Errorf("company_id is required")
+	}
+
+	// Fetch data
+	query := `
+		SELECT 
+			COALESCE(item_group, ''), 
+			COALESCE(warehouse, 0), 
+			COALESCE(location, 'Unknown Location'), 
+			COALESCE(sub_location, '[]')
+		FROM item_inv
+		WHERE company_id = ?
+	`
+
+	rows, err := db.Query(query, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]*HierarchyNode)
+
+	for rows.Next() {
+		var itemGroup string
+		var warehouse int
+		var location string
+		var subLocationStr string
+
+		if err := rows.Scan(&itemGroup, &warehouse, &location, &subLocationStr); err != nil {
+			continue // Skip row on error
+		}
+
+		isAvailable := (warehouse == 1)
+
+		// Parse sub_location
+		var subLocations []string
+		// It might be a JSON string or just a string. The Node.js code tries JSON.parse.
+		// If unmarshal fails, treat it as single string if not empty?
+		// Node code: typeof item.sub_location === "string" ? JSON.parse(item.sub_location) : item.sub_location
+		// If it's a JSON array string, Unmarshal works.
+		if err := json.Unmarshal([]byte(subLocationStr), &subLocations); err != nil {
+			// If it fails, maybe it's not a JSON array.
+			// But the query COALESCE defaults to '[]'.
+			// If the DB has raw string "some_loc", Unmarshal might fail or unmarshal into string?
+			// subLocationStr is string.
+			// If it is just a plain string (not json array), Node might wrap it or fail?
+			// Node logic implies it expects an array structure from sub_location usually.
+			// Let's assume it's JSON array of strings. If error, empty slice.
+			subLocations = []string{}
+		}
+
+		// Process Root Location
+		if _, exists := result[location]; !exists {
+			result[location] = &HierarchyNode{
+				Types:    []string{},
+				Children: make(map[string]*HierarchyNode),
+			}
+		}
+		rootNode := result[location]
+
+		// Update Root
+		rootNode.Total++
+		if isAvailable {
+			rootNode.Available++
+		}
+		addTypeUnique(rootNode, itemGroup)
+
+		// Process Children
+		currentNode := rootNode
+		for _, subKey := range subLocations {
+			if subKey == "" {
+				subKey = "null"
+			}
+
+			if currentNode.Children == nil {
+				currentNode.Children = make(map[string]*HierarchyNode)
+			}
+
+			if _, exists := currentNode.Children[subKey]; !exists {
+				currentNode.Children[subKey] = &HierarchyNode{
+					Types:    []string{},
+					Children: make(map[string]*HierarchyNode),
+				}
+			}
+			childNode := currentNode.Children[subKey]
+
+			childNode.Total++
+			if isAvailable {
+				childNode.Available++
+			}
+			addTypeUnique(childNode, itemGroup)
+
+			currentNode = childNode
+		}
+	}
+
+	// Clean up empty children (set to nil)
+	for _, node := range result {
+		cleanHierarchyNode(node)
+	}
+
+	return result, nil
+}
+
+func addTypeUnique(node *HierarchyNode, itemType string) {
+	if itemType == "" {
+		return
+	}
+	for _, t := range node.Types {
+		if t == itemType {
+			return
+		}
+	}
+	node.Types = append(node.Types, itemType)
+}
+
+func cleanHierarchyNode(node *HierarchyNode) {
+	if node.Children == nil {
+		return
+	}
+	if len(node.Children) == 0 {
+		node.Children = nil
+		return
+	}
+	for _, child := range node.Children {
+		cleanHierarchyNode(child)
+	}
 }
 
 // ReturningItemToStockWhenEventIsFinished handles bulk return to stock
