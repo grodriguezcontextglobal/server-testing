@@ -26,6 +26,18 @@ const PORT = process.env.PORT || 34001;
 const path = require("path");
 const { spawn } = require("child_process");
 
+// Global error handlers to prevent silent crashes
+process.on("uncaughtException", (err) => {
+  logger.error("Uncaught Exception:", { error: err.message, stack: err.stack });
+  // Do not exit immediately to allow logs to be flushed, but PM2 will likely restart anyway
+  console.error("Uncaught Exception:", err);
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  logger.error("Unhandled Rejection:", { reason });
+  console.error("Unhandled Rejection:", reason);
+});
+
 // Initialize database connection
 if (!cluster.isMaster && !cluster.isPrimary) {
   const connectWithRetry = (retries = 5, delay = 5000) => {
@@ -226,7 +238,13 @@ const initializeApp = () => {
 
 // Cluster configuration
 const startServer = () => {
-  const isNativeMaster = cluster.isPrimary || cluster.isMaster;
+  // Check if running under PM2
+  const isPM2 = process.env.NODE_APP_INSTANCE !== undefined;
+
+  // Native Master: Only if NOT running under PM2 and IS the cluster master
+  const isNativeMaster = (cluster.isPrimary || cluster.isMaster) && !isPM2;
+
+  // PM2 First Instance: If running under PM2, instance 0 acts as the "master" for singletons like Go worker
   const isPM2FirstInstance = process.env.NODE_APP_INSTANCE === "0";
 
   // Start Go Worker if we are the Native Master OR the first PM2 instance
