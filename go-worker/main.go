@@ -151,7 +151,7 @@ func processCommand(command string, byteValue []byte, w http.ResponseWriter) {
 func executeCommand(command string, byteValue []byte) Response {
 	switch command {
 	// --- SQL Commands ---
-	case "insert-bulk-item", "insert-bulk-item-alpha", "insert-device-event-container", "insert-item-event", "insert-device-event-directly", "retrieve-item-data", "item-final-status", "returning-item-to-stock":
+	case "insert-bulk-item", "insert-bulk-item-alpha", "insert-device-event-container", "insert-item-event", "insert-device-event-directly", "retrieve-item-data", "item-final-status", "returning-item-to-stock", "check-item", "checking-inventory-current-state", "get-inventory-hierarchy":
 		if SQLDB == nil {
 			var err error
 			SQLDB, err = ConnectDB()
@@ -256,6 +256,36 @@ func executeCommand(command string, byteValue []byte) Response {
 			return Response{Status: "success", Message: fmt.Sprintf("Successfully updated %d items", affectedRows), Data: map[string]interface{}{
 				"affectedRows": affectedRows,
 			}}
+		} else if command == "check-item" {
+			var req CheckItemRequest
+			if err := json.Unmarshal(byteValue, &req); err != nil {
+				return Response{Status: "error", Message: fmt.Sprintf("Invalid JSON format: %v", err)}
+			}
+			results, err := CheckItem(db, req)
+			if err != nil {
+				return Response{Status: "error", Message: fmt.Sprintf("Check item failed: %v", err)}
+			}
+			return Response{Status: "success", Message: "Items checked successfully", Data: results}
+		} else if command == "checking-inventory-current-state" {
+			var req InventoryCurrentStateRequest
+			if err := json.Unmarshal(byteValue, &req); err != nil {
+				return Response{Status: "error", Message: fmt.Sprintf("Invalid JSON format: %v", err)}
+			}
+			results, err := CheckingInventoryCurrentState(db, req)
+			if err != nil {
+				return Response{Status: "error", Message: fmt.Sprintf("Checking inventory current state failed: %v", err)}
+			}
+			return Response{Status: "success", Message: "Inventory current state retrieved successfully", Data: results}
+		} else if command == "get-inventory-hierarchy" {
+			var req GetInventoryHierarchyRequest
+			if err := json.Unmarshal(byteValue, &req); err != nil {
+				return Response{Status: "error", Message: fmt.Sprintf("Invalid JSON format: %v", err)}
+			}
+			results, err := GetInventoryHierarchyWithTypes(db, req)
+			if err != nil {
+				return Response{Status: "error", Message: fmt.Sprintf("Get inventory hierarchy failed: %v", err)}
+			}
+			return Response{Status: "success", Message: "Inventory hierarchy retrieved successfully", Data: results}
 		}
 
 	// --- Stripe Commands ---
@@ -288,7 +318,8 @@ func executeCommand(command string, byteValue []byte) Response {
 		"update-bulk-items-transaction",
 		"update-bulk-items-transaction-user",
 		"update-issue-device",
-		"update-pool-receivers":
+		"update-pool-receivers",
+		"get-consumer-stats":
 
 		if MongoDB == nil {
 			var err error
@@ -331,6 +362,8 @@ func executeCommand(command string, byteValue []byte) Response {
 			res, opErr = UpdateIssueDevice(db, byteValue)
 		case "update-pool-receivers":
 			res, opErr = UpdatePoolReceivers(db, byteValue)
+		case "get-consumer-stats":
+			res, opErr = GetConsumerStats(db, byteValue)
 		}
 
 		if opErr != nil {
