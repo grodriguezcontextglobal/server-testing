@@ -68,6 +68,7 @@ const createCompany = async (request, response = express.response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      err: error.message || error,
     });
   }
 };
@@ -126,6 +127,7 @@ const searchingCompany = async (request, response = express.response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
+      err: error.message || error,
     });
   }
 };
