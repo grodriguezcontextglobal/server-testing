@@ -1,5 +1,6 @@
 const {
   uploadPdfToS3,
+  uploadExcelToS3: uploadExcelToS3Helper,
   getTemporaryDownloadUrl,
   deleteDocumentFromS3,
 } = require("../helpers/s3Upload");
@@ -897,7 +898,6 @@ const createMemberVerification = async (req, res) => {
   }
 };
 
-
 // staffMemberVerificationSignedDocumentForAssignmentDevices
 const staffMemberVerificationSignedDocumentForAssignmentDevices = async (
   req,
@@ -1492,10 +1492,7 @@ const addSignatureToConsumerDocument = async (req, res) => {
             }
           );
         } catch (error) {
-          logger.error(
-            "Failed to send completion notifications:",
-            error
-          );
+          logger.error("Failed to send completion notifications:", error);
         }
       } catch (notificationError) {
         logger.error(
@@ -1589,7 +1586,99 @@ const addSignatureToMemberDocument = async (req, res) => {
   }
 };
 
+const uploadExcelToS3 = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        ok: false,
+        msg: "No document file uploaded",
+      });
+    }
+
+    const { company_id, company } = req.body;
+    if (!company_id) {
+      return res.status(400).json({
+        ok: false,
+        msg: "company id is required",
+      });
+    }
+
+    const uploadResult = await uploadExcelToS3Helper(req.file, {
+      companyId: company_id,
+      documentType: "inventory-import",
+    });
+
+    const signedUrl = await getTemporaryDownloadUrl(uploadResult.Key);
+
+    // Fetch to another server for handle inserting company inventory from xlsx file
+    const targetUrl = process.env.INVENTORY_IMPORT_WEBHOOK_URL;
+
+    if (targetUrl) {
+      const response = await fetch(targetUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fileUrl: signedUrl,
+          callbackURLSuccess: process.env.callbackUrl_WEBHOOK_URL_SUCCESS,
+          callbackURLFail: process.env.callbackUrl_WEBHOOK_URL_FAIL,
+          company_id: company_id,
+          company: company,  
+          userEmail: req.user ? req.user.email : undefined,
+          user_sql_id: req.user ? req.user.id : req.body.contact_staff_id,
+        }),
+      });
+      logger.info(">>>>>>>", response);
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.error(
+          `Failed to trigger inventory import: ${response.status} ${errorText}`
+        );
+        return res.status(502).json({
+          ok: false,
+          msg: "File uploaded to S3 but failed to trigger inventory import on remote server.",
+          error: errorText,
+        });
+      }
+
+      //     {
+      //   "status": "completed",
+      //   "total_rows": 100,
+      //   "success": 98,
+      //   "failed": 2,
+      //   "errors": ["Row 5: Invalid cost"],
+      //   "company_id": "comp_123",
+      //   "user_email": "user@example.com",
+      //   "user_sql_id": 123
+      // }
+      logger.info("Inventory import process triggered successfully", response);
+    } else {
+      logger.warn(
+        "INVENTORY_IMPORT_WEBHOOK_URL is not defined. Skipping remote import trigger."
+      );
+    }
+
+    res.status(200).json({
+      ok: true,
+      msg: "File uploaded and import process triggered",
+      data: {
+        s3Location: uploadResult.Location,
+        signedUrl: signedUrl,
+      },
+    });
+  } catch (error) {
+    logger.error(error);
+    res.status(500).json({
+      ok: false,
+      msg: error.message,
+      err: error,
+    });
+  }
+};
+
 module.exports = {
+  uploadExcelToS3,
   addSignatureToConsumerDocument,
   addSignatureToDocument,
   addSignatureToMemberDocument,
