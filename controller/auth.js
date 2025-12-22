@@ -3,6 +3,7 @@ const Event = require("../models/Event");
 const Receivers = require("../models/Receivers");
 const { generateJWT } = require("../helpers/jwt");
 const { clientRedis } = require("../database/cacheMemoryConfig");
+const runGoWorker = require("../helpers/goWorker");
 const { groupBy } = require("lodash");
 const mongoose = require("mongoose");
 const logger = require("../helpers/logger");
@@ -292,51 +293,7 @@ const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
         result: JSON.parse(cachedList),
       });
     } else {
-      const usersList = await User.find({
-        company_providers: { $in: [companyID] },
-      }).lean();
-      const leaseConsumersList = await Event.find({
-        company_id: companyID,
-        type: "lease",
-      }).count();
-      let result = {
-        inactiveTransactions: 0,
-        activeTransactions: 0,
-        total: 0,
-        totalConsumers: usersList.length,
-        usersList: [],
-        totalConsumersFromEvents: usersList.length,
-        lease: leaseConsumersList,
-      };
-      for (let user of usersList) {
-        const inactiveTransactions = await Receivers.find({
-          user: user.email,
-          company: companyID,
-          "device.status": false,
-        }).count();
-        const activeTransactions = await Receivers.find({
-          user: user.email,
-          company: companyID,
-          "device.status": true,
-        }).count();
-        const totalEventsActive = await Event.find({
-          _id: {
-            $in: user.event_providers.map(
-              (id) => new mongoose.Types.ObjectId(id)
-            ),
-          },
-          company_id: companyID,
-          active: true,
-        }).count();
-        result.usersList.push({
-          ...user,
-          totalDeviceRequested: inactiveTransactions + activeTransactions,
-          totalEventsActive: totalEventsActive,
-        });
-        result.inactiveTransactions += inactiveTransactions;
-        result.activeTransactions += activeTransactions;
-        result.total += inactiveTransactions + activeTransactions;
-      }
+      const result = await runGoWorker("get-consumer-stats", { companyID });
       cache_connection.set(
         `consumersInfoPerCompany=${companyID}`,
         JSON.stringify(result)
