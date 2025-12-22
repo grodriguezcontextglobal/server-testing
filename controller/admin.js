@@ -63,7 +63,7 @@ const createAdminUser = async (request, response = express.response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
-      err: error,
+      err: error.message || error,
     });
   }
 };
@@ -247,7 +247,7 @@ const loginUser = async (request, response) => {
           logger.error("Error sending login activity email", {
             userId: adminUser.id,
             email: adminUser.email,
-            error: emailError.message,
+            error: emailError,
             requestId: loginInfo.requestId,
           });
         }
@@ -256,7 +256,7 @@ const loginUser = async (request, response) => {
       logger.error("Error preparing login activity email", {
         userId: adminUser.id,
         email: adminUser.email,
-        error: emailError.message,
+        error: emailError,
         requestId: loginInfo.requestId,
       });
     }
@@ -297,7 +297,7 @@ const loginUser = async (request, response) => {
   } catch (error) {
     logger.error("Admin login error", {
       email,
-      error: error.message,
+      error: error,
       stack: error.stack,
       requestId: request.headers["x-request-id"],
     });
@@ -305,7 +305,7 @@ const loginUser = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
-      err: error,
+      err: error.message || error,
     });
   }
 };
