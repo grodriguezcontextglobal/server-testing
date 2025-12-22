@@ -1,11 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
-    "bytes"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -24,7 +25,7 @@ type Receiver struct {
 	EventSelected []string           `bson:"eventSelected" json:"eventSelected"`
 	Provider      []string           `bson:"provider" json:"provider"`
 	Company       string             `bson:"company" json:"company"`
-	TimeStamp     time.Time          `bson:"timeStamp" json:"timeStamp"`
+	TimeStamp     interface{}        `bson:"timeStamp" json:"timeStamp"`
 	EventID       string             `bson:"event_id" json:"event_id"`
 }
 
@@ -51,7 +52,7 @@ type ReceiverReturnedStatus struct {
 	Provider      string             `bson:"provider" json:"provider"`
 	EventSelected string             `bson:"eventSelected" json:"eventSelected"`
 	Admin         string             `bson:"admin" json:"admin"`
-	TimeStamp     time.Time          `bson:"timeStamp" json:"timeStamp"`
+	TimeStamp     interface{}        `bson:"timeStamp" json:"timeStamp"`
 }
 
 // --- Controllers ---
@@ -61,6 +62,10 @@ func AddReceiverToTransaction(db *mongo.Database, data []byte) (interface{}, err
 	if err := json.Unmarshal(data, &req); err != nil {
 		return nil, err
 	}
+
+	// Parse TimeStamp to time.Time
+	req.TimeStamp = parseTime(req.TimeStamp)
+
 	if !req.Active {
 		req.Active = true
 	}
@@ -75,16 +80,16 @@ func AddReceiverToTransaction(db *mongo.Database, data []byte) (interface{}, err
 
 func CreateBulkItemTransactionInUser(db *mongo.Database, data []byte) (interface{}, error) {
 	var input struct {
-		SerialNumbers string `json:"serialNumbers"`
-		DeviceType    string `json:"deviceType"`
-		Status        bool   `json:"status"` // In JS: device.status
-		PaymentIntent string `json:"paymentIntent"`
-		Company       string `json:"company"`
-		User          string `json:"user"`
-		EventSelected string `json:"eventSelected"`
-		Provider      string `json:"provider"`
-		EventID       string `json:"event_id"`
-		TimeStamp     string `json:"timestamp"`
+		SerialNumbers string      `json:"serialNumbers"`
+		DeviceType    string      `json:"deviceType"`
+		Status        bool        `json:"status"` // In JS: device.status
+		PaymentIntent string      `json:"paymentIntent"`
+		Company       string      `json:"company"`
+		User          string      `json:"user"`
+		EventSelected string      `json:"eventSelected"`
+		Provider      string      `json:"provider"`
+		EventID       string      `json:"event_id"`
+		TimeStamp     interface{} `json:"timestamp"`
 	}
 
 	if err := json.Unmarshal(data, &input); err != nil {
@@ -98,10 +103,7 @@ func CreateBulkItemTransactionInUser(db *mongo.Database, data []byte) (interface
 		return nil, fmt.Errorf("invalid serialNumbers JSON: %v", err)
 	}
 
-	ts, _ := time.Parse(time.RFC3339, input.TimeStamp)
-	if ts.IsZero() {
-		ts = time.Now()
-	}
+	ts := parseTime(input.TimeStamp)
 
 	var docs []interface{}
 	for _, item := range serialList {
@@ -520,7 +522,7 @@ func UpdateBulkItemsInPool(db *mongo.Database, data []byte) (interface{}, error)
 
 func UpdateBulkItemsInTransaction(db *mongo.Database, data []byte) (interface{}, error) {
 	var input struct {
-		TimeStamp string `json:"timeStamp"`
+		TimeStamp interface{} `json:"timeStamp"`
 		Device    []struct {
 			Key string `json:"key"` // JS uses item.key for ID
 		} `json:"device"`
@@ -529,7 +531,7 @@ func UpdateBulkItemsInTransaction(db *mongo.Database, data []byte) (interface{},
 		return nil, err
 	}
 
-	ts, _ := time.Parse(time.RFC3339, input.TimeStamp)
+	ts := parseTime(input.TimeStamp)
 
 	var models []mongo.WriteModel
 	for _, item := range input.Device {
@@ -562,15 +564,24 @@ func parseTime(v interface{}) time.Time {
 	}
 	switch t := v.(type) {
 	case string:
-		parsed, err := time.Parse(time.RFC3339, t)
-		if err != nil {
-			return time.Now()
+		// Try parsing different formats
+		if parsed, err := time.Parse(time.RFC3339, t); err == nil {
+			return parsed
 		}
-		return parsed
+		if parsed, err := time.Parse("2006-01-02", t); err == nil {
+			return parsed
+		}
+		// Try parsing as int string
+		if i, err := strconv.ParseInt(t, 10, 64); err == nil {
+			return time.UnixMilli(i)
+		}
+		return time.Now()
 	case float64:
 		return time.UnixMilli(int64(t))
 	case int64:
 		return time.UnixMilli(t)
+	case int:
+		return time.UnixMilli(int64(t))
 	default:
 		return time.Now()
 	}
