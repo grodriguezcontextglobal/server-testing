@@ -1301,6 +1301,66 @@ const consumerLeaseEndedDeviceReturnedNotification = async (
   }
 };
 
+const completedTask = async (
+  request,
+  response
+) => {
+  try {
+    // Send email to consumer
+    const msg = { 
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `grodriguez@devitrak.com`,
+      subject: "Task - Completed Notification", 
+      html: `<p>SUCCESS</p>`,
+    };
+    const result = await sgMail.send(msg);
+    return response.status(201).json({
+      ok: true,
+      result,
+    });
+  } catch (error) {
+    logger.error(
+      "Error sending task completed notification:",
+      error
+    );
+    return response.status(500).json({
+      ok: false,
+      msg: "Failed to send notification email",
+      error: error.message,
+    });
+  }
+};
+
+const failedTask = async (
+  request,
+  response
+) => {
+  try {
+    // Send email to consumer
+    const msg = { 
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `grodriguez@devitrak.com`,
+      subject: "Task - Failed Notification",
+      html: `<p>FAILED</p>`,
+    };
+    const result = await sgMail.send(msg);
+    return response.status(201).json({
+      ok: true,
+      result,
+    });
+  } catch (error) {
+    logger.error(
+      "Error sending task failed notification:",
+      error
+    );
+    return response.status(500).json({
+      ok: false,
+      msg: "Failed to send notification email",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   assingDeviceNotification,
   cancelDepositNotification,
@@ -1337,4 +1397,6 @@ module.exports = {
   singleEmailNotification,
   staffInternalNotification,
   termsAndConditionsAcceptanceNotification,
+  completedTask,
+  failedTask,
 };
