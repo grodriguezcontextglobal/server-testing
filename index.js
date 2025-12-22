@@ -28,13 +28,28 @@ const { spawn } = require("child_process");
 
 // Initialize database connection
 if (!cluster.isMaster && !cluster.isPrimary) {
-  dbConnection().catch((err) => {
-    logger.error("Database connection failed:", {
-      error: err.message,
-      stack: err.stack,
+  const connectWithRetry = (retries = 5, delay = 5000) => {
+    dbConnection().catch((err) => {
+      logger.error(`Database connection failed (Attempt ${6 - retries}/5):`, {
+        error: err.message,
+      });
+
+      if (retries > 0) {
+        logger.info(
+          `Retrying database connection in ${delay / 1000} seconds...`
+        );
+        setTimeout(() => connectWithRetry(retries - 1, delay), delay);
+      } else {
+        logger.error(
+          "All database connection attempts failed. Server will continue running but DB features will be unavailable."
+        );
+        // We do NOT exit here, to prevent PM2 crash loops.
+        // The application should handle missing DB connections gracefully (return 500s).
+      }
     });
-    process.exit(1);
-  });
+  };
+
+  connectWithRetry();
 }
 
 // Create express application
@@ -211,8 +226,12 @@ const initializeApp = () => {
 
 // Cluster configuration
 const startServer = () => {
-  if (cluster.isPrimary || cluster.isMaster) {
-    logger.info(`Starting server with ${NUM_CPU} workers on port ${PORT}`);
+  const isNativeMaster = cluster.isPrimary || cluster.isMaster;
+  const isPM2FirstInstance = process.env.NODE_APP_INSTANCE === "0";
+
+  // Start Go Worker if we are the Native Master OR the first PM2 instance
+  if (isNativeMaster || isPM2FirstInstance) {
+    logger.info(`Starting Go worker...`);
 
     // Start Go Worker
     const workerPath = path.resolve(__dirname, "go-worker/processor.exe");
@@ -232,6 +251,10 @@ const startServer = () => {
     process.on("exit", () => {
       goWorker.kill();
     });
+  }
+
+  if (isNativeMaster) {
+    logger.info(`Starting server with ${NUM_CPU} workers on port ${PORT}`);
 
     // Fork workers based on CPU cores
     for (let i = 0; i < NUM_CPU; i++) {
