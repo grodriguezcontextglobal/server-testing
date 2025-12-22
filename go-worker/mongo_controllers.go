@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"time"
+    "bytes"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -555,10 +556,68 @@ func UpdateBulkItemsInTransaction(db *mongo.Database, data []byte) (interface{},
 	return map[string]interface{}{"ok": true}, nil
 }
 
+func parseTime(v interface{}) time.Time {
+	if v == nil {
+		return time.Now()
+	}
+	switch t := v.(type) {
+	case string:
+		parsed, err := time.Parse(time.RFC3339, t)
+		if err != nil {
+			return time.Now()
+		}
+		return parsed
+	case float64:
+		return time.UnixMilli(int64(t))
+	case int64:
+		return time.UnixMilli(t)
+	default:
+		return time.Now()
+	}
+}
+
 func UpdateBulkItemsInTransactionPerUserAtOnce(db *mongo.Database, data []byte) (interface{}, error) {
-	// Logic seems identical to UpdateBulkItemsInTransaction but uses item.id instead of item.key
+	// 1. Try to unmarshal as a list of updates (User's payload format)
+	// Check if data starts with '['
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		var listInput []struct {
+			ID        string      `json:"id"`
+			TimeStamp interface{} `json:"timeStamp"`
+		}
+		if err := json.Unmarshal(data, &listInput); err != nil {
+			return nil, err
+		}
+
+		var models []mongo.WriteModel
+		for _, item := range listInput {
+			oid, err := primitive.ObjectIDFromHex(item.ID)
+			if err != nil {
+				continue
+			}
+
+			ts := parseTime(item.TimeStamp)
+			update := bson.M{
+				"$set": bson.M{
+					"device.status": false,
+					"timeStamp":     ts,
+				},
+			}
+			models = append(models, mongo.NewUpdateOneModel().SetFilter(bson.M{"_id": oid}).SetUpdate(update))
+		}
+
+		if len(models) > 0 {
+			_, err := db.Collection("receivers").BulkWrite(context.TODO(), models)
+			if err != nil {
+				return nil, err
+			}
+		}
+		return map[string]interface{}{"ok": true}, nil
+	}
+
+	// 2. Original Object Logic (with TimeStamp fix)
 	var input struct {
-		TimeStamp string `json:"timeStamp"`
+		TimeStamp interface{} `json:"timeStamp"`
 		Device    []struct {
 			ID string `json:"id"`
 		} `json:"device"`
@@ -567,7 +626,7 @@ func UpdateBulkItemsInTransactionPerUserAtOnce(db *mongo.Database, data []byte) 
 		return nil, err
 	}
 
-	ts, _ := time.Parse(time.RFC3339, input.TimeStamp)
+	ts := parseTime(input.TimeStamp)
 
 	var models []mongo.WriteModel
 	for _, item := range input.Device {
