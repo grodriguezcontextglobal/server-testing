@@ -2321,15 +2321,28 @@ const checkLargeData = async (request, response) => {
 
 const updateLargeData = async (request, response) => {
   try {
-    const connection = getConnection();
     const { item_ids, warehouse } = request.body;
-    const query = `UPDATE item_inv SET warehouse = ${warehouse} WHERE item_id IN (${item_ids
-      .map((item_id) => item_id)
-      .join(",")});`;
-    const [results] = await connection.execute(query);
-    response.status(200).json({
+
+    // Ensure item_ids is an array and not empty
+    if (!Array.isArray(item_ids) || item_ids.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "item_ids must be a non-empty array",
+      });
+    }
+
+    const workerResponse = await runGoWorker("update-item-warehouse", {
+      item_ids: item_ids,
+      warehouse: Number(warehouse),
+    });
+
+    if (workerResponse.status === "error") {
+      throw new Error(workerResponse.message);
+    }
+
+    return response.status(200).json({
       ok: true,
-      result: results,
+      result: workerResponse.data,
     });
   } catch (error) {
     logger.error("Error:", error.message);
@@ -2740,6 +2753,47 @@ const filterSuppliersInfoItems = async (request, response) => {
   }
 };
 
+const deleteBulkItems = async (request, response) => {
+  try {
+    const { item_ids, company_id } = request.body;
+
+    // Validate input
+    if (!Array.isArray(item_ids) || item_ids.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "item_ids must be a non-empty array",
+      });
+    }
+
+    if (!company_id) {
+      return response.status(400).json({
+        ok: false,
+        msg: "company_id is required",
+      });
+    }
+
+    const workerResponse = await runGoWorker("delete-bulk-items", {
+      item_ids: item_ids,
+      company_id: company_id,
+    });
+
+    if (workerResponse.status === "error") {
+      throw new Error(workerResponse.message);
+    }
+
+    return response.status(200).json({
+      ok: true,
+      result: workerResponse.data,
+    });
+  } catch (error) {
+    logger.error("Error:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
 module.exports = {
   checkingIfCompanyHasInventory,
   checkingInventoryCurrentState,
@@ -2788,4 +2842,5 @@ module.exports = {
   updateSubLocation,
   getGroupedInventoryBySearchParameter,
   filterSuppliersInfoItems,
+  deleteBulkItems,
 };
