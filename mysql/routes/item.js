@@ -26,6 +26,8 @@ const {
   consultingCompanyInventoryBasedOnSubmittedParameters,
   insertBulkItemAlhpanumericFormat,
   getGroupedItemInventory,
+  insertContainerItems,
+  deleteBulkItems,
 } = require("../controllers/item");
 const {
   consultingInventoryCurrentState,
@@ -77,6 +79,9 @@ router.post("/:id", deleteItem);
 
 //delete item in inventory
 router.post("/delete-item", deleteItem);
+
+//bulk delete items
+router.post("/delete-bulk-items", deleteBulkItems);
 
 //consulting item inv assigned event table
 router.post(
