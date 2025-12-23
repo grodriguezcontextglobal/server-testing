@@ -151,7 +151,7 @@ func processCommand(command string, byteValue []byte, w http.ResponseWriter) {
 func executeCommand(command string, byteValue []byte) Response {
 	switch command {
 	// --- SQL Commands ---
-	case "insert-bulk-item", "insert-bulk-item-alpha", "insert-device-event-container", "insert-item-event", "insert-device-event-directly", "retrieve-item-data", "item-final-status", "returning-item-to-stock", "check-item", "checking-inventory-current-state", "get-inventory-hierarchy":
+	case "insert-bulk-item", "insert-bulk-item-alpha", "insert-device-event-container", "insert-item-event", "insert-device-event-directly", "retrieve-item-data", "item-final-status", "returning-item-to-stock", "check-item", "checking-inventory-current-state", "get-inventory-hierarchy", "update-item-warehouse", "delete-bulk-items":
 		if SQLDB == nil {
 			var err error
 			SQLDB, err = ConnectDB()
@@ -286,6 +286,26 @@ func executeCommand(command string, byteValue []byte) Response {
 				return Response{Status: "error", Message: fmt.Sprintf("Get inventory hierarchy failed: %v", err)}
 			}
 			return Response{Status: "success", Message: "Inventory hierarchy retrieved successfully", Data: results}
+		} else if command == "update-item-warehouse" {
+			var req UpdateItemWarehouseRequest
+			if err := json.Unmarshal(byteValue, &req); err != nil {
+				return Response{Status: "error", Message: fmt.Sprintf("Invalid JSON format: %v", err)}
+			}
+			affectedRows, err := UpdateItemWarehouse(db, req)
+			if err != nil {
+				return Response{Status: "error", Message: fmt.Sprintf("Update item warehouse failed: %v", err)}
+			}
+			return Response{Status: "success", Message: "Item warehouse updated successfully", Data: map[string]interface{}{"affectedRows": affectedRows}}
+		} else if command == "delete-bulk-items" {
+			var req DeleteBulkItemsRequest
+			if err := json.Unmarshal(byteValue, &req); err != nil {
+				return Response{Status: "error", Message: fmt.Sprintf("Invalid JSON format: %v", err)}
+			}
+			affectedRows, err := DeleteBulkItems(db, req)
+			if err != nil {
+				return Response{Status: "error", Message: fmt.Sprintf("Delete bulk items failed: %v", err)}
+			}
+			return Response{Status: "success", Message: "Items deleted successfully", Data: map[string]interface{}{"affectedRows": affectedRows}}
 		}
 
 	// --- Stripe Commands ---

@@ -954,6 +954,89 @@ func cleanHierarchyNode(node *HierarchyNode) {
 	}
 }
 
+// UpdateItemWarehouseRequest matches the request for UpdateItemWarehouse
+type UpdateItemWarehouseRequest struct {
+	ItemIDs   []int `json:"item_ids"`
+	Warehouse int   `json:"warehouse"`
+}
+
+// UpdateItemWarehouse handles bulk update of warehouse status
+func UpdateItemWarehouse(db *sql.DB, req UpdateItemWarehouseRequest) (int64, error) {
+	if len(req.ItemIDs) == 0 {
+		return 0, nil
+	}
+
+	// Build query with placeholders
+	placeholders := make([]string, len(req.ItemIDs))
+	args := make([]interface{}, len(req.ItemIDs)+1)
+
+	args[0] = req.Warehouse
+	for i, id := range req.ItemIDs {
+		placeholders[i] = "?"
+		args[i+1] = id
+	}
+
+	query := fmt.Sprintf("UPDATE item_inv SET warehouse = ? WHERE item_id IN (%s)", strings.Join(placeholders, ","))
+
+	result, err := db.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
+// DeleteBulkItemsRequest matches the request for DeleteBulkItems
+type DeleteBulkItemsRequest struct {
+	ItemIDs   []int       `json:"item_ids"`
+	CompanyID interface{} `json:"company_id"`
+}
+
+// DeleteBulkItems handles bulk deletion of items
+func DeleteBulkItems(db *sql.DB, req DeleteBulkItemsRequest) (int64, error) {
+	if len(req.ItemIDs) == 0 {
+		return 0, nil
+	}
+
+	var companyID string
+	switch v := req.CompanyID.(type) {
+	case string:
+		companyID = v
+	case float64:
+		companyID = fmt.Sprintf("%.0f", v)
+	case int:
+		companyID = strconv.Itoa(v)
+	case nil:
+		return 0, fmt.Errorf("company_id is required")
+	default:
+		return 0, fmt.Errorf("invalid type for company_id: %T", v)
+	}
+
+	if companyID == "" {
+		return 0, fmt.Errorf("company_id is required")
+	}
+
+	// Build query with placeholders
+	placeholders := make([]string, len(req.ItemIDs))
+	args := make([]interface{}, len(req.ItemIDs)+1)
+
+	for i, id := range req.ItemIDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	// Add company_id as the last argument
+	args[len(req.ItemIDs)] = companyID
+
+	query := fmt.Sprintf("DELETE FROM item_inv WHERE item_id IN (%s) AND company_id = ?", strings.Join(placeholders, ","))
+
+	result, err := db.Exec(query, args...)
+	if err != nil {
+		return 0, err
+	}
+
+	return result.RowsAffected()
+}
+
 // ReturningItemToStockWhenEventIsFinished handles bulk return to stock
 func ReturningItemToStockWhenEventIsFinished(db *sql.DB, req ReturningItemRequest) (int64, error) {
 	var groupingDevices map[string][]DeviceStatusHistory
