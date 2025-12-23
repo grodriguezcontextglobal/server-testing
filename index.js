@@ -117,6 +117,7 @@ const configureMiddleware = (app) => {
     "/api/db_event/returning-item-refactored",
     "/api/db_record/inserting-record-refactored",
     "/api/nodemailer/returned-items-summary-notification",
+    "/api/nodemailer/returned-items-to-renter-notification",
   ];
 
   // Apply 100MB limits to specific routes
