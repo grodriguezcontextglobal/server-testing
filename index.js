@@ -5,7 +5,7 @@ const cors = require("cors");
 const cluster = require("node:cluster");
 const OS = require("node:os");
 const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
+// const rateLimit = require("express-rate-limit");
 const { dbConnection } = require("./database/config");
 
 // Load environment variables
@@ -77,25 +77,25 @@ const configureMiddleware = (app) => {
   // Security headers
   app.use(helmet());
 
-  // Rate limiting: 100 requests per 15 minutes per IP
-  const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 300, // limit each IP to 300 requests per windowMs
-    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-    // Custom key generator to handle IPs with ports (common in some environments)
-    keyGenerator: (req, res) => {
-      logger.info(`Request IP: ${req.ip}`);
-      // Handle undefined req.ip
-      if (!req.ip) return "unknown";
-      return req.ip.replace(/:\d+[^:]*$/, "");
-    },
-    message: {
-      ok: false,
-      msg: "Too many requests from this IP, please try again later",
-    },
-  });
-  app.use(limiter);
+  // Rate limiting: TEMPORARILY DISABLED
+  // const limiter = rateLimit({
+  //   windowMs: 15 * 60 * 1000, // 15 minutes
+  //   max: 300, // limit each IP to 300 requests per windowMs
+  //   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  //   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  //   // Custom key generator to handle IPs with ports (common in some environments)
+  //   keyGenerator: (req, res) => {
+  //     logger.info(`Request IP: ${req.ip}`);
+  //     // Handle undefined req.ip
+  //     if (!req.ip) return "unknown";
+  //     return req.ip.replace(/:\d+[^:]*$/, "");
+  //   },
+  //   message: {
+  //     ok: false,
+  //     msg: "Too many requests from this IP, please try again later",
+  //   },
+  // });
+  // app.use(limiter);
 
   // Timeout middleware (30 seconds)
   app.use((req, res, next) => {
