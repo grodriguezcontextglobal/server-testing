@@ -278,8 +278,24 @@ const startServer = () => {
         logger.warn(`Go worker exited with code ${code} and signal ${signal}`);
       });
 
-      process.on("exit", () => {
-        goWorker.kill();
+      const killWorker = () => {
+        if (!goWorker.killed) {
+          goWorker.kill();
+        }
+      };
+
+      process.on("exit", killWorker);
+      process.on("SIGINT", () => {
+        killWorker();
+        process.exit();
+      });
+      process.on("SIGTERM", () => {
+        killWorker();
+        process.exit();
+      });
+      process.once("SIGUSR2", () => {
+        killWorker();
+        process.kill(process.pid, "SIGUSR2");
       });
     } else {
       logger.warn(
