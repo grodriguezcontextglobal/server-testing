@@ -201,10 +201,56 @@ const getCompanyList = async (request, response = express.response) => {
   }
 };
 
+const assignLocationToUser = async (request, response = express.response) => {
+  try {
+    const { company_id, user_email, location_name } = request.body;
+    
+    const company = await Company.findById(company_id);
+    if (!company) {
+      return response.status(404).json({
+        ok: false,
+        msg: "Company not found",
+      });
+    }
+
+    const employeeIndex = company.employees.findIndex(
+      (emp) => emp.user === user_email
+    );
+
+    if (employeeIndex === -1) {
+      return response.status(404).json({
+        ok: false,
+        msg: "User not found in company employees",
+      });
+    }
+
+    // Update the employee's preference
+    company.employees[employeeIndex].preference.inventory_location = [location_name];
+    
+    // Save the changes
+    await company.save();
+
+    return response.status(200).json({
+      ok: true,
+      msg: "Location assigned successfully",
+      company: company,
+    });
+
+  } catch (error) {
+    logger.error(error);
+    return response.status(500).json({
+      ok: false,
+      msg: "Please contact Administrator",
+      err: error.message || error,
+    });
+  }
+};
+
 module.exports = {
   createCompany,
+  updatingCompany,
   searchingCompany,
   getCompanyList,
-  updatingCompany,
   searchingGetCompanyInfo,
+  assignLocationToUser,
 };
