@@ -12,6 +12,7 @@ const {
   searchingCompany,
   getCompanyList,
   searchingGetCompanyInfo,
+  assignLocationToUser,
 } = require("../controller/company");
 const {
   createProviderCompany,
@@ -72,6 +73,8 @@ router.get("/search-company", searchingGetCompanyInfo);
 
 router.post("/companies", getCompanyList);
 
+router.post("/assign-location", assignLocationToUser);
+
 //providers company
 // Create new provider company
 router.post("/new_provider", createProviderCompany);
@@ -93,7 +96,10 @@ router.get("/provider-companies", getProviderCompanies);
 router.post("/signatures", collectingSignatures);
 
 //collecting signatures for consumer member
-router.post("/signatures-for-consumer-member", collectingSignaturesForConsumerMember);
+router.post(
+  "/signatures-for-consumer-member",
+  collectingSignaturesForConsumerMember
+);
 //consulting staff signatures
 router.post("/consulting-signatures", consultingSignaturesStaffMember);
 
