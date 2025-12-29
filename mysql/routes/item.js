@@ -96,7 +96,7 @@ router.post("/search-inventory", searchingInventoryTracking);
 router.get("/search-inventory", searchingGetInventoryTracking);
 
 //get item info
-router.get("/check-item", checkingItem);
+router.post("/check-item", checkingItem);
 
 //get current inventory state
 router.get("/check-inventory/:company_id", checkingInventoryCurrentState);
