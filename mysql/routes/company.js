@@ -34,6 +34,7 @@ const {
   getGroupedInventoryBySearchParameter,
   filterSuppliersInfoItems,
   deleteBulkItems,
+  checkingItem,
 } = require("../controllers/item");
 const router = Router();
 
@@ -137,6 +138,9 @@ router.post("/filter-suppliers-info-items", filterSuppliersInfoItems);
 
 //bulk delete items
 router.post("/delete-bulk-items", deleteBulkItems);
+
+//checking item info
+router.post("/check-item", checkingItem);
 
 
 module.exports = router;
