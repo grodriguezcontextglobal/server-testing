@@ -129,11 +129,52 @@ const consultingInventoryCurrentState = async (request, response) => {
 const checkingInventoryCurrentState = async (request, response) => {
   try {
     const params = request._parsedOriginalUrl.query;
-    const splitting = params.split("&");
-    const formatting = splitting
-      .map((item) => item.split("=")[0] + "=?")
-      .join(" AND ");
-    const values = splitting.map((item) => item.split("=")[1]);
+    const splitting = params ? params.split("&") : [];
+
+    let role = null;
+    let preference = null;
+    const filters = [];
+    const values = [];
+
+    splitting.forEach((item) => {
+      const [key, value] = item.split("=");
+      if (key === "role") {
+        role = value;
+      } else if (key === "preference") {
+        try {
+          preference = JSON.parse(decodeURIComponent(value));
+        } catch (e) {
+          preference = value;
+        }
+      } else if (key) {
+        filters.push(`ii.${key}=?`);
+        values.push(value);
+      }
+    });
+
+    let formatting = filters.join(" AND ");
+
+    let locations = [];
+    if (Array.isArray(preference)) {
+      locations = preference;
+    } else if (preference && preference.inventory_location) {
+      locations = preference.inventory_location;
+    }
+
+    if (role !== "0" && role !== "1" && locations.length > 0) {
+      const locPlaceholders = locations.map(() => "?").join(",");
+      if (formatting) {
+        formatting += ` AND ii.location IN (${locPlaceholders})`;
+      } else {
+        formatting = `ii.location IN (${locPlaceholders})`;
+      }
+      values.push(...locations);
+    }
+
+    // Fallback to 1=1 if no filters to avoid SQL syntax error
+    if (!formatting) {
+      formatting = "1=1";
+    }
 
     const query = `
       SELECT ii.item_id, ii.serial_number, ii.warehouse, ii.category_name, ii.item_group, ii.cost, ii.ownership,
@@ -146,7 +187,7 @@ const checkingInventoryCurrentState = async (request, response) => {
       ) max_iiae ON ii.item_id = max_iiae.item_id
       LEFT JOIN item_inv_assigned_event iiae ON ii.item_id = iiae.item_id AND max_iiae.max_created_at = iiae.created_at
       LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
-      WHERE ii.${formatting};`;
+      WHERE ${formatting};`;
 
     const [result] = await connection.execute(query, values);
     response.status(200).json({ ok: true, result });
