@@ -411,7 +411,8 @@ func InsertBulkItemAlpha(db *sql.DB, req BulkItemAlphaRequest) error {
 
 // RetrieveItemDataRequest matches the input for retrieving item data
 type RetrieveItemDataRequest struct {
-	CompanyID string `json:"company_id"`
+	CompanyID interface{} `json:"company_id"`
+	Locations []string    `json:"locations"`
 }
 
 type GroupStats struct {
@@ -428,6 +429,19 @@ type GroupedData struct {
 
 // RetrieveItemData fetches and aggregates item data
 func RetrieveItemData(db *sql.DB, req RetrieveItemDataRequest) (int, int, GroupedData, error) {
+	var companyID string
+	switch v := req.CompanyID.(type) {
+	case string:
+		companyID = v
+	case float64:
+		companyID = fmt.Sprintf("%.0f", v)
+	case int:
+		companyID = strconv.Itoa(v)
+	default:
+		// Fallback or error, but let's try string conversion just in case
+		companyID = fmt.Sprintf("%v", v)
+	}
+
 	query := `
       SELECT 
         category_name, item_group, brand, ownership, warehouse
@@ -435,7 +449,19 @@ func RetrieveItemData(db *sql.DB, req RetrieveItemDataRequest) (int, int, Groupe
       WHERE company_id = ?
     `
 
-	rows, err := db.Query(query, req.CompanyID)
+	args := []interface{}{companyID}
+
+	if len(req.Locations) > 0 {
+		placeholders := make([]string, len(req.Locations))
+		for i, loc := range req.Locations {
+			placeholders[i] = "?"
+			args = append(args, loc)
+		}
+		query += fmt.Sprintf(" AND location IN (%s)", strings.Join(placeholders, ","))
+	}
+	fmt.Println("query:", query)
+	fmt.Println("args:", args)
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return 0, 0, GroupedData{}, err
 	}
@@ -649,11 +675,13 @@ func ItemFinalStatusWhenEventIsFinished(db *sql.DB, req ItemFinalStatusRequest) 
 
 // CheckItemRequest matches the Node.js request body for checking items
 type CheckItemRequest struct {
-	Filters map[string]string `json:"filters"`
+	Filters   map[string]interface{} `json:"filters"`
+	Locations []string               `json:"locations"`
 }
 
 // CheckItem handles dynamic filtering of items
 func CheckItem(db *sql.DB, req CheckItemRequest) ([]map[string]interface{}, error) {
+	fmt.Printf("CheckItem Payload: %+v\n", req)
 	// Start with base query
 	query := "SELECT * FROM item_inv WHERE 1=1"
 	var args []interface{}
@@ -668,7 +696,31 @@ func CheckItem(db *sql.DB, req CheckItemRequest) ([]map[string]interface{}, erro
 		}
 
 		conditions = append(conditions, fmt.Sprintf("%s = ?", key))
-		args = append(args, value)
+
+		// Handle different types for value
+		var strVal string
+		switch v := value.(type) {
+		case string:
+			strVal = v
+		case float64:
+			strVal = fmt.Sprintf("%.0f", v)
+		case int:
+			strVal = strconv.Itoa(v)
+		case bool:
+			strVal = fmt.Sprintf("%t", v)
+		default:
+			strVal = fmt.Sprintf("%v", v)
+		}
+		args = append(args, strVal)
+	}
+
+	if len(req.Locations) > 0 {
+		placeholders := make([]string, len(req.Locations))
+		for i, loc := range req.Locations {
+			placeholders[i] = "?"
+			args = append(args, loc)
+		}
+		conditions = append(conditions, fmt.Sprintf("location IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	if len(conditions) > 0 {
@@ -692,10 +744,12 @@ func CheckItem(db *sql.DB, req CheckItemRequest) ([]map[string]interface{}, erro
 // InventoryCurrentStateRequest matches request for checking inventory current state
 type InventoryCurrentStateRequest struct {
 	CompanyID interface{} `json:"company_id"`
+	Locations []string    `json:"locations"`
 }
 
 // CheckingInventoryCurrentState handles the complex join query for inventory state
 func CheckingInventoryCurrentState(db *sql.DB, req InventoryCurrentStateRequest) ([]map[string]interface{}, error) {
+	fmt.Printf("CheckingInventoryCurrentState Payload: %+v\n", req)
 	var companyID string
 	switch v := req.CompanyID.(type) {
 	case string:
@@ -720,10 +774,21 @@ func CheckingInventoryCurrentState(db *sql.DB, req InventoryCurrentStateRequest)
     LEFT JOIN item_inv_assigned_event iiae ON iiae.item_id = ii.item_id
     LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
     WHERE ii.company_id = ?
-    ORDER by iiae.event_id DESC
     `
+	args := []interface{}{companyID}
 
-	rows, err := db.Query(query, companyID)
+	if len(req.Locations) > 0 {
+		placeholders := make([]string, len(req.Locations))
+		for i, loc := range req.Locations {
+			placeholders[i] = "?"
+			args = append(args, loc)
+		}
+		query += fmt.Sprintf(" AND ii.location IN (%s)", strings.Join(placeholders, ","))
+	}
+
+	query += " ORDER by iiae.event_id DESC"
+
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
