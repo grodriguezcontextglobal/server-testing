@@ -12,12 +12,15 @@ const {
   checkLargeData,
   updateSubLocation,
   updateLargeData,
+  checkingItem,
 } = require("../controllers/item");
 
 const router = Router();
 
 // insert items into container
 router.post("/container-items", insertContainerItems);
+
+router.post("/check-item", checkingItem);
 
 router.get("/container-items/:container_item_id", getContainerItems);
 
