@@ -337,12 +337,36 @@ const consultingItemTable = async (request, response) => {
 const consultingItemInWarehouseTable = async (request, response) => {
   try {
     const connection = getConnection();
-    const formatting = Object.keys(request.body)
+    const { role, preference, ...filters } = request.body;
+
+    // Base query construction
+    let formatting = Object.keys(filters)
       .map((item) => `${item}=?`)
       .join(" AND ");
-    const values = Object.values(request.body);
+    const values = Object.values(filters);
+
+    // Apply location filtering if role is not root admin ("0") and preferences exist
+    let locations = [];
+    if (Array.isArray(preference)) {
+      locations = preference;
+    } else if (preference && preference.inventory_location) {
+      locations = preference.inventory_location;
+    }
+
+    if (role !== "0" && role !== "1" && locations.length > 0) {
+      const locationPlaceholders = locations.map(() => "?").join(",");
+
+      if (formatting) {
+        formatting += ` AND location IN (${locationPlaceholders})`;
+      } else {
+        formatting = `location IN (${locationPlaceholders})`;
+      }
+
+      values.push(...locations);
+    }
     const query = `SELECT * FROM item_inv WHERE ${formatting};`;
     const [result] = await connection.execute(query, values);
+
     return response.status(201).json({
       ok: true,
       items: result,
@@ -763,10 +787,32 @@ const consultingInventoryTracking = async (request, response) => {
 const checkingInventoryCurrentState = async (request, response) => {
   try {
     const company_id = request.params.company_id;
+    const { role, preference } = request.query;
+    let locations = [];
+    if (role !== "0" && role !== "1" && preference) {
+      if (Array.isArray(preference)) {
+        locations = preference;
+      } else {
+        try {
+          const parsed = JSON.parse(preference);
+          if (Array.isArray(parsed)) {
+            locations = parsed;
+          } else if (parsed.inventory_location) {
+            locations = parsed.inventory_location;
+          } else {
+            locations = [preference];
+          }
+        } catch (e) {
+          locations = [preference];
+        }
+      }
+    }
+
     const workerResponse = await runGoWorker(
       "checking-inventory-current-state",
       {
         company_id: company_id,
+        locations: locations,
       }
     );
 
@@ -789,21 +835,50 @@ const checkingInventoryCurrentState = async (request, response) => {
 
 const checkingItem = async (request, response) => {
   try {
-    //company_id=122&warehouse=true&enableAssignFeature=1
-    const params = request._parsedUrl.query;
+    const { role, preference, ...filters } = request.body;
 
-    const filters = {};
-    if (params) {
-      const splitting = params.split("&");
-      splitting.forEach((item) => {
-        const [key, value] = item.split("=");
-        if (key) {
-          filters[key] = value;
-        }
+    // Validate required company_id
+    if (!filters.company_id) {
+      return response.status(400).json({
+        ok: false,
+        msg: "company_id is required",
       });
     }
 
-    const result = await runGoWorker("check-item", { filters });
+    // Validate filters to prevent undefined values
+    const cleanFilters = {};
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined) {
+        cleanFilters[key] = value;
+      }
+    }
+
+    const workerPayload = { filters: cleanFilters };
+
+    let locations = [];
+    let parsedPreference = preference;
+
+    // Handle stringified preference if it comes as a string
+    if (typeof preference === "string") {
+      try {
+        parsedPreference = JSON.parse(preference);
+      } catch (e) {
+        // keep original value
+      }
+    }
+
+    if (Array.isArray(parsedPreference)) {
+      locations = parsedPreference;
+    } else if (parsedPreference && parsedPreference.inventory_location) {
+      locations = parsedPreference.inventory_location;
+    }
+
+    if (role && role !== "0" && role !== "1" && locations.length > 0) {
+      workerPayload.locations = locations;
+    }
+
+    // Explicitly log before calling worker
+    const result = await runGoWorker("check-item", workerPayload);
 
     return response.status(201).json({
       cached: false,
@@ -811,8 +886,8 @@ const checkingItem = async (request, response) => {
       items: result,
     });
   } catch (error) {
-    logger.error("Error:", error.message);
-    response.status(500).json({
+    logger.error("checkingItem - Error:", error.message);
+    return response.status(500).json({
       ok: false,
       msg: `${error.message}`,
     });
@@ -1583,12 +1658,34 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
 
 const retrieveItemData = async (request, response) => {
   try {
-    const { company_id } = request.body;
+    const { company_id, role, preference } = request.body;
 
-    const result = await runGoWorker("retrieve-item-data", {
+    const workerPayload = {
       company_id: String(company_id),
-    });
+    };
 
+    let locations = [];
+    let parsedPreference = preference;
+
+    // Handle stringified preference if it comes as a string
+    if (typeof preference === "string") {
+      try {
+        parsedPreference = JSON.parse(preference);
+      } catch (e) {
+        logger.warn("Failed to parse preference string:", e.message);
+      }
+    }
+
+    if (Array.isArray(parsedPreference)) {
+      locations = parsedPreference;
+    } else if (parsedPreference && parsedPreference.inventory_location) {
+      locations = parsedPreference.inventory_location;
+    }
+
+    if (role !== "0" && role !== "1" && locations.length > 0) {
+      workerPayload.locations = locations;
+    }
+    const result = await runGoWorker("retrieve-item-data", workerPayload);
     return response.status(200).json({
       ok: true,
       totalAvailable: result.totalAvailable,
@@ -2454,7 +2551,7 @@ const updateSubLocation = async (req, res) => {
 
 const getInventoryHierarchyWithTypes = async (request, response) => {
   try {
-    const { company_id } = request.body;
+    const { company_id, role, preference } = request.body;
 
     if (!company_id) {
       return response.status(400).json({
@@ -2463,14 +2560,30 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
       });
     }
 
-    const query = `
+    let query = `
       SELECT 
         item_id, item_group, warehouse, location, sub_location
       FROM item_inv
       WHERE company_id = ?
     `;
 
-    const [items] = await connection.execute(query, [company_id]);
+    const values = [company_id];
+
+    if (
+      role &&
+      role !== "0" &&
+      role !== "1" &&
+      preference &&
+      preference.inventory_location &&
+      preference.inventory_location.length > 0
+    ) {
+      const locations = preference.inventory_location;
+      const placeholders = locations.map(() => "?").join(",");
+      query += ` AND location IN (${placeholders})`;
+      values.push(...locations);
+    }
+
+    const [items] = await connection.execute(query, values);
 
     // Group items by location
     const locationGroups = {};
