@@ -1,5 +1,5 @@
 const runGoWorker = async (command, args, retries = 3) => {
-  const port = process.env.GO_WORKER_PORT || 8081;
+  const port = process.env.GO_WORKER_PORT || 7453;
   const url = `http://localhost:${port}/${command}`;
 
   for (let i = 0; i < retries; i++) {
