@@ -130,6 +130,32 @@ const Company = new Schema({
             required: false,
           },
         ],
+        managerLocation: [
+          {
+            location: {
+              type: String,
+              required: false,
+            },
+            actions: {
+              create: {
+                type: Boolean,
+                default: false,
+              },
+              update: {
+                type: Boolean,
+                default: false,
+              },
+              transfer: {
+                type: Boolean,
+                default: false,
+              },
+              delete: {
+                type: Boolean,
+                default: false,
+              },
+            },
+          },
+        ],
       },
       userId: {
         type: Schema.Types.ObjectId,
@@ -147,8 +173,8 @@ const Company = new Schema({
     type: Object,
     required: false,
     default: {
-      test:null,
-      live:null,
+      test: null,
+      live: null,
     },
   },
   structure: {
