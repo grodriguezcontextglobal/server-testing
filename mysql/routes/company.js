@@ -142,5 +142,7 @@ router.post("/delete-bulk-items", deleteBulkItems);
 //checking item info
 router.post("/check-item", checkingItem);
 
+//retrieve company items with locations
+router.post("/retrieve-company-items-with-locations", retrieveCompanyInventory);
 
 module.exports = router;
