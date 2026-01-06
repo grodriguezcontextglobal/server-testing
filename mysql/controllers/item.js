@@ -1,6 +1,6 @@
 const { response, request } = require("express");
 const getConnection = require("../database/config");
-// const { clientRedis } = require("../../database/cacheMemoryConfig");
+const { clientRedis } = require("../../database/cacheMemoryConfig");
 const { groupBy } = require("lodash");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
@@ -1058,22 +1058,38 @@ const gettingDataFromLocationOption = async (request, response) => {
     const connection = getConnection();
     const params = request._parsedUrl.query;
     const company_id = new URLSearchParams(params).get("company_id");
+    
+    // Updated query to fetch from locations table and join with item_inv
+    // This ensures locations without inventory are included
     const query = `
-      SELECT location, COUNT(location) as total_count, 
-             SUM(CASE WHEN warehouse = false and enableAssignFeature = true THEN 1 ELSE 0 END) as warehouse_true_count
-      FROM item_inv 
-      WHERE company_id = ?
-      GROUP BY location
-      ORDER BY location ASC
+      SELECT 
+        l.location_name as location, 
+        COUNT(i.item_id) as total_count, 
+        SUM(CASE WHEN i.warehouse = 0 and i.enableAssignFeature = 1 THEN 1 ELSE 0 END) as warehouse_true_count
+      FROM locations l
+      LEFT JOIN item_inv i ON l.location_name = i.location AND l.company_id = i.company_id
+      WHERE l.company_id = ? AND l.status = 'active'
+      GROUP BY l.location_id, l.location_name
+      ORDER BY l.location_name ASC
     `;
 
     const values = [company_id];
 
     // Execute the query
     const [result] = await connection.execute(query, values);
+    
+    // Format result to match previous output structure (if needed)
+    // The previous output was just the result array, which is fine.
+    // However, ensure null counts (from LEFT JOIN) are 0
+    const formattedResult = result.map(row => ({
+      location: row.location,
+      total_count: Number(row.total_count || 0),
+      warehouse_true_count: Number(row.warehouse_true_count || 0)
+    }));
+
     return response.status(201).json({
       ok: true,
-      items: result,
+      items: formattedResult,
       cached: false,
     });
   } catch (error) {
@@ -2907,7 +2923,91 @@ const deleteBulkItems = async (request, response) => {
   }
 };
 
+const ensureIndexes = async (connection) => {
+  try {
+    const [idxCompany] = await connection.execute(
+      "SELECT COUNT(1) AS cnt FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'item_inv' AND index_name = 'idx_item_inv_company_id'"
+    );
+    if ((idxCompany[0]?.cnt ?? 0) === 0) {
+      await connection.query("CREATE INDEX idx_item_inv_company_id ON item_inv (company_id)");
+    }
+    const [idxLocation] = await connection.execute(
+      "SELECT COUNT(1) AS cnt FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'item_inv' AND index_name = 'idx_item_inv_location'"
+    );
+    if ((idxLocation[0]?.cnt ?? 0) === 0) {
+      await connection.query("CREATE INDEX idx_item_inv_location ON item_inv (location)");
+    }
+  } catch (e) {
+    logger.warn("ensureIndexes error:", e.message);
+  }
+};
+
+const retrieveCompanyItemsWithLocations = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const cache = await clientRedis();
+
+    const { company_id, locations, limit, offset } = request.body;
+
+    if (!company_id || (typeof company_id !== "string" && typeof company_id !== "number")) {
+      return response.status(400).json({ ok: false, msg: "company_id is required" });
+    }
+    if (locations !== undefined && !Array.isArray(locations)) {
+      return response.status(400).json({ ok: false, msg: "locations must be an array if provided" });
+    }
+
+    const lim = Number.isInteger(limit) && limit > 0 ? limit : 50;
+    const off = Number.isInteger(offset) && offset >= 0 ? offset : 0;
+    const locs = Array.isArray(locations)
+      ? locations.filter((l) => typeof l === "string" && l.trim() !== "")
+      : [];
+
+    const cacheKey = `items_company=${company_id}&locations=${locs.join(",")}&limit=${lim}&offset=${off}`;
+    const cached = await cache.get(cacheKey);
+    if (cached) {
+      const payload = JSON.parse(cached);
+      return response.status(200).json(payload);
+    }
+
+    await ensureIndexes(connection);
+
+    let where = "company_id = ?";
+    const args = [company_id];
+    if (locs.length > 0) {
+      where += ` AND location IN (${locs.map(() => "?").join(",")})`;
+      args.push(...locs);
+    }
+
+    const [countRows] = await connection.execute(
+      `SELECT COUNT(*) AS total FROM item_inv WHERE ${where}`,
+      args
+    );
+    const total = Number(countRows[0]?.total ?? 0);
+
+    const [rows] = await connection.execute(
+      `SELECT * FROM item_inv WHERE ${where} ORDER BY item_id ASC LIMIT ? OFFSET ?`,
+      [...args, lim, off]
+    );
+
+    const payload = {
+      ok: true,
+      cached: false,
+      metadata: { total, limit: lim, offset: off, returned: rows.length },
+      items: rows,
+    };
+
+    await cache.set(cacheKey, JSON.stringify(payload));
+    await cache.expire(cacheKey, 60);
+
+    return response.status(200).json(payload);
+  } catch (error) {
+    logger.error("retrieveCompanyItemsWithLocations error:", error);
+    return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 module.exports = {
+  retrieveCompanyItemsWithLocations,
   checkingIfCompanyHasInventory,
   checkingInventoryCurrentState,
   checkingItem,
