@@ -1064,13 +1064,15 @@ const gettingDataFromLocationOption = async (request, response) => {
     const query = `
       SELECT 
         l.location_name as location, 
+        sl.name as sub_location_name,
         COUNT(i.item_id) as total_count, 
         SUM(CASE WHEN i.warehouse = 0 and i.enableAssignFeature = 1 THEN 1 ELSE 0 END) as warehouse_true_count
       FROM locations l
-      LEFT JOIN item_inv i ON l.location_name = i.location AND l.company_id = i.company_id
+      LEFT JOIN item_inv i ON l.location_id = i.location_id
+      LEFT JOIN sub_locations sl ON i.sub_location_id = sl.sub_location_id
       WHERE l.company_id = ? AND l.status = 'active'
-      GROUP BY l.location_id, l.location_name
-      ORDER BY l.location_name ASC
+      GROUP BY l.location_id, l.location_name, sl.sub_location_id, sl.name
+      ORDER BY l.location_name ASC, sl.name ASC
     `;
 
     const values = [company_id];
@@ -2485,38 +2487,96 @@ const updateSubLocation = async (req, res) => {
       });
     }
 
+    const connection = getConnection();
+
     // Handle location update (index 0)
     if (currentIndex === 0) {
-      const updateQuery = `
+      // Update locations table
+      const updateLocationQuery = `
+        UPDATE locations
+        SET location_name = ?
+        WHERE company_id = ? AND location_name = ?
+      `;
+      
+      const [locResult] = await connection.query(updateLocationQuery, [newName, company_id, path[0]]);
+
+      // Backward compatibility: Update item_inv.location (string)
+      const updateItemInvQuery = `
         UPDATE item_inv
         SET location = ?
-        WHERE company_id = ? 
-        AND location = ?`;
-
-      const [updateResult] = await connection.query(updateQuery, [
-        newName,
-        company_id,
-        path[0],
-      ]);
-
-      if (updateResult.affectedRows === 0) {
-        return res.status(404).json({
-          ok: false,
-          message: "No matching items found to update",
-        });
-      }
+        WHERE company_id = ? AND location = ?
+      `;
+      await connection.query(updateItemInvQuery, [newName, company_id, path[0]]);
 
       return res.status(200).json({
         ok: true,
         message: "Location updated successfully",
-        affectedRows: updateResult.affectedRows,
+        affectedRows: locResult.affectedRows,
       });
     }
 
     // Handle sub_location update (index > 0)
-    const updateIndex = currentIndex - 1;
+    // For relational structure, we need to find the specific sub_location record and update its name
+    // The 'path' array represents the hierarchy: [Location, Sub1, Sub2, ...]
+    
+    // 1. Find the location_id
+    const [locations] = await connection.query(
+        "SELECT location_id FROM locations WHERE company_id = ? AND location_name = ?",
+        [company_id, path[0]]
+    );
 
-    // Build the WHERE conditions to match each element in the path array (excluding index 0)
+    if (locations.length === 0) {
+        return res.status(404).json({ ok: false, message: "Location not found" });
+    }
+    const locationId = locations[0].location_id;
+
+    // 2. Traverse the hierarchy to find the target sub_location_id
+    // path: ["Building A", "Floor 3", "Room 101"]
+    // currentIndex: 2 (updating "Room 101" to newName)
+    // We need to find the ID of "Room 101" which is a child of "Floor 3", which is a child of "Building A"
+    
+    let currentParentId = null;
+    let targetSubLocationId = null;
+
+    // Iterate up to the target index
+    for (let i = 1; i <= currentIndex; i++) {
+        const nameToFind = path[i];
+        
+        let query = "SELECT sub_location_id FROM sub_locations WHERE location_id = ? AND name = ?";
+        const params = [locationId, nameToFind];
+        
+        if (currentParentId === null) {
+            query += " AND parent_id IS NULL";
+        } else {
+            query += " AND parent_id = ?";
+            params.push(currentParentId);
+        }
+        
+        const [subs] = await connection.query(query, params);
+        
+        if (subs.length === 0) {
+            // If we can't find the path in relational table, we might need to fallback to JSON update or fail
+            // For now, let's assume migration has run and fail if not found
+             return res.status(404).json({ ok: false, message: `Sub-location segment '${nameToFind}' not found in relational structure` });
+        }
+        
+        currentParentId = subs[0].sub_location_id;
+        if (i === currentIndex) {
+            targetSubLocationId = currentParentId;
+        }
+    }
+
+    if (targetSubLocationId) {
+        // Update the sub_locations table
+        await connection.query(
+            "UPDATE sub_locations SET name = ? WHERE sub_location_id = ?",
+            [newName, targetSubLocationId]
+        );
+    }
+
+    // Maintain Backward Compatibility: Update JSON in item_inv
+    // This logic mimics the original JSON update behavior
+    const updateIndex = currentIndex - 1;
     const pathConditions = path
       .slice(1)
       .map(
@@ -2542,13 +2602,6 @@ const updateSubLocation = async (req, res) => {
       path[0],
       ...path.slice(1),
     ]);
-
-    if (updateResult.affectedRows === 0) {
-      return res.status(404).json({
-        ok: false,
-        message: "No matching items found to update",
-      });
-    }
 
     return res.status(200).json({
       ok: true,
