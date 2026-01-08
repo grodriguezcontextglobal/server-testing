@@ -178,7 +178,8 @@ const configureRoutes = (app) => {
     lease: require("./mysql/routes/lease"),
     inventory: require("./mysql/routes/inventory"),
     member: require("./mysql/routes/members"),
-    location_manager: require("./mysql/routes/location_manager"),
+    location: require("./mysql/routes/location"),
+    "sub_location": require("./mysql/routes/sub_location"),
     // utils: require("./mysql/routes/utils")
   };
 
