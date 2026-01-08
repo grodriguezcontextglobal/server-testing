@@ -179,6 +179,7 @@ const configureRoutes = (app) => {
     inventory: require("./mysql/routes/inventory"),
     member: require("./mysql/routes/members"),
     location: require("./mysql/routes/location"),
+    "sub_location": require("./mysql/routes/sub_location"),
     // utils: require("./mysql/routes/utils")
   };
 
