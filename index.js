@@ -178,6 +178,7 @@ const configureRoutes = (app) => {
     lease: require("./mysql/routes/lease"),
     inventory: require("./mysql/routes/inventory"),
     member: require("./mysql/routes/members"),
+    location_manager: require("./mysql/routes/location_manager"),
     // utils: require("./mysql/routes/utils")
   };
 
@@ -301,6 +302,14 @@ const startServer = () => {
       logger.warn(
         `Go worker executable not found at ${workerPath}. Skipping start.`
       );
+    }
+
+    // Initialize Scheduled Jobs
+    try {
+      const { initScheduledJobs } = require("./scheduler");
+      initScheduledJobs();
+    } catch (error) {
+      logger.error("Failed to initialize scheduled jobs:", error);
     }
   }
 
