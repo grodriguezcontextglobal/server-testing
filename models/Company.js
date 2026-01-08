@@ -153,6 +153,14 @@ const Company = new Schema({
                 type: Boolean,
                 default: false,
               },
+              assign: {
+                type: Boolean,
+                default: false,
+              },
+              view: {
+                type: Boolean,
+                default: true,
+              },
             },
           },
         ],
