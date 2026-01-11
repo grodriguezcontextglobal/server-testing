@@ -4,12 +4,14 @@ const { clientRedis } = require("../../database/cacheMemoryConfig");
 const { groupBy } = require("lodash");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
+const { processLocation } = require("./location");
+const { processSubLocation } = require("./sub_location");
 require("dotenv").config();
-const connection = getConnection();
 
 const insertingItem = async (request, response) => {
-  const connection = getConnection();
-  // const cache_connection = await clientRedis();
+  const pool = getConnection();
+  const connection = await pool.getConnection(); // Get dedicated connection for transaction
+  
   const {
     category_name,
     item_group,
@@ -21,8 +23,8 @@ const insertingItem = async (request, response) => {
     serial_number,
     warehouse,
     company,
-    location,
-    sub_location,
+    location, // Legacy name or object
+    sub_location, // Legacy name/JSON or object
     current_location,
     extra_serial_number,
     company_id,
@@ -31,65 +33,146 @@ const insertingItem = async (request, response) => {
     containerSpotLimit,
     image_url,
     supplier_info,
+    // Extra fields for location/sub-location creation
+    location_name,
+    manager_id,
+    address_details,
+    sub_location_name,
+    sub_location_parent_id,
+    status
   } = request.body;
 
-  const query = `
-    INSERT INTO item_inv (
-      category_name, 
-      item_group, 
-      cost, 
+  try {
+    await connection.beginTransaction();
+
+    // 1. Process Location
+    // Determine location name from various possible inputs
+    const locName = location_name || (typeof location === 'string' ? location : (location?.name || null));
+    
+    let locationId = null;
+    let finalLocationName = locName;
+
+    if (company_id && locName) {
+      const locationData = {
+        company_id,
+        location_name: locName,
+        manager_id,
+        address_details,
+        status
+      };
+      
+      const locResult = await processLocation(connection, locationData);
+      locationId = locResult.location_id;
+      finalLocationName = locResult.location_name;
+    }
+
+    // 2. Process Sub-Location (Optional)
+    let subLocationId = null;
+    let finalSubLocationName = sub_location; // Default to input
+
+    // Check if we have enough info to create/verify sub-location
+    // We need location_id (from step 1) and a sub-location name
+    const subLocName = sub_location_name || (typeof sub_location === 'string' ? sub_location : (sub_location?.name || null));
+
+    if (locationId && subLocName) {
+        const subLocationData = {
+            location_id: locationId,
+            name: subLocName,
+            parent_id: sub_location_parent_id || (sub_location?.parent_id || null),
+            active: true
+        };
+
+        // Only process if it looks like a single sub-location name, not a JSON array string
+        // If it's a JSON array string like '["A","B"]', we might skip creation or handle differently.
+        // For now, we assume simple creation if it's a simple name.
+        let isSimpleName = true;
+        try {
+            const parsed = JSON.parse(subLocName);
+            if (Array.isArray(parsed)) isSimpleName = false;
+        } catch (e) {
+            // Not JSON, so it's a simple string
+        }
+
+        if (isSimpleName) {
+            const subLocResult = await processSubLocation(connection, subLocationData);
+            subLocationId = subLocResult.sub_location_id;
+            finalSubLocationName = subLocResult.name;
+        }
+    }
+
+    // 3. Insert Item
+    const query = `
+      INSERT INTO item_inv (
+        category_name, 
+        item_group, 
+        cost, 
+        brand,
+        descript_item, 
+        ownership, 
+        main_warehouse,
+        serial_number, 
+        warehouse, 
+        company, 
+        location,
+        sub_location,
+        location_id,
+        current_location,
+        extra_serial_number,
+        company_id,
+        return_date,
+        container,
+        containerSpotLimit,
+        enableAssignFeature,
+        image_url,
+        returnedRentedInfo,
+        container_id,
+        display_item,
+        supplier_info
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    // Note: We are attempting to insert location_id. 
+    // If the column doesn't exist, this will fail. 
+    // However, based on location.js bulkAssignInventory, location_id IS used in updates, so it should exist.
+
+    const values = [
+      category_name,
+      item_group,
+      cost,
       brand,
-      descript_item, 
-      ownership, 
+      descript_item,
+      ownership,
       main_warehouse,
-      serial_number, 
-      warehouse, 
-      company, 
-      location,
-      sub_location,
+      serial_number,
+      warehouse,
+      company,
+      finalLocationName, // Legacy location column
+      finalSubLocationName, // Legacy sub_location column
+      locationId, // New location_id column
       current_location,
       extra_serial_number,
       company_id,
-      return_date,
-      container,
-      containerSpotLimit,
-      enableAssignFeature,
-      image_url,
-      returnedRentedInfo,
-      container_id,
-      display_item,
-      supplier_info
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `;
+      return_date || null,
+      container ? container : false,
+      containerSpotLimit ? containerSpotLimit : 0,
+      1,
+      image_url || null,
+      (returnedRentedInfo = JSON.stringify([])),
+      (container_id = JSON.stringify([])),
+      (display_item = 1),
+      supplier_info || null,
+    ];
 
-  const values = [
-    category_name,
-    item_group,
-    cost,
-    brand,
-    descript_item,
-    ownership,
-    main_warehouse,
-    serial_number,
-    warehouse,
-    company,
-    location,
-    sub_location,
-    current_location,
-    extra_serial_number,
-    company_id,
-    return_date || null,
-    container ? container : false,
-    containerSpotLimit ? containerSpotLimit : 0,
-    1,
-    image_url || null,
-    (returnedRentedInfo = JSON.stringify([])),
-    (container_id = JSON.stringify([])),
-    (display_item = 1),
-    supplier_info || null,
-  ];
-  try {
     const [result] = await connection.execute(query, values);
+
+    await connection.commit();
+
+    // Logging
+    logger.info(`Item created successfully: ${result.insertId}`, { 
+        item_id: result.insertId, 
+        company_id, 
+        location_id: locationId 
+    });
 
     // await cache_connection
     //   .promise()
@@ -100,14 +183,19 @@ const insertingItem = async (request, response) => {
 
     return response.status(201).json({
       ok: true,
-      item: result,
+      item: { ...result, location_id: locationId, sub_location_id: subLocationId },
+      msg: "Item created successfully"
     });
+
   } catch (error) {
-    logger.error("Error:", error);
+    await connection.rollback();
+    logger.error("insertingItem error:", error);
     return response.status(500).json({
       ok: false,
       msg: error.message,
     });
+  } finally {
+    connection.release();
   }
 };
 
@@ -2621,7 +2709,7 @@ const updateSubLocation = async (req, res) => {
 const getInventoryHierarchyWithTypes = async (request, response) => {
   try {
     const { company_id, role, preference } = request.body;
-
+const connection = getConnection();
     if (!company_id) {
       return response.status(400).json({
         ok: false,
