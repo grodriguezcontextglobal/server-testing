@@ -31,4 +31,7 @@ router.put(
 
 router.get("/companies/:id/locations", getCompanyLocations);
 
+router.post("/companies/:id/locations", getCompanyLocations);
+
+
 module.exports = router;
