@@ -266,6 +266,7 @@ const getCompanyLocations = async (req, res) => {
     locations.forEach((loc) => {
       locationMap[loc.location_id] = loc.location_name;
       data[loc.location_name] = {
+        location_id: loc.location_id,
         total: 0,
         available: 0,
         types: new Set(),
@@ -349,9 +350,55 @@ const getCompanyLocations = async (req, res) => {
   }
 };
 
+/**
+ * Deletes a location by ID
+ * @param {Object} req - Express request object
+ * @param {Object} req.params - Request parameters
+ * @param {string} req.params.id - Location ID to delete
+ * @param {Object} res - Express response object
+ * @returns {Object} JSON response indicating success or failure
+ */
+const deleteLocation = async (req, res) => {
+  const connection = getConnection();
+  const { id: location_id } = req.params;
+
+  if (!location_id) {
+    return res.status(400).json({ ok: false, msg: "Location ID is required" });
+  }
+
+  try {
+    const [result] = await connection.execute(
+      "DELETE FROM locations WHERE location_id = ?",
+      [location_id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ ok: false, msg: "Location not found" });
+    }
+
+    logger.info(`Location deleted successfully: ${location_id}`);
+
+    return res.status(200).json({
+      ok: true,
+      msg: "Location deleted successfully",
+    });
+  } catch (error) {
+    logger.error("deleteLocation error:", error);
+    // Handle foreign key constraint errors
+    if (error.code === "ER_ROW_IS_REFERENCED_2") {
+      return res.status(409).json({
+        ok: false,
+        msg: "Cannot delete location because it is referenced by other records.",
+      });
+    }
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 module.exports = {
   createLocation,
   bulkAssignInventory,
   getCompanyLocations,
   processLocation,
+  deleteLocation,
 };
