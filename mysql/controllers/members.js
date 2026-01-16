@@ -1,12 +1,11 @@
 require("dotenv").config();
-const logger = require("../../helpers/logger");
+// const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
 const connection = getConnection();
 
 const insertNewMember = async (request, response) => {
   try {
     const body = request.body || {};
-    logger.info("body", body);
     // Normalize name fields: support `name` or `first_name`/`last_name`
     let first_name = body.first_name
       ? String(body.first_name).trim()
@@ -117,7 +116,6 @@ const insertNewMember = async (request, response) => {
     )}) VALUES (${placeholders})`;
 
     const [result] = await connection.query(query, values);
-    logger.info(`Member inserted with ID: ${result.insertId}`);
     return response.status(201).json({
       ok: true,
       message: "Member inserted successfully",
@@ -125,7 +123,6 @@ const insertNewMember = async (request, response) => {
       inserted_fields: columns,
     });
   } catch (error) {
-    logger.error(`Error inserting member: ${error.message}`);
     return response.status(500).json({
       message: "Internal server error",
       error: error.message,
@@ -136,7 +133,6 @@ const insertNewMember = async (request, response) => {
 const insertBulkMembers = async (request, response) => {
   try {
     const body = request.body || {};
-    logger.info("body", body);
     const input = Array.isArray(body.rows)
       ? body.rows
       : Array.isArray(body.members)
@@ -146,7 +142,6 @@ const insertBulkMembers = async (request, response) => {
       : Array.isArray(body.data)
       ? body.data
       : [];
-    logger.info("input", input);
     if (!input.length) {
       return response.status(400).json({
         ok: false,
@@ -175,7 +170,7 @@ const insertBulkMembers = async (request, response) => {
         last_name !== undefined && last_name !== null
           ? String(last_name).trim()
           : undefined;
-
+      let external_id = r.external_id ?? r.externalId;
       let address = r.address ? String(r.address).trim() : undefined;
       let address_street = r.address_street ?? r.street ?? r.addressStreet;
       let address_city = r.address_city ?? r.city ?? r.addressCity;
@@ -271,6 +266,7 @@ const insertBulkMembers = async (request, response) => {
         last_name,
         email,
         phone_number,
+        external_id,
         address,
         address_street,
         address_city,
@@ -298,6 +294,7 @@ const insertBulkMembers = async (request, response) => {
       "last_name",
       "email",
       "phone_number",
+      "external_id",
       "address",
       "address_street",
       "address_city",
@@ -329,13 +326,8 @@ const insertBulkMembers = async (request, response) => {
     const query = `INSERT INTO members_info (${columns.join(
       ", "
     )}) VALUES ${placeholders}`;
-    logger.info(`Query: ${query}`);
-    logger.info(`Values: ${values}`);
     const [result] = await connection.query(query, values);
 
-    logger.info(
-      `Bulk members inserted: requested=${input.length}, inserted=${valid.length}, skipped=${skipped}`
-    );
     return response.status(201).json({
       ok: true,
       requested: input.length,
@@ -346,7 +338,6 @@ const insertBulkMembers = async (request, response) => {
       columns,
     });
   } catch (error) {
-    logger.error(`Error bulk inserting members: ${error.message}`);
     return response
       .status(500)
       .json({ ok: false, msg: "Internal server error", error: error.message });
@@ -456,11 +447,6 @@ const retrieveMembersAssignedDevices = async (request, response) => {
     const selectList = leaseSelectParts.concat(itemSelectParts).join(", ");
 
     const query = `SELECT ${selectList} FROM member_assigned_device_lease AS madl LEFT JOIN item_inv AS ii ON ii.\`item_id\` = madl.\`device_id\`${whereClause}`;
-    logger.info(
-      `member_assigned_device_lease SELECT+JOIN item_inv -> where: ${
-        filters.join(" AND ") || "<none>"
-      }`
-    );
     const [rows] = await connection.query(query, values);
     return response.status(200).json({
       ok: true,
@@ -469,9 +455,6 @@ const retrieveMembersAssignedDevices = async (request, response) => {
       rows,
     });
   } catch (error) {
-    logger.error(
-      `Error retrieving member_assigned_device_lease rows: ${error.message}`
-    );
     return response
       .status(500)
       .json({ ok: false, msg: "Internal server error", error: error.message });
@@ -600,7 +583,6 @@ const updateMemberInfo = async (request, response) => {
       affectedRows: result.affectedRows || 0,
     });
   } catch (error) {
-    logger.error(`Error updating member: ${error.message}`);
     return response
       .status(500)
       .json({ message: "Internal server error", error: error.message });
@@ -643,7 +625,6 @@ const deleteMember = async (request, response) => {
       affectedRows: result.affectedRows || 0,
     });
   } catch (error) {
-    logger.error(`Error deleting member(s): ${error.message}`);
     return response
       .status(500)
       .json({ ok: false, msg: "Internal server error", error: error.message });
@@ -695,7 +676,6 @@ const retrieveMemberInfo = async (request, response) => {
     const [rows] = await connection.query(query, values);
     return response.status(200).json({ ok: true, members: rows });
   } catch (error) {
-    logger.error(`Error retrieving members: ${error.message}`);
     return response
       .status(500)
       .json({ ok: false, msg: "Internal server error", error: error.message });
@@ -835,9 +815,6 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
     const query = `INSERT INTO member_assigned_device_lease (${columns.join(
       ", "
     )}) VALUES ${placeholders}`;
-    logger.info(
-      `member_assigned_device_lease INSERT -> columns: ${columns.join(", ")}`
-    );
 
     const [result] = await connection.query(query, values);
     return response.status(201).json({
@@ -848,9 +825,6 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
       columns,
     });
   } catch (error) {
-    logger.error(
-      `Error inserting new row in member_assigned_device_lease: ${error.message}`
-    );
     return response
       .status(500)
       .json({ ok: false, msg: "Internal server error", error: error.message });
@@ -861,7 +835,6 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
 const updateMemberAssignedDeviceLeaseRow = async (request, response) => {
   try {
     const body = request.body || {};
-
     // Lookup schema to validate columns
     const [schemaRes] = await connection.query(
       "SHOW COLUMNS FROM member_assigned_device_lease"
@@ -985,9 +958,6 @@ const updateMemberAssignedDeviceLeaseRow = async (request, response) => {
       affectedRows: result.affectedRows || 0,
     });
   } catch (error) {
-    logger.error(
-      `Error updating member_assigned_device_lease: ${error.message}`
-    );
     return response
       .status(500)
       .json({ ok: false, msg: "Internal server error", error: error.message });
@@ -1084,9 +1054,6 @@ const deleteMemberAssignedDeviceLeaseRows = async (request, response) => {
       affectedRows: result.affectedRows || 0,
     });
   } catch (error) {
-    logger.error(
-      `Error deleting member_assigned_device_lease rows: ${error.message}`
-    );
     return response
       .status(500)
       .json({ ok: false, msg: "Internal server error", error: error.message });
@@ -1133,9 +1100,6 @@ const removeRowAssignedDeviceLeaseMember = async (request, response) => {
     ];
     const query =
       "DELETE madl FROM member_assigned_device_lease AS madl WHERE madl.`device_id` = ? AND madl.`company_id` = ? AND madl.`member_id` = ?";
-    logger.info(
-      "member_assigned_device_lease DELETE -> criteria: device_id, company_id, member_id"
-    );
     const [res] = await connection.query(query, values);
     return response.status(200).json({
       ok: true,
@@ -1147,9 +1111,6 @@ const removeRowAssignedDeviceLeaseMember = async (request, response) => {
       },
     });
   } catch (error) {
-    logger.error(
-      `Error deleting member_assigned_device_lease row by composite keys: ${error.message}`
-    );
     return response
       .status(500)
       .json({ ok: false, msg: "Internal server error", error: error.message });
