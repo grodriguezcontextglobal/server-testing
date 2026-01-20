@@ -11,7 +11,7 @@ require("dotenv").config();
 const insertingItem = async (request, response) => {
   const pool = getConnection();
   const connection = await pool.getConnection(); // Get dedicated connection for transaction
-  
+
   const {
     category_name,
     item_group,
@@ -39,7 +39,7 @@ const insertingItem = async (request, response) => {
     address_details,
     sub_location_name,
     sub_location_parent_id,
-    status
+    status,
   } = request.body;
 
   try {
@@ -47,8 +47,10 @@ const insertingItem = async (request, response) => {
 
     // 1. Process Location
     // Determine location name from various possible inputs
-    const locName = location_name || (typeof location === 'string' ? location : (location?.name || null));
-    
+    const locName =
+      location_name ||
+      (typeof location === "string" ? location : location?.name || null);
+
     let locationId = null;
     let finalLocationName = locName;
 
@@ -58,9 +60,9 @@ const insertingItem = async (request, response) => {
         location_name: locName,
         manager_id,
         address_details,
-        status
+        status,
       };
-      
+
       const locResult = await processLocation(connection, locationData);
       locationId = locResult.location_id;
       finalLocationName = locResult.location_name;
@@ -72,32 +74,39 @@ const insertingItem = async (request, response) => {
 
     // Check if we have enough info to create/verify sub-location
     // We need location_id (from step 1) and a sub-location name
-    const subLocName = sub_location_name || (typeof sub_location === 'string' ? sub_location : (sub_location?.name || null));
+    const subLocName =
+      sub_location_name ||
+      (typeof sub_location === "string"
+        ? sub_location
+        : sub_location?.name || null);
 
     if (locationId && subLocName) {
-        const subLocationData = {
-            location_id: locationId,
-            name: subLocName,
-            parent_id: sub_location_parent_id || (sub_location?.parent_id || null),
-            active: true
-        };
+      const subLocationData = {
+        location_id: locationId,
+        name: subLocName,
+        parent_id: sub_location_parent_id || sub_location?.parent_id || null,
+        active: true,
+      };
 
-        // Only process if it looks like a single sub-location name, not a JSON array string
-        // If it's a JSON array string like '["A","B"]', we might skip creation or handle differently.
-        // For now, we assume simple creation if it's a simple name.
-        let isSimpleName = true;
-        try {
-            const parsed = JSON.parse(subLocName);
-            if (Array.isArray(parsed)) isSimpleName = false;
-        } catch (e) {
-            // Not JSON, so it's a simple string
-        }
+      // Only process if it looks like a single sub-location name, not a JSON array string
+      // If it's a JSON array string like '["A","B"]', we might skip creation or handle differently.
+      // For now, we assume simple creation if it's a simple name.
+      let isSimpleName = true;
+      try {
+        const parsed = JSON.parse(subLocName);
+        if (Array.isArray(parsed)) isSimpleName = false;
+      } catch (e) {
+        // Not JSON, so it's a simple string
+      }
 
-        if (isSimpleName) {
-            const subLocResult = await processSubLocation(connection, subLocationData);
-            subLocationId = subLocResult.sub_location_id;
-            finalSubLocationName = subLocResult.name;
-        }
+      if (isSimpleName) {
+        const subLocResult = await processSubLocation(
+          connection,
+          subLocationData,
+        );
+        subLocationId = subLocResult.sub_location_id;
+        finalSubLocationName = subLocResult.name;
+      }
     }
 
     // 3. Insert Item
@@ -131,8 +140,8 @@ const insertingItem = async (request, response) => {
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
-    // Note: We are attempting to insert location_id. 
-    // If the column doesn't exist, this will fail. 
+    // Note: We are attempting to insert location_id.
+    // If the column doesn't exist, this will fail.
     // However, based on location.js bulkAssignInventory, location_id IS used in updates, so it should exist.
 
     const values = [
@@ -168,10 +177,10 @@ const insertingItem = async (request, response) => {
     await connection.commit();
 
     // Logging
-    logger.info(`Item created successfully: ${result.insertId}`, { 
-        item_id: result.insertId, 
-        company_id, 
-        location_id: locationId 
+    logger.info(`Item created successfully: ${result.insertId}`, {
+      item_id: result.insertId,
+      company_id,
+      location_id: locationId,
     });
 
     // await cache_connection
@@ -183,10 +192,13 @@ const insertingItem = async (request, response) => {
 
     return response.status(201).json({
       ok: true,
-      item: { ...result, location_id: locationId, sub_location_id: subLocationId },
-      msg: "Item created successfully"
+      item: {
+        ...result,
+        location_id: locationId,
+        sub_location_id: subLocationId,
+      },
+      msg: "Item created successfully",
     });
-
   } catch (error) {
     await connection.rollback();
     logger.error("insertingItem error:", error);
@@ -246,7 +258,7 @@ const insertBulkItem = async (request, response) => {
 
     while (currentSerial <= maxSerial) {
       serialNumbers.push(
-        currentSerial.toString().padStart(min_serial_number.length, "0")
+        currentSerial.toString().padStart(min_serial_number.length, "0"),
       );
       currentSerial++;
     }
@@ -544,7 +556,7 @@ const updateItemInTable = async (request, response) => {
     }
 
     const query = `UPDATE item_inv SET ${setParts.join(
-      ", "
+      ", ",
     )} WHERE ${whereParts.join(" AND ")};`;
     const values = [...setValues, ...whereValues];
 
@@ -625,7 +637,7 @@ const returningLeasedEquipmentToCompany = async (request, response) => {
 
 const updateItemInWarehouseAfterBeingAddedToEvent = async (
   request,
-  response
+  response,
 ) => {
   try {
     const { warehouse, company_id, item_group, category_name, data } =
@@ -695,7 +707,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
   } catch (error) {
     logger.error(
       "Error in updateItemInWarehouseAfterBeingAddedToEvent:",
-      error
+      error,
     );
     response.status(500).json({
       ok: false,
@@ -753,7 +765,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
 
 const returningItemToStockWhenEventIsFinishedRefactored = async (
   request,
-  response
+  response,
 ) => {
   try {
     const {
@@ -814,7 +826,7 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
 
 const itemFinalStatusWhenEventIsFinishedRefactored = async (
   request,
-  response
+  response,
 ) => {
   try {
     const {
@@ -901,7 +913,7 @@ const checkingInventoryCurrentState = async (request, response) => {
       {
         company_id: company_id,
         locations: locations,
-      }
+      },
     );
 
     if (workerResponse.status === "error") {
@@ -1146,7 +1158,7 @@ const gettingDataFromLocationOption = async (request, response) => {
     const connection = getConnection();
     const params = request._parsedUrl.query;
     const company_id = new URLSearchParams(params).get("company_id");
-    
+
     // Updated query to fetch from locations table and join with item_inv
     // This ensures locations without inventory are included
     const query = `
@@ -1167,14 +1179,14 @@ const gettingDataFromLocationOption = async (request, response) => {
 
     // Execute the query
     const [result] = await connection.execute(query, values);
-    
+
     // Format result to match previous output structure (if needed)
     // The previous output was just the result array, which is fine.
     // However, ensure null counts (from LEFT JOIN) are 0
-    const formattedResult = result.map(row => ({
+    const formattedResult = result.map((row) => ({
       location: row.location,
       total_count: Number(row.total_count || 0),
-      warehouse_true_count: Number(row.warehouse_true_count || 0)
+      warehouse_true_count: Number(row.warehouse_true_count || 0),
     }));
 
     return response.status(201).json({
@@ -1312,7 +1324,7 @@ const updateContentInContainerItem = async (request, response) => {
 
 const updateItemInTableAfterBeingAddedToEventFromContainer = async (
   request,
-  response
+  response,
 ) => {
   try {
     const connection = getConnection();
@@ -1573,7 +1585,7 @@ const consultingCompanyInventoryWithPagination = async (request, response) => {
 
     // Filter non-undefined keys for WHERE clause
     const filterKeys = Object.keys(body).filter(
-      (key) => body[key] !== undefined
+      (key) => body[key] !== undefined,
     );
     const filters =
       filterKeys.map((key) => `${key} = ?`).join(" AND ") || "1=1";
@@ -1600,7 +1612,7 @@ const consultingCompanyInventoryWithPagination = async (request, response) => {
     `;
 
     const queryValues = [...filterValues, ...cursorParams, pageSize].map((v) =>
-      v === undefined ? null : v
+      v === undefined ? null : v,
     );
 
     const [result] = await connection.execute(query, queryValues);
@@ -1638,7 +1650,7 @@ const buildSublocationQuery = (sublocationSegments = []) => {
 
 const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
   request,
-  response
+  response,
 ) => {
   try {
     const connection = getConnection();
@@ -1680,11 +1692,30 @@ const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
 const getGroupedItemWithFormatInventory = async (request, response) => {
   try {
     const connection = getConnection();
+    const { body } = request;
 
-    const formatting = Object.keys(request.body)
-      .map((item) => `${item} = ?`)
-      .join(" AND ");
-    const values = Object.values(request.body);
+    const conditions = [];
+    const values = [];
+
+    for (const [key, value] of Object.entries(body)) {
+      if (value === null || value === undefined) {
+        continue;
+      }
+
+      if (Array.isArray(value)) {
+        if (value.length > 0) {
+          const placeholders = value.map(() => "?").join(", ");
+          conditions.push(`${key} IN (${placeholders})`);
+          values.push(...value);
+        }
+      } else {
+        conditions.push(`${key} = ?`);
+        values.push(value);
+      }
+    }
+
+    const whereClause =
+      conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
     const query = `
       SELECT 
@@ -1694,7 +1725,7 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
         MIN(descript_item) AS descript_item,
         COUNT(*) AS quantity
       FROM item_inv
-      WHERE ${formatting}
+      ${whereClause}
       GROUP BY 
         category_name,
         item_group
@@ -1719,7 +1750,7 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
 
 const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   request,
-  response
+  response,
 ) => {
   try {
     const connection = getConnection();
@@ -1764,39 +1795,24 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
 
 const retrieveItemData = async (request, response) => {
   try {
-    const { company_id, role, preference } = request.body;
-
+    const { role, company_id, locations } = request.body;
     const workerPayload = {
-      company_id: String(company_id),
+      company_id: company_id,
     };
-
-    let locations = [];
-    let parsedPreference = preference;
-
-    // Handle stringified preference if it comes as a string
-    if (typeof preference === "string") {
-      try {
-        parsedPreference = JSON.parse(preference);
-      } catch (e) {
-        logger.warn("Failed to parse preference string:", e.message);
-      }
+    if (role !== "0") {
+      workerPayload.locations = locations || [];
     }
 
-    if (Array.isArray(parsedPreference)) {
-      locations = parsedPreference;
-    } else if (parsedPreference && parsedPreference.inventory_location) {
-      locations = parsedPreference.inventory_location;
-    }
-
-    if (role !== "0" && role !== "1" && locations.length > 0) {
-      workerPayload.locations = locations;
-    }
+    console.log("workload:", workerPayload);
     const result = await runGoWorker("retrieve-item-data", workerPayload);
+    console.log("result go-worker", result);
     return response.status(200).json({
       ok: true,
       totalAvailable: result.totalAvailable,
       total: result.total,
       groupedData: result.groupedData,
+      query: result.query,
+      args: result.args,
     });
   } catch (error) {
     return response.status(500).json({
@@ -1969,7 +1985,7 @@ const updateAllItemsInInventory = async (request, response) => {
       WHERE item_id IN (${itemIds.map(() => "?").join(", ")})
     `;
     const sanitizedParams = keys.map((k) =>
-      queryToUpdateParams[k] !== undefined ? queryToUpdateParams[k] : null
+      queryToUpdateParams[k] !== undefined ? queryToUpdateParams[k] : null,
     );
     const updateValues = [...sanitizedParams, ...itemIds];
     const [finalResult] = await connection.execute(updateQuery, updateValues);
@@ -2028,7 +2044,7 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
 
     while (currentSerial <= maxSerial) {
       serialNumbers.push(
-        currentSerial.toString().padStart(min_serial_number.length, "0")
+        currentSerial.toString().padStart(min_serial_number.length, "0"),
       );
       currentSerial++;
     }
@@ -2103,7 +2119,7 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
 
 const updateItemsBasedOnAlphanumericSerialNumber = async (
   request,
-  response
+  response,
 ) => {
   try {
     const {
@@ -2309,7 +2325,7 @@ const getContainerItems = async (request, response) => {
         "Parse error details:",
         parseError,
         "\nRaw child_ids:",
-        containerResults[0].child_ids
+        containerResults[0].child_ids,
       );
       return response.status(400).json({
         ok: false,
@@ -2585,8 +2601,12 @@ const updateSubLocation = async (req, res) => {
         SET location_name = ?
         WHERE company_id = ? AND location_name = ?
       `;
-      
-      const [locResult] = await connection.query(updateLocationQuery, [newName, company_id, path[0]]);
+
+      const [locResult] = await connection.query(updateLocationQuery, [
+        newName,
+        company_id,
+        path[0],
+      ]);
 
       // Backward compatibility: Update item_inv.location (string)
       const updateItemInvQuery = `
@@ -2594,7 +2614,11 @@ const updateSubLocation = async (req, res) => {
         SET location = ?
         WHERE company_id = ? AND location = ?
       `;
-      await connection.query(updateItemInvQuery, [newName, company_id, path[0]]);
+      await connection.query(updateItemInvQuery, [
+        newName,
+        company_id,
+        path[0],
+      ]);
 
       return res.status(200).json({
         ok: true,
@@ -2606,15 +2630,15 @@ const updateSubLocation = async (req, res) => {
     // Handle sub_location update (index > 0)
     // For relational structure, we need to find the specific sub_location record and update its name
     // The 'path' array represents the hierarchy: [Location, Sub1, Sub2, ...]
-    
+
     // 1. Find the location_id
     const [locations] = await connection.query(
-        "SELECT location_id FROM locations WHERE company_id = ? AND location_name = ?",
-        [company_id, path[0]]
+      "SELECT location_id FROM locations WHERE company_id = ? AND location_name = ?",
+      [company_id, path[0]],
     );
 
     if (locations.length === 0) {
-        return res.status(404).json({ ok: false, message: "Location not found" });
+      return res.status(404).json({ ok: false, message: "Location not found" });
     }
     const locationId = locations[0].location_id;
 
@@ -2622,44 +2646,48 @@ const updateSubLocation = async (req, res) => {
     // path: ["Building A", "Floor 3", "Room 101"]
     // currentIndex: 2 (updating "Room 101" to newName)
     // We need to find the ID of "Room 101" which is a child of "Floor 3", which is a child of "Building A"
-    
+
     let currentParentId = null;
     let targetSubLocationId = null;
 
     // Iterate up to the target index
     for (let i = 1; i <= currentIndex; i++) {
-        const nameToFind = path[i];
-        
-        let query = "SELECT sub_location_id FROM sub_locations WHERE location_id = ? AND name = ?";
-        const params = [locationId, nameToFind];
-        
-        if (currentParentId === null) {
-            query += " AND parent_id IS NULL";
-        } else {
-            query += " AND parent_id = ?";
-            params.push(currentParentId);
-        }
-        
-        const [subs] = await connection.query(query, params);
-        
-        if (subs.length === 0) {
-            // If we can't find the path in relational table, we might need to fallback to JSON update or fail
-            // For now, let's assume migration has run and fail if not found
-             return res.status(404).json({ ok: false, message: `Sub-location segment '${nameToFind}' not found in relational structure` });
-        }
-        
-        currentParentId = subs[0].sub_location_id;
-        if (i === currentIndex) {
-            targetSubLocationId = currentParentId;
-        }
+      const nameToFind = path[i];
+
+      let query =
+        "SELECT sub_location_id FROM sub_locations WHERE location_id = ? AND name = ?";
+      const params = [locationId, nameToFind];
+
+      if (currentParentId === null) {
+        query += " AND parent_id IS NULL";
+      } else {
+        query += " AND parent_id = ?";
+        params.push(currentParentId);
+      }
+
+      const [subs] = await connection.query(query, params);
+
+      if (subs.length === 0) {
+        // If we can't find the path in relational table, we might need to fallback to JSON update or fail
+        // For now, let's assume migration has run and fail if not found
+        return res.status(404).json({
+          ok: false,
+          message: `Sub-location segment '${nameToFind}' not found in relational structure`,
+        });
+      }
+
+      currentParentId = subs[0].sub_location_id;
+      if (i === currentIndex) {
+        targetSubLocationId = currentParentId;
+      }
     }
 
     if (targetSubLocationId) {
-        // Update the sub_locations table
-        await connection.query(
-            "UPDATE sub_locations SET name = ? WHERE sub_location_id = ?",
-            [newName, targetSubLocationId]
-        );
+      // Update the sub_locations table
+      await connection.query(
+        "UPDATE sub_locations SET name = ? WHERE sub_location_id = ?",
+        [newName, targetSubLocationId],
+      );
     }
 
     // Maintain Backward Compatibility: Update JSON in item_inv
@@ -2669,7 +2697,7 @@ const updateSubLocation = async (req, res) => {
       .slice(1)
       .map(
         (_, index) =>
-          `JSON_UNQUOTE(JSON_EXTRACT(sub_location, '$[${index}]')) = ?`
+          `JSON_UNQUOTE(JSON_EXTRACT(sub_location, '$[${index}]')) = ?`,
       )
       .join(" AND ");
 
@@ -2709,7 +2737,7 @@ const updateSubLocation = async (req, res) => {
 const getInventoryHierarchyWithTypes = async (request, response) => {
   try {
     const { company_id, role, preference } = request.body;
-const connection = getConnection();
+    const connection = getConnection();
     if (!company_id) {
       return response.status(400).json({
         ok: false,
@@ -2790,7 +2818,7 @@ const connection = getConnection();
         // Main Location Count
         result[location].total = items.length;
         result[location].available = items.filter(
-          (i) => i?.data?.warehouse === 1
+          (i) => i?.data?.warehouse === 1,
         ).length;
 
         // Walk through sub_location levels
@@ -3007,7 +3035,7 @@ const filterSuppliersInfoItems = async (request, response) => {
         item.supplier_info &&
         item.supplier_info.trim() !== "" &&
         item.supplier_info !== "null" &&
-        item.supplier_info !== "undefined"
+        item.supplier_info !== "undefined",
     );
 
     return response.status(200).json({
@@ -3067,16 +3095,20 @@ const deleteBulkItems = async (request, response) => {
 const ensureIndexes = async (connection) => {
   try {
     const [idxCompany] = await connection.execute(
-      "SELECT COUNT(1) AS cnt FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'item_inv' AND index_name = 'idx_item_inv_company_id'"
+      "SELECT COUNT(1) AS cnt FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'item_inv' AND index_name = 'idx_item_inv_company_id'",
     );
     if ((idxCompany[0]?.cnt ?? 0) === 0) {
-      await connection.query("CREATE INDEX idx_item_inv_company_id ON item_inv (company_id)");
+      await connection.query(
+        "CREATE INDEX idx_item_inv_company_id ON item_inv (company_id)",
+      );
     }
     const [idxLocation] = await connection.execute(
-      "SELECT COUNT(1) AS cnt FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'item_inv' AND index_name = 'idx_item_inv_location'"
+      "SELECT COUNT(1) AS cnt FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'item_inv' AND index_name = 'idx_item_inv_location'",
     );
     if ((idxLocation[0]?.cnt ?? 0) === 0) {
-      await connection.query("CREATE INDEX idx_item_inv_location ON item_inv (location)");
+      await connection.query(
+        "CREATE INDEX idx_item_inv_location ON item_inv (location)",
+      );
     }
   } catch (e) {
     logger.warn("ensureIndexes error:", e.message);
@@ -3090,11 +3122,18 @@ const retrieveCompanyItemsWithLocations = async (request, response) => {
 
     const { company_id, locations, limit, offset } = request.body;
 
-    if (!company_id || (typeof company_id !== "string" && typeof company_id !== "number")) {
-      return response.status(400).json({ ok: false, msg: "company_id is required" });
+    if (
+      !company_id ||
+      (typeof company_id !== "string" && typeof company_id !== "number")
+    ) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "company_id is required" });
     }
     if (locations !== undefined && !Array.isArray(locations)) {
-      return response.status(400).json({ ok: false, msg: "locations must be an array if provided" });
+      return response
+        .status(400)
+        .json({ ok: false, msg: "locations must be an array if provided" });
     }
 
     const lim = Number.isInteger(limit) && limit > 0 ? limit : 50;
@@ -3121,13 +3160,13 @@ const retrieveCompanyItemsWithLocations = async (request, response) => {
 
     const [countRows] = await connection.execute(
       `SELECT COUNT(*) AS total FROM item_inv WHERE ${where}`,
-      args
+      args,
     );
     const total = Number(countRows[0]?.total ?? 0);
 
     const [rows] = await connection.execute(
       `SELECT * FROM item_inv WHERE ${where} ORDER BY item_id ASC LIMIT ? OFFSET ?`,
-      [...args, lim, off]
+      [...args, lim, off],
     );
 
     const payload = {
