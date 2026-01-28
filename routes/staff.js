@@ -22,4 +22,11 @@ router.post("/admin-users", validateJWT, displayAllAdminUser);
  
  //search stripe customer by parameters
  router.get('/consumers/search',searchCustomerByParameters)
+
+ //search staff info from not token side
+ router.post('/__staff-search',displayAllAdminUser)
+
+ //router to search all staff information
+ router.get('/__staff-search',displayAllAdminUser)
+
  module.exports = router;
