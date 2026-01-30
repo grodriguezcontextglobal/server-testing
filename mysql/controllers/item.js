@@ -4,9 +4,18 @@ const { clientRedis } = require("../../database/cacheMemoryConfig");
 const { groupBy } = require("lodash");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
-const { processLocation } = require("./location");
+// const { processLocation } = require("./location");
 const { processSubLocation } = require("./sub_location");
 require("dotenv").config();
+
+const getLocationId = async (connection, company_id, location_name) => {
+  if (!company_id || !location_name) return null;
+  const [rows] = await connection.execute(
+    "SELECT location_id FROM locations WHERE company_id = ? AND location_name = ?",
+    [company_id, location_name],
+  );
+  return rows.length > 0 ? rows[0].location_id : null;
+};
 
 const insertingItem = async (request, response) => {
   const pool = getConnection();
@@ -55,17 +64,23 @@ const insertingItem = async (request, response) => {
     let finalLocationName = locName;
 
     if (company_id && locName) {
-      const locationData = {
-        company_id,
-        location_name: locName,
-        manager_id,
-        address_details,
-        status,
-      };
+      // Lookup Location ID (Strict Validation)
+      locationId = await getLocationId(connection, company_id, locName);
 
-      const locResult = await processLocation(connection, locationData);
-      locationId = locResult.location_id;
-      finalLocationName = locResult.location_name;
+      if (!locationId) {
+        throw new Error(
+          `Location '${locName}' not found for company '${company_id}'.`,
+        );
+      }
+      finalLocationName = locName;
+    } else {
+      // If strict validation is required for missing fields:
+      // throw new Error("Company ID and Location Name are required.");
+      // However, legacy code allowed missing location? The prompt implies strict matching.
+      // "Match request.body.location... Error handling for missing..."
+      if (!company_id || !locName) {
+        throw new Error("Company ID and Location Name are required.");
+      }
     }
 
     // 2. Process Sub-Location (Optional)
@@ -136,13 +151,9 @@ const insertingItem = async (request, response) => {
         returnedRentedInfo,
         container_id,
         display_item,
-        supplier_info
+        supplier_info,
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-
-    // Note: We are attempting to insert location_id.
-    // If the column doesn't exist, this will fail.
-    // However, based on location.js bulkAssignInventory, location_id IS used in updates, so it should exist.
 
     const values = [
       category_name,
@@ -175,14 +186,6 @@ const insertingItem = async (request, response) => {
     const [result] = await connection.execute(query, values);
 
     await connection.commit();
-
-    // Logging
-    logger.info(`Item created successfully: ${result.insertId}`, {
-      item_id: result.insertId,
-      company_id,
-      location_id: locationId,
-    });
-
     // await cache_connection
     //   .promise()
     //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
@@ -202,7 +205,8 @@ const insertingItem = async (request, response) => {
   } catch (error) {
     await connection.rollback();
     logger.error("insertingItem error:", error);
-    return response.status(500).json({
+    const status = error.message.includes("not found") ? 404 : 500;
+    return response.status(status).json({
       ok: false,
       msg: error.message,
     });
@@ -244,6 +248,25 @@ const insertBulkItem = async (request, response) => {
       image_url,
       supplier_info,
     } = request.body;
+
+    // Determine location name
+    const locName = typeof location === "string" ? location : location?.name;
+    if (!locName || !company_id) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Company ID and Location Name are required.",
+      });
+    }
+
+    // Lookup Location ID
+    const locationId = await getLocationId(connection, company_id, locName);
+    if (!locationId) {
+      return response.status(404).json({
+        ok: false,
+        msg: `Location '${locName}' not found.`,
+      });
+    }
+
     if (!min_serial_number || !max_serial_number) {
       return response.status(400).json({
         ok: false,
@@ -286,6 +309,7 @@ const insertBulkItem = async (request, response) => {
       update_at,
       company,
       location,
+      location_id,
       current_location,
       sub_location,
       extra_serial_number,
@@ -317,7 +341,8 @@ const insertBulkItem = async (request, response) => {
       created_at,
       update_at,
       company,
-      location,
+      locName,
+      locationId,
       current_location,
       sub_location,
       extra_serial_number,
@@ -332,7 +357,6 @@ const insertBulkItem = async (request, response) => {
       image_url || null, // Handle undefined image_url
       supplier_info,
     ]);
-
     const [result] = await connection.query(query, [values]);
     // connection.query(query, [values], function (err, result) {
     // });
@@ -358,6 +382,28 @@ const insertBulkItem = async (request, response) => {
 
 const insertBulkItemAlhpanumericFormat = async (request, response) => {
   try {
+    const connection = getConnection();
+    const { location, company_id } = request.body;
+
+    const locName = typeof location === "string" ? location : location?.name;
+    if (!locName || !company_id) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Company ID and Location Name are required.",
+      });
+    }
+
+    const locationId = await getLocationId(connection, company_id, locName);
+    if (!locationId) {
+      return response.status(404).json({
+        ok: false,
+        msg: `Location '${locName}' not found.`,
+      });
+    }
+
+    // Pass location_id to Go Worker
+    request.body.location_id = locationId;
+
     // Offload to Go Worker
     await runGoWorker("insert-bulk-item-alpha", request.body);
 
@@ -1803,9 +1849,7 @@ const retrieveItemData = async (request, response) => {
       workerPayload.locations = locations || [];
     }
 
-    console.log("workload:", workerPayload);
     const result = await runGoWorker("retrieve-item-data", workerPayload);
-    console.log("result go-worker", result);
     return response.status(200).json({
       ok: true,
       totalAvailable: result.totalAvailable,
