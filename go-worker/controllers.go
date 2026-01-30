@@ -24,6 +24,7 @@ type BulkItemRequest struct {
 	UpdateAt            string      `json:"update_at"`
 	Company             string      `json:"company"`
 	Location            string      `json:"location"`
+	LocationID          interface{} `json:"location_id"`
 	CurrentLocation     string      `json:"current_location"`
 	SubLocation         string      `json:"sub_location"`
 	ExtraSerialNumber   string      `json:"extra_serial_number"`
