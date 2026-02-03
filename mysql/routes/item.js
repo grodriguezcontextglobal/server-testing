@@ -28,6 +28,7 @@ const {
   getGroupedItemInventory,
   insertContainerItems,
   deleteBulkItems,
+  retrieveItemData,
 } = require("../controllers/item");
 const {
   consultingInventoryCurrentState,
@@ -139,5 +140,7 @@ router.post(
 
 //get inventory company based on location and sublocation
 router.post("/get-inventory-company", getGroupedItemInventory);
+
+router.post("/retrieve-item-data", retrieveItemData);
 
 module.exports = router;
