@@ -17,6 +17,17 @@ const getLocationId = async (connection, company_id, location_name) => {
   return rows.length > 0 ? rows[0].location_id : null;
 };
 
+const safeJsonParse = (value, fallback) => {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch (e) {
+      return fallback;
+    }
+  }
+  return value !== undefined ? value : fallback;
+};
+
 const insertingItem = async (request, response) => {
   const pool = getConnection();
   const connection = await pool.getConnection(); // Get dedicated connection for transaction
@@ -44,11 +55,11 @@ const insertingItem = async (request, response) => {
     supplier_info,
     // Extra fields for location/sub-location creation
     location_name,
-    manager_id,
-    address_details,
     sub_location_name,
     sub_location_parent_id,
-    status,
+    returnedRentedInfo,
+    container_id,
+    display_item,
   } = request.body;
 
   try {
@@ -74,10 +85,6 @@ const insertingItem = async (request, response) => {
       }
       finalLocationName = locName;
     } else {
-      // If strict validation is required for missing fields:
-      // throw new Error("Company ID and Location Name are required.");
-      // However, legacy code allowed missing location? The prompt implies strict matching.
-      // "Match request.body.location... Error handling for missing..."
       if (!company_id || !locName) {
         throw new Error("Company ID and Location Name are required.");
       }
@@ -103,9 +110,6 @@ const insertingItem = async (request, response) => {
         active: true,
       };
 
-      // Only process if it looks like a single sub-location name, not a JSON array string
-      // If it's a JSON array string like '["A","B"]', we might skip creation or handle differently.
-      // For now, we assume simple creation if it's a simple name.
       let isSimpleName = true;
       try {
         const parsed = JSON.parse(subLocName);
@@ -124,7 +128,43 @@ const insertingItem = async (request, response) => {
       }
     }
 
-    // 3. Insert Item
+    // 3. Prepare Data for Insertion
+    // Validate and sanitize inputs
+    const parsedCost = isNaN(parseFloat(cost)) ? 0 : parseFloat(cost);
+    const parsedWarehouse =
+      warehouse === true ||
+      warehouse === "true" ||
+      warehouse === 1 ||
+      warehouse === "1"
+        ? 1
+        : 0;
+    const parsedContainer =
+      container === true ||
+      container === "true" ||
+      container === 1 ||
+      container === "1"
+        ? 1
+        : 0;
+    const parsedDisplayItem =
+      display_item === undefined ? 1 : display_item ? 1 : 0; // Default to 1
+    const parsedContainerSpotLimit = isNaN(parseInt(containerSpotLimit))
+      ? 0
+      : parseInt(containerSpotLimit);
+
+    // JSON fields: ensure they are strings for DB storage if they are objects/arrays
+    const formatJsonField = (val) => {
+      if (val === undefined || val === null) return JSON.stringify([]);
+      return typeof val === "string" ? val : JSON.stringify(val);
+    };
+
+    const finalReturnedRentedInfo = formatJsonField(returnedRentedInfo);
+    const finalContainerId = formatJsonField(container_id);
+    const finalExtraSerialNumber =
+      typeof extra_serial_number === "object"
+        ? JSON.stringify(extra_serial_number)
+        : extra_serial_number;
+
+    // 4. Insert Item
     const query = `
       INSERT INTO item_inv (
         category_name, 
@@ -151,47 +191,41 @@ const insertingItem = async (request, response) => {
         returnedRentedInfo,
         container_id,
         display_item,
-        supplier_info,
+        supplier_info
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
       category_name,
       item_group,
-      cost,
+      parsedCost,
       brand,
       descript_item,
       ownership,
       main_warehouse,
       serial_number,
-      warehouse,
+      parsedWarehouse,
       company,
       finalLocationName, // Legacy location column
       finalSubLocationName, // Legacy sub_location column
       locationId, // New location_id column
       current_location,
-      extra_serial_number,
+      finalExtraSerialNumber,
       company_id,
       return_date || null,
-      container ? container : false,
-      containerSpotLimit ? containerSpotLimit : 0,
-      1,
+      parsedContainer,
+      parsedContainerSpotLimit,
+      1, // enableAssignFeature default to 1 as per original code
       image_url || null,
-      (returnedRentedInfo = JSON.stringify([])),
-      (container_id = JSON.stringify([])),
-      (display_item = 1),
+      finalReturnedRentedInfo,
+      finalContainerId,
+      parsedDisplayItem,
       supplier_info || null,
     ];
 
     const [result] = await connection.execute(query, values);
 
     await connection.commit();
-    // await cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
-    // await cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
 
     return response.status(201).json({
       ok: true,
@@ -701,7 +735,8 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
         msg: "Missing required fields or invalid data format",
       });
     }
-
+    const pool = getConnection();
+    const connection = await pool.getConnection(); // Get dedicated connection for transaction
     // Prepare the serial numbers for the IN clause
     const serialNumbers = data.map((item) => item.toString());
     const placeholders = serialNumbers.map(() => "?").join(",");
