@@ -178,20 +178,24 @@ const poolReceiversBulk = async (request, response) => {
 };
 const getListOfItemsInEventPool = async (request, response) => {
   try {
-    const cache_connection = await clientRedis();
+    // const cache_connection = await clientRedis();
     const params = request._parsedUrl.query;
     const eventID = new URLSearchParams(params).get("eventSelected");
     const companyID = new URLSearchParams(params).get("company");
-    const cachedList = await cache_connection.get(
-      `eventSelected=${eventID}&company=${companyID}`
-    );
-    if (cachedList && cachedList.length > 5) {
-      return response.status(200).json({
-        cached: true,
-        ok: true,
-        receiversInventory: cachedList, //JSON.parse(cachedList),
-      });
-    } else {
+    // const cachedList = await cache_connection.get(
+    //   `eventSelected=${eventID}&company=${companyID}`
+    // );
+    // cache_connection.delete(
+    //   `eventSelected=${eventID}&company=${companyID}`,
+    // );
+    // if (cachedList && cachedList.length > 5) {
+    //   console.log("inside cache",cachedList)
+    //   return response.status(200).json({
+    //     cached: true,
+    //     ok: true,
+    //     receiversInventory: cachedList, //JSON.parse(cachedList),
+    //   });
+    // } else {
       const formatting = [...params.split("&")];
       let check = formatting.reduce(
         (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
@@ -201,20 +205,20 @@ const getListOfItemsInEventPool = async (request, response) => {
         check.eventSelected = eventID;
       }
       const items = await ReceiversPool.find(check).sort({ device: 1 });
-      cache_connection.set(
-        `eventSelected=${eventID}&company=${companyID}`,
-        JSON.stringify(items)
-      );
-      cache_connection.expire(
-        `eventSelected=${eventID}&company=${companyID}`,
-        120
-      );
+      // cache_connection.set(
+      //   `eventSelected=${eventID}&company=${companyID}`,
+      //   JSON.stringify(items)
+      // );
+      // cache_connection.expire(
+      //   `eventSelected=${eventID}&company=${companyID}`,
+      //   120
+      // );
       return response.status(200).json({
         ok: true,
         cached: false,
         receiversInventory: JSON.stringify(items),
       });
-    }
+    // }
   } catch (error) {
     return response.status(500).json({
       ok: false,
