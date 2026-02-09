@@ -5,7 +5,21 @@ const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
 const User = require("../models/User");
 const { clientRedis } = require("../database/cacheMemoryConfig");
-const runGoWorker = require("../helpers/goWorker");
+const {
+  updateReceiverStatus: updateReceiverStatusWorker,
+  updateBulkItemsInTransaction: updateBulkItemsInTransactionWorker,
+  updateBulkItemsInPool: updateBulkItemsInPoolWorker,
+  poolReceiversBulk: poolReceiversBulkWorker,
+  updatePoolReceivers: updatePoolReceiversWorker,
+  receiverPoolFoundAndDelete: receiverPoolFoundAndDeleteWorker,
+  receiverPoolBulkDelete: receiverPoolBulkDeleteWorker,
+  updateIssueDevice: updateIssueDeviceWorker,
+  updateBulkItemDataInPool: updateBulkItemDataInPoolWorker,
+  returnAllItemsInTransactionInPool: returnAllItemsInTransactionInPoolWorker,
+  updateBulkItemsInTransactionPerUserAtOnce:
+    updateBulkItemsInTransactionPerUserAtOnceWorker,
+  createBulkItemTransactionInUser: createBulkItemTransactionInUserWorker,
+} = require("./receiverWorker");
 
 const addReceiverToTransaction = async (request, response) => {
   try {
@@ -27,22 +41,6 @@ const addReceiverToTransaction = async (request, response) => {
       msg: "Please contact Administrator",
       err: error,
     });
-    //   const result = await runGoWorker("add-receiver-transaction", request.body);
-    //   return response.status(201).json({
-    //     ok: true,
-    //     message: "ASSIGNED",
-    //     device: result.device,
-    //     paymentIntent: result.paymentIntent,
-    //     receiversAssignedPerUser: result,
-    //     date: new Date(),
-    //   });
-    // } catch (error) {
-    //   return response.status(500).json({
-    //     ok: false,
-    //     msg: "Please contact Administrator",
-    //     err: error.message,
-    //   });
-    // }
   }
 };
 
@@ -100,13 +98,13 @@ const checkingReceiversExistInDatabase = async (request, response) => {
 
 const udpateReceiverStatus = async (request, response) => {
   try {
-    const result = await runGoWorker("update-receiver-status", request.body);
+    const result = await updateReceiverStatusWorker(request.body);
     return response.status(201).json({
       ok: true,
-      id: result.id,
-      user: result.user,
-      paymentIntent: result.paymentIntent,
-      device: result.device,
+      id: result.receiverUpdated._id,
+      user: result.receiverUpdated.user,
+      paymentIntent: result.receiverUpdated.paymentIntent,
+      device: result.receiverUpdated.device,
     });
   } catch (error) {
     return response.status(500).json({
@@ -118,7 +116,7 @@ const udpateReceiverStatus = async (request, response) => {
 
 const updateBulkItemsInTransaction = async (request, response) => {
   try {
-    await runGoWorker("update-bulk-items-transaction", request.body);
+    await updateBulkItemsInTransactionWorker(request.body);
     return response.status(201).json({
       ok: true,
     });
@@ -132,7 +130,7 @@ const updateBulkItemsInTransaction = async (request, response) => {
 
 const updateBulkItemsInPool = async (request, response) => {
   try {
-    await runGoWorker("update-bulk-items-pool", request.body);
+    await updateBulkItemsInPoolWorker(request.body);
     return response.status(201).json({
       ok: true,
     });
@@ -163,7 +161,7 @@ const poolReceivers = async (request, response) => {
 
 const poolReceiversBulk = async (request, response) => {
   try {
-    const result = await runGoWorker("pool-receivers-bulk", request.body);
+    const result = await poolReceiversBulkWorker(request.body);
     return response.status(201).json({
       ok: true,
       receiversPool: result,
@@ -196,28 +194,28 @@ const getListOfItemsInEventPool = async (request, response) => {
     //     receiversInventory: cachedList, //JSON.parse(cachedList),
     //   });
     // } else {
-      const formatting = [...params.split("&")];
-      let check = formatting.reduce(
-        (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
-        {}
-      );
-      if (check.eventSelected) {
-        check.eventSelected = eventID;
-      }
-      const items = await ReceiversPool.find(check).sort({ device: 1 });
-      // cache_connection.set(
-      //   `eventSelected=${eventID}&company=${companyID}`,
-      //   JSON.stringify(items)
-      // );
-      // cache_connection.expire(
-      //   `eventSelected=${eventID}&company=${companyID}`,
-      //   120
-      // );
-      return response.status(200).json({
-        ok: true,
-        cached: false,
-        receiversInventory: JSON.stringify(items),
-      });
+    const formatting = [...params.split("&")];
+    let check = formatting.reduce(
+      (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
+      {},
+    );
+    if (check.eventSelected) {
+      check.eventSelected = eventID;
+    }
+    const items = await ReceiversPool.find(check).sort({ device: 1 });
+    // cache_connection.set(
+    //   `eventSelected=${eventID}&company=${companyID}`,
+    //   JSON.stringify(items)
+    // );
+    // cache_connection.expire(
+    //   `eventSelected=${eventID}&company=${companyID}`,
+    //   120
+    // );
+    return response.status(200).json({
+      ok: true,
+      cached: false,
+      receiversInventory: JSON.stringify(items),
+    });
     // }
   } catch (error) {
     return response.status(500).json({
@@ -230,12 +228,8 @@ const getListOfItemsInEventPool = async (request, response) => {
 
 const updatePoolReceivers = async (request, response) => {
   try {
-    // Pass params.id into body or separate argument?
-    // Go worker expects full JSON.
-    // request.body usually doesn't have id if it's in params.
-    // We should merge them.
     const payload = { ...request.body, id: request.params.id };
-    const result = await runGoWorker("update-pool-receivers", payload);
+    const result = await updatePoolReceiversWorker(payload);
     return response.status(201).json({
       ok: true,
       receiverUpdated: JSON.stringify(result.receiverUpdated),
@@ -268,7 +262,7 @@ const receiverPoolList = async (request, response) => {
 const receiverPoolFoundAndDelete = async (request, response) => {
   try {
     const payload = { id: request.params.id };
-    const result = await runGoWorker("receiver-pool-found-delete", payload);
+    const result = await receiverPoolFoundAndDeleteWorker(payload);
     return response.status(201).json({
       ok: true,
       deviceDeleted: result.deviceDeleted,
@@ -283,7 +277,7 @@ const receiverPoolFoundAndDelete = async (request, response) => {
 
 const receiverPoolBulkDelete = async (request, response) => {
   try {
-    const result = await runGoWorker("receiver-pool-bulk-delete", request.body);
+    const result = await receiverPoolBulkDeleteWorker(request.body);
     return response.status(200).json({
       ok: true,
       deletedCount: result.deletedCount,
@@ -374,7 +368,7 @@ const getListOfReceiverReturnedByIssue = async (request, response) => {
 const updateIssueDevice = async (request, response) => {
   try {
     const payload = { ...request.body, id: request.params.id };
-    const receiverUpdated = await runGoWorker("update-issue-device", payload);
+    const receiverUpdated = await updateIssueDeviceWorker(payload);
     return response.status(201).json({
       ok: true,
       receiverUpdated,
@@ -389,10 +383,7 @@ const updateIssueDevice = async (request, response) => {
 
 const updateBulkItemDataInPool = async (request, response) => {
   try {
-    const result = await runGoWorker(
-      "update-bulk-item-data-pool",
-      request.body
-    );
+    const result = await updateBulkItemDataInPoolWorker(request.body);
     return response.status(201).json({
       ok: true,
       message: `Total items updated successfully: ${result.modifiedCount}`,
@@ -409,7 +400,7 @@ const updateBulkItemDataInPool = async (request, response) => {
 
 const returnAllItemsInTransactionInPool = async (request, response) => {
   try {
-    await runGoWorker("return-all-items-transaction-pool", request.body);
+    await returnAllItemsInTransactionInPoolWorker(request.body);
     return response.status(201).json({
       ok: true,
     });
@@ -423,7 +414,7 @@ const returnAllItemsInTransactionInPool = async (request, response) => {
 
 const updateBulkItemsInTransactionPerUserAtOnce = async (request, response) => {
   try {
-    await runGoWorker("update-bulk-items-transaction-user", request.body);
+    await updateBulkItemsInTransactionPerUserAtOnceWorker(request.body);
     return response.status(201).json({
       ok: true,
     });
@@ -437,10 +428,7 @@ const updateBulkItemsInTransactionPerUserAtOnce = async (request, response) => {
 
 const createBulkItemTransactionInUser = async (request, response) => {
   try {
-    const result = await runGoWorker(
-      "create-bulk-item-transaction",
-      request.body
-    );
+    const result = await createBulkItemTransactionInUserWorker(request.body);
     return response.status(201).json({
       ok: true,
       message: "Receivers created",
