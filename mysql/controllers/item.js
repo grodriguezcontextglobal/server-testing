@@ -435,15 +435,15 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
       });
     }
 
-    // Pass location_id to Go Worker
+    // Pass location_id to Worker
     request.body.location_id = locationId;
 
-    // Offload to Go Worker
-    await runGoWorker("insert-bulk-item-alpha", request.body);
+    // Execute Node.js Worker logic
+    await insertBulkItemAlhpanumericFormatWorker(connection, request.body);
 
     return response.status(201).json({
       ok: true,
-      msg: "Alpha bulk items inserted successfully via Go Worker",
+      msg: "Alpha bulk items inserted successfully",
     });
   } catch (error) {
     logger.error("Error in insertBulkItemAlhpanumericFormat:", error);
@@ -3262,6 +3262,89 @@ const retrieveCompanyItemsWithLocations = async (request, response) => {
   } catch (error) {
     logger.error("retrieveCompanyItemsWithLocations error:", error);
     return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+const insertBulkItemAlhpanumericFormatWorker = async (connection, req) => {
+  const {
+    category_name,
+    item_group,
+    cost,
+    brand,
+    descript_item,
+    ownership,
+    list,
+    warehouse,
+    main_warehouse,
+    created_at,
+    update_at,
+    company,
+    location,
+    location_id,
+    current_location,
+    sub_location,
+    extra_serial_number,
+    company_id,
+    return_date,
+    container,
+    containerSpotLimit,
+    image_url,
+    supplier_info,
+  } = req;
+
+  if (!list || list.length === 0) {
+    throw new Error("no serial numbers provided");
+  }
+
+  const query = `
+    INSERT INTO item_inv (
+      category_name, item_group, cost, brand, descript_item, ownership,
+      serial_number, warehouse, main_warehouse, create_at, update_at,
+      company, location, location_id, current_location, sub_location, extra_serial_number,
+      company_id, return_date, returnedRentedInfo, container, containerSpotLimit,
+      container_id, display_item, enableAssignFeature, image_url, supplier_info
+    ) VALUES ?`;
+
+  const returnedRentedInfo = "[]";
+  const containerID = "[]";
+  const displayItem = 1;
+  const enableAssignFeature = 1;
+
+  const batchSize = 1000;
+
+  for (let i = 0; i < list.length; i += batchSize) {
+    const batch = list.slice(i, i + batchSize);
+    const values = batch.map((serial) => [
+      category_name,
+      item_group,
+      cost,
+      brand,
+      descript_item,
+      ownership,
+      serial,
+      warehouse,
+      main_warehouse,
+      created_at,
+      update_at,
+      company,
+      location,
+      location_id,
+      current_location,
+      sub_location,
+      extra_serial_number,
+      company_id,
+      return_date,
+      returnedRentedInfo,
+      container,
+      containerSpotLimit,
+      containerID,
+      displayItem,
+      enableAssignFeature,
+      image_url,
+      supplier_info,
+    ]);
+
+    await connection.query(query, [values]);
   }
 };
 
