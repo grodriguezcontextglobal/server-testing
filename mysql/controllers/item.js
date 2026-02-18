@@ -164,7 +164,7 @@ const insertingItem = async (request, response) => {
         ? JSON.stringify(extra_serial_number)
         : extra_serial_number;
 
-    // 4. Insert Item
+        // 4. Insert Item
     const query = `
       INSERT INTO item_inv (
         category_name, 
@@ -223,6 +223,7 @@ const insertingItem = async (request, response) => {
       supplier_info || null,
     ];
 
+    console.log(values)
     const [result] = await connection.execute(query, values);
 
     await connection.commit();
@@ -3296,6 +3297,28 @@ const insertBulkItemAlhpanumericFormatWorker = async (connection, req) => {
     throw new Error("no serial numbers provided");
   }
 
+  let extraInfoMap = {};
+  if (extra_serial_number && typeof extra_serial_number === "string") {
+    try {
+      const parsedExtraInfo = JSON.parse(extra_serial_number);
+      if (Array.isArray(parsedExtraInfo)) {
+        extraInfoMap = parsedExtraInfo.reduce((acc, item) => {
+          if (item) {
+            const key = Object.keys(item)[0];
+            if (key) {
+              acc[key] = item[key];
+            }
+          }
+          return acc;
+        }, {});
+      } else if (typeof parsedExtraInfo === "object" && parsedExtraInfo !== null) {
+        extraInfoMap = parsedExtraInfo;
+      }
+    } catch (e) {
+      logger.error("Failed to parse extra_serial_number JSON:", e);
+    }
+  }
+
   const query = `
     INSERT INTO item_inv (
       category_name, item_group, cost, brand, descript_item, ownership,
@@ -3331,7 +3354,7 @@ const insertBulkItemAlhpanumericFormatWorker = async (connection, req) => {
       location_id,
       current_location,
       sub_location,
-      extra_serial_number,
+      extraInfoMap[serial] ? JSON.stringify(extraInfoMap[serial]) : null,
       company_id,
       return_date,
       returnedRentedInfo,
@@ -3343,8 +3366,7 @@ const insertBulkItemAlhpanumericFormatWorker = async (connection, req) => {
       image_url,
       supplier_info,
     ]);
-
-    await connection.query(query, [values]);
+await connection.query(query, [values]);
   }
 };
 
