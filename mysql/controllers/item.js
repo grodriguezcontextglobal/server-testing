@@ -2085,6 +2085,7 @@ const updateAllItemsInInventory = async (request, response) => {
 
 const updateItemsBasedOnSerialNumber = async (request, response) => {
   try {
+    const connection = getConnection();
     const {
       brand,
       category_name,
