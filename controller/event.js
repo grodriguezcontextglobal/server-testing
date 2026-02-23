@@ -59,7 +59,7 @@ const editEvent = async (request, response = response) => {
       eventStaffToEdit,
       {
         new: true,
-      }
+      },
     );
 
     await logStaffActivity({
@@ -74,7 +74,7 @@ const editEvent = async (request, response = response) => {
     });
 
     cache_connection.del(
-      `company=${eventStaffToEdit.company}&type=${eventStaffToEdit.type}`
+      `company=${eventStaffToEdit.company}&type=${eventStaffToEdit.type}`,
     );
     cache_connection.del(`event_staff_info=${eventStaffToEdit.id}`);
     return response.json({
@@ -109,7 +109,7 @@ const editSubscriptionEvent = async (request, response = response) => {
       subscriptionEventInfoToEdit,
       {
         new: true,
-      }
+      },
     );
 
     await logStaffActivity({
@@ -182,7 +182,7 @@ const eventList = async (request, response) => {
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
-      error:JSON.stringify(error),
+      error: JSON.stringify(error),
     });
   }
 };
@@ -194,7 +194,7 @@ const gettingEventListPerCompany = async (request, response) => {
     const companyName = new URLSearchParams(params).get("company");
     const typeEvent = new URLSearchParams(params).get("type");
     const cachedEvents = await cache_connection.get(
-      `company=${companyName}&type=${typeEvent}`
+      `company=${companyName}&type=${typeEvent}`,
     );
     if (cachedEvents) {
       cache_connection.del(`company=${companyName}&type=${typeEvent}`);
@@ -208,7 +208,7 @@ const gettingEventListPerCompany = async (request, response) => {
       let list = await Event.find({ company: companyName, type: typeEvent });
       cache_connection.set(
         `company=${companyName}&type=${typeEvent}`,
-        JSON.stringify(list)
+        JSON.stringify(list),
       );
       cache_connection.expire(`company=${companyName}&type=${typeEvent}`, 180);
       return response.status(201).json({
@@ -247,7 +247,7 @@ const eventStaffDetailInfo = async (request, response) => {
     const cache_connection = await clientRedis();
     const eventId = request.params.id;
     const cachedEventStaffInfo = await cache_connection.get(
-      `event_staff_info=${eventId}`
+      `event_staff_info=${eventId}`,
     );
     if (cachedEventStaffInfo) {
       cache_connection.del(`event_staff_info=${eventId}`);
@@ -351,7 +351,7 @@ const returnSerialNumberUsedInEvent = async (props) => {
         company: data.companyId,
         eventSelected: data.eventName,
       },
-      { device: 1 }
+      { device: 1 },
     ).lean();
     if (deviceInfo.length > 0) {
       deviceInfo.forEach((device) => result.add(device.device));
@@ -369,7 +369,7 @@ const returnItemsInfoInUsedInEvents = async ({
   const connection = getConnection();
   const cache_connection = await clientRedis();
   const cachedData = await cache_connection.get(
-    `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`
+    `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`,
   );
   if (cachedData) {
     return JSON.parse(cachedData);
@@ -382,11 +382,11 @@ const returnItemsInfoInUsedInEvents = async ({
         .execute(query, [companySqlId]);
       cache_connection.set(
         `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`,
-        JSON.stringify(result)
+        JSON.stringify(result),
       );
       cache_connection.expire(
         `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`,
-        60
+        60,
       );
       return result;
     } catch (error) {
@@ -401,11 +401,11 @@ const returnItemsInfoInUsedInEvents = async ({
         .execute(query, [companySqlId, ...serialNumbers]);
       cache_connection.set(
         `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`,
-        JSON.stringify(result)
+        JSON.stringify(result),
       );
       cache_connection.expire(
         `inventory_search_by_date_for_company=${dateRef2}_${companySqlId}_${serialNumbers}`,
-        60
+        60,
       );
 
       return result;
@@ -475,7 +475,7 @@ const updateLargeNumberOfEventsAtOnce = async (request, response) => {
         .json({ ok: false, msg: "ids must be an array of strings." });
     }
     const uniqueIds = Array.from(
-      new Set(ids.map((v) => String(v).trim()).filter(Boolean))
+      new Set(ids.map((v) => String(v).trim()).filter(Boolean)),
     );
 
     if (uniqueIds.length === 0) {
@@ -503,7 +503,7 @@ const updateLargeNumberOfEventsAtOnce = async (request, response) => {
     const result = await Event.updateMany(
       { _id: { $in: uniqueIds } },
       { $set: safeValues },
-      { strict: false }
+      { strict: false },
     );
 
     const matched = result.matchedCount ?? result.n ?? 0;
@@ -527,7 +527,73 @@ const updateLargeNumberOfEventsAtOnce = async (request, response) => {
   }
 };
 
+const updateGlobalStateOfEvent = async (request, response) => {
+  try {
+    const { event_id } = request.body;
+    const eventInfoFound = await Event.findById(event_id);
+
+    if (!eventInfoFound) {
+      return response.status(404).json({
+        ok: false,
+        message: "Event not found.",
+      });
+    }
+
+    const { deviceSetup, eventInfoDetail, company_id } = eventInfoFound;
+    if (!deviceSetup || deviceSetup.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        message: "There is no inventory set for this event yet.",
+      });
+    }
+
+    const updatedDeviceSetup = await Promise.all(
+      deviceSetup.map(async (item) => {
+        const items = await ReceiversPool.find({
+          type: item.group,
+          eventSelected: eventInfoDetail.eventName,
+          company: company_id,
+        }).sort({ device: 1 });
+
+        const newItem = { ...item };
+        if (items.length > 0) {
+          newItem.quantity = items.length;
+          newItem.startingNumber = items.at(0).device;
+          newItem.endingNumber = items.at(-1).device;
+        }
+        return newItem;
+      }),
+    );
+
+    const updatedEvent = await Event.findByIdAndUpdate(
+      event_id,
+      { $set: { deviceSetup: updatedDeviceSetup } },
+      { new: true },
+    );
+
+    if (!updatedEvent) {
+      return response.status(404).json({
+        ok: false,
+        message: "Event not found after update attempt.",
+      });
+    }
+
+    return response.status(200).json({
+      ok: true,
+      message: "Event inventory updated successfully.",
+      updatedEventInventary: updatedEvent.deviceSetup,
+    });
+  } catch (error) {
+    console.error("Error updating event global state:", error);
+    return response.status(500).json({
+      ok: false,
+      message: "An internal server error occurred.",
+      error: error.message,
+    });
+  }
+};
 module.exports = {
+  updateGlobalStateOfEvent,
   createEvent,
   editSubscriptionEvent,
   eventList,
