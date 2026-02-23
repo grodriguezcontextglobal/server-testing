@@ -318,18 +318,6 @@ const consultingLeaseInformationConsumer = async (request, response) => {
 };
 
 const allocateDeviceToEvent = async (request, response) => {
-
-  //  sql
-  //   {
-  //     "event_id": 616,
-  //     "item_group": "Item__56",
-  //     "company_id": 137,
-  //     "category_name": "Category__56",
-  //     "data": [
-  //         "65161"
-  //     ],
-  //     "warehouse": 0
-  // }
   try {
     const {item_group, company_id, category_name, data, warehouse } =
       request.body;
