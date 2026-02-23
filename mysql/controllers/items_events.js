@@ -5,6 +5,7 @@ const getConnection = require("../database/config");
 const connection = getConnection();
 
 const runGoWorker = require("../../helpers/goWorker");
+const { updateLargeData } = require("./item");
 
 const insertingItemInEvent = async (request, response) => {
   try {
@@ -72,7 +73,7 @@ const insertingDeviceInEventDirectly = async (request, response) => {
 
 const deletingItemsInEventAfterDeviceInventoryIsUpdated = async (
   request,
-  response
+  response,
 ) => {
   try {
     const { event_id, item_group, category_name, serial_number } = request.body;
@@ -260,7 +261,7 @@ const deletingRecordInItemInvAssignedEventRow = async (request, response) => {
 
 const insertingDeviceInEventDirectlyFromContainer = async (
   request,
-  response
+  response,
 ) => {
   try {
     const { refDatabase, event_id } = request.body;
@@ -316,6 +317,59 @@ const consultingLeaseInformationConsumer = async (request, response) => {
   }
 };
 
+const allocateDeviceToEvent = async (request, response) => {
+
+  //  sql
+  //   {
+  //     "event_id": 616,
+  //     "item_group": "Item__56",
+  //     "company_id": 137,
+  //     "category_name": "Category__56",
+  //     "data": [
+  //         "65161"
+  //     ],
+  //     "warehouse": 0
+  // }
+  try {
+    const {item_group, company_id, category_name, data, warehouse } =
+      request.body;
+    if (!data || data.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        message: "No items were provided to be allocated to the event.",
+      });
+    }
+    const connection = getConnection();
+    const placeholders = data.map(() => "?").join(",");
+    const query = `SELECT item_id from item_inv where company_id = ? AND item_group = ? AND category_name = ? AND warehouse = 1 AND serial_number IN (${placeholders})`;
+    const values = [company_id, item_group, category_name, ...data];
+    const [result] = await connection.execute(query, values);
+    if(result){
+
+    }
+    //call controller to insert item into event inventory sql
+    const itemIdsForUpdateLargeData = {
+      body:{
+        item_ids:[ ...result.map(item => item.item_id)], warehouse:warehouse
+      }
+    }
+    const update = await updateLargeData(itemIdsForUpdateLargeData, response)
+    const insertedItemInEvent = await insertingItemInEvent(request, response);
+    response.status(200).json({
+      ok: true,
+      result,
+      bodyForUpdate: itemIdsForUpdateLargeData,
+      updateResult: update,
+      inserted:insertedItemInEvent
+    });
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   insertingItemInEvent,
   consultingInventoryCurrentState,
@@ -327,4 +381,5 @@ module.exports = {
   checkingInventoryCurrentState,
   insertingDeviceInEventDirectlyFromContainer,
   consultingLeaseInformationConsumer,
+  allocateDeviceToEvent,
 };
