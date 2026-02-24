@@ -21,6 +21,7 @@ const {
   insertingDeviceInEventDirectly,
   insertingDeviceInEventDirectlyFromContainer,
   allocateDeviceToEvent,
+  allocateDeviceMarkedAsContainerInEvent
 } = require("../controllers/items_events");
 const {
   returningItemToStockWhenEventIsFinished,
@@ -116,5 +117,9 @@ router.post(
   consultingCompanyInventoryBasedOnSubmittedParameters
 );
 
+//allocate 
 router.post("/allocate-device-event", allocateDeviceToEvent)
+
+router.post("/allocate-device-container-event", allocateDeviceMarkedAsContainerInEvent)
+
 module.exports = router;
