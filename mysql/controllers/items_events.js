@@ -1,12 +1,14 @@
 require("dotenv").config();
 const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
-
+const { groupBy } = require("lodash");
 const connection = getConnection();
 
 const runGoWorker = require("../../helpers/goWorker");
 const { updateLargeData } = require("./item");
-
+const {
+  poolReceiversBulk: poolReceiversBulkWorker,
+} = require("../../controller/receiverWorker");
 const insertingItemInEvent = async (request, response) => {
   try {
     const { event_id, item_group, category_name, company_id, data } =
@@ -319,7 +321,7 @@ const consultingLeaseInformationConsumer = async (request, response) => {
 
 const allocateDeviceToEvent = async (request, response) => {
   try {
-    const {item_group, company_id, category_name, data, warehouse } =
+    const { item_group, company_id, category_name, data, warehouse } =
       request.body;
     if (!data || data.length === 0) {
       return response.status(400).json({
@@ -332,24 +334,24 @@ const allocateDeviceToEvent = async (request, response) => {
     const query = `SELECT item_id from item_inv where company_id = ? AND item_group = ? AND category_name = ? AND warehouse = 1 AND serial_number IN (${placeholders})`;
     const values = [company_id, item_group, category_name, ...data];
     const [result] = await connection.execute(query, values);
-    if(result){
-
+    if (result.length > 0) {
+      //call controller to insert item into event inventory sql
+      const itemIdsForUpdateLargeData = {
+        body: {
+          item_ids: [...result.map((item) => item.item_id)],
+          warehouse: warehouse,
+        },
+      };
+      const update = await updateLargeData(itemIdsForUpdateLargeData, response);
+      const insertedItemInEvent = await insertingItemInEvent(request, response);
+      response.status(200).json({
+        ok: true,
+        result,
+        bodyForUpdate: itemIdsForUpdateLargeData,
+        updateResult: update,
+        inserted: insertedItemInEvent,
+      });
     }
-    //call controller to insert item into event inventory sql
-    const itemIdsForUpdateLargeData = {
-      body:{
-        item_ids:[ ...result.map(item => item.item_id)], warehouse:warehouse
-      }
-    }
-    const update = await updateLargeData(itemIdsForUpdateLargeData, response)
-    const insertedItemInEvent = await insertingItemInEvent(request, response);
-    response.status(200).json({
-      ok: true,
-      result,
-      bodyForUpdate: itemIdsForUpdateLargeData,
-      updateResult: update,
-      inserted:insertedItemInEvent
-    });
   } catch (error) {
     response.status(500).json({
       ok: false,
@@ -358,6 +360,167 @@ const allocateDeviceToEvent = async (request, response) => {
   }
 };
 
+const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
+  let connection;
+
+  try {
+    const { company_id, event_id, data, warehouse, eventName, company_id_nosql } = request.body;
+
+    if (!company_id || !event_id) {
+      return response
+        .status(400)
+        .json({ ok: false, message: "company_id and event_id are required." });
+    }
+
+    if (!Array.isArray(data) || data.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        message: "No items were provided to be allocated to the event.",
+      });
+    }
+
+    connection = await getConnection().getConnection();
+    await connection.beginTransaction();
+
+    const placeholders = data.map(() => "?").join(",");
+    const containerQuery = `
+      SELECT ii.item_id, ci.child_ids
+      FROM container_items ci
+      JOIN item_inv ii ON ii.item_id = ci.container_item_id
+      WHERE ii.serial_number IN (${placeholders})
+        AND ii.company_id = ?;
+    `;
+
+    const [containers] = await connection.execute(containerQuery, [
+      ...data,
+      company_id,
+    ]);
+
+    if (containers.length === 0) {
+      await connection.rollback();
+      return response.status(404).json({
+        ok: false,
+        message: "No containers found with the provided serial numbers.",
+      });
+    }
+
+    const containerItemIds = containers.map((c) => c.item_id);
+
+    const childItemIds = containers
+      .flatMap((c) => {
+        if (!c.child_ids) return [];
+        if (Array.isArray(c.child_ids)) return c.child_ids;
+        if (typeof c.child_ids === "string") {
+          try {
+            const parsed = JSON.parse(c.child_ids);
+            return Array.isArray(parsed) ? parsed : [];
+          } catch {
+            return [];
+          }
+        }
+        return [];
+      })
+      .filter((id) => id != null);
+
+    const allItemsToProcess = [
+      ...new Set([...containerItemIds, ...childItemIds]),
+    ];
+
+    if (allItemsToProcess.length === 0) {
+      await connection.rollback();
+      return response
+        .status(200)
+        .json({ ok: true, message: "The specified containers are empty." });
+    }
+
+    // 1) Update warehouse + 2) Assign to event (do both in SQL transaction)
+    const allItemsPlaceholder = allItemsToProcess.map(() => "?").join(",");
+
+    const updateQuery = `
+      UPDATE item_inv
+      SET warehouse = ?
+      WHERE company_id = ?
+        AND item_id IN (${allItemsPlaceholder});
+    `;
+    await connection.execute(updateQuery, [warehouse, company_id, ...allItemsToProcess]);
+
+    const insertPlaceholders = allItemsToProcess.map(() => "(?, ?)").join(", ");
+    const insertQuery = `
+      INSERT IGNORE INTO item_inv_assigned_event (event_id, item_id)
+      VALUES ${insertPlaceholders};
+    `;
+    const insertValues = allItemsToProcess.flatMap((id) => [event_id, id]);
+    console.log(insertValues)
+    await connection.execute(insertQuery, insertValues);
+
+    // Build props only for children (the receivers inside the container)
+    let resultProps = [];
+    if (childItemIds.length > 0) {
+      const placeholderChildren = childItemIds.map(() => "?").join(",");
+      const queryToPassAsPropsQuery = `
+        SELECT item_group, category_name, serial_number
+        FROM item_inv
+        WHERE company_id = ?
+          AND item_id IN (${placeholderChildren});
+      `;
+      const [rows] = await connection.execute(queryToPassAsPropsQuery, [
+        company_id,
+        ...childItemIds,
+      ]);
+      resultProps = rows;
+    }
+
+    const [companyInfo] = await connection.execute(
+      `SELECT company_name FROM company_info WHERE company_id = ?`,
+      [company_id],
+    );
+    const providerName = companyInfo?.[0]?.company_name ?? "N/A";
+
+    // Commit SQL first (avoids partial rollback between SQL and Mongo)
+    await connection.commit();
+
+    // Now push to Mongo pool (only if there are child devices)
+    if (resultProps.length > 0) {
+      const poolPayload = {
+        deviceList: resultProps.map((item) => ({
+          device: item.serial_number,
+          item_group: item.item_group,
+          category_name: item.category_name,
+        })),
+        status: "Operational",
+        activity: false,
+        comment: "No comment.",
+        eventSelected: eventName,
+        provider: providerName,
+        type: resultProps[0]?.item_group,
+        company: company_id_nosql,
+      };
+      console.log(poolPayload);
+      await poolReceiversBulkWorker(poolPayload);
+    }
+
+    return response.status(200).json({
+      ok: true,
+      message: `${allItemsToProcess.length} total items (including containers and their contents) were allocated to the event.`,
+      result: { allItemsToProcess },
+      props: resultProps,
+    });
+  } catch (error) {
+    if (connection) {
+      try {
+        await connection.rollback();
+      } catch {}
+    }
+    logger.error(error);
+
+    return response.status(500).json({
+      ok: false,
+      error: error?.message || "Unknown error",
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
 module.exports = {
   insertingItemInEvent,
   consultingInventoryCurrentState,
@@ -370,4 +533,5 @@ module.exports = {
   insertingDeviceInEventDirectlyFromContainer,
   consultingLeaseInformationConsumer,
   allocateDeviceToEvent,
+  allocateDeviceMarkedAsContainerInEvent,
 };
