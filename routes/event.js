@@ -17,6 +17,7 @@ const {
   deleteEvent,
   updateLargeNumberOfEventsAtOnce,
   updateGlobalStateOfEvent,
+  updateEventInventoryFreshestData,
 } = require("../controller/event");
 const { getListOfUsersAndTransactionsPerEvent } = require("../controller/auth");
 const { validateJWT } = require("../middlewares/validate-jwt");
@@ -63,4 +64,7 @@ router.delete("/delete-event/:id", validateJWT, deleteEvent);
 router.patch("/update-events", updateLargeNumberOfEventsAtOnce);
 
 router.post("/update-global-state", updateGlobalStateOfEvent)
+
+router.post("/update-event-inventory-freshest-data", updateEventInventoryFreshestData)
+
 module.exports = router;
