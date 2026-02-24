@@ -7,7 +7,7 @@ const getConnection = require("../mysql/database/config");
 const ReceiversPool = require("../models/ReceiversPool");
 const logger = require("../helpers/logger");
 const { logStaffActivity } = require("./staffActivityLog");
-
+const _ = require("lodash")
 const createEvent = async (request, response = express.response) => {
   try {
     const cache_connection = await clientRedis();
@@ -584,10 +584,273 @@ const updateGlobalStateOfEvent = async (request, response) => {
       updatedEventInventary: updatedEvent.deviceSetup,
     });
   } catch (error) {
-    console.error("Error updating event global state:", error);
+    logger.error("Error updating event global state:", error);
     return response.status(500).json({
       ok: false,
       message: "An internal server error occurred.",
+      error: error.message,
+    });
+  }
+};
+
+const isNumericString = (v) =>
+  typeof v === "string" && /^[0-9]+$/.test(v.trim());
+
+const compareDevice = (a, b) => {
+  const A = String(a ?? "").trim();
+  const B = String(b ?? "").trim();
+
+  if (isNumericString(A) && isNumericString(B)) {
+    const aN = BigInt(A);
+    const bN = BigInt(B);
+    if (aN === bN) return 0;
+    return aN < bN ? -1 : 1;
+  }
+
+  return A.localeCompare(B, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+};
+
+const getRangeFromPoolGroup = (items = []) => {
+  if (!items.length) {
+    return { startingNumber: null, endingNumber: null, quantity: 0 };
+  }
+
+  const sorted = _.sortBy(items, (item) => item.device);
+
+  // For very large numeric serials we sort manually to avoid precision issues
+  const finalSorted =
+    isNumericString(sorted[0]?.device) &&
+    isNumericString(sorted[sorted.length - 1]?.device)
+      ? [...items].sort((a, b) => compareDevice(a.device, b.device))
+      : sorted;
+
+  return {
+    startingNumber: String(finalSorted[0]?.device ?? "").trim() || null,
+    endingNumber:
+      String(finalSorted[finalSorted.length - 1]?.device ?? "").trim() ||
+      null,
+    quantity: finalSorted.length,
+  };
+};
+
+const buildDeviceSetupEntryFromPool = ({
+  type,
+  provider,
+  createdBy,
+  startingNumber,
+  endingNumber,
+  quantity,
+}) => {
+  const now = new Date();
+  const dateCreated = now.toString();
+
+  return {
+    category: "Receivers",
+    group: type,
+    value: 0,
+    description: `Auto-synced from receivers pool (${type})`,
+    company: provider ?? "",
+    isItSetAsContainerForEvent: false,
+    quantity: quantity ?? 0,
+    ownership: "Rent",
+    container: false,
+    createdBy: createdBy ?? "",
+    key: _.uniqueId("deviceSetup_"), // 🔥 replaced crypto
+    dateCreated,
+    resume: `Receivers ${type} 0 Auto-synced from receivers pool (${type}) ${
+      provider ?? ""
+    } ${quantity ?? 0} Rent ${createdBy ?? ""} ${dateCreated} true undefined undefined`,
+    consumerUses: false,
+    startingNumber: startingNumber ?? null,
+    endingNumber: endingNumber ?? null,
+    existing: true,
+  };
+};
+
+const updateEventInventoryFreshestData = async (request, response) => {
+  try {
+    const { event_id, updatedBy } = request.body;
+
+    // -----------------------
+    // Guard clauses
+    // -----------------------
+    if (!event_id) {
+      return response.status(400).json({ ok: false, message: "event_id is required" });
+    }
+
+    const event = await Event.findById(event_id);
+    if (!event) {
+      return response.status(404).json({ ok: false, message: "Event not found." });
+    }
+
+    const eventName = event?.eventInfoDetail?.eventName;
+    const companyId = event?.company_id;
+
+    if (!eventName || !companyId) {
+      return response.status(400).json({
+        ok: false,
+        message: "Event missing eventInfoDetail.eventName or company_id.",
+      });
+    }
+
+    // -----------------------
+    // Helpers (kept inside one controller as requested)
+    // -----------------------
+    const isNumericString = (v) => typeof v === "string" && /^[0-9]+$/.test(v.trim());
+
+    const compareDevice = (a, b) => {
+      const A = String(a ?? "").trim();
+      const B = String(b ?? "").trim();
+
+      if (isNumericString(A) && isNumericString(B)) {
+        const aN = BigInt(A);
+        const bN = BigInt(B);
+        if (aN === bN) return 0;
+        return aN < bN ? -1 : 1;
+      }
+
+      return A.localeCompare(B, undefined, { numeric: true, sensitivity: "base" });
+    };
+
+    const getRangeFromPoolGroup = (items = []) => {
+      if (!items.length) return { startingNumber: null, endingNumber: null, quantity: 0 };
+      const sorted = [...items].sort((x, y) => compareDevice(x.device, y.device));
+      return {
+        startingNumber: String(sorted[0]?.device ?? "").trim() || null,
+        endingNumber: String(sorted[sorted.length - 1]?.device ?? "").trim() || null,
+        quantity: sorted.length,
+      };
+    };
+
+    const buildDeviceSetupEntryFromPool = ({
+      type,
+      provider,
+      createdBy,
+      startingNumber,
+      endingNumber,
+      quantity,
+    }) => {
+      const now = new Date();
+      const dateCreated = now.toString();
+
+      return {
+        category: "Receivers",
+        group: type,
+        value: 0,
+        description: `Auto-synced from receivers pool (${type})`,
+        company: provider ?? "",
+        isItSetAsContainerForEvent: false,
+        quantity: quantity ?? 0,
+        ownership: "Rent",
+        container: false,
+        createdBy: createdBy ?? "",
+        key: _.uniqueId("deviceSetup_"),
+        dateCreated,
+        resume: `Receivers ${type} 0 Auto-synced from receivers pool (${type}) ${
+          provider ?? ""
+        } ${quantity ?? 0} Rent ${createdBy ?? ""} ${dateCreated} true undefined undefined`,
+        consumerUses: false,
+        startingNumber: startingNumber ?? null,
+        endingNumber: endingNumber ?? null,
+        existing: true,
+      };
+    };
+
+    // -----------------------
+    // Fetch freshest pool & group it
+    // -----------------------
+    const pool = await ReceiversPool.find({
+      eventSelected: eventName,
+      company: companyId,
+    }).lean();
+
+    const poolByType = _.groupBy(pool, "type"); // { Item1: [...], Item3: [...] }
+
+    // -----------------------
+    // Prepare deviceSetup indexing
+    // -----------------------
+    if (!Array.isArray(event.deviceSetup)) event.deviceSetup = [];
+
+    const setupIndexByGroup = new Map();
+    event.deviceSetup.forEach((entry, idx) => {
+      const g = String(entry?.group ?? "").trim();
+      if (g) setupIndexByGroup.set(g, idx);
+    });
+
+    // -----------------------
+    // Sync logic: update existing or add missing
+    // -----------------------
+    const changes = { updated: [], added: [], skippedEmptyPoolGroups: [] };
+
+    for (const [type, items] of Object.entries(poolByType)) {
+      const groupName = String(type ?? "").trim();
+      if (!groupName) continue;
+
+      const { startingNumber, endingNumber, quantity } = getRangeFromPoolGroup(items);
+
+      if (!startingNumber || !endingNumber) {
+        changes.skippedEmptyPoolGroups.push(groupName);
+        continue;
+      }
+
+      const existingIdx = setupIndexByGroup.get(groupName);
+
+      if (existingIdx !== undefined) {
+        const current = event.deviceSetup[existingIdx];
+
+        const prev = {
+          startingNumber: current.startingNumber ?? null,
+          endingNumber: current.endingNumber ?? null,
+          quantity: current.quantity ?? null,
+        };
+
+        current.startingNumber = startingNumber;
+        current.endingNumber = endingNumber;
+        current.quantity = quantity; // keep freshest quantity too
+        current.existing = true;
+
+        changes.updated.push({
+          group: groupName,
+          prev,
+          next: { startingNumber, endingNumber, quantity },
+        });
+      } else {
+        const first = items?.[0] || {};
+
+        const newEntry = buildDeviceSetupEntryFromPool({
+          type: groupName,
+          provider: first?.provider,
+          createdBy: updatedBy || first?.createdBy || "",
+          startingNumber,
+          endingNumber,
+          quantity,
+        });
+
+        event.deviceSetup.push(newEntry);
+        setupIndexByGroup.set(groupName, event.deviceSetup.length - 1);
+
+        changes.added.push({ group: groupName, startingNumber, endingNumber, quantity });
+      }
+    }
+
+    // -----------------------
+    // Save & respond
+    // -----------------------
+    await event.save();
+
+    return response.status(200).json({
+      ok: true,
+      message: "Event inventory synced with freshest receivers pool data.",
+      event,
+      changes,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      message: "Internal server error.",
       error: error.message,
     });
   }
@@ -604,4 +867,5 @@ module.exports = {
   inventoryEventBasedOnPeriod,
   deleteEvent,
   updateLargeNumberOfEventsAtOnce,
+  updateEventInventoryFreshestData,
 };
