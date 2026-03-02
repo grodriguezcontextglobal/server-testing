@@ -558,7 +558,7 @@ const updateGlobalStateOfEvent = async (request, response) => {
         const newItem = { ...item };
         if (items.length > 0) {
           newItem.quantity =
-            newItem.quantity > items.length ? newItem.quantity : items.length;
+            Number(newItem.quantity) > Number(items.length) ? newItem.quantity : items.length;
           newItem.startingNumber = items.at(0).device;
           newItem.endingNumber = items.at(-1).device;
         }
@@ -593,83 +593,6 @@ const updateGlobalStateOfEvent = async (request, response) => {
     });
   }
 };
-
-const isNumericString = (v) =>
-  typeof v === "string" && /^[0-9]+$/.test(v.trim());
-
-const compareDevice = (a, b) => {
-  const A = String(a ?? "").trim();
-  const B = String(b ?? "").trim();
-
-  if (isNumericString(A) && isNumericString(B)) {
-    const aN = BigInt(A);
-    const bN = BigInt(B);
-    if (aN === bN) return 0;
-    return aN < bN ? -1 : 1;
-  }
-
-  return A.localeCompare(B, undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
-};
-
-const getRangeFromPoolGroup = (items = []) => {
-  if (!items.length) {
-    return { startingNumber: null, endingNumber: null, quantity: 0 };
-  }
-
-  const sorted = _.sortBy(items, (item) => item.device);
-
-  // For very large numeric serials we sort manually to avoid precision issues
-  const finalSorted =
-    isNumericString(sorted[0]?.device) &&
-    isNumericString(sorted[sorted.length - 1]?.device)
-      ? [...items].sort((a, b) => compareDevice(a.device, b.device))
-      : sorted;
-
-  return {
-    startingNumber: String(finalSorted[0]?.device ?? "").trim() || null,
-    endingNumber:
-      String(finalSorted[finalSorted.length - 1]?.device ?? "").trim() || null,
-    quantity: finalSorted.length,
-  };
-};
-
-const buildDeviceSetupEntryFromPool = ({
-  type,
-  provider,
-  createdBy,
-  startingNumber,
-  endingNumber,
-  quantity,
-}) => {
-  const now = new Date();
-  const dateCreated = now.toString();
-
-  return {
-    category: "Receivers",
-    group: type,
-    value: 0,
-    description: `Auto-synced from receivers pool (${type})`,
-    company: provider ?? "",
-    isItSetAsContainerForEvent: false,
-    quantity: quantity ?? 0,
-    ownership: "Rent",
-    container: false,
-    createdBy: createdBy ?? "",
-    key: _.uniqueId("deviceSetup_"), // 🔥 replaced crypto
-    dateCreated,
-    resume: `Receivers ${type} 0 Auto-synced from receivers pool (${type}) ${
-      provider ?? ""
-    } ${quantity ?? 0} Rent ${createdBy ?? ""} ${dateCreated} true undefined undefined`,
-    consumerUses: false,
-    startingNumber: startingNumber ?? null,
-    endingNumber: endingNumber ?? null,
-    existing: true,
-  };
-};
-
 const updateEventInventoryFreshestData = async (request, response) => {
   try {
     const { event_id, updatedBy } = request.body;
@@ -884,6 +807,7 @@ const updateEventInventoryFreshestData = async (request, response) => {
     });
   }
 };
+
 module.exports = {
   updateGlobalStateOfEvent,
   createEvent,
