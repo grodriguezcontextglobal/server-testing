@@ -495,7 +495,6 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
         type: resultProps[0]?.item_group,
         company: company_id_nosql,
       };
-      console.log(poolPayload);
       await poolReceiversBulkWorker(poolPayload);
     }
 
