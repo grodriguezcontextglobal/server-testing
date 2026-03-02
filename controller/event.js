@@ -7,7 +7,7 @@ const getConnection = require("../mysql/database/config");
 const ReceiversPool = require("../models/ReceiversPool");
 const logger = require("../helpers/logger");
 const { logStaffActivity } = require("./staffActivityLog");
-const _ = require("lodash")
+const _ = require("lodash");
 const createEvent = async (request, response = express.response) => {
   try {
     const cache_connection = await clientRedis();
@@ -557,7 +557,8 @@ const updateGlobalStateOfEvent = async (request, response) => {
 
         const newItem = { ...item };
         if (items.length > 0) {
-          newItem.quantity = items.length;
+          newItem.quantity =
+            newItem.quantity > items.length ? newItem.quantity : items.length;
           newItem.startingNumber = items.at(0).device;
           newItem.endingNumber = items.at(-1).device;
         }
@@ -630,8 +631,7 @@ const getRangeFromPoolGroup = (items = []) => {
   return {
     startingNumber: String(finalSorted[0]?.device ?? "").trim() || null,
     endingNumber:
-      String(finalSorted[finalSorted.length - 1]?.device ?? "").trim() ||
-      null,
+      String(finalSorted[finalSorted.length - 1]?.device ?? "").trim() || null,
     quantity: finalSorted.length,
   };
 };
@@ -678,12 +678,16 @@ const updateEventInventoryFreshestData = async (request, response) => {
     // Guard clauses
     // -----------------------
     if (!event_id) {
-      return response.status(400).json({ ok: false, message: "event_id is required" });
+      return response
+        .status(400)
+        .json({ ok: false, message: "event_id is required" });
     }
 
     const event = await Event.findById(event_id);
     if (!event) {
-      return response.status(404).json({ ok: false, message: "Event not found." });
+      return response
+        .status(404)
+        .json({ ok: false, message: "Event not found." });
     }
 
     const eventName = event?.eventInfoDetail?.eventName;
@@ -699,7 +703,8 @@ const updateEventInventoryFreshestData = async (request, response) => {
     // -----------------------
     // Helpers (kept inside one controller as requested)
     // -----------------------
-    const isNumericString = (v) => typeof v === "string" && /^[0-9]+$/.test(v.trim());
+    const isNumericString = (v) =>
+      typeof v === "string" && /^[0-9]+$/.test(v.trim());
 
     const compareDevice = (a, b) => {
       const A = String(a ?? "").trim();
@@ -712,15 +717,22 @@ const updateEventInventoryFreshestData = async (request, response) => {
         return aN < bN ? -1 : 1;
       }
 
-      return A.localeCompare(B, undefined, { numeric: true, sensitivity: "base" });
+      return A.localeCompare(B, undefined, {
+        numeric: true,
+        sensitivity: "base",
+      });
     };
 
     const getRangeFromPoolGroup = (items = []) => {
-      if (!items.length) return { startingNumber: null, endingNumber: null, quantity: 0 };
-      const sorted = [...items].sort((x, y) => compareDevice(x.device, y.device));
+      if (!items.length)
+        return { startingNumber: null, endingNumber: null, quantity: 0 };
+      const sorted = [...items].sort((x, y) =>
+        compareDevice(x.device, y.device),
+      );
       return {
         startingNumber: String(sorted[0]?.device ?? "").trim() || null,
-        endingNumber: String(sorted[sorted.length - 1]?.device ?? "").trim() || null,
+        endingNumber:
+          String(sorted[sorted.length - 1]?.device ?? "").trim() || null,
         quantity: sorted.length,
       };
     };
@@ -740,7 +752,7 @@ const updateEventInventoryFreshestData = async (request, response) => {
         category: "Receivers",
         group: type,
         value: 0,
-        description: `Auto-synced from receivers pool (${type})`,
+        description: `Auto-synced from device pool (${type})`,
         company: provider ?? "",
         isItSetAsContainerForEvent: false,
         quantity: quantity ?? 0,
@@ -789,7 +801,8 @@ const updateEventInventoryFreshestData = async (request, response) => {
       const groupName = String(type ?? "").trim();
       if (!groupName) continue;
 
-      const { startingNumber, endingNumber, quantity } = getRangeFromPoolGroup(items);
+      const { startingNumber, endingNumber, quantity } =
+        getRangeFromPoolGroup(items);
 
       if (!startingNumber || !endingNumber) {
         changes.skippedEmptyPoolGroups.push(groupName);
@@ -809,13 +822,24 @@ const updateEventInventoryFreshestData = async (request, response) => {
 
         current.startingNumber = startingNumber;
         current.endingNumber = endingNumber;
-        current.quantity = quantity; // keep freshest quantity too
+
+        // Conditionally update quantity as per business rule
+        const existingQuantity = Number(current.quantity || 0);
+        const newQuantity = Number(quantity || 0);
+
+        if (newQuantity > existingQuantity) {
+          current.quantity = newQuantity;
+        }
         current.existing = true;
 
         changes.updated.push({
           group: groupName,
           prev,
-          next: { startingNumber, endingNumber, quantity },
+          next: {
+            startingNumber,
+            endingNumber,
+            quantity: current.quantity, // Log the final quantity
+          },
         });
       } else {
         const first = items?.[0] || {};
@@ -832,7 +856,12 @@ const updateEventInventoryFreshestData = async (request, response) => {
         event.deviceSetup.push(newEntry);
         setupIndexByGroup.set(groupName, event.deviceSetup.length - 1);
 
-        changes.added.push({ group: groupName, startingNumber, endingNumber, quantity });
+        changes.added.push({
+          group: groupName,
+          startingNumber,
+          endingNumber,
+          quantity,
+        });
       }
     }
 
