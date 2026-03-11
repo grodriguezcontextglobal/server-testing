@@ -75,6 +75,11 @@ const EventSchema = Schema({
     required: false,
     default: []
   },
+  logistic_inventory_status:{
+    type: String,
+    required: true,
+    default: "in_idle",
+  }
 });
 
 EventSchema.method("toJSON", function () {
