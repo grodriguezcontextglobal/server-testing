@@ -1,10 +1,8 @@
-const { response, request } = require("express");
+const { response } = require("express");
 const getConnection = require("../database/config");
 const { clientRedis } = require("../../database/cacheMemoryConfig");
-const { groupBy } = require("lodash");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
-// const { processLocation } = require("./location");
 const { processSubLocation } = require("./sub_location");
 require("dotenv").config();
 
@@ -15,17 +13,6 @@ const getLocationId = async (connection, company_id, location_name) => {
     [company_id, location_name],
   );
   return rows.length > 0 ? rows[0].location_id : null;
-};
-
-const safeJsonParse = (value, fallback) => {
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value);
-    } catch (e) {
-      return fallback;
-    }
-  }
-  return value !== undefined ? value : fallback;
 };
 
 const insertingItem = async (request, response) => {
@@ -164,7 +151,7 @@ const insertingItem = async (request, response) => {
         ? JSON.stringify(extra_serial_number)
         : extra_serial_number;
 
-        // 4. Insert Item
+    // 4. Insert Item
     const query = `
       INSERT INTO item_inv (
         category_name, 
@@ -223,7 +210,7 @@ const insertingItem = async (request, response) => {
       supplier_info || null,
     ];
 
-    console.log(values)
+    console.log(values);
     const [result] = await connection.execute(query, values);
 
     await connection.commit();
@@ -857,17 +844,83 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
       update_at,
     } = request.body;
 
-    const result = await runGoWorker("returning-item-to-stock", {
-      groupingDevicesFromNoSQL: String(groupingDevicesFromNoSQL),
-      allInventoryOfEvent: String(allInventoryOfEvent),
-      companyId: String(companyId),
-      update_at: String(update_at),
-    });
+    if (!groupingDevicesFromNoSQL || !allInventoryOfEvent) {
+      return response.status(400).json({
+        ok: false,
+        msg: "groupingDevicesFromNoSQL and allInventoryOfEvent are required.",
+      });
+    }
+
+    const groupingDevices = JSON.parse(groupingDevicesFromNoSQL);
+    const allInventory = JSON.parse(allInventoryOfEvent);
+
+    const connection = getConnection();
+
+    if (!allInventory || allInventory.length === 0) {
+      return response.status(200).json({
+        ok: true,
+        affectedRows: 0,
+        msg: "No items to update.",
+      });
+    }
+
+    const batchSize = 100;
+    let totalAffectedRows = 0;
+
+    for (let i = 0; i < allInventory.length; i += batchSize) {
+      const batch = allInventory.slice(i, i + batchSize);
+
+      let caseParts = [];
+      let values = []; // For CASE
+      let serialNumbers = []; // For IN clause
+
+      for (const item of batch) {
+        let status = item.status;
+        if (
+          groupingDevices[item.serial_number] &&
+          groupingDevices[item.serial_number].length > 0
+        ) {
+          status =
+            groupingDevices[item.serial_number][
+              groupingDevices[item.serial_number].length - 1
+            ].status;
+        }
+        caseParts.push("WHEN serial_number = ? THEN ?");
+        values.push(item.serial_number, status);
+        serialNumbers.push(item.serial_number);
+      }
+
+      if (serialNumbers.length === 0) {
+        continue;
+      }
+
+      const placeholders = serialNumbers.map(() => "?").join(",");
+
+      const finalValues = [...values, update_at, companyId, ...serialNumbers];
+
+      const query = `
+        UPDATE item_inv 
+        SET 
+            warehouse = 0,
+            logistic_status = 'in-transit',
+            status = CASE 
+                ${caseParts.join(" ")}
+                ELSE status 
+            END,
+            update_at = ?
+        WHERE 
+            company_id = ? 
+            AND serial_number IN (${placeholders})
+      `;
+
+      const [result] = await connection.execute(query, finalValues);
+      totalAffectedRows += result.affectedRows;
+    }
 
     return response.status(201).json({
       ok: true,
-      affectedRows: result.affectedRows,
-      msg: `Successfully updated ${result.affectedRows} items`,
+      affectedRows: totalAffectedRows,
+      msg: `Successfully updated ${totalAffectedRows} items`,
     });
   } catch (error) {
     logger.error("Error:", error.message);
@@ -1901,7 +1954,6 @@ const retrieveItemData = async (request, response) => {
     });
   }
 };
-
 const retrieveCompanyInventory = async (request, response) => {
   try {
     const connection = getConnection();
@@ -3312,7 +3364,10 @@ const insertBulkItemAlhpanumericFormatWorker = async (connection, req) => {
           }
           return acc;
         }, {});
-      } else if (typeof parsedExtraInfo === "object" && parsedExtraInfo !== null) {
+      } else if (
+        typeof parsedExtraInfo === "object" &&
+        parsedExtraInfo !== null
+      ) {
         extraInfoMap = parsedExtraInfo;
       }
     } catch (e) {
@@ -3367,7 +3422,51 @@ const insertBulkItemAlhpanumericFormatWorker = async (connection, req) => {
       image_url,
       supplier_info,
     ]);
-await connection.query(query, [values]);
+    await connection.query(query, [values]);
+  }
+};
+
+const confirmItemsReturnedToStock = async (request, response) => {
+  try {
+    const connection = getConnection();
+    const { serial_numbers, company_id, location, sub_location } = request.body;
+
+    if (!Array.isArray(serial_numbers) || serial_numbers.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "An array of serial numbers is required.",
+      });
+    }
+    if (!company_id) {
+      return response.status(400).json({
+        ok: false,
+        msg: "company_id is required.",
+      });
+    }
+
+    const query = `
+      UPDATE item_inv
+      SET warehouse = 1, location = ?, sub_location = ?, logistic_status = 'in_stock', update_at = NOW()
+      WHERE company_id = ? AND serial_number IN (?);
+    `;
+
+    const [result] = await connection.execute(query, [
+      location,
+      sub_location,
+      company_id,
+      serial_numbers,
+    ]);
+
+    return response.status(200).json({
+      ok: true,
+      msg: `Updated ${result.affectedRows} items to in_stock.`,
+    });
+  } catch (error) {
+    logger.error("Error confirming item return:", error.message);
+    response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
   }
 };
 
@@ -3421,4 +3520,5 @@ module.exports = {
   getGroupedInventoryBySearchParameter,
   filterSuppliersInfoItems,
   deleteBulkItems,
+  confirmItemsReturnedToStock,
 };
