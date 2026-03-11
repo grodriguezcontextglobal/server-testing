@@ -21,7 +21,7 @@ const {
   insertingDeviceInEventDirectly,
   insertingDeviceInEventDirectlyFromContainer,
   allocateDeviceToEvent,
-  allocateDeviceMarkedAsContainerInEvent
+  allocateDeviceMarkedAsContainerInEvent,
 } = require("../controllers/items_events");
 const {
   returningItemToStockWhenEventIsFinished,
@@ -34,6 +34,7 @@ const {
   getGroupedItemInventory,
   getGroupedItemWithFormatInventory,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  confirmItemsReturnedToStock,
 } = require("../controllers/item");
 const router = Router();
 
@@ -67,8 +68,10 @@ router.post("/returning-item", returningItemToStockWhenEventIsFinished);
 //returning item to stock after event finished (refactored)
 router.post(
   "/returning-item-refactored",
-  returningItemToStockWhenEventIsFinishedRefactored
+  returningItemToStockWhenEventIsFinishedRefactored,
 );
+
+router.post("/confirm-item-return", confirmItemsReturnedToStock);
 
 //set final status of device when event finished
 router.post("/device-final-status", itemFinalStatusWhenEventIsFinished);
@@ -76,7 +79,7 @@ router.post("/device-final-status", itemFinalStatusWhenEventIsFinished);
 //set final status of device when event finished (refactored)
 router.post(
   "/device-final-status-refactored",
-  itemFinalStatusWhenEventIsFinishedRefactored
+  itemFinalStatusWhenEventIsFinishedRefactored,
 );
 //delete event
 router.delete("/:id", deleteEvent);
@@ -87,39 +90,57 @@ router.get("/event-inventory/:id", consultingInventoryEvent);
 //consulting all inventory in event
 router.post(
   "/remove-item-inventory-event",
-  deletingItemsInEventAfterDeviceInventoryIsUpdated
+  deletingItemsInEventAfterDeviceInventoryIsUpdated,
 );
 
 //update status of item based on event
 router.post("/update-status-item-based-on-event", updateStatusItemBasedOnEvent);
 
 //update item in table after being added to event from container
-router.post("/update-item-in-table-after-being-added-to-event-from-container", updateItemInTableAfterBeingAddedToEventFromContainer);
+router.post(
+  "/update-item-in-table-after-being-added-to-event-from-container",
+  updateItemInTableAfterBeingAddedToEventFromContainer,
+);
 
 //inserting items in event from container item
-router.post('/inserting-items-in-event-from-container', insertingDeviceInEventDirectlyFromContainer);
+router.post(
+  "/inserting-items-in-event-from-container",
+  insertingDeviceInEventDirectlyFromContainer,
+);
 
 //retrieve inventory structured by location with its quantity
-router.post("/retrieve-item-location-quantity", retrieveItemLocationQuantityForEvent);
+router.post(
+  "/retrieve-item-location-quantity",
+  retrieveItemLocationQuantityForEvent,
+);
 
 //retrieve inventory structured by location with its quantity full details
-router.post("/retrieve-item-location-quantity-full-details", consultItemDataFromSerialNumber);
+router.post(
+  "/retrieve-item-location-quantity-full-details",
+  consultItemDataFromSerialNumber,
+);
 
 //retrieve inventory structured by item group with its location and its quantity
 router.post("/retrieve-item-group-location-quantity", getGroupedItemInventory);
 
 //retrieve inventory structured by item group with its location and its quantity and more columns defined
-router.post("/retrieve-item-group-quantity-with-format", getGroupedItemWithFormatInventory);
+router.post(
+  "/retrieve-item-group-quantity-with-format",
+  getGroupedItemWithFormatInventory,
+);
 
 //consulting company inventory based on submitted parameters
 router.post(
   "/inventory-based-on-submitted-parameters",
-  consultingCompanyInventoryBasedOnSubmittedParameters
+  consultingCompanyInventoryBasedOnSubmittedParameters,
 );
 
-//allocate 
-router.post("/allocate-device-event", allocateDeviceToEvent)
+//allocate
+router.post("/allocate-device-event", allocateDeviceToEvent);
 
-router.post("/allocate-device-container-event", allocateDeviceMarkedAsContainerInEvent)
+router.post(
+  "/allocate-device-container-event",
+  allocateDeviceMarkedAsContainerInEvent,
+);
 
 module.exports = router;
