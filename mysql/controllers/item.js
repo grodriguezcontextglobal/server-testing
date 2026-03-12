@@ -3430,7 +3430,6 @@ const confirmItemsReturnedToStock = async (request, response) => {
   try {
     const connection = getConnection();
     const { serial_numbers, company_id, location, sub_location } = request.body;
-
     if (!Array.isArray(serial_numbers) || serial_numbers.length === 0) {
       return response.status(400).json({
         ok: false,
@@ -3444,15 +3443,20 @@ const confirmItemsReturnedToStock = async (request, response) => {
       });
     }
 
+    const subLocationString = Array.isArray(sub_location)
+      ? JSON.stringify(sub_location)
+      : sub_location;
+
     const query = `
       UPDATE item_inv
-      SET warehouse = 1, location = ?, sub_location = ?, logistic_status = 'in_stock', update_at = NOW()
+      SET warehouse = 1, main_warehouse= ?, location = ?, sub_location = ?, logistic_status = 'in_stock', update_at = NOW()
       WHERE company_id = ? AND serial_number IN (?);
     `;
 
-    const [result] = await connection.execute(query, [
+    const [result] = await connection.query(query, [
       location,
-      sub_location,
+      location,
+      subLocationString,
       company_id,
       serial_numbers,
     ]);
