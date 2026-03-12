@@ -8,8 +8,13 @@ const router = Router();
 const { publicPaymentRateLimit } = require("../middlewares/publicPaymentRateLimit");
 const { validatePublicPaymentPayload } = require("../middlewares/validatePublicPaymentPayload");
 const { attachServerIdempotencyKey } = require("../middlewares/attachServerIdempotencyKey");
+const { optionalJWT } = require("../middlewares/optionalJWT");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { authorizeAdminRoles } = require("../middlewares/authorizeAdminRoles");
+const {
+  validatePaymentIntentIdParam,
+  validateRefundPayload,
+} = require("../middlewares/validateStripeRoutePayload");
 
 const internalStripeGuard = [validateJWT, authorizeAdminRoles()];
 const {
@@ -70,6 +75,7 @@ router.post("/account_sessions", ...internalStripeGuard, stripeAccountSession);
 //create payment intent
 router.post(
   "/create-payment-intent",
+  optionalJWT,
   publicPaymentRateLimit,
   validatePublicPaymentPayload,
   attachServerIdempotencyKey,
@@ -169,16 +175,31 @@ router.post("/stripe-transaction-admin", ...internalStripeGuard, saveStripeTrans
 //capture payment intent amount
 router.post(
   "/payment-intents/:id/capture",
-  ...internalStripeGuard,
   publicPaymentRateLimit,
+  validatePaymentIntentIdParam,
   captureStripePaymentIntent
 );
 
 //cancel payment intent amount
 router.post(
   "/payment-intents/:id/cancel",
-  ...internalStripeGuard,
   publicPaymentRateLimit,
+  validatePaymentIntentIdParam,
+  cancelStripePaymentIntent
+);
+
+//internal/admin aliases for the same operations
+router.post(
+  "/internal/payment-intents/:id/capture",
+  ...internalStripeGuard,
+  validatePaymentIntentIdParam,
+  captureStripePaymentIntent
+);
+
+router.post(
+  "/internal/payment-intents/:id/cancel",
+  ...internalStripeGuard,
+  validatePaymentIntentIdParam,
   cancelStripePaymentIntent
 );
 
@@ -189,10 +210,34 @@ router.post(
 );
 
 //create a refund
-router.post("/refund", ...internalStripeGuard, publicPaymentRateLimit, refundStripePaymentIntent);
+router.post(
+  "/refund",
+  publicPaymentRateLimit,
+  validateRefundPayload,
+  refundStripePaymentIntent
+);
 
 //create a partial refund
-router.post("/partial-refund", ...internalStripeGuard, publicPaymentRateLimit, partialRefundStripePaymentIntent);
+router.post(
+  "/partial-refund",
+  publicPaymentRateLimit,
+  validateRefundPayload,
+  partialRefundStripePaymentIntent
+);
+
+router.post(
+  "/internal/refund",
+  ...internalStripeGuard,
+  validateRefundPayload,
+  refundStripePaymentIntent
+);
+
+router.post(
+  "/internal/partial-refund",
+  ...internalStripeGuard,
+  validateRefundPayload,
+  partialRefundStripePaymentIntent
+);
 //removing duplicate entries in database
 router.delete("/remove-duplicate/:id", ...internalStripeGuard, removeDuplicateEntries);
 
