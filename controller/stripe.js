@@ -202,6 +202,7 @@ const stripePaymentIntent = async (request, response) => {
     logger.info("public_payment_intent_created", {
       type: "public_payment_intent_created",
       route: request.originalUrl,
+      lane: request.authContext?.lane || "public",
       customerId,
       customerEmail,
       paymentIntentId: paymentIntent.id,
@@ -219,6 +220,7 @@ const stripePaymentIntent = async (request, response) => {
     logger.error("public_payment_intent_failed", {
       type: "public_payment_intent_failed",
       route: request.originalUrl,
+      lane: request.authContext?.lane || "public",
       customerId,
       customerEmail,
       message: error.message,
