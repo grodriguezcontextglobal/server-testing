@@ -8,6 +8,7 @@ const router = Router();
 const { publicPaymentRateLimit } = require("../middlewares/publicPaymentRateLimit");
 const { validatePublicPaymentPayload } = require("../middlewares/validatePublicPaymentPayload");
 const { attachServerIdempotencyKey } = require("../middlewares/attachServerIdempotencyKey");
+const { optionalJWT } = require("../middlewares/optionalJWT");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { authorizeAdminRoles } = require("../middlewares/authorizeAdminRoles");
 const {
@@ -74,6 +75,7 @@ router.post("/account_sessions", ...internalStripeGuard, stripeAccountSession);
 //create payment intent
 router.post(
   "/create-payment-intent",
+  optionalJWT,
   publicPaymentRateLimit,
   validatePublicPaymentPayload,
   attachServerIdempotencyKey,
