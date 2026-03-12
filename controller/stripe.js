@@ -184,15 +184,31 @@ const companyInformationAccountStripe = async (request, response) => {
 
 const stripePaymentIntent = async (request, response) => {
   const { customerEmail, customerId, device } = request.body;
-  const total = device * 100;
+  const total = Number(device) * 100;
+  const idempotencyKey = request.idempotencyKey;
+
   try {
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: total,
-      currency: "usd",
-      payment_method_types: ["card"],
-      capture_method: "manual",
-      receipt_email: customerEmail,
+    const paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount: total,
+        currency: "usd",
+        payment_method_types: ["card"],
+        capture_method: "manual",
+        receipt_email: customerEmail,
+      },
+      idempotencyKey ? { idempotencyKey } : undefined
+    );
+
+    logger.info("public_payment_intent_created", {
+      type: "public_payment_intent_created",
+      route: request.originalUrl,
+      customerId,
+      customerEmail,
+      paymentIntentId: paymentIntent.id,
+      amount: paymentIntent.amount,
+      idempotencyKey: idempotencyKey ? "present" : "absent",
     });
+
     return response.status(201).json({
       clientSecret: paymentIntent.client_secret,
       payment_intent_id: paymentIntent.id,
@@ -200,6 +216,15 @@ const stripePaymentIntent = async (request, response) => {
       paymentIntent,
     });
   } catch (error) {
+    logger.error("public_payment_intent_failed", {
+      type: "public_payment_intent_failed",
+      route: request.originalUrl,
+      customerId,
+      customerEmail,
+      message: error.message,
+      idempotencyKey: idempotencyKey ? "present" : "absent",
+    });
+
     return response.status(500).json({
       msg: error.message,
     });

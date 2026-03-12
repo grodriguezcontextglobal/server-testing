@@ -5,6 +5,9 @@
 
 const { Router } = require("express");
 const router = Router();
+const { publicPaymentRateLimit } = require("../middlewares/publicPaymentRateLimit");
+const { validatePublicPaymentPayload } = require("../middlewares/validatePublicPaymentPayload");
+const { attachServerIdempotencyKey } = require("../middlewares/attachServerIdempotencyKey");
 const {
   stripePaymentIntent,
   listAllCustomers,
@@ -61,7 +64,13 @@ router.post("/account_link", stripeAccountLink);
 router.post("/account_sessions", stripeAccountSession);
 
 //create payment intent
-router.post("/create-payment-intent", stripePaymentIntent);
+router.post(
+  "/create-payment-intent",
+  publicPaymentRateLimit,
+  validatePublicPaymentPayload,
+  attachServerIdempotencyKey,
+  stripePaymentIntent
+);
 
 //create payment intent from admin side
 router.post("/create-payment-intent-customized", stripePaymentIntentCustomized);
@@ -148,10 +157,18 @@ router.post("/stripe-transaction", saveStripeTransaction);
 router.post("/stripe-transaction-admin", saveStripeTransactionAdmin);
 
 //capture payment intent amount
-router.post("/payment-intents/:id/capture", captureStripePaymentIntent);
+router.post(
+  "/payment-intents/:id/capture",
+  publicPaymentRateLimit,
+  captureStripePaymentIntent
+);
 
 //cancel payment intent amount
-router.post("/payment-intents/:id/cancel", cancelStripePaymentIntent);
+router.post(
+  "/payment-intents/:id/cancel",
+  publicPaymentRateLimit,
+  cancelStripePaymentIntent
+);
 
 //save No regular user object {device, paymentIntentId, clientSecret} in database
 router.post(
@@ -160,10 +177,10 @@ router.post(
 );
 
 //create a refund
-router.post("/refund", refundStripePaymentIntent);
+router.post("/refund", publicPaymentRateLimit, refundStripePaymentIntent);
 
 //create a partial refund
-router.post("/partial-refund", partialRefundStripePaymentIntent);
+router.post("/partial-refund", publicPaymentRateLimit, partialRefundStripePaymentIntent);
 //removing duplicate entries in database
 router.delete("/remove-duplicate/:id", removeDuplicateEntries);
 
