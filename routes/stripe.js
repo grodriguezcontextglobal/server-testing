@@ -15,6 +15,7 @@ const {
   validatePaymentIntentIdParam,
   validateRefundPayload,
 } = require("../middlewares/validateStripeRoutePayload");
+const { idempotencyMutationCache } = require("../middlewares/idempotencyMutationCache");
 
 const internalStripeGuard = [validateJWT, authorizeAdminRoles()];
 const {
@@ -177,6 +178,7 @@ router.post(
   "/payment-intents/:id/capture",
   publicPaymentRateLimit,
   validatePaymentIntentIdParam,
+  idempotencyMutationCache,
   captureStripePaymentIntent
 );
 
@@ -185,6 +187,7 @@ router.post(
   "/payment-intents/:id/cancel",
   publicPaymentRateLimit,
   validatePaymentIntentIdParam,
+  idempotencyMutationCache,
   cancelStripePaymentIntent
 );
 
@@ -193,6 +196,7 @@ router.post(
   "/internal/payment-intents/:id/capture",
   ...internalStripeGuard,
   validatePaymentIntentIdParam,
+  idempotencyMutationCache,
   captureStripePaymentIntent
 );
 
@@ -200,6 +204,7 @@ router.post(
   "/internal/payment-intents/:id/cancel",
   ...internalStripeGuard,
   validatePaymentIntentIdParam,
+  idempotencyMutationCache,
   cancelStripePaymentIntent
 );
 
@@ -214,6 +219,7 @@ router.post(
   "/refund",
   publicPaymentRateLimit,
   validateRefundPayload,
+  idempotencyMutationCache,
   refundStripePaymentIntent
 );
 
@@ -222,6 +228,7 @@ router.post(
   "/partial-refund",
   publicPaymentRateLimit,
   validateRefundPayload,
+  idempotencyMutationCache,
   partialRefundStripePaymentIntent
 );
 
@@ -229,6 +236,7 @@ router.post(
   "/internal/refund",
   ...internalStripeGuard,
   validateRefundPayload,
+  idempotencyMutationCache,
   refundStripePaymentIntent
 );
 
@@ -236,6 +244,7 @@ router.post(
   "/internal/partial-refund",
   ...internalStripeGuard,
   validateRefundPayload,
+  idempotencyMutationCache,
   partialRefundStripePaymentIntent
 );
 //removing duplicate entries in database
