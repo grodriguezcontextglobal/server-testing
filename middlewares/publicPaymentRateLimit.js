@@ -1,7 +1,10 @@
-const WINDOW_MS = Number(process.env.PUBLIC_PAYMENTS_WINDOW_MS || 5 * 60 * 1000);
-const CREATE_LIMIT = Number(process.env.PUBLIC_PAYMENTS_CREATE_LIMIT || 30);
-const AUTH_CREATE_LIMIT = Number(process.env.AUTH_PAYMENTS_CREATE_LIMIT || 120);
-const MUTATION_LIMIT = Number(process.env.PUBLIC_PAYMENTS_MUTATION_LIMIT || 10);
+const { paymentsPolicy } = require("../config/paymentsPolicy");
+
+let logger = { warn: () => {} };
+try {
+  // Optional in test-only environments without installed deps.
+  logger = require("../helpers/logger");
+} catch (_err) {}
 
 const buckets = new Map();
 
@@ -15,10 +18,14 @@ const getClientIp = (req) => {
 
 const getLimit = (path, lane = "public") => {
   if (path.includes("create-payment-intent")) {
-    return lane === "authenticated" ? AUTH_CREATE_LIMIT : CREATE_LIMIT;
+    return lane === "authenticated"
+      ? paymentsPolicy.createLimitAuthenticated
+      : paymentsPolicy.createLimitPublic;
   }
-  if (path.includes("capture") || path.includes("cancel") || path.includes("refund")) return MUTATION_LIMIT;
-  return CREATE_LIMIT;
+  if (path.includes("capture") || path.includes("cancel") || path.includes("refund")) {
+    return paymentsPolicy.mutationLimit;
+  }
+  return paymentsPolicy.createLimitPublic;
 };
 
 const publicPaymentRateLimit = (req, res, next) => {
@@ -31,13 +38,25 @@ const publicPaymentRateLimit = (req, res, next) => {
 
   const entry = buckets.get(key);
   if (!entry || now > entry.resetAt) {
-    buckets.set(key, { count: 1, resetAt: now + WINDOW_MS });
+    buckets.set(key, { count: 1, resetAt: now + paymentsPolicy.windowMs });
     return next();
   }
 
   if (entry.count >= limit) {
     const retryAfterSec = Math.ceil((entry.resetAt - now) / 1000);
     res.set("Retry-After", String(retryAfterSec));
+
+    if (paymentsPolicy.monitorMode) {
+      logger.warn("payments_rate_limit_hit", {
+        type: "payments_rate_limit_hit",
+        path,
+        lane,
+        ip,
+        limit,
+        retryAfterSec,
+      });
+    }
+
     return res.status(429).json({
       ok: false,
       msg: "Too many requests. Please try again later.",
