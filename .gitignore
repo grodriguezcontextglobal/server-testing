@@ -13,3 +13,10 @@ tmp/uploads/
 go-worker/processor
 go-worker/worker
 isolate-*-v8.log
+
+logs/
+.vscode/
+go-worker/*.exe
+go-worker/*.exe~
+mysql/env.txt
+payload.json
