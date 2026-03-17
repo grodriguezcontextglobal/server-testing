@@ -4,7 +4,88 @@ const { clientRedis } = require("../../database/cacheMemoryConfig");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
 const { processSubLocation } = require("./sub_location");
+const ReceiversPool = require("../../models/ReceiversPool");
+const { groupBy } = require("lodash");
 require("dotenv").config();
+
+/**
+ * Removes records from the ReceiversPool based on a flexible set of criteria.
+ * This function is designed to handle bulk deletions efficiently by filtering serial
+ * numbers from a SQL database and then performing a bulk delete on a MongoDB collection.
+ *
+ * @param {object} options
+ * @param {object} options.connection - An active MySQL connection.
+ * @param {string[]} options.serial_numbers - A list of serial numbers to process.
+ * @param {string} options.sql_company_id - The company ID for the SQL database (item_inv).
+ * @param {string} options.nosql_company_id - The company ID for the MongoDB (ReceiversPool).
+ * @param {string} options.eventSelected - The event identifier for MongoDB.
+ * @param {string[]} [options.category_names] - Optional list of category names to filter by in `item_inv`.
+ * @param {string[]} [options.item_types] - Optional list of item types to use for filtering the `type` field in `ReceiversPool`.
+ * @returns {Promise<number>} The number of records deleted from the pool.
+ */
+const removePoolRecordsByCriteria = async (options) => {
+  const {
+    connection,
+    serial_numbers,
+    sql_company_id,
+    nosql_company_id,
+    eventSelected,
+  } = options;
+
+  // 1. Input validation
+  if (
+    !connection ||
+    !Array.isArray(serial_numbers) ||
+    serial_numbers.length === 0 ||
+    !sql_company_id ||
+    !nosql_company_id ||
+    !eventSelected
+  ) {
+    logger.error(
+      "[removePoolRecordsByCriteria] Error: Missing required parameters.",
+    );
+    // Returning 0 as it's part of a larger transaction and shouldn't crash it.
+    return 0;
+  }
+
+  let serialsToFilter = [...serial_numbers];
+  let results = [];
+  // 2. Further filter serial numbers from item_inv if category_names criteria is given
+    const query =
+      "SELECT serial_number, item_group FROM item_inv WHERE company_id = ? AND serial_number IN (?)";
+    const values = [sql_company_id, serialsToFilter];
+    [results] = await connection.query(query, values);
+    serialsToFilter = results.map((r) => r.serial_number);
+
+  if (serialsToFilter.length === 0) {
+    logger.info(
+      "[removePoolRecordsByCriteria] No devices matched SQL-side filters.",
+    );
+    return 0; // No devices match the SQL-side filters.
+  }
+
+  const groupingDataInRightFormat = groupBy(results, "item_group");
+  let totalDeleted = 0;
+
+  for (const key in groupingDataInRightFormat) {
+    const mongoQuery = {
+      device: {
+        $in: groupingDataInRightFormat[key].map((item) => item.serial_number),
+      },
+      company: nosql_company_id,
+      eventSelected: eventSelected,
+      contract_type: "event",
+      type: key,
+    };
+    const result = await ReceiversPool.deleteMany(mongoQuery);
+    totalDeleted += result.deletedCount;
+  }
+
+  logger.info(
+    `[removePoolRecordsByCriteria] Deleted ${totalDeleted} devices from pool.`,
+  );
+  return totalDeleted;
+};
 
 const getLocationId = async (connection, company_id, location_name) => {
   if (!company_id || !location_name) return null;
@@ -3427,33 +3508,52 @@ const insertBulkItemAlhpanumericFormatWorker = async (connection, req) => {
 };
 
 const confirmItemsReturnedToStock = async (request, response) => {
+  const connection = await getConnection().getConnection();
   try {
-    const connection = getConnection();
-    const { serial_numbers, company_id, location, sub_location } = request.body;
+    const {
+      serial_numbers,
+      company_id,
+      location,
+      sub_location,
+      noSqlCompanyId,
+      noSqlEventName,
+      user_id, // for logging
+    } = request.body;
+
+    // 1. Validation
     if (!Array.isArray(serial_numbers) || serial_numbers.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "An array of serial numbers is required.",
-      });
+      return response
+        .status(400)
+        .json({ ok: false, msg: "An array of serial numbers is required." });
     }
     if (!company_id) {
-      return response.status(400).json({
-        ok: false,
-        msg: "company_id is required.",
-      });
+      return response
+        .status(400)
+        .json({ ok: false, msg: "SQL and NoSQL company IDs are required." });
+    }
+    if (!noSqlEventName) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "noSqlEventName is required." });
+    }
+    if (!user_id) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "user_id is required for logging." });
     }
 
+    await connection.beginTransaction();
+
+    // 2. Update items in SQL database
     const subLocationString = Array.isArray(sub_location)
       ? JSON.stringify(sub_location)
       : sub_location;
-
-    const query = `
+    const updateQuery = `
       UPDATE item_inv
       SET warehouse = 1, main_warehouse= ?, location = ?, sub_location = ?, logistic_status = 'in_stock', update_at = NOW()
       WHERE company_id = ? AND serial_number IN (?);
     `;
-
-    const [result] = await connection.query(query, [
+    const [updateResult] = await connection.query(updateQuery, [
       location,
       location,
       subLocationString,
@@ -3461,16 +3561,32 @@ const confirmItemsReturnedToStock = async (request, response) => {
       serial_numbers,
     ]);
 
+    // 3. Remove devices from the event pool in MongoDB
+    const deletedPoolCount = await removePoolRecordsByCriteria({
+      connection,
+      serial_numbers,
+      sql_company_id: company_id,
+      nosql_company_id: noSqlCompanyId,
+      eventSelected: noSqlEventName,
+    });
+
+    await connection.commit();
+
     return response.status(200).json({
       ok: true,
-      msg: `Updated ${result.affectedRows} items to in_stock.`,
+      msg: `Updated ${updateResult.affectedRows} items to 'in_stock' and processed pool records.`,
+      sql_updated: updateResult.affectedRows,
+      pool_records_deleted: deletedPoolCount,
     });
   } catch (error) {
+    if (connection) await connection.rollback();
     logger.error("Error confirming item return:", error.message);
     response.status(500).json({
       ok: false,
       msg: error.message,
     });
+  } finally {
+    if (connection) connection.release();
   }
 };
 
