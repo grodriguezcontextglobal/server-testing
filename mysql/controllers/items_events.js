@@ -536,6 +536,5 @@ module.exports = {
   insertingDeviceInEventDirectlyFromContainer,
   consultingLeaseInformationConsumer,
   allocateDeviceToEvent,
-  // generalAllocateDeviceToEvent,
   allocateDeviceMarkedAsContainerInEvent,
 };
