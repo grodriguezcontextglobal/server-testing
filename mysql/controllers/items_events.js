@@ -13,7 +13,6 @@ const insertingItemInEvent = async (request, response) => {
   try {
     const { event_id, item_group, category_name, company_id, data } =
       request.body;
-
     if (
       !event_id ||
       !item_group ||
@@ -351,6 +350,11 @@ const allocateDeviceToEvent = async (request, response) => {
         updateResult: update,
         inserted: insertedItemInEvent,
       });
+    }else {
+      response.status(500).json({
+        ok:false,
+        msg:"No items to allocate"
+      })
     }
   } catch (error) {
     response.status(500).json({
@@ -450,7 +454,6 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
       VALUES ${insertPlaceholders};
     `;
     const insertValues = allItemsToProcess.flatMap((id) => [event_id, id]);
-    console.log(insertValues)
     await connection.execute(insertQuery, insertValues);
 
     // Build props only for children (the receivers inside the container)
@@ -520,6 +523,7 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
     if (connection) connection.release();
   }
 };
+
 module.exports = {
   insertingItemInEvent,
   consultingInventoryCurrentState,
@@ -532,5 +536,6 @@ module.exports = {
   insertingDeviceInEventDirectlyFromContainer,
   consultingLeaseInformationConsumer,
   allocateDeviceToEvent,
+  // generalAllocateDeviceToEvent,
   allocateDeviceMarkedAsContainerInEvent,
 };
