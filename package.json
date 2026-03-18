@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "nodemon index.js",
     "start": "node index.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "pm2-pull-run":"git pull && pm2 stop index.js && pm2 start index.js -i max"
   },
   "author": "",
   "license": "ISC",
