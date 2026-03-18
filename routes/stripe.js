@@ -5,6 +5,19 @@
 
 const { Router } = require("express");
 const router = Router();
+const { publicPaymentRateLimit } = require("../middlewares/publicPaymentRateLimit");
+const { validatePublicPaymentPayload } = require("../middlewares/validatePublicPaymentPayload");
+const { attachServerIdempotencyKey } = require("../middlewares/attachServerIdempotencyKey");
+const { optionalJWT } = require("../middlewares/optionalJWT");
+const { validateJWT } = require("../middlewares/validate-jwt");
+const { authorizeAdminRoles } = require("../middlewares/authorizeAdminRoles");
+const {
+  validatePaymentIntentIdParam,
+  validateRefundPayload,
+} = require("../middlewares/validateStripeRoutePayload");
+const { idempotencyMutationCache } = require("../middlewares/idempotencyMutationCache");
+
+const internalStripeGuard = [validateJWT, authorizeAdminRoles()];
 const {
   stripePaymentIntent,
   listAllCustomers,
@@ -52,106 +65,148 @@ const {
 router.post("/customer", stripeCustomer);
 
 //create account
-router.post("/accounts", stripeAccountCreate);
+router.post("/accounts", ...internalStripeGuard, stripeAccountCreate);
 
 //router account link
-router.post("/account_link", stripeAccountLink);
+router.post("/account_link", ...internalStripeGuard, stripeAccountLink);
 
 //create account session
-router.post("/account_sessions", stripeAccountSession);
+router.post("/account_sessions", ...internalStripeGuard, stripeAccountSession);
 
 //create payment intent
-router.post("/create-payment-intent", stripePaymentIntent);
+router.post(
+  "/create-payment-intent",
+  optionalJWT,
+  publicPaymentRateLimit,
+  validatePublicPaymentPayload,
+  attachServerIdempotencyKey,
+  stripePaymentIntent
+);
 
 //create payment intent from admin side
-router.post("/create-payment-intent-customized", stripePaymentIntentCustomized);
+router.post("/create-payment-intent-customized", ...internalStripeGuard, stripePaymentIntentCustomized);
 
 //create payment intent for subscription
 router.post(
   "/create-payment-intent-subscription",
+  ...internalStripeGuard,
   stripePaymentIntentSubscription
 );
 
 //create new company customer for subscriptions
-router.post("/new-company-account", companyInformationAccountStripe);
+router.post("/new-company-account", ...internalStripeGuard, companyInformationAccountStripe);
 
 //route to create subscription from tiers and make charges monthly/yearly
-router.post("/create-subscriptions", creatingSubscription);
+router.post("/create-subscriptions", ...internalStripeGuard, creatingSubscription);
 
 //*create subscription no trail period from tiers and make charges monthly/yearly
-router.post("/create-subscriptions_no_trial", createSubscriptionNoTrialPeriod);
+router.post("/create-subscriptions_no_trial", ...internalStripeGuard, createSubscriptionNoTrialPeriod);
 
 //update payment method in subscription
 router.post(
   "/payment-method/subscriptions/:id",
+  ...internalStripeGuard,
   updateDefaultPaymentMethodInSubscription
 );
 
 //update payment method in customer
 router.post(
   "/payment_methods/:id/attach",
+  ...internalStripeGuard,
   updateDefaultPaymentMethodInCustomer
 );
 
 //update payment method in customer
 router.post(
   "/payment_intents/:id/update-payment-method",
+  ...internalStripeGuard,
   updatePaymentMethodFromAdminDashboard
 );
 
 //list all payment intent created
-router.get("/payment-intents/search", searchStripeTransaction);
+router.get("/payment-intents/search", ...internalStripeGuard, searchStripeTransaction);
 
 //search subscription by setup id
-router.post("/setup-search", findSubscriptionIdBySetUpId);
+router.post("/setup-search", ...internalStripeGuard, findSubscriptionIdBySetUpId);
 
 //list all customers created
-router.get("/customers", listAllCustomers);
+router.get("/customers", ...internalStripeGuard, listAllCustomers);
 
 //list all customers created
-router.post("/customers", listAllCustomers);
+router.post("/customers", ...internalStripeGuard, listAllCustomers);
 
 //search customer
-router.get("/customers/search", searchCustomerId);
+router.get("/customers/search", ...internalStripeGuard, searchCustomerId);
 
 //retrieve paymentIntent
-router.get("/payment_intents/:id", retrievePaymentIntent);
+router.get("/payment_intents/:id", ...internalStripeGuard, retrievePaymentIntent);
 
 //get list of stripe transactions saved
 router.get(
   "/stripe-transactions-saved-list",
+  ...internalStripeGuard,
   getListOfAllSavedStripeTransaction
 );
 
 //get saved stripe transaction by query
 router.post(
   "/stripe-transactions-saved-list",
+  ...internalStripeGuard,
   getListOfAllSavedStripeTransaction
 );
 
 //finding company stripe account
-router.post("/company-account-stripe/", stripeCompanyAccountFound);
+router.post("/company-account-stripe/", ...internalStripeGuard, stripeCompanyAccountFound);
 
 //retrieve all invoices per subscription
-router.get("/invoices", displayAllPaidInvoicesPerSubscription);
+router.get("/invoices", ...internalStripeGuard, displayAllPaidInvoicesPerSubscription);
 
 //retrieve all invoices per subscription
-router.post("/invoices", displayAllPaidInvoicesPerSubscription);
+router.post("/invoices", ...internalStripeGuard, displayAllPaidInvoicesPerSubscription);
 
 //update subscription for cancel at the end of period or
-router.post("/cancel/subscriptions/:id", updateCancelSubscription);
+router.post("/cancel/subscriptions/:id", ...internalStripeGuard, updateCancelSubscription);
 
 //save object {device, paymentIntentId, clientSecret} in database
 router.post("/stripe-transaction", saveStripeTransaction);
 
 //save object {device, paymentIntentId, clientSecret} in database
-router.post("/stripe-transaction-admin", saveStripeTransactionAdmin);
+router.post("/stripe-transaction-admin", ...internalStripeGuard, saveStripeTransactionAdmin);
 
 //capture payment intent amount
-router.post("/payment-intents/:id/capture", captureStripePaymentIntent);
+router.post(
+  "/payment-intents/:id/capture",
+  publicPaymentRateLimit,
+  validatePaymentIntentIdParam,
+  idempotencyMutationCache,
+  captureStripePaymentIntent
+);
 
 //cancel payment intent amount
-router.post("/payment-intents/:id/cancel", cancelStripePaymentIntent);
+router.post(
+  "/payment-intents/:id/cancel",
+  publicPaymentRateLimit,
+  validatePaymentIntentIdParam,
+  idempotencyMutationCache,
+  cancelStripePaymentIntent
+);
+
+//internal/admin aliases for the same operations
+router.post(
+  "/internal/payment-intents/:id/capture",
+  ...internalStripeGuard,
+  validatePaymentIntentIdParam,
+  idempotencyMutationCache,
+  captureStripePaymentIntent
+);
+
+router.post(
+  "/internal/payment-intents/:id/cancel",
+  ...internalStripeGuard,
+  validatePaymentIntentIdParam,
+  idempotencyMutationCache,
+  cancelStripePaymentIntent
+);
 
 //save No regular user object {device, paymentIntentId, clientSecret} in database
 router.post(
@@ -160,19 +215,47 @@ router.post(
 );
 
 //create a refund
-router.post("/refund", refundStripePaymentIntent);
+router.post(
+  "/refund",
+  publicPaymentRateLimit,
+  validateRefundPayload,
+  idempotencyMutationCache,
+  refundStripePaymentIntent
+);
 
 //create a partial refund
-router.post("/partial-refund", partialRefundStripePaymentIntent);
+router.post(
+  "/partial-refund",
+  publicPaymentRateLimit,
+  validateRefundPayload,
+  idempotencyMutationCache,
+  partialRefundStripePaymentIntent
+);
+
+router.post(
+  "/internal/refund",
+  ...internalStripeGuard,
+  validateRefundPayload,
+  idempotencyMutationCache,
+  refundStripePaymentIntent
+);
+
+router.post(
+  "/internal/partial-refund",
+  ...internalStripeGuard,
+  validateRefundPayload,
+  idempotencyMutationCache,
+  partialRefundStripePaymentIntent
+);
 //removing duplicate entries in database
-router.delete("/remove-duplicate/:id", removeDuplicateEntries);
+router.delete("/remove-duplicate/:id", ...internalStripeGuard, removeDuplicateEntries);
 
 //!new route for transaction model fro new design
 //*saving new transaction
 router.post("/save-transaction", saveTransaction);
 
 //*saving new transaction
-router.post("/save-transaction-admin-dashboard", saveTransactionAdmin);
+router.post("/save-transaction-admin-dashboard", ...internalStripeGuard, saveTransactionAdmin);
 
 //*saving new transaction
 router.post(
@@ -181,18 +264,18 @@ router.post(
 );
 
 //*saving new transaction
-router.get("/transaction", getListOfAllSavedTransaction);
+router.get("/transaction", ...internalStripeGuard, getListOfAllSavedTransaction);
 
 //*remove duplicate entry in transaction document
-router.delete("/removing/:id", removeDuplicateEntry);
+router.delete("/removing/:id", ...internalStripeGuard, removeDuplicateEntry);
 
 //search subscription information
-router.get("/subscriptions/:id", searchSubscriptions);
+router.get("/subscriptions/:id", ...internalStripeGuard, searchSubscriptions);
 
 //updating stored subscription
-router.patch("/updating-subscription/:id", updateSubcriptionInCompanyAccount);
+router.patch("/updating-subscription/:id", ...internalStripeGuard, updateSubcriptionInCompanyAccount);
 
 //cancel subscription
-router.delete("/subscriptions/:id", cancelSubscriptionCompany);
+router.delete("/subscriptions/:id", ...internalStripeGuard, cancelSubscriptionCompany);
 
 module.exports = router;
