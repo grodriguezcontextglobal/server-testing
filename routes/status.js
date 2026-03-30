@@ -34,4 +34,12 @@ router.get('/status', async (req, res) => {
     }
 });
 
+router.get('/health', (req, res) => {
+    res.status(200).json({
+        ok: true,
+        message: 'Server is healthy',
+        timestamp: new Date().toISOString()
+    });
+});
+
 module.exports = router;
