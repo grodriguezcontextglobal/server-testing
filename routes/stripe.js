@@ -133,7 +133,7 @@ router.post("/setup-search", ...internalStripeGuard, findSubscriptionIdBySetUpId
 router.get("/customers", ...internalStripeGuard, listAllCustomers);
 
 //list all customers created
-router.post("/customers", ...internalStripeGuard, listAllCustomers);
+router.post("/customers", optionalJWT, listAllCustomers);
 
 //search customer
 router.get("/customers/search", ...internalStripeGuard, searchCustomerId);
@@ -168,7 +168,7 @@ router.post("/invoices", ...internalStripeGuard, displayAllPaidInvoicesPerSubscr
 router.post("/cancel/subscriptions/:id", ...internalStripeGuard, updateCancelSubscription);
 
 //save object {device, paymentIntentId, clientSecret} in database
-router.post("/stripe-transaction", saveStripeTransaction);
+router.post("/stripe-transaction", optionalJWT, saveStripeTransaction);
 
 //save object {device, paymentIntentId, clientSecret} in database
 router.post("/stripe-transaction-admin", ...internalStripeGuard, saveStripeTransactionAdmin);
