@@ -460,18 +460,18 @@ const editOtherAdminUser = async (request, response = response) => {
       }
     );
 
-    if (request.uid) {
-      await logStaffActivity({
-        staff_member_id: request.uid,
-        company_id: adminUserUpdated.company,
-        action: "UPDATE",
-        target_model: "AdminUser",
-        target_id: adminUserUpdated.id,
-        details: { updates: request.body, self_update: false },
-        ip_address: request.ip,
-        device_info: request.headers["user-agent"],
-      });
-    }
+    // if (request.uid) {
+    //   await logStaffActivity({
+    //     staff_member_id: request.uid,
+    //     company_id: adminUserUpdated.company,
+    //     action: "UPDATE",
+    //     target_model: "AdminUser",
+    //     target_id: adminUserUpdated.id,
+    //     details: { updates: request.body, self_update: false },
+    //     ip_address: request.ip,
+    //     device_info: request.headers["user-agent"],
+    //   });
+    // }
 
     return response.json({
       msg: "admin user updated",
