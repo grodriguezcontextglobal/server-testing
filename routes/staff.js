@@ -13,10 +13,10 @@ const { searchCustomerByParameters } = require("../controller/stripe");
  const { validateJWT } = require("../middlewares/validate-jwt");
 
  //display all admin users
-router.get("/admin-users", validateJWT, displayAllAdminUser);
+router.get("/admin-users", displayAllAdminUser);
 
 //display all admin by queries
-router.post("/admin-users", validateJWT, displayAllAdminUser);
+router.post("/admin-users", displayAllAdminUser);
 
  router.patch("/edit-admin/:id", editOtherAdminUser)
  
