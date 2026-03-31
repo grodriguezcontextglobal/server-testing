@@ -105,6 +105,15 @@ const Company = new Schema({
         type: String,
         required: true,
       },
+      email: {
+        type: String,
+        required: false,
+      },
+      employee_id: {
+        type: String,
+        required: false,
+        default:""
+      },
       status: {
         type: String,
         required: true,
