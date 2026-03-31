@@ -18,7 +18,7 @@ router.get("/admin-users", validateJWT, displayAllAdminUser);
 //display all admin by queries
 router.post("/admin-users", validateJWT, displayAllAdminUser);
 
- router.patch("/edit-admin/:id", validateJWT, editOtherAdminUser)
+ router.patch("/edit-admin/:id", editOtherAdminUser)
  
  //search stripe customer by parameters
  router.get('/consumers/search',searchCustomerByParameters)
