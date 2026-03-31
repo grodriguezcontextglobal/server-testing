@@ -9,8 +9,7 @@
    displayAllAdminUser, editOtherAdminUser,
  } = require("../controller/admin");
 const { searchCustomerByParameters } = require("../controller/stripe");
-
- const { validateJWT } = require("../middlewares/validate-jwt");
+const { optionalJWT } = require("../middlewares/optionalJWT");
 
  //display all admin users
 router.get("/admin-users", displayAllAdminUser);
@@ -18,7 +17,7 @@ router.get("/admin-users", displayAllAdminUser);
 //display all admin by queries
 router.post("/admin-users", displayAllAdminUser);
 
- router.patch("/edit-admin/:id", validateJWT, editOtherAdminUser);
+ router.patch("/edit-admin/:id", optionalJWT, editOtherAdminUser);
  
  //search stripe customer by parameters
  router.get('/consumers/search',searchCustomerByParameters)
