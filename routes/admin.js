@@ -29,6 +29,7 @@ const {
 const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const { optionalJWT } = require("../middlewares/optionalJWT");
 
 //protected route
 router.get("/protected", validateJWT, checkTokenVersion, (req, res) => {
@@ -83,7 +84,7 @@ router.post("/users", showAllUsers);
 router.patch("/profile/:id", validateJWT, editAdminUser);
 
 //edit admin user
-router.patch("/admin-user/:id", validateJWT, editOtherAdminUser);
+router.patch("/admin-user/:id", optionalJWT, editOtherAdminUser);
 
 //delete admin suer
 router.delete("/:id", validateJWT, deleteAdminUser);
