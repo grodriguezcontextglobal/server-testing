@@ -205,6 +205,15 @@ const configureRoutes = (app) => {
   app.use("/api", require("./routes/status"));
 };
 
+//route health endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'operational',
+    server: 'standby',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Error handling middleware
 const configureErrorHandling = (app) => {
   app.use((err, req, res, next) => {
