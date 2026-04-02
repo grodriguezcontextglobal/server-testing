@@ -2,6 +2,7 @@ FROM node:18.18.0-bullseye
 
 WORKDIR /app
 
+# install native deps for canvas
 RUN apt-get update && apt-get install -y \
   python3 \
   make \
