@@ -21,7 +21,7 @@ const logger = require("./helpers/logger");
 
 // Constants
 const NUM_CPU = Math.min(OS.cpus().length, 4); // Limit to 4 workers to avoid resource exhaustion
-const PORT = process.env.PORT || 34001;
+const PORT = process.env.PORT || 3000;
 
 const path = require("path");
 const { spawn } = require("child_process");
