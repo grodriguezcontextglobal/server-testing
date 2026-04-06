@@ -2421,7 +2421,7 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => 
     }
     for (const [item_id, item_data] of itemsToUpdateMap.entries()) {
       const { extra_serial_number_details } = item_data;
-      const stringifiedDetails = JSON.stringify([extra_serial_number_details]);
+      const stringifiedDetails = JSON.stringify(extra_serial_number_details);
 
       const queryToUpdateParams = {
         brand,
