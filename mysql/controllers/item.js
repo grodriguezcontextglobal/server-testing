@@ -1926,14 +1926,13 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
     const connection = getConnection();
     const { body } = request;
 
+    // Build WHERE clause dynamically
     const conditions = [];
     const values = [];
-
     for (const [key, value] of Object.entries(body)) {
       if (value === null || value === undefined) {
         continue;
       }
-
       if (Array.isArray(value)) {
         if (value.length > 0) {
           const placeholders = value.map(() => "?").join(", ");
@@ -1945,25 +1944,42 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
         values.push(value);
       }
     }
-
     const whereClause =
       conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
+    // Dynamically build SELECT and GROUP BY based on location filter
+    const hasLocationFilter =
+      "location" in body &&
+      body.location !== null &&
+      body.location !== undefined &&
+      (Array.isArray(body.location) ? body.location.length > 0 : body.location !== "");
+
+    const selectFields = [
+      "category_name",
+      "item_group",
+      "MIN(brand) AS brand",
+      "MIN(descript_item) AS descript_item",
+      "COUNT(*) AS quantity",
+    ];
+    const groupByFields = ["category_name", "item_group"];
+    const orderByFields = ["category_name ASC", "item_group ASC"];
+
+    if (hasLocationFilter) {
+      selectFields.splice(2, 0, "location"); // Add location to SELECT
+      groupByFields.push("location"); // Add location to GROUP BY
+      orderByFields.push("location ASC"); // Add location to ORDER BY
+    }
+
+    // Construct the final query
     const query = `
       SELECT 
-        category_name,
-        item_group,
-        MIN(brand) AS brand,
-        MIN(descript_item) AS descript_item,
-        COUNT(*) AS quantity
+        ${selectFields.join(",\n        ")}
       FROM item_inv
       ${whereClause}
       GROUP BY 
-        category_name,
-        item_group
+        ${groupByFields.join(",\n        ")}
       ORDER BY 
-        category_name ASC,
-        item_group ASC
+        ${orderByFields.join(",\n        ")}
     `;
 
     const [rows] = await connection.execute(query, values);
