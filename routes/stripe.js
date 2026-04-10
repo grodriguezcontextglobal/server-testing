@@ -65,13 +65,13 @@ const {
 router.post("/customer", stripeCustomer);
 
 //create account
-router.post("/accounts", ...internalStripeGuard, stripeAccountCreate);
+router.post("/accounts", optionalJWT, stripeAccountCreate);
 
 //router account link
-router.post("/account_link", ...internalStripeGuard, stripeAccountLink);
+router.post("/account_link", optionalJWT, stripeAccountLink);
 
 //create account session
-router.post("/account_sessions", ...internalStripeGuard, stripeAccountSession);
+router.post("/account_sessions", optionalJWT, stripeAccountSession);
 
 //create payment intent
 router.post(
@@ -84,7 +84,7 @@ router.post(
 );
 
 //create payment intent from admin side
-router.post("/create-payment-intent-customized", ...internalStripeGuard, stripePaymentIntentCustomized);
+router.post("/create-payment-intent-customized", optionalJWT, stripePaymentIntentCustomized);
 
 //create payment intent for subscription
 router.post(
@@ -139,7 +139,7 @@ router.post("/customers", optionalJWT, listAllCustomers);
 router.get("/customers/search", ...internalStripeGuard, searchCustomerId);
 
 //retrieve paymentIntent
-router.get("/payment_intents/:id", ...internalStripeGuard, retrievePaymentIntent);
+router.get("/payment_intents/:id", optionalJWT, retrievePaymentIntent);
 
 //get list of stripe transactions saved
 router.get(
@@ -156,7 +156,7 @@ router.post(
 );
 
 //finding company stripe account
-router.post("/company-account-stripe/", ...internalStripeGuard, stripeCompanyAccountFound);
+router.post("/company-account-stripe/", optionalJWT, stripeCompanyAccountFound);
 
 //retrieve all invoices per subscription
 router.get("/invoices", ...internalStripeGuard, displayAllPaidInvoicesPerSubscription);
