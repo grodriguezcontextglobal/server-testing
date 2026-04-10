@@ -89,18 +89,18 @@ router.post("/create-payment-intent-customized", optionalJWT, stripePaymentInten
 //create payment intent for subscription
 router.post(
   "/create-payment-intent-subscription",
-  ...internalStripeGuard,
+  optionalJWT,
   stripePaymentIntentSubscription
 );
 
 //create new company customer for subscriptions
-router.post("/new-company-account", ...internalStripeGuard, companyInformationAccountStripe);
+router.post("/new-company-account", companyInformationAccountStripe);
 
 //route to create subscription from tiers and make charges monthly/yearly
-router.post("/create-subscriptions", ...internalStripeGuard, creatingSubscription);
+router.post("/create-subscriptions", optionalJWT, creatingSubscription);
 
 //*create subscription no trail period from tiers and make charges monthly/yearly
-router.post("/create-subscriptions_no_trial", ...internalStripeGuard, createSubscriptionNoTrialPeriod);
+router.post("/create-subscriptions_no_trial", optionalJWT, createSubscriptionNoTrialPeriod);
 
 //update payment method in subscription
 router.post(
