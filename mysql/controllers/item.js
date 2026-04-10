@@ -1739,11 +1739,27 @@ const getGroupedItemInventory = async (request, response) => {
   try {
     const connection = getConnection();
 
-    const formatting = Object.keys(request.body)
-      .map((item) => `${item} = ?`)
-      .join(" AND ");
-    const values = Object.values(request.body);
+    const whereClauses = [];
+    const values = [];
+    const body = request.body || {};
 
+    for (const [key, value] of Object.entries(body)) {
+      if (value === null || value === undefined) continue;
+
+      if (Array.isArray(value)) {
+        if (value.length > 0) {
+          const placeholders = value.map(() => '?').join(',');
+          whereClauses.push(`${key} IN (${placeholders})`);
+          values.push(...value);
+        }
+      } else {
+        whereClauses.push(`${key} = ?`);
+        values.push(value);
+      }
+    }
+
+    const whereCondition = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : '';
+    
     const query = `
       SELECT 
         category_name,
@@ -1751,7 +1767,7 @@ const getGroupedItemInventory = async (request, response) => {
         location, 
         COUNT(*) AS quantity
       FROM item_inv
-      WHERE ${formatting}
+      ${whereCondition}
       GROUP BY category_name, item_group, location
       ORDER BY category_name ASC, item_group ASC, location ASC
     `;
