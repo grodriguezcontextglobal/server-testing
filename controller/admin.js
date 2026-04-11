@@ -39,12 +39,12 @@ const createAdminUser = async (request, response = express.response) => {
     );
 
     // Store JWT in a cookie
-    response.cookie("token", token, {
-      httpOnly: true, // Prevent client-side JavaScript from accessing the cookie
-      secure: process.env.NODE_ENV === "production", // Ensure cookies are only sent over HTTPS in production
-      sameSite: "strict", // Prevent CSRF attacks
-      maxAge: 8 * 60 * 60 * 1000, // 8 hours
-    });
+    // response.cookie("token", token, {
+    //   httpOnly: true, // Prevent client-side JavaScript from accessing the cookie
+    //   secure: process.env.NODE_ENV === "production", // Ensure cookies are only sent over HTTPS in production
+    //   sameSite: "strict", // Prevent CSRF attacks
+    //   maxAge: 8 * 60 * 60 * 1000, // 8 hours
+    // });
 
     return response.status(201).json({
       ok: true,
