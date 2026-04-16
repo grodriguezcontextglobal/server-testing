@@ -7031,7 +7031,7 @@ const returnConfirmationLeaseMemberMessageHtml = (props) => {
 
 const forceLogoutNotificationHtmlTemplate = (userEmail) => {
   const clientUrl = process.env.CLIENT_URL || "http://localhost:5522";
-  const timestamp = Date.now();
+  const timestamp = new Date().getTime();
   const actionUrl = `${clientUrl}/force-logout?timestamp=${timestamp}`;
   return `
   <html lang="en" translate="no">
@@ -7151,6 +7151,9 @@ const forceLogoutNotificationHtmlTemplate = (userEmail) => {
               <div>
                 <label for="cred" class="form-label">Password:</label>
                 <input type="password" id="cred" name="cred" required class="form-input">
+              </div>
+              <div>
+                <input type="hidden" name="timestamp" value="${timestamp}">
               </div>
               <button type="submit" class="submit-button">Revoke Active Session</button>
             </form>
