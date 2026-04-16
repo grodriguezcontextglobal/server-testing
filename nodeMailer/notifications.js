@@ -38,6 +38,7 @@ const {
   documentSigningCompletionConsumerLeaseMessageHtml,
   liabilityContractMemberNotificationMessageHtml,
   returnConfirmationLeaseMemberMessageHtml,
+  forceLogoutNotificationHtmlTemplate,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
@@ -1361,6 +1362,37 @@ const failedTask = async (
   }
 };
 
+const forcingRevokingActiveSession = async (
+  request,
+  response
+) => {
+  try {
+    // Send email to consumer
+    console.log(request.body);
+    const msg = { 
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      to: `${request.body.email}`,
+      subject: "Action Required: End Your Active Session",
+      html: forceLogoutNotificationHtmlTemplate(request.body.email)
+    };
+    const result = await sgMail.send(msg);
+    return response.status(201).json({
+      ok: true,
+      result,
+    });
+  } catch (error) {
+    logger.error(
+      "Error sending session revoking notification:",
+      error
+    );
+    return response.status(500).json({
+      ok: false,
+      msg: "Failed to send notification email",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   assingDeviceNotification,
   cancelDepositNotification,
@@ -1399,4 +1431,5 @@ module.exports = {
   termsAndConditionsAcceptanceNotification,
   completedTask,
   failedTask,
+  forcingRevokingActiveSession,
 };
