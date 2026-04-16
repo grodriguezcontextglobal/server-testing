@@ -52,6 +52,7 @@ const {
   stripeAccountSession,
   stripeAccountLink,
   partialRefundStripePaymentIntent,
+  stripeCompanyAccountUpdate,
 } = require("../controller/stripe");
 const {
   saveTransaction,
@@ -277,5 +278,8 @@ router.patch("/updating-subscription/:id", ...internalStripeGuard, updateSubcrip
 
 //cancel subscription
 router.delete("/subscriptions/:id", ...internalStripeGuard, cancelSubscriptionCompany);
+
+//updating stripe company account
+router.post("/company-account-stripe/update", ...internalStripeGuard, stripeCompanyAccountUpdate);
 
 module.exports = router;

@@ -182,6 +182,85 @@ const companyInformationAccountStripe = async (request, response) => {
   }
 };
 
+const updateStripeCompanyAccount = async (connectedAccountId, dataToUpdate) => {
+  const stripePayload = {};
+
+  // Direct mapping for top-level properties
+  if (dataToUpdate.company_email) {
+    stripePayload.email = dataToUpdate.company_email;
+  }
+  if (dataToUpdate.company_name) {
+    stripePayload.company = { ...stripePayload.company, name: dataToUpdate.company_name };
+  }
+  if (dataToUpdate.company_phone) {
+    stripePayload.company = { ...stripePayload.company, phone: dataToUpdate.company_phone };
+  }
+
+  // Business Profile mapping
+  if (dataToUpdate.website) {
+    stripePayload.business_profile = { ...stripePayload.business_profile, url: dataToUpdate.website };
+  }
+
+  // Address mapping - assuming 'address' is an object in dataToUpdate
+  if (dataToUpdate.address && typeof dataToUpdate.address === 'object') {
+    const { street, city, state, postal_code, country } = dataToUpdate.address;
+    stripePayload.company = {
+      ...stripePayload.company,
+      address: {
+        line1: street,
+        city,
+        state,
+        postal_code,
+        country: country || 'US', // Defaulting country to US if not provided
+      },
+    };
+  }
+
+  if (Object.keys(stripePayload).length === 0) {
+    logger.info("No fields to update on Stripe for account:", connectedAccountId);
+    return null; // Or return a message indicating nothing was updated
+  }
+
+  try {
+    const account = await stripe.accounts.update(connectedAccountId, stripePayload);
+    logger.info(`Stripe connected account ${connectedAccountId} updated successfully.`);
+    return account;
+  } catch (error) {
+    logger.error(
+      `Failed to update Stripe account ${connectedAccountId}:`,
+      error
+    );
+    // Re-throw the error to be caught by the calling function
+    throw error;
+  }
+};
+
+const stripeCompanyAccountUpdate = async (request, response) => {
+  try {
+    const { connectedAccountId, ...updateData } = request.body;
+    if (!connectedAccountId) {
+      return response.status(400).json({ ok: false, error: "Connected account ID is required." });
+    }
+
+    const account = await updateStripeCompanyAccount(connectedAccountId, updateData);
+    
+    if (account) {
+      return response.status(200).json({
+        ok: true,
+        account: account,
+      });
+    } else {
+      return response.status(200).json({
+        ok: true,
+        message: "No updatable Stripe fields were provided."
+      });
+    }
+
+  } catch (error) {
+    return response.status(500).send({ ok: false, error: error.message });
+  }
+};
+
 const stripePaymentIntent = async (request, response) => {
   const { customerEmail, customerId, device } = request.body;
   const total = Number(device) * 100;
@@ -977,4 +1056,5 @@ module.exports = {
   stripeAccountSession,
   stripeAccountLink,
   partialRefundStripePaymentIntent,
+  stripeCompanyAccountUpdate,
 };
