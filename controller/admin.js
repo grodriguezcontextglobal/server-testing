@@ -39,12 +39,12 @@ const createAdminUser = async (request, response = express.response) => {
     );
 
     // Store JWT in a cookie
-    // response.cookie("token", token, {
-    //   httpOnly: true, // Prevent client-side JavaScript from accessing the cookie
-    //   secure: process.env.NODE_ENV === "production", // Ensure cookies are only sent over HTTPS in production
-    //   sameSite: "strict", // Prevent CSRF attacks
-    //   maxAge: 8 * 60 * 60 * 1000, // 8 hours
-    // });
+    response.cookie("token", token, {
+      httpOnly: true, // Prevent client-side JavaScript from accessing the cookie
+      secure: process.env.NODE_ENV === "production", // Ensure cookies are only sent over HTTPS in production
+      sameSite: "strict", // Prevent CSRF attacks
+      maxAge: 8 * 60 * 60 * 1000, // 8 hours
+    });
 
     return response.status(201).json({
       ok: true,
@@ -778,6 +778,58 @@ const disableMfa = async (req, res) => {
   }
 };
 
+const forceEndSession = async (request, response) => {
+  const { email, password } = request.body;
+  try {
+    if (!email || !password) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "Email and password are required." });
+    }
+
+    const adminUser = await AdminUser.findOne({ email });
+    if (!adminUser) {
+      return response.status(404).json({ ok: false, msg: "User not found." });
+    }
+
+    const validPassword = bcrypt.compareSync(password, adminUser.password);
+    if (!validPassword) {
+      return response.status(401).json({ ok: false, msg: "Invalid credentials." });
+    }
+
+    const redis = await clientRedis();
+    const sessionKey = `staff_session:${adminUser.id}`;
+    const ownerKey = `${sessionKey}:owner`;
+
+    await redis.del(sessionKey);
+    await redis.del(ownerKey);
+
+    await logStaffActivity({
+      staff_member_id: adminUser.id,
+      company_id: adminUser.company,
+      action: "FORCE_LOGOUT",
+      details: { reason: "User-initiated remote session termination." },
+      ip_address: request.ip,
+    });
+
+    response.cookie("token", "", {
+      httpOnly: true,
+      expires: new Date(0),
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+
+    return response.status(200).json({
+      ok: true,
+      message:
+        "Active session has been terminated. You can now start a new session.",
+    });
+  } catch (error) {
+    logger.error("Force session end error", { email, error: error.message });
+    return response.status(500).json({ ok: false, msg: "Internal server error." });
+  }
+};
+
 module.exports = {
   renewToken,
   loginUser,
@@ -797,4 +849,5 @@ module.exports = {
   generateMfaSecret,
   verifyMfaSetup,
   disableMfa,
+  forceEndSession,
 };
