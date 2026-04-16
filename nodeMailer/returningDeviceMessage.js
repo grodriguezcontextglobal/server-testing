@@ -179,9 +179,8 @@ const assigningDeviceMessageHtml = (props) => {
 
       <h1>Devices Assignment Receipt</h1>
       <p>
-        Dear ${props.consumer.firstName} ${
-    props.consumer.lastName
-  }, this email confirms that all devices have been assigned successfully from the transaction below.
+        Dear ${props.consumer.firstName} ${props.consumer.lastName
+    }, this email confirms that all devices have been assigned successfully from the transaction below.
       </p>
 
       <table>
@@ -195,8 +194,8 @@ const assigningDeviceMessageHtml = (props) => {
         </thead>
         <tbody>
           ${props.devices
-            .map(
-              (device) => `
+      .map(
+        (device) => `
             <tr>
               <td>${device.deviceType}</td>
               <td>${device.serialNumber}</td>
@@ -204,14 +203,13 @@ const assigningDeviceMessageHtml = (props) => {
               <td>${new Date().toLocaleDateString()}</td>
             </tr>
           `
-            )
-            .join("")}
+      )
+      .join("")}
         </tbody>
       </table>
 
-      <a href="${
-        props.link
-      }" target="_blank"><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">Open App</p></a>
+      <a href="${props.link
+    }" target="_blank"><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">Open App</p></a>
 
       <div class="qr-code">
       </div>
@@ -418,9 +416,8 @@ const returnConfirmationMessageHtml = (props) => {
 
       <h1>Devices Returned Receipt</h1>
       <p>
-        Dear ${props.consumer.firstName} ${
-    props.consumer.lastName
-  }, this email confirms that all devices shown have been returned successfully from the transaction below.
+        Dear ${props.consumer.firstName} ${props.consumer.lastName
+    }, this email confirms that all devices shown have been returned successfully from the transaction below.
       </p>
 
       <table>
@@ -434,8 +431,8 @@ const returnConfirmationMessageHtml = (props) => {
         </thead>
         <tbody>
           ${props.devices
-            .map(
-              (device) => `
+      .map(
+        (device) => `
             <tr>
               <td>${device.device.deviceType}</td>
               <td>${device.device.serialNumber}</td>
@@ -443,14 +440,13 @@ const returnConfirmationMessageHtml = (props) => {
               <td>${new Date().toLocaleDateString()}</td>
             </tr>
           `
-            )
-            .join("")}
+      )
+      .join("")}
         </tbody>
       </table>
 
-      <a href="${
-        props.link
-      }" target="_blank"><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">Open App</p></a>
+      <a href="${props.link
+    }" target="_blank"><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">Open App</p></a>
 
       <div class="qr-code">
       </div>
@@ -973,9 +969,8 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
           Lost device fee receipt
           </h1>
           <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-          This email confirms that $${
-            props.amount
-          } has been charged due to the lost devices from the transaction detailed below.
+          This email confirms that $${props.amount
+    } has been charged due to the lost devices from the transaction detailed below.
         <div
             style="
               width: 100%;
@@ -987,29 +982,24 @@ const lostDeviceFeeCollectedMessageHtml = (props) => {
             "
           >
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Event: <strong>${
-              props.event
-            }</strong></p>
+            <p style="width: 100%; text-align: left">Event: <strong>${props.event
+    }</strong></p>
           </div>
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Company: <strong>${
-              props.company
-            }</strong></p>
+            <p style="width: 100%; text-align: left">Company: <strong>${props.company
+    }</strong></p>
           </div>
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Date and time: <strong>${
-              props.date
-            }</strong></p>
+            <p style="width: 100%; text-align: left">Date and time: <strong>${props.date
+    }</strong></p>
           </div>
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Transaction ID: <strong>${
-              props.transaction
-            }</strong></p>
+            <p style="width: 100%; text-align: left">Transaction ID: <strong>${props.transaction
+    }</strong></p>
           </div>
             <div style="margin: 0.3rem auto 1.5rem; width: 100%; text-align: left">
-            <p style="width: 100%; text-align: left">Device: <strong>${
-              props.device.deviceType ?? props.type
-            } | ${props.device.serialNumber ?? props.device}</strong></p>
+            <p style="width: 100%; text-align: left">Device: <strong>${props.device.deviceType ?? props.type
+    } | ${props.device.serialNumber ?? props.device}</strong></p>
           </div>
           </div>
           </p>
@@ -1165,8 +1155,8 @@ const lostDeviceFeeReceipt = (props) => {
                 </p>
                 <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
                   <strong>Date:</strong> ${props.date
-                    .toString()
-                    .replaceAll(",", " ")}
+      .toString()
+      .replaceAll(",", " ")}
                 </p>
                 <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
                   <strong>Time:</strong> ${props.time}
@@ -1175,9 +1165,8 @@ const lostDeviceFeeReceipt = (props) => {
                   <strong>Transaction ID:</strong> ${props.transaction}
                 </p>
                 <p style="font-size: 14px; line-height: 20px; margin-bottom: 8px;">
-                  <strong>Device:</strong> ${
-                    props.device.deviceType ?? props.type
-                  } | ${props.device.serialNumber ?? props.device}
+                  <strong>Device:</strong> ${props.device.deviceType ?? props.type
+    } | ${props.device.serialNumber ?? props.device}
                 </p>
 
               </td>
@@ -1564,11 +1553,10 @@ const linkToLoginExistingConsumerMessageHtml = (props) => {
                 </h1>
                 <p style="font-size: 16px; line-height: 1.5; margin-bottom: 16px;">
                   Please click the button below to log in to the Devitrak app
-                  and manage your devices and transactions in ${
-                    props.event
-                      ? props.event.eventInfoDetail.eventName
-                      : "this event"
-                  } with
+                  and manage your devices and transactions in ${props.event
+      ? props.event.eventInfoDetail.eventName
+      : "this event"
+    } with
                   <strong>${props.company}</strong>.
                 </p>
 
@@ -2182,11 +2170,10 @@ const singleEmailMessageHtml = (props) => {
       Message from ${props.company}
     </h1>
     <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
-      This email was sent from ${props.company}${
-    props.eventSelected ?? props.eventSelected.length > 0
+      This email was sent from ${props.company}${props.eventSelected ?? props.eventSelected.length > 0
       ? ` related to the event ${props.eventSelected}`
       : "."
-  }.
+    }.
     </p>
     <p
             style="
@@ -3396,18 +3383,14 @@ const serviceRefundConfirmationEmailHtml = (props) => {
           Message from <strong>${props.company}</strong>
         </p>
         <p>
-          This email was sent from <strong>${
-            props.company
-          }</strong> regarding the refund for the event <strong>${
-    props.event
-  }</strong>.
+          This email was sent from <strong>${props.company
+    }</strong> regarding the refund for the event <strong>${props.event
+    }</strong>.
         </p>
         <p>
-          We are pleased to confirm that the amount of <strong>$${
-            props.amount
-          }</strong> has been successfully refunded on <strong>${
-    props.date
-  }</strong>.
+          We are pleased to confirm that the amount of <strong>$${props.amount
+    }</strong> has been successfully refunded on <strong>${props.date
+    }</strong>.
         </p>
         <div class="details-box">
           <p class="heading">Refund Details</p>
@@ -3627,9 +3610,8 @@ const deviceReportPerTransactionMessageHtml = (props) => {
 
       <h1>Devices Report Per Transaction</h1>
       <p>
-        Dear ${props.consumer.firstName} ${
-    props.consumer.lastName
-  }, this email confirms that all devices shown have been assigned successfully to the transaction below.
+        Dear ${props.consumer.firstName} ${props.consumer.lastName
+    }, this email confirms that all devices shown have been assigned successfully to the transaction below.
       </p>
 
       <table>
@@ -3644,26 +3626,24 @@ const deviceReportPerTransactionMessageHtml = (props) => {
         </thead>
         <tbody>
           ${props.devices
-            .map(
-              (device) => `
+      .map(
+        (device) => `
             <tr>
               <td>${device.device.deviceType}</td>
               <td>${device.device.serialNumber}</td>
-              <td class="${
-                device.device.status ? "text-danger" : "text-success"
-              }">${rendering(device.device.status)}</td>
+              <td class="${device.device.status ? "text-danger" : "text-success"
+          }">${rendering(device.device.status)}</td>
               <td>${device.paymentIntent}</td>
               <td>${new Date().toLocaleDateString()}</td>
             </tr>
           `
-            )
-            .join("")}
+      )
+      .join("")}
         </tbody>
       </table>
 
-      <a href="${
-        props.link
-      }" target="_blank"><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">Open App</p></a>
+      <a href="${props.link
+    }" target="_blank"><p style="font-size: 0.95rem; color: #fff; margin-bottom: 10px;">Open App</p></a>
 
       <div class="qr-code">
       </div>
@@ -4014,12 +3994,12 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
 
   const itemIds = Array.isArray(items)
     ? Array.from(
-        new Set(
-          items
-            .map((it) => it.item_id ?? it.id ?? it.key ?? it.serial_number)
-            .filter(Boolean)
-        )
+      new Set(
+        items
+          .map((it) => it.item_id ?? it.id ?? it.key ?? it.serial_number)
+          .filter(Boolean)
       )
+    )
     : [];
 
   const itemIdsParam = itemIds.length
@@ -4031,15 +4011,13 @@ const liabilityContractStaffNotificationMessageHtml = (props) => {
       .map(
         (contract) => `
       <tr>
-        <td style="padding: 12px; border: 1px solid #e0e0e0;">${
-          contract.title
-        }</td>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title
+          }</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">
-          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&staff_member_id=${
-          staff.staff_member_id
-        }&date_reference=${date_reference}&contract_url=${encodeURIComponent(
-          contract.view_url
-        )}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
+          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&staff_member_id=${staff.staff_member_id
+          }&date_reference=${date_reference}&contract_url=${encodeURIComponent(
+            contract.view_url
+          )}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
         </td>
       </tr>
     `
@@ -4356,12 +4334,12 @@ const liabilityContractConsumerNotificationMessageHtml = (props) => {
 
   const itemIds = Array.isArray(items)
     ? Array.from(
-        new Set(
-          items
-            .map((it) => it.item_id ?? it.id ?? it.key ?? it.serial_number)
-            .filter(Boolean)
-        )
+      new Set(
+        items
+          .map((it) => it.item_id ?? it.id ?? it.key ?? it.serial_number)
+          .filter(Boolean)
       )
+    )
     : [];
 
   const itemIdsParam = itemIds.length
@@ -4373,15 +4351,13 @@ const liabilityContractConsumerNotificationMessageHtml = (props) => {
       .map(
         (contract) => `
       <tr>
-        <td style="padding: 12px; border: 1px solid #e0e0e0;">${
-          contract.title
-        }</td>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title
+          }</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">
-          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&consumer_member_id=${
-          consumer.consumer_member_id
-        }&date_reference=${date_reference}&contract_url=${encodeURIComponent(
-          contract.view_url
-        )}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
+          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&consumer_member_id=${consumer.consumer_member_id
+          }&date_reference=${date_reference}&contract_url=${encodeURIComponent(
+            contract.view_url
+          )}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
         </td>
       </tr>
     `
@@ -4698,12 +4674,12 @@ const liabilityContractMemberNotificationMessageHtml = (props) => {
 
   const itemIds = Array.isArray(items)
     ? Array.from(
-        new Set(
-          items
-            .map((it) => it.item_id ?? it.id ?? it.key ?? it.serial_number)
-            .filter(Boolean)
-        )
+      new Set(
+        items
+          .map((it) => it.item_id ?? it.id ?? it.key ?? it.serial_number)
+          .filter(Boolean)
       )
+    )
     : [];
 
   const itemIdsParam = itemIds.length
@@ -4715,15 +4691,13 @@ const liabilityContractMemberNotificationMessageHtml = (props) => {
       .map(
         (contract) => `
       <tr>
-        <td style="padding: 12px; border: 1px solid #e0e0e0;">${
-          contract.title
-        }</td>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${contract.title
+          }</td>
         <td style="padding: 12px; border: 1px solid #e0e0e0;">
-          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&staff_member_id=${
-          member.member_id
-        }&date_reference=${date_reference}&contract_url=${encodeURIComponent(
-          contract.view_url
-        )}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
+          <a href="https://admin.devitrak.net/display-contracts?company_id=${company_id}&staff_member_id=${member.member_id
+          }&date_reference=${date_reference}&contract_url=${encodeURIComponent(
+            contract.view_url
+          )}&ver_id=${verification_id}&item_ids=${itemIdsParam}">View</a>
         </td>
       </tr>
     `
@@ -5228,70 +5202,60 @@ const returnedItemsToRenterNotificationMessageHtml = (props) => {
       <p>Dear Admin Team,</p>
       <p>This is an automated notification to inform you that rented items have been returned to the rental company. Please find the rental company details below and check the attached Excel file for the complete list of returned items.</p>
 
-      ${
-        props.supplierInfo
-          ? `
+      ${props.supplierInfo
+      ? `
       <div class="supplier-info">
         <h3>🏢 Rental Company Information</h3>
         <div style="background-color: #ffffff; padding: 12px; border-radius: 6px; border: 1px solid #d1fae5; margin-bottom: 12px;">
-          <h4 style="color: #166534; margin: 0 0 8px 0; font-size: 16px; font-weight: 600;">${
-            props.supplierInfo.companyName
-          }</h4>
-          <p style="color: #374151; margin: 4px 0; font-size: 14px;"><strong>Industry:</strong> ${
-            props.supplierInfo.industry
-          }</p>
-          ${
-            props.supplierInfo.services &&
-            props.supplierInfo.services.length > 0
-              ? `<p style="color: #374151; margin: 4px 0; font-size: 14px;"><strong>Services:</strong> ${props.supplierInfo.services.join(
-                  ", "
-                )}</p>`
-              : ""
-          }
+          <h4 style="color: #166534; margin: 0 0 8px 0; font-size: 16px; font-weight: 600;">${props.supplierInfo.companyName
+      }</h4>
+          <p style="color: #374151; margin: 4px 0; font-size: 14px;"><strong>Industry:</strong> ${props.supplierInfo.industry
+      }</p>
+          ${props.supplierInfo.services &&
+        props.supplierInfo.services.length > 0
+        ? `<p style="color: #374151; margin: 4px 0; font-size: 14px;"><strong>Services:</strong> ${props.supplierInfo.services.join(
+          ", "
+        )}</p>`
+        : ""
+      }
         </div>
         
         <div class="supplier-details">
           <div class="supplier-section">
             <h4>📍 Address</h4>
             <p>${props.supplierInfo.address.street}</p>
-            <p>${props.supplierInfo.address.city}, ${
-              props.supplierInfo.address.state
-            } ${props.supplierInfo.address.postalCode}</p>
+            <p>${props.supplierInfo.address.city}, ${props.supplierInfo.address.state
+      } ${props.supplierInfo.address.postalCode}</p>
             <p>${props.supplierInfo.address.country}</p>
           </div>
           
           <div class="supplier-section">
             <h4>📞 Contact Information</h4>
-            <p><strong>Email:</strong> <a href="mailto:${
-              props.supplierInfo.contactInfo.email
-            }" style="color: #2563eb; text-decoration: none;">${
-              props.supplierInfo.contactInfo.email
-            }</a></p>
-            <p><strong>Phone:</strong> <a href="tel:${
-              props.supplierInfo.contactInfo.phone
-            }" style="color: #2563eb; text-decoration: none;">${
-              props.supplierInfo.contactInfo.phone
-            }</a></p>
-            ${
-              props.supplierInfo.contactInfo.website
-                ? `<p><strong>Website:</strong> <a href="https://${props.supplierInfo.contactInfo.website}" style="color: #2563eb; text-decoration: none;" target="_blank">${props.supplierInfo.contactInfo.website}</a></p>`
-                : ""
-            }
+            <p><strong>Email:</strong> <a href="mailto:${props.supplierInfo.contactInfo.email
+      }" style="color: #2563eb; text-decoration: none;">${props.supplierInfo.contactInfo.email
+      }</a></p>
+            <p><strong>Phone:</strong> <a href="tel:${props.supplierInfo.contactInfo.phone
+      }" style="color: #2563eb; text-decoration: none;">${props.supplierInfo.contactInfo.phone
+      }</a></p>
+            ${props.supplierInfo.contactInfo.website
+        ? `<p><strong>Website:</strong> <a href="https://${props.supplierInfo.contactInfo.website}" style="color: #2563eb; text-decoration: none;" target="_blank">${props.supplierInfo.contactInfo.website}</a></p>`
+        : ""
+      }
           </div>
         </div>
       </div>
       `
-          : ""
-      }
+      : ""
+    }
 
       <div class="summary">
         <h3>📊 Return Summary</h3>
         <p><strong>Date:</strong> ${new Date().toLocaleDateString("en-US", {
-          weekday: "long",
-          year: "numeric",
-          month: "long",
-          day: "numeric",
-        })}</p>
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })}</p>
         <p><strong>Time:</strong> ${new Date().toLocaleTimeString("en-US")}</p>
       </div>
 
@@ -5516,16 +5480,14 @@ const termsAndConditionsAcceptanceMessageHtml = (props) => {
         <p>Thank you for accepting the terms and conditions for the event. Your participation is now confirmed!</p>
       </div>
 
-      <p>Dear ${
-        props.consumer
-          ? `${props.consumer.name} ${props.consumer.lastName}`
-          : "Valued Participant"
-      },</p>
+      <p>Dear ${props.consumer
+      ? `${props.consumer.name} ${props.consumer.lastName}`
+      : "Valued Participant"
+    },</p>
       <p>This email confirms that you have successfully accepted the terms and conditions for the event. Your digital signature has been recorded and your participation is now officially confirmed.</p>
 
-      ${
-        props.event
-          ? `
+      ${props.event
+      ? `
       <div class="event-info">
         <h3>📅 Event Information</h3>
         <div class="event-details">
@@ -5541,18 +5503,17 @@ const termsAndConditionsAcceptanceMessageHtml = (props) => {
           
           <div class="detail-item">
             <h4>Event Date</h4>
-            <p>${
-              props.event.eventInfoDetail?.dateBegin
-                ? new Date(
-                    props.event.eventInfoDetail.dateBegin
-                  ).toLocaleDateString("en-US", {
-                    weekday: "long",
-                    year: "numeric",
-                    month: "long",
-                    day: "numeric",
-                  })
-                : "Event Date"
-            }</p>
+            <p>${props.event.eventInfoDetail?.dateBegin
+        ? new Date(
+          props.event.eventInfoDetail.dateBegin
+        ).toLocaleDateString("en-US", {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        })
+        : "Event Date"
+      }</p>
           </div>
           
           <div class="detail-item">
@@ -5562,32 +5523,30 @@ const termsAndConditionsAcceptanceMessageHtml = (props) => {
         </div>
       </div>
       `
-          : ""
-      }
+      : ""
+    }
 
       <div class="signature-info">
         <h3>📝 Signature Details</h3>
-        <p><strong>Signature Date:</strong> ${
-          props.signature?.date
-            ? new Date(props.signature.date).toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })
-            : new Date().toLocaleDateString("en-US", {
-                weekday: "long",
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })
-        }</p>
+        <p><strong>Signature Date:</strong> ${props.signature?.date
+      ? new Date(props.signature.date).toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+      : new Date().toLocaleDateString("en-US", {
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      })
+    }</p>
         <p><strong>Signature Time:</strong> ${new Date().toLocaleTimeString(
-          "en-US"
-        )}</p>
-        <p><strong>Status:</strong> ${
-          props.signature?.accepted ? "Accepted" : "Pending"
-        }</p>
+      "en-US"
+    )}</p>
+        <p><strong>Status:</strong> ${props.signature?.accepted ? "Accepted" : "Pending"
+    }</p>
       </div>
 
       <div class="next-steps">
@@ -5862,16 +5821,14 @@ const documentSigningCompletionMessageHtml = (props) => {
         <p>All required documents have been checked and signed by the staff member. Equipment delivery can now proceed.</p>
       </div>
 
-      <p>Dear ${
-        props.recipientType === "assigner"
-          ? "Equipment Assigner"
-          : "Team Member"
-      },</p>
-      <p>This email confirms that all required liability contracts and documents have been successfully checked and signed by the assigned staff member. ${
-        props.recipientType === "assigner"
-          ? "You can now proceed with equipment delivery."
-          : "All your document signing requirements have been completed."
-      }</p>
+      <p>Dear ${props.recipientType === "assigner"
+      ? "Equipment Assigner"
+      : "Team Member"
+    },</p>
+      <p>This email confirms that all required liability contracts and documents have been successfully checked and signed by the assigned staff member. ${props.recipientType === "assigner"
+      ? "You can now proceed with equipment delivery."
+      : "All your document signing requirements have been completed."
+    }</p>
 
       <div class="staff-info">
         <h3>👤 Staff Member Information</h3>
@@ -5889,11 +5846,11 @@ const documentSigningCompletionMessageHtml = (props) => {
           <div class="detail-item">
             <h4>Signing Date</h4>
             <p>${new Date().toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}</p>
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })}</p>
           </div>
           
           <div class="detail-item">
@@ -5905,53 +5862,48 @@ const documentSigningCompletionMessageHtml = (props) => {
 
 <div class="contract-summary">
         <h3>📄 Checked Documents</h3>
-        <p><strong>Total Documents:</strong> ${
-          props.contract_list ? props.contract_list.length : 0
-        }</p>
+        <p><strong>Total Documents:</strong> ${props.contract_list ? props.contract_list.length : 0
+    }</p>
         <ul class="contract-list">
-          ${
-            props.contract_list
-              ? props.contract_list
-                  .map(
-                    (contract) => `
+          ${props.contract_list
+      ? props.contract_list
+        .map(
+          (contract) => `
             <li>
               <div class="contract-info">
                 <div>${contract.document_name || "Document"}</div>
-                <div class="contract-date">Signed on ${
-                  contract.date || new Date().toLocaleDateString()
-                }</div>
+                <div class="contract-date">Signed on ${contract.date || new Date().toLocaleDateString()
+            }</div>
               </div>
-              ${
-                contract.document_url
-                  ? `<a href="${contract.document_url}" class="contract-link" target="_blank">View Document</a>`
-                  : '<span class="contract-link" style="opacity: 0.5; cursor: not-allowed;">No Link Available</span>'
-              }
+              ${contract.document_url
+              ? `<a href="${contract.document_url}" class="contract-link" target="_blank">View Document</a>`
+              : '<span class="contract-link" style="opacity: 0.5; cursor: not-allowed;">No Link Available</span>'
+            }
             </li>
           `
-                  )
-                  .join("")
-              : '<li><div class="contract-info">No contracts found</div></li>'
-          }
+        )
+        .join("")
+      : '<li><div class="contract-info">No contracts found</div></li>'
+    }
         </ul>
       </div>
       <div class="next-steps">
         <h3>📋 Next Steps</h3>
         <ul>
-          ${
-            props.recipientType === "assigner"
-              ? `
+          ${props.recipientType === "assigner"
+      ? `
           <li>Proceed with equipment delivery to the staff member</li>
           <li>Update equipment assignment records in the system</li>
           <li>Provide equipment usage instructions and guidelines</li>
           <li>Schedule equipment return date if applicable</li>
           `
-              : `
+      : `
           <li>Await equipment delivery from the assigner</li>
           <li>Review equipment usage guidelines when received</li>
           <li>Contact the assigner if you have any questions</li>
           <li>Keep this email as confirmation of completed documentation</li>
           `
-          }
+    }
         </ul>
       </div>
 
@@ -6217,14 +6169,12 @@ const documentSigningCompletionConsumerLeaseMessageHtml = (props) => {
         <p>All required documents have been checked and signed by the consumer. Equipment delivery can now proceed.</p>
       </div>
 
-      <p>Dear ${
-        props.recipientType === "assigner" ? "Equipment Assigner" : "Consumer"
-      },</p>
-      <p>This email confirms that all required liability contracts and documents have been successfully checked and signed by the assigned consumer. ${
-        props.recipientType === "assigner"
-          ? "You can now proceed with equipment delivery."
-          : "All your document signing requirements have been completed."
-      }</p>
+      <p>Dear ${props.recipientType === "assigner" ? "Equipment Assigner" : "Consumer"
+    },</p>
+      <p>This email confirms that all required liability contracts and documents have been successfully checked and signed by the assigned consumer. ${props.recipientType === "assigner"
+      ? "You can now proceed with equipment delivery."
+      : "All your document signing requirements have been completed."
+    }</p>
 
       <div class="staff-info">
         <h3>👤 Consumer Information</h3>
@@ -6242,11 +6192,11 @@ const documentSigningCompletionConsumerLeaseMessageHtml = (props) => {
           <div class="detail-item">
             <h4>Signing Date</h4>
             <p>${new Date().toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}</p>
+      weekday: "long",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    })}</p>
           </div>
           
           <div class="detail-item">
@@ -6258,53 +6208,48 @@ const documentSigningCompletionConsumerLeaseMessageHtml = (props) => {
 
 <div class="contract-summary">
         <h3>📄 Checked Documents</h3>
-        <p><strong>Total Documents:</strong> ${
-          props.contract_list ? props.contract_list.length : 0
-        }</p>
+        <p><strong>Total Documents:</strong> ${props.contract_list ? props.contract_list.length : 0
+    }</p>
         <ul class="contract-list">
-          ${
-            props.contract_list
-              ? props.contract_list
-                  .map(
-                    (contract) => `
+          ${props.contract_list
+      ? props.contract_list
+        .map(
+          (contract) => `
             <li>
               <div class="contract-info">
                 <div>${contract.document_name || "Document"}</div>
-                <div class="contract-date">Signed on ${
-                  contract.date || new Date().toLocaleDateString()
-                }</div>
+                <div class="contract-date">Signed on ${contract.date || new Date().toLocaleDateString()
+            }</div>
               </div>
-              ${
-                contract.document_url
-                  ? `<a href="${contract.document_url}" class="contract-link" target="_blank">View Document</a>`
-                  : '<span class="contract-link" style="opacity: 0.5; cursor: not-allowed;">No Link Available</span>'
-              }
+              ${contract.document_url
+              ? `<a href="${contract.document_url}" class="contract-link" target="_blank">View Document</a>`
+              : '<span class="contract-link" style="opacity: 0.5; cursor: not-allowed;">No Link Available</span>'
+            }
             </li>
           `
-                  )
-                  .join("")
-              : '<li><div class="contract-info">No contracts found</div></li>'
-          }
+        )
+        .join("")
+      : '<li><div class="contract-info">No contracts found</div></li>'
+    }
         </ul>
       </div>
       <div class="next-steps">
         <h3>📋 Next Steps</h3>
         <ul>
-          ${
-            props.recipientType === "assigner"
-              ? `
+          ${props.recipientType === "assigner"
+      ? `
           <li>Proceed with equipment delivery to the consumer</li>
           <li>Update equipment assignment records in the system</li>
           <li>Provide equipment usage instructions and guidelines</li>
           <li>Schedule equipment return date if applicable</li>
           `
-              : `
+      : `
           <li>Await equipment delivery from the assigner</li>
           <li>Review equipment usage guidelines when received</li>
           <li>Contact the assigner if you have any questions</li>
           <li>Keep this email as confirmation of completed documentation</li>
           `
-          }
+    }
         </ul>
       </div>
 
@@ -6375,9 +6320,8 @@ const loginActivityNotificationMessageHtml = (props) => {
                 <!-- Greeting -->
                 <div style="font-family: 'Inter', Arial, sans-serif; font-size: 16px; color: #374151; margin-bottom: 24px; line-height: 1.6;">
                   <p style="margin: 0 0 12px 0;">
-                    <strong style="font-weight: 600; color: #111827;">Hello ${
-                      adminUser.name
-                    } ${adminUser.lastName},</strong>
+                    <strong style="font-weight: 600; color: #111827;">Hello ${adminUser.name
+    } ${adminUser.lastName},</strong>
                   </p>
                   <p style="margin: 0;">
                     We detected a new login to your Devitrak account. Please review the details below to ensure this activity is authorized.
@@ -6466,9 +6410,8 @@ const loginActivityNotificationMessageHtml = (props) => {
                             </table>
                           </td>
                         </tr>
-                        ${
-                          loginInfo.timezone
-                            ? `
+                        ${loginInfo.timezone
+      ? `
                         <tr>
                           <td style="padding: 12px 0 0 0;">
                             <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
@@ -6484,8 +6427,8 @@ const loginActivityNotificationMessageHtml = (props) => {
                           </td>
                         </tr>
                         `
-                            : ""
-                        }
+      : ""
+    }
                       </table>
                       
                     </td>
@@ -6513,12 +6456,12 @@ const loginActivityNotificationMessageHtml = (props) => {
                   <tr>
                     <td style="text-align: center; padding: 32px 0;">
                       <a href="mailto:support@devitrak.com?subject=Unauthorized%20Login%20Alert%20-%20${encodeURIComponent(
-                        adminUser.email
-                      )}&body=I%20received%20a%20login%20alert%20for%20unauthorized%20access%20to%20my%20account.%0A%0AAccount%3A%20${encodeURIComponent(
-    adminUser.email
-  )}%0ATime%3A%20${encodeURIComponent(
-    loginInfo.timestamp
-  )}%0AIP%3A%20${encodeURIComponent(loginInfo.ipAddress)}" 
+      adminUser.email
+    )}&body=I%20received%20a%20login%20alert%20for%20unauthorized%20access%20to%20my%20account.%0A%0AAccount%3A%20${encodeURIComponent(
+      adminUser.email
+    )}%0ATime%3A%20${encodeURIComponent(
+      loginInfo.timestamp
+    )}%0AIP%3A%20${encodeURIComponent(loginInfo.ipAddress)}" 
                          style="display: inline-block; padding: 14px 28px; color: #ffffff; background-color: #dc2626; text-decoration: none; border-radius: 8px; font-family: 'Inter', Arial, sans-serif; font-size: 16px; font-weight: 600; text-align: center; max-width: 280px;">
                         Report Suspicious Activity
                       </a>
@@ -6536,9 +6479,8 @@ const loginActivityNotificationMessageHtml = (props) => {
                   © 2025 Devitrak. All rights reserved.
                 </p>
                 <p style="font-family: 'Inter', Arial, sans-serif; font-size: 12px; color: #6b7280; margin: 4px 0; line-height: 1.5;">
-                  This is an automated security notification for account: <strong>${
-                    adminUser.email
-                  }</strong>
+                  This is an automated security notification for account: <strong>${adminUser.email
+    }</strong>
                 </p>
                 <p style="font-family: 'Inter', Arial, sans-serif; font-size: 12px; color: #6b7280; margin: 4px 0; line-height: 1.5;">
                   If you have questions, contact support at <strong>support@devitrak.com</strong>
@@ -6569,17 +6511,17 @@ const consumerLeaseEndedDeviceReturnedNotificationMessageHtml = (
     typeof propsOrAdminUser === "object" && !Array.isArray(propsOrAdminUser)
       ? propsOrAdminUser
       : {
-          company_name: (loginInfo && loginInfo.company_name) || "",
-          email_admin: (loginInfo && loginInfo.email_admin) || "",
-          consumer: propsOrAdminUser || {},
-          subject:
-            (loginInfo && loginInfo.subject) ||
-            "Lease: Device Returned Confirmation",
-          devices: deviceInfo ? [deviceInfo] : [],
-          returned_at: (loginInfo && loginInfo.returned_at) || undefined,
-          return_location:
-            (loginInfo && loginInfo.return_location) || undefined,
-        };
+        company_name: (loginInfo && loginInfo.company_name) || "",
+        email_admin: (loginInfo && loginInfo.email_admin) || "",
+        consumer: propsOrAdminUser || {},
+        subject:
+          (loginInfo && loginInfo.subject) ||
+          "Lease: Device Returned Confirmation",
+        devices: deviceInfo ? [deviceInfo] : [],
+        returned_at: (loginInfo && loginInfo.returned_at) || undefined,
+        return_location:
+          (loginInfo && loginInfo.return_location) || undefined,
+      };
 
   const {
     company_name = "",
@@ -6592,8 +6534,8 @@ const consumerLeaseEndedDeviceReturnedNotificationMessageHtml = (
   const normalizedDevices = Array.isArray(devices)
     ? devices
     : devices && typeof devices === "object"
-    ? [devices]
-    : [];
+      ? [devices]
+      : [];
 
   const renderReturnedItemsTable = () => {
     if (!normalizedDevices.length) {
@@ -6603,12 +6545,10 @@ const consumerLeaseEndedDeviceReturnedNotificationMessageHtml = (
       .map(
         (item) => `
       <tr>
-        <td style="padding: 12px; border: 1px solid #e0e0e0;">${
-          item.serial_number || item.item_id || item.id || "Unknown"
-        }</td>
-        <td style="padding: 12px; border: 1px solid #e0e0e0;">${
-          item.type || item.device_type || "Device"
-        }</td>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${item.serial_number || item.item_id || item.id || "Unknown"
+          }</td>
+        <td style="padding: 12px; border: 1px solid #e0e0e0;">${item.type || item.device_type || "Device"
+          }</td>
       </tr>
     `
       )
@@ -6818,9 +6758,8 @@ const consumerLeaseEndedDeviceReturnedNotificationMessageHtml = (
 
       <div class="success-banner">
         <h2>Return Completed</h2>
-        <p>We confirm the leased device has been returned successfully${
-          email_admin ? ` received for <strong>${email_admin}</strong>` : ""
-        }.</p>
+        <p>We confirm the leased device has been returned successfully${email_admin ? ` received for <strong>${email_admin}</strong>` : ""
+    }.</p>
         <ul style="color: #475467; line-height: 1.6; margin: 0;">
           <li>No further action is required from you.</li>
           <li>If you believe this is a mistake, contact the administrator immediately.</li>
@@ -7052,9 +6991,8 @@ const returnConfirmationLeaseMemberMessageHtml = (props) => {
 
       <h1>Devices Returned Receipt</h1>
       <p>
-        Dear ${props.member.firstName} ${
-    props.member.lastName
-  }, this email confirms that all devices shown have been returned successfully.
+        Dear ${props.member.firstName} ${props.member.lastName
+    }, this email confirms that all devices shown have been returned successfully.
       </p>
 
       <table>
@@ -7067,16 +7005,16 @@ const returnConfirmationLeaseMemberMessageHtml = (props) => {
         </thead>
         <tbody>
           ${props.devices
-            .map(
-              (device) => `
+      .map(
+        (device) => `
             <tr>
               <td>${device.device.deviceType}</td>
               <td>${device.device.serialNumber}</td>
               <td>${new Date().toLocaleDateString()}</td>
             </tr>
           `
-            )
-            .join("")}
+      )
+      .join("")}
         </tbody>
       </table>
 
@@ -7091,6 +7029,143 @@ const returnConfirmationLeaseMemberMessageHtml = (props) => {
 `;
 };
 
+const forceLogoutNotificationHtmlTemplate = (userEmail) => {
+  const clientUrl = process.env.CLIENT_URL || "http://localhost:5522";
+  const timestamp = Date.now();
+  const actionUrl = `${clientUrl}/force-logout?timestamp=${timestamp}`;
+  return `
+  <html lang="en" translate="no">
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <title>Force Logout Request</title>
+      <style>
+        @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+        body {
+          margin: 0;
+          padding: 0;
+          font-family: 'Inter', sans-serif;
+          background-color: #f4f4f7;
+          color: #1a202c;
+        }
+        .container {
+          margin: 0 auto;
+          padding: 20px;
+          max-width: 600px;
+          background-color: #ffffff;
+          border-radius: 8px;
+        }
+        .header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2.5rem;
+          width: 100%;
+        }
+        .logo-container {
+          align-self: flex-start;
+        }
+        .powered-by {
+          text-align: left;
+          width: 100%;
+          color: #475467;
+          font-size: 9px;
+          font-style: normal;
+          font-weight: 500;
+          line-height: 9px;
+        }
+        .logo {
+          display: flex;
+          align-items: center;
+          margin-top: 2.5px;
+        }
+        h1 {
+          font-size: 24px;
+          font-weight: 600;
+          color: #101828;
+          margin-bottom: 16px;
+        }
+        p {
+          font-size: 16px;
+          color: #475467;
+          margin-bottom: 24px;
+          line-height: 1.5;
+        }
+        .form-container {
+          margin-top: 24px;
+        }
+        .form-input {
+          width: 100%;
+          padding: 12px;
+          border: 1px solid #d0d5dd;
+          border-radius: 8px;
+          font-size: 16px;
+          margin-bottom: 16px;
+          box-sizing: border-box;
+        }
+        .form-label {
+          font-weight: 500;
+          margin-bottom: 8px;
+          display: block;
+          color: #344054;
+        }
+        .submit-button {
+          width: 100%;
+          background-color: #155eef;
+          color: white;
+          padding: 12px 15px;
+          border: none;
+          border-radius: 8px;
+          cursor: pointer;
+          font-size: 16px;
+          font-weight: 600;
+        }
+        .footer {
+          font-size: 12px;
+          color: #475467;
+          text-align: center;
+          margin-top: 40px;
+        }
+      </style>
+    </head>
+    <body>
+      <div style="margin: 0 auto; padding: 20px; max-width: 600px;">
+        <div class="container">
+          <div class="header">
+            <div class="logo-container">
+              <p class="powered-by">Powered by</p>
+              <div class="logo">
+                <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-logo" style="height: 14px; vertical-align: middle; margin-right: 4px;" />
+                <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-name" style="max-width: 80px;" />
+              </div>
+            </div>
+          </div>
+          <h1>Action Required: End Your Active Session</h1>
+          <p>A login attempt was made for your account, but an active session was already in progress. If this was you, please enter your password below to end your other session and proceed.</p>
+          <div class="form-container">
+            <form action="${actionUrl}" method="GET">
+              <div>
+                <label for="email" class="form-label">Email:</label>
+                <input type="email" id="email" name="email" value="${userEmail}" required readonly class="form-input" style="background-color: #f0f2f5; cursor: not-allowed;">
+              </div>
+              <div>
+                <label for="cred" class="form-label">Password:</label>
+                <input type="password" id="cred" name="cred" required class="form-input">
+              </div>
+              <button type="submit" class="submit-button">Revoke Active Session</button>
+            </form>
+          </div>
+          <p style="margin-top: 24px; font-size: 14px;">If you did not initiate this request, you can ignore this email. Your account remains secure.</p>
+          <div class="footer">
+            <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
+            <p>&copy; ${new Date().getFullYear()} Devitrak. All rights reserved.</p>
+          </div>
+        </div>
+      </div>
+    </body>
+  </html>
+  `;
+};
 
 module.exports = {
   assigningDeviceMessageHtml,
@@ -7106,6 +7181,7 @@ module.exports = {
   editingDeviceAdminMessageHtml,
   eventBeginsReminderHtmlMessage,
   eventLinkEventHtml,
+  forceLogoutNotificationHtmlTemplate,
   itemInfoStaffNotificationMessageHtml,
   liabilityContractConsumerNotificationMessageHtml,
   liabilityContractMemberNotificationMessageHtml,
