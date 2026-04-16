@@ -139,14 +139,39 @@ const consultingIndustryCompanyTable = async (request, response) => {
 const updateCompanyData = async (request, response) => {
   try {
     const connection = await getConnection();
-    const values = Object.values(request.body);
+    const { company_id, ...updateFields } = request.body;
+
+    if (!company_id) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "company_id is required for this action." });
+    }
+
+    const fieldEntries = Object.entries(updateFields);
+    if (fieldEntries.length === 0) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "No fields to update provided." });
+    }
+
+    const setClause = fieldEntries.map(([key]) => `${key} = ?`).join(", ");
+    const values = fieldEntries.map(([, value]) => value);
+
     const query = `UPDATE company_info 
-      SET company_name=?, street_address=?, city_address=?, state_address=?, zip_address=?, 
-          phone_number=?, email_company=?, update_at=NOW()
+      SET ${setClause}, update_at=NOW()
       WHERE company_id=?`;
 
+    values.push(company_id);
+
     const [result] = await connection.execute(query, values);
-    return response.status(200).json({ ok: true, items: result.affectedRows });
+    if (result.affectedRows > 0) {
+      return response
+        .status(200)
+        .json({ ok: true, message: "Company updated successfully" });
+    }
+    return response
+      .status(404)
+      .json({ ok: false, message: "Company not found or no changes made." });
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({ ok: false, msg: error.message });
