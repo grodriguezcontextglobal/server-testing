@@ -6,7 +6,7 @@
  const { Router } = require("express");
  const router = Router();
  const {
-   displayAllAdminUser, editOtherAdminUser,
+   displayAllAdminUser, editOtherAdminUser, forceEndSession,
  } = require("../controller/admin");
 const { searchCustomerByParameters } = require("../controller/stripe");
 const { optionalJWT } = require("../middlewares/optionalJWT");
@@ -27,5 +27,8 @@ router.post("/admin-users", optionalJWT, displayAllAdminUser);
 
  //router to search all staff information
  router.get('/__staff-search',displayAllAdminUser)
+
+ // Route to handle user logout
+router.post("/force-logout", forceEndSession);
 
  module.exports = router;
