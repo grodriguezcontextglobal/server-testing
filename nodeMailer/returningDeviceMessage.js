@@ -7030,7 +7030,7 @@ const returnConfirmationLeaseMemberMessageHtml = (props) => {
 };
 
 const forceLogoutNotificationHtmlTemplate = (userEmail) => {
-  const clientUrl = process.env.CLIENT_URL || "http://localhost:5522";
+  const clientUrl = "https://admin.devitrak.net";
   const timestamp = new Date().getTime();
   const actionUrl = `${clientUrl}/force-logout?timestamp=${timestamp}`;
   return `
