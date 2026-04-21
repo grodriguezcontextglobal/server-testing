@@ -314,13 +314,13 @@ const startServer = () => {
       );
     }
 
-    // Initialize Scheduled Jobs
-    try {
-      const { initScheduledJobs } = require("./scheduler");
-      initScheduledJobs();
-    } catch (error) {
-      logger.error("Failed to initialize scheduled jobs:", error);
-    }
+    // // Initialize Scheduled Jobs
+    // try {
+    //   const { initScheduledJobs } = require("./scheduler");
+    //   initScheduledJobs();
+    // } catch (error) {
+    //   logger.error("Failed to initialize scheduled jobs:", error);
+    // }
   }
 
   // Disable native cluster mode to prevent infinite loops and simplify debugging
