@@ -26,9 +26,10 @@ const {
   consultingCompanyInventoryBasedOnSubmittedParameters,
   insertBulkItemAlhpanumericFormat,
   getGroupedItemInventory,
-  insertContainerItems,
+  // insertContainerItems,
   deleteBulkItems,
   retrieveItemData,
+  deleteBulkItemBasedOnCriteria,
 } = require("../controllers/item");
 const {
   consultingInventoryCurrentState,
@@ -37,6 +38,9 @@ const {
   checkingInventoryCurrentState,
 } = require("../controllers/items_events");
 const router = express.Router();
+
+//delete items in bulk way based on criteria
+router.post("/delete-bulk-items-criteria", deleteBulkItemBasedOnCriteria);
 
 // ✅ Force body parsing to ensure JSON bodies are read
 router.use(express.json());
