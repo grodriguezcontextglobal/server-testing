@@ -8,6 +8,8 @@ const ReceiversPool = require("../../models/ReceiversPool");
 const { groupBy } = require("lodash");
 require("dotenv").config();
 
+// throw new Error("SERVER HAS RESTARTED AND LOADED THE NEW FILE. This is an intentional test.");
+
 /**
  * Removes records from the ReceiversPool based on a flexible set of criteria.
  * This function is designed to handle bulk deletions efficiently by filtering serial
@@ -3681,6 +3683,82 @@ const confirmItemsReturnedToStock = async (request, response) => {
   }
 };
 
+const deleteBulkItemBasedOnCriteria = async (request, response) => {
+  const pool = getConnection();
+  let connection;
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    console.log("deleteBulkItemBasedOnCriteria request.body:", request.body);
+    const { serial_number, category_name, item_group, company_id } =
+      request.body;
+
+    if (!company_id || !category_name) {
+      return response.status(400).json({
+        ok: false,
+        msg: "company_id and category_name are required.",
+      });
+    }
+
+    let whereClauses = ["company_id = ?", "category_name = ?"];
+    let values = [company_id, category_name];
+
+    if (item_group) {
+      whereClauses.push("item_group = ?");
+      values.push(item_group);
+    }
+
+    if (
+      serial_number &&
+      Array.isArray(serial_number) &&
+      serial_number.length > 0
+    ) {
+      const serialPlaceholders = serial_number.map(() => "?").join(",");
+      whereClauses.push(`serial_number IN (${serialPlaceholders})`);
+      values.push(...serial_number);
+    }
+
+    const query = `DELETE FROM item_inv WHERE ${whereClauses.join(" AND ")}`;
+
+    logger.info(`[deleteBulkItemBasedOnCriteria] Executing query: ${query}`);
+    logger.info(`[deleteBulkItemBasedOnCriteria] With values: ${JSON.stringify(values)}`);
+
+    const [result] = await connection.execute(query, values);
+    const deletedCount = result.affectedRows;
+
+    if (deletedCount === 0) {
+      await connection.commit();
+      return response.status(200).json({
+        ok: true,
+        msg: "No items found matching the provided criteria. No changes were made.",
+        deleted_count: 0,
+      });
+    }
+
+    await connection.commit();
+
+    return response.status(200).json({
+      ok: true,
+      msg: `${deletedCount} item(s) deleted successfully.`,
+      deleted_count: deletedCount,
+    });
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+    logger.error("deleteBulkItemBasedOnCriteria error:", error);
+    return response.status(500).json({
+      ok: false,
+      msg: "An internal error occurred. Please contact the administrator.",
+      error: error.message,
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+};
+
 module.exports = {
   retrieveCompanyItemsWithLocations,
   checkingIfCompanyHasInventory,
@@ -3732,4 +3810,5 @@ module.exports = {
   filterSuppliersInfoItems,
   deleteBulkItems,
   confirmItemsReturnedToStock,
+  deleteBulkItemBasedOnCriteria,
 };
