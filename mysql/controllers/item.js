@@ -845,7 +845,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     // Fix: Spread itemIds array in updateValues
     const updateQuery = `
     UPDATE item_inv 
-    SET warehouse = ?, update_at = NOW()
+    SET warehouse = ?, update_at = NOW(), logistic_status = "in_idle"
     WHERE item_id IN (${idPlaceholders})
     `;
 
@@ -886,7 +886,8 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
     SET
         warehouse = 1,
         status =?,
-        update_at =?
+        update_at =?,
+        logistic_status = "in_stock"
     WHERE
     serial_number =?
     and category_name = ?
