@@ -79,6 +79,11 @@ const EventSchema = Schema({
     type: String,
     required: true,
     default: "in_idle",
+  },
+  contract_for:{
+    type: String,
+    required: false,
+    default: "event"
   }
 });
 
