@@ -109,7 +109,7 @@ const configureMiddleware = (app) => {
   app.use(cors("*"));
   // app.use(cors(corsOptions));
   // Handle pre-flight requests
-  app.options("*", cors(corsOptions));
+  // app.options("*", cors(corsOptions));
   app.use(compression());
 
   // Route-specific high JSON limits (100MB) for bulk operations
