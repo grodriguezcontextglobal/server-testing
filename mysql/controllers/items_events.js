@@ -350,10 +350,10 @@ const allocateDeviceToEvent = async (request, response) => {
         updateResult: update,
         inserted: insertedItemInEvent,
       });
-    }else {
+    } else {
       response.status(500).json({
-        ok:false,
-        msg:"No items to allocate"
+        ok: false,
+        msg: "No items to allocate"
       })
     }
   } catch (error) {
@@ -511,7 +511,7 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
     if (connection) {
       try {
         await connection.rollback();
-      } catch {}
+      } catch { }
     }
     logger.error(error);
 
@@ -521,6 +521,98 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
     });
   } finally {
     if (connection) connection.release();
+  }
+};
+
+const lockItemsForEvent = async (request, response) => {
+  let connection;
+  try {
+    const { event_id, company_id, items } = request.body;
+    const CHUNK_SIZE = 1000; // Process 1000 items per batch
+
+    if (!event_id || !company_id || !Array.isArray(items) || items.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        message: "event_id, company_id, and a non-empty array of item IDs are required.",
+      });
+    }
+
+    connection = await getConnection().getConnection();
+    await connection.beginTransaction();
+
+    let totalAffectedRows = 0;
+    for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+      const chunk = items.slice(i, i + CHUNK_SIZE);
+      const insertQuery = `
+        INSERT INTO event_item_shipping (event_id, item_id, company_id)
+        VALUES ?;
+      `;
+      const values = chunk.map(item_id => [event_id, item_id, company_id]);
+      const [result] = await connection.query(insertQuery, [values]);
+      totalAffectedRows += result.affectedRows;
+    }
+
+    await connection.commit();
+
+    return response.status(201).json({
+      ok: true,
+      message: `${totalAffectedRows} item(s) have been locked for event ${event_id}.`,
+      total_locked: totalAffectedRows,
+    });
+
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+    logger.error("Error locking items for event:", error.message);
+    return response.status(500).json({
+      ok: false,
+      error: error.message || "An internal error occurred while locking items.",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+};
+
+const reserveItemsInInventoryForEvent = async (request, response) => {
+  let connection
+  try {
+    connection = await getConnection().getConnection();
+    await connection.beginTransaction();
+    const { company_id, items } = request.body;
+    const queryToReserveItems = `
+      UPDATE item_inv
+      SET logistic_status = "in-reserved", warehouse = 0
+      WHERE company_id = ?
+        AND item_id IN (${items.map(() => "?").join(",")});
+    `;
+    const [result] = await connection.execute(queryToReserveItems, [
+      company_id,
+      ...items,
+    ]);
+    if (result.affectedRows === 0) {
+      return response.status(404).json({
+        ok: false,
+        message: "No items found in the inventory to reserve.",
+      });
+    }
+    return response.status(200).json({
+      ok: true,
+      message: `${result.affectedRows} item(s) have been reserved in the inventory.`,
+      total_reserved: result.affectedRows,
+    });
+  } catch (error) {
+    logger.error("Error reserving items in inventory for event:", error.message);
+    return response.status(500).json({
+      ok: false,
+      error: error.message || "An internal error occurred while reserving items.",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
@@ -537,4 +629,6 @@ module.exports = {
   consultingLeaseInformationConsumer,
   allocateDeviceToEvent,
   allocateDeviceMarkedAsContainerInEvent,
+  lockItemsForEvent,
+  reserveItemsInInventoryForEvent,
 };
