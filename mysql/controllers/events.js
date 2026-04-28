@@ -64,6 +64,65 @@ const insertingEvent = async (request, response) => {
   }
 };
 
+const updateEventInfo = async (request, response) => {
+  const { event_id } = request.params;
+  const updates = request.body;
+
+  if (!event_id) {
+    return response.status(400).json({
+      ok: false,
+      msg: "Event ID is required as a URL parameter.",
+    });
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return response.status(400).json({
+      ok: false,
+      msg: "No update data provided in the request body.",
+    });
+  }
+
+  const pool = getConnection();
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    
+    const setClauses = Object.keys(updates)
+      .map((key) => `${key} = ?`)
+      .join(", ");
+    const values = [...Object.values(updates), event_id];
+
+    const query = `UPDATE event_info SET ${setClauses} WHERE event_id = ?`;
+
+    const [result] = await connection.execute(query, values);
+
+    if (result.affectedRows === 0) {
+      return response.status(404).json({
+        ok: false,
+        msg: `No event found with ID ${event_id}, or data is the same.`,
+      });
+    }
+
+    return response.status(200).json({
+      ok: true,
+      msg: `Event ${event_id} updated successfully.`,
+      data: result,
+    });
+  } catch (error) {
+    console.error("Error updating event:", error.message);
+    return response.status(500).json({
+      ok: false,
+      msg: "An internal error occurred while updating the event.",
+      error: error.message,
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+};
+
 const consultingEventInformation = async (request, response) => {
   try {
     // const reference = Object.entries(request.body);
@@ -150,6 +209,7 @@ const consultingEventsPerCompany = async (request, response) => {
     });
   }
 };
+
 const deleteEvent = async (request, response) => {
   try {
     const query = "delete from event_info where event_id=?";
@@ -272,6 +332,7 @@ const updateStatusItemBasedOnEvent = async (request, response) => {
 module.exports = {
   consultingEventInformation,
   insertingEvent,
+  updateEventInfo,
   consultingEventTable,
   deleteEvent,
   insertingStaffInEvent,
