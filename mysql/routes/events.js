@@ -7,6 +7,7 @@ const { Router } = require("express");
 const {
   consultingEventInformation,
   insertingEvent,
+  updateEventInfo,
   consultingEventTable,
   deleteEvent,
   insertingStaffInEvent,
@@ -22,6 +23,8 @@ const {
   insertingDeviceInEventDirectlyFromContainer,
   allocateDeviceToEvent,
   allocateDeviceMarkedAsContainerInEvent,
+  lockItemsForEvent,
+  reserveItemsInInventoryForEvent,
 } = require("../controllers/items_events");
 const {
   returningItemToStockWhenEventIsFinished,
@@ -49,6 +52,9 @@ router.post("/events_company", consultingEventsPerCompany);
 
 //insert new event
 router.post("/new_event", insertingEvent);
+
+//update event info
+router.post("/update-event/:event_id", updateEventInfo);
 
 //insert new staff in event
 router.post("/event_staff", insertingStaffInEvent);
@@ -142,5 +148,11 @@ router.post(
   "/allocate-device-container-event",
   allocateDeviceMarkedAsContainerInEvent,
 );
+
+//reserve items in inventory for event
+router.post("/reserve-items-for-event", reserveItemsInInventoryForEvent);
+
+//lock items to be used in event
+router.post("/lock-items-for-event", lockItemsForEvent);
 
 module.exports = router;
