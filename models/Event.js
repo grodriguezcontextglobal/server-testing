@@ -58,7 +58,7 @@ const EventSchema = Schema({
   show: {
     type: Boolean,
     required: true,
-    default: true,
+    default: false,
   },
   company_id: {
     type: String,
@@ -78,12 +78,17 @@ const EventSchema = Schema({
   logistic_inventory_status:{
     type: String,
     required: true,
-    default: "in_idle",
+    default: "no_received_yet",
   },
   contract_for:{
     type: String,
     required: false,
     default: "event"
+  },
+  configuration:{
+    type: String,
+    required: false,
+    default: "in-progress"
   }
 });
 
