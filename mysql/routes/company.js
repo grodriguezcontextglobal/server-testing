@@ -35,6 +35,7 @@ const {
   filterSuppliersInfoItems,
   deleteBulkItems,
   checkingItem,
+  retrieveCompanyInventoryBasedOnParams,
 } = require("../controllers/item");
 const router = Router();
 
@@ -52,6 +53,9 @@ router.post("/new_company", insertingCompany);
 
 // update company data
 router.post("/update_company", updateCompanyData);
+
+//retrieve company inventory based on params
+router.post("/retrieve-company-inventory", retrieveCompanyInventoryBasedOnParams);
 
 // Delete company
 router.delete("/:id", deleteCompany);
