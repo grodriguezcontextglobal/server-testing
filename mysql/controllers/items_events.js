@@ -584,7 +584,7 @@ const reserveItemsInInventoryForEvent = async (request, response) => {
     const { company_id, items } = request.body;
     const queryToReserveItems = `
       UPDATE item_inv
-      SET logistic_status = "in-reserved", warehouse = 0
+      SET logistic_status = "in-reserved"
       WHERE company_id = ?
         AND item_id IN (${items.map(() => "?").join(",")});
     `;
