@@ -669,6 +669,8 @@ const updateItemInTable = async (request, response) => {
       "enableAssignFeature",
       "returnedRentedInfo",
       "supplier_info",
+      "logistic_status",
+      "location_id"
     ]);
 
     // Build WHERE clause from any provided identifiers
@@ -845,7 +847,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     // Fix: Spread itemIds array in updateValues
     const updateQuery = `
     UPDATE item_inv 
-    SET warehouse = ?, update_at = NOW(), logistic_status = "in_idle"
+    SET warehouse = ?, update_at = NOW(), logistic_status = "in-idle"
     WHERE item_id IN (${idPlaceholders})
     `;
 
@@ -887,7 +889,7 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
         warehouse = 1,
         status =?,
         update_at =?,
-        logistic_status = "in_stock"
+        logistic_status = "in-stock"
     WHERE
     serial_number =?
     and category_name = ?
@@ -2365,145 +2367,86 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
 const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => {
   let connection;
   try {
-    connection = await getConnection();
+    connection = await getConnection().getConnection();
+    await connection.beginTransaction();
+
+    // Destructure primary keys, control flags, and potential update data
     const {
-      list,
-      extra_serial_number,
-      brand,
-      category_name,
-      container,
-      containerSpotLimit,
-      cost,
-      current_location,
-      descript_item,
-      display_item,
-      enableAssignFeature,
-      image_url,
+      company_id,
       item_group,
-      location,
-      main_warehouse,
-      ownership,
-      return_date,
-      returnedRentedInfo,
-      sub_location,
-      warehouse,
-      supplier_info,
+      category_name,
+      list,
+      updateAll = false,
+      ...updateData
     } = request.body;
 
-    if (!list || !Array.isArray(list) || list.length === 0) {
+    // --- Validation ---
+    if (!company_id) {
       return response
         .status(400)
-        .json({ ok: false, msg: "List of serial numbers is required." });
+        .json({ ok: false, msg: "company_id is a required primary key." });
     }
 
-    if (!extra_serial_number) {
-      return response
-        .status(400)
-        .json({ ok: false, msg: "extra_serial_number is required." });
-    }
-
-    let parsedExtraSerialNumbers;
-    try {
-      parsedExtraSerialNumbers = JSON.parse(extra_serial_number);
-    } catch (e) {
+    if (!updateAll && (!Array.isArray(list) || list.length === 0)) {
       return response.status(400).json({
         ok: false,
-        msg: "Failed to parse extra_serial_number. It must be a valid JSON string.",
+        msg: "When 'updateAll' is false, a 'list' of item_ids is required.",
       });
     }
 
-    const extraSerialMap = new Map();
-    for (const entry of parsedExtraSerialNumbers) {
-      const key = Object.keys(entry)[0];
-      extraSerialMap.set(key, entry[key]);
-    }
-
-    const itemsToUpdateMap = new Map();
-    for (const serial_key of list) {
-      const details_array = extraSerialMap.get(serial_key);
-      if (details_array) {
-        let extracted_item_id = null;
-        const filtered_details_for_update = [];
-        for (const detail_object of details_array) {
-          if (detail_object.keyObject === "item_id") {
-            extracted_item_id = detail_object.valueObject;
-          } else {
-            filtered_details_for_update.push(detail_object);
-          }
-        }
-
-        if (extracted_item_id) {
-          itemsToUpdateMap.set(extracted_item_id, {
-            extra_serial_number_details: filtered_details_for_update,
-          });
-        } else {
-          logger.warn(
-            `item_id not found for serial_key ${serial_key} in extra_serial_number.`
-          );
-        }
-      } else {
-        logger.warn(
-          `No matching entry found for serial_key ${serial_key} in extra_serial_number.`
-        );
+    // --- Build SET clause ---
+    const validUpdateData = {};
+    for (const key in updateData) {
+      if (updateData[key] !== undefined && updateData[key] !== null) {
+        validUpdateData[key] = updateData[key];
       }
     }
 
-    if (itemsToUpdateMap.size === 0) {
-      return response.status(404).json({
-        ok: false,
-        msg: "No valid items found to update based on the provided list.",
-      });
+    if (Object.keys(validUpdateData).length === 0) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "No valid fields provided for update." });
     }
-    for (const [item_id, item_data] of itemsToUpdateMap.entries()) {
-      const { extra_serial_number_details } = item_data;
-      const stringifiedDetails = JSON.stringify(extra_serial_number_details);
+    
+    validUpdateData.update_at = new Date();
 
-      const queryToUpdateParams = {
-        brand,
-        category_name,
-        container,
-        containerSpotLimit,
-        cost,
-        current_location,
-        descript_item,
-        display_item,
-        enableAssignFeature,
-        image_url,
-        item_group,
-        location,
-        main_warehouse,
-        ownership,
-        return_date,
-        returnedRentedInfo,
-        sub_location,
-        warehouse,
-        supplier_info,
-        extra_serial_number: stringifiedDetails,
-        update_at: new Date(),
-      };
+    const setClause = Object.keys(validUpdateData)
+      .map((key) => `${key} = ?`)
+      .join(", ");
+    const setValues = Object.values(validUpdateData);
 
-      const updateFields = {};
-      for (const key in queryToUpdateParams) {
-        if (
-          queryToUpdateParams[key] !== undefined &&
-          queryToUpdateParams[key] !== null
-        ) {
-          updateFields[key] = queryToUpdateParams[key];
-        }
-      }
-      const keys = Object.keys(updateFields);
-      if (keys.length > 0) {
-        const updateQuery = `UPDATE item_inv SET ${keys
-          .map((key) => `${key} = ?`)
-          .join(", ")} WHERE item_id = ?`;
-        const updateValues = [...Object.values(updateFields), item_id];
-        await connection.execute(updateQuery, updateValues);
-      }
+    // --- Build WHERE clause ---
+    const whereClauses = ["company_id = ?"];
+    const whereValues = [company_id];
+
+    if (item_group) {
+      whereClauses.push("item_group = ?");
+      whereValues.push(item_group);
     }
+    if (category_name) {
+      whereClauses.push("category_name = ?");
+      whereValues.push(category_name);
+    }
+
+    if (!updateAll) {
+      const listPlaceholders = list.map(() => "?").join(",");
+      whereClauses.push(`item_id IN (${listPlaceholders})`);
+      whereValues.push(...list);
+    }
+
+    const whereClause = whereClauses.join(" AND ");
+
+    // --- Execute Query ---
+    const query = `UPDATE item_inv SET ${setClause} WHERE ${whereClause}`;
+    const values = [...setValues, ...whereValues];
+
+    const [result] = await connection.execute(query, values);
+    await connection.commit();
+
     return response.status(200).json({
       ok: true,
-      msg: "Items updated successfully.",
-      updated_count: itemsToUpdateMap.size,
+      msg: `${result.affectedRows} item(s) updated successfully.`,
+      updated_count: result.affectedRows,
     });
   } catch (error) {
     if (connection) {
@@ -3760,6 +3703,39 @@ const deleteBulkItemBasedOnCriteria = async (request, response) => {
   }
 };
 
+const retrieveCompanyInventoryBasedOnParams = async(request,response) => {
+  const { expected, company_id, location, item_group, category_name, limit } = request.body;
+  const connection = getConnection();
+  if (!company_id || !location) {
+    return response.status(400).json({
+      ok: false,
+      message: "company_id and location are required.",
+    });
+  }
+  const query = `
+    SELECT ${expected || '*'} FROM item_inv
+    WHERE company_id = ? AND location = ?
+    ${item_group ? 'AND item_group = ?' : ''}
+    ${category_name ? 'AND category_name = ?' : ''}
+    ${limit ? 'LIMIT ?' : ''}
+  `;
+  const values = [company_id, location, ...(item_group ? [item_group] : []), ...(category_name ? [category_name] : []), ...(limit ? [limit] : [])];
+  try {
+    const [result] = await connection.execute(query, values);
+    return response.status(200).json({
+      ok: true,
+      items: result,
+      mapped_result:JSON.stringify(result.map(item => item.item_id)),
+    });
+  } catch (error) {
+    logger.error("Error retrieving company inventory:", error.message);
+    return response.status(500).json({
+      ok: false,
+      error: error.message || "An internal error occurred while retrieving items.",
+    });
+  }
+}
+
 module.exports = {
   retrieveCompanyItemsWithLocations,
   checkingIfCompanyHasInventory,
@@ -3812,4 +3788,5 @@ module.exports = {
   deleteBulkItems,
   confirmItemsReturnedToStock,
   deleteBulkItemBasedOnCriteria,
+  retrieveCompanyInventoryBasedOnParams,
 };
