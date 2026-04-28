@@ -106,7 +106,8 @@ const configureMiddleware = (app) => {
   });
 
   // Security and parsing middleware
-  app.use(cors(corsOptions));
+  app.use(cors("*"));
+  // app.use(cors(corsOptions));
   // Handle pre-flight requests
   app.options("*", cors(corsOptions));
   app.use(compression());
