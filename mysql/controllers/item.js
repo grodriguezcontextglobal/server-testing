@@ -53,11 +53,11 @@ const removePoolRecordsByCriteria = async (options) => {
   let serialsToFilter = [...serial_numbers];
   let results = [];
   // 2. Further filter serial numbers from item_inv if category_names criteria is given
-    const query =
-      "SELECT serial_number, item_group FROM item_inv WHERE company_id = ? AND serial_number IN (?)";
-    const values = [sql_company_id, serialsToFilter];
-    [results] = await connection.query(query, values);
-    serialsToFilter = results.map((r) => r.serial_number);
+  const query =
+    "SELECT serial_number, item_group FROM item_inv WHERE company_id = ? AND serial_number IN (?)";
+  const values = [sql_company_id, serialsToFilter];
+  [results] = await connection.query(query, values);
+  serialsToFilter = results.map((r) => r.serial_number);
 
   if (serialsToFilter.length === 0) {
     logger.info(
@@ -203,16 +203,16 @@ const insertingItem = async (request, response) => {
     const parsedCost = isNaN(parseFloat(cost)) ? 0 : parseFloat(cost);
     const parsedWarehouse =
       warehouse === true ||
-      warehouse === "true" ||
-      warehouse === 1 ||
-      warehouse === "1"
+        warehouse === "true" ||
+        warehouse === 1 ||
+        warehouse === "1"
         ? 1
         : 0;
     const parsedContainer =
       container === true ||
-      container === "true" ||
-      container === 1 ||
-      container === "1"
+        container === "true" ||
+        container === 1 ||
+        container === "1"
         ? 1
         : 0;
     const parsedDisplayItem =
@@ -793,13 +793,14 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
   response,
 ) => {
   try {
-    const { warehouse, company_id, item_group, category_name, data } =
+    const { warehouse, company_id, item_group, category_name, data, logistic_status } =
       request.body;
     // Validate request body
     if (
       !item_group ||
       !category_name ||
       !company_id ||
+      !logistic_status ||
       !Array.isArray(data) ||
       data.length === 0
     ) {
@@ -847,11 +848,11 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     // Fix: Spread itemIds array in updateValues
     const updateQuery = `
     UPDATE item_inv 
-    SET warehouse = ?, update_at = NOW(), logistic_status = "in-idle"
+    SET warehouse = ?, update_at = NOW(), logistic_status = ?
     WHERE item_id IN (${idPlaceholders})
     `;
 
-    const updateValues = [warehouse, ...itemIds];
+    const updateValues = [warehouse, logistic_status, ...itemIds];
     await connection.execute(updateQuery, updateValues);
 
     return response.status(201).json({
@@ -1764,7 +1765,7 @@ const getGroupedItemInventory = async (request, response) => {
     }
 
     const whereCondition = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : '';
-    
+
     const query = `
       SELECT 
         category_name,
@@ -2370,13 +2371,13 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => 
     connection = await getConnection().getConnection();
     await connection.beginTransaction();
 
-    // Destructure primary keys, control flags, and potential update data
     const {
       company_id,
       item_group,
       category_name,
       list,
       updateAll = false,
+      extra_serial_number, // Stringified JSON
       ...updateData
     } = request.body;
 
@@ -2386,68 +2387,120 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => 
         .status(400)
         .json({ ok: false, msg: "company_id is a required primary key." });
     }
-
     if (!updateAll && (!Array.isArray(list) || list.length === 0)) {
       return response.status(400).json({
         ok: false,
-        msg: "When 'updateAll' is false, a 'list' of item_ids is required.",
+        msg: "When 'updateAll' is false, a 'list' of serial numbers is required.",
+      });
+    }
+    if (!updateAll && !extra_serial_number) {
+      return response.status(400).json({
+        ok: false,
+        msg: "When 'updateAll' is false, 'extra_serial_number' is required.",
       });
     }
 
-    // --- Build SET clause ---
-    const validUpdateData = {};
-    for (const key in updateData) {
-      if (updateData[key] !== undefined && updateData[key] !== null) {
-        validUpdateData[key] = updateData[key];
+    if (updateAll) {
+      // Logic for updating all items matching the criteria.
+      const validUpdateData = { ...updateData };
+      if (extra_serial_number) {
+        // If provided, it will be applied to all matched items.
+        validUpdateData.extra_serial_number = extra_serial_number;
       }
+      validUpdateData.update_at = new Date();
+
+      const setClause = Object.keys(validUpdateData)
+        .map((key) => `${key} = ?`)
+        .join(", ");
+      const setValues = Object.values(validUpdateData);
+
+      const whereClauses = ["company_id = ?"];
+      const whereValues = [company_id];
+      if (item_group) {
+        whereClauses.push("item_group = ?");
+        whereValues.push(item_group);
+      }
+      if (category_name) {
+        whereClauses.push("category_name = ?");
+        whereValues.push(category_name);
+      }
+
+      const query = `UPDATE item_inv SET ${setClause} WHERE ${whereClauses.join(
+        " AND "
+      )}`;
+      const values = [...setValues, ...whereValues];
+      const [result] = await connection.execute(query, values);
+      await connection.commit();
+
+      return response.status(200).json({
+        ok: true,
+        msg: `${result.affectedRows} item(s) updated successfully.`,
+        updated_count: result.affectedRows,
+      });
+    } else {
+      // Logic for updating specific items from the 'list'.
+      const parsedExtraSerial = JSON.parse(extra_serial_number);
+
+      const serialDataMap = {};
+      for (const entry of parsedExtraSerial) {
+        const serial = Object.keys(entry)[0];
+        const detailsArray = entry[serial];
+        const itemIdObject = detailsArray.find((d) => d.keyObject === "item_id");
+        const itemId = itemIdObject ? itemIdObject.valueObject : null;
+
+        // Filter out item_id to prepare the data for storage.
+        const dataToStore = detailsArray.filter(
+          (d) => d.keyObject !== "item_id"
+        );
+
+        if (itemId) {
+          serialDataMap[serial] = {
+            itemId: itemId,
+            jsonToStore: JSON.stringify(dataToStore),
+          };
+        }
+      }
+
+      const commonUpdateData = { ...updateData };
+      commonUpdateData.update_at = new Date();
+
+      let totalAffectedRows = 0;
+      for (const serial of list) {
+        const data = serialDataMap[String(serial)];
+        if (!data || !data.itemId) {
+          logger.warn(`No mapping found for serial ${serial}. Skipping.`);
+          continue;
+        }
+
+        const itemSpecificUpdateData = {
+          ...commonUpdateData,
+          serial_number: serial, // Update serial_number with the identifier
+          extra_serial_number: data.jsonToStore, // Update with filtered JSON
+        };
+
+        const setClauses = Object.keys(itemSpecificUpdateData).map(
+          (key) => `${key} = ?`
+        );
+        const setValues = Object.values(itemSpecificUpdateData);
+
+        if (setClauses.length === 0) continue;
+
+        const query = `UPDATE item_inv SET ${setClauses.join(
+          ", "
+        )} WHERE item_id = ? AND company_id = ?`;
+        const values = [...setValues, data.itemId, company_id];
+
+        const [result] = await connection.execute(query, values);
+        totalAffectedRows += result.affectedRows;
+      }
+
+      await connection.commit();
+      return response.status(200).json({
+        ok: true,
+        msg: `${totalAffectedRows} item(s) updated successfully.`,
+        updated_count: totalAffectedRows,
+      });
     }
-
-    if (Object.keys(validUpdateData).length === 0) {
-      return response
-        .status(400)
-        .json({ ok: false, msg: "No valid fields provided for update." });
-    }
-    
-    validUpdateData.update_at = new Date();
-
-    const setClause = Object.keys(validUpdateData)
-      .map((key) => `${key} = ?`)
-      .join(", ");
-    const setValues = Object.values(validUpdateData);
-
-    // --- Build WHERE clause ---
-    const whereClauses = ["company_id = ?"];
-    const whereValues = [company_id];
-
-    if (item_group) {
-      whereClauses.push("item_group = ?");
-      whereValues.push(item_group);
-    }
-    if (category_name) {
-      whereClauses.push("category_name = ?");
-      whereValues.push(category_name);
-    }
-
-    if (!updateAll) {
-      const listPlaceholders = list.map(() => "?").join(",");
-      whereClauses.push(`item_id IN (${listPlaceholders})`);
-      whereValues.push(...list);
-    }
-
-    const whereClause = whereClauses.join(" AND ");
-
-    // --- Execute Query ---
-    const query = `UPDATE item_inv SET ${setClause} WHERE ${whereClause}`;
-    const values = [...setValues, ...whereValues];
-
-    const [result] = await connection.execute(query, values);
-    await connection.commit();
-
-    return response.status(200).json({
-      ok: true,
-      msg: `${result.affectedRows} item(s) updated successfully.`,
-      updated_count: result.affectedRows,
-    });
   } catch (error) {
     if (connection) {
       await connection.rollback();
@@ -3703,7 +3756,7 @@ const deleteBulkItemBasedOnCriteria = async (request, response) => {
   }
 };
 
-const retrieveCompanyInventoryBasedOnParams = async(request,response) => {
+const retrieveCompanyInventoryBasedOnParams = async (request, response) => {
   const { expected, company_id, location, item_group, category_name, limit } = request.body;
   const connection = getConnection();
   if (!company_id || !location) {
@@ -3725,7 +3778,7 @@ const retrieveCompanyInventoryBasedOnParams = async(request,response) => {
     return response.status(200).json({
       ok: true,
       items: result,
-      mapped_result:JSON.stringify(result.map(item => item.item_id)),
+      mapped_result: JSON.stringify(result.map(item => item.item_id)),
     });
   } catch (error) {
     logger.error("Error retrieving company inventory:", error.message);
