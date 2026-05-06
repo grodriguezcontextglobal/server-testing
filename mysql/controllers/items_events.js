@@ -51,6 +51,152 @@ const insertingItemInEvent = async (request, response) => {
   }
 };
 
+const getEventItemShipping = async (request, response) => {
+  let connection;
+  try {
+    const { company_id, ...filters } = request.body;
+
+    if (!company_id) {
+      return response.status(400).json({
+        ok: false,
+        message: "company_id is a required field.",
+      });
+    }
+
+    connection = await getConnection().getConnection();
+
+    const allowedFilters = ["event_id", "item_id", "shipping_status", "active"];
+    const filterKeys = Object.keys(filters).filter(key => allowedFilters.includes(key));
+
+    // Use eis alias for clarity and to prevent ambiguity
+    let whereClause = "WHERE eis.company_id = ?";
+    const queryValues = [company_id];
+
+    if (filterKeys.length > 0) {
+      const filterConditions = filterKeys.map(key => {
+        const value = filters[key];
+        if (Array.isArray(value)) {
+          queryValues.push(...value);
+          // Use eis alias in filter
+          return `eis.${key} IN (${value.map(() => '?').join(',')})`;
+        } else {
+          queryValues.push(value);
+          // Use eis alias in filter
+          return `eis.${key} = ?`;
+        }
+      }).join(" AND ");
+      whereClause += ` AND ${filterConditions}`;
+    }
+
+    const query = `
+      SELECT 
+        eis.*, 
+        ii.serial_number, 
+        ii.category_name, 
+        ii.item_group,
+        ei.event_name, 
+        CONCAT_WS(', ', ei.street_address, ei.city_address, ei.state_address, ei.zip_address) as event_address
+      FROM event_item_shipping eis
+      LEFT JOIN item_inv ii ON eis.item_id = ii.item_id
+      LEFT JOIN event_info ei ON eis.event_id = ei.event_id
+      ${whereClause};
+    `;
+
+    const [rows] = await connection.query(query, queryValues);
+
+    return response.status(200).json({
+      ok: true,
+      items: rows,
+    });
+
+  } catch (error) {
+    logger.error("Error retrieving event item shipping data:", error.message);
+    return response.status(500).json({
+      ok: false,
+      error: error.message || "An internal error occurred while retrieving data.",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+};
+
+const updateEventItemShipping = async (request, response) => {
+  let connection;
+  try {
+    const { company_id, event_id, items, updates } = request.body;
+    const CHUNK_SIZE = 1000;
+
+    if (!company_id || !event_id || !Array.isArray(items) || items.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        message: "company_id, event_id, and a non-empty array of item IDs are required.",
+      });
+    }
+
+    if (!updates || Object.keys(updates).length === 0) {
+        return response.status(400).json({
+            ok: false,
+            message: "At least one update field must be provided.",
+        });
+    }
+
+    const allowedUpdates = ["shipping_status", "active", "notes"];
+    const fieldsToUpdate = Object.keys(updates);
+    const invalidFields = fieldsToUpdate.filter(field => !allowedUpdates.includes(field));
+
+    if (invalidFields.length > 0) {
+        return response.status(400).json({
+            ok: false,
+            message: `Invalid fields for update: ${invalidFields.join(", ")}`,
+        });
+    }
+
+    connection = await getConnection().getConnection();
+    await connection.beginTransaction();
+
+    const setClause = fieldsToUpdate.map(field => `${field} = ?`).join(", ");
+    const updateValues = fieldsToUpdate.map(field => updates[field]);
+
+    let totalAffectedRows = 0;
+    for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+      const chunk = items.slice(i, i + CHUNK_SIZE);
+      
+      const query = `
+        UPDATE event_item_shipping
+        SET ${setClause}
+        WHERE event_id = ? AND company_id = ? AND item_id IN (?);
+      `;
+
+      const [result] = await connection.query(query, [...updateValues, event_id, company_id, chunk]);
+      totalAffectedRows += result.affectedRows;
+    }
+
+    await connection.commit();
+
+    return response.status(200).json({
+      ok: true,
+      message: `${totalAffectedRows} item(s) have been updated for event ${event_id}.`,
+      total_updated: totalAffectedRows,
+    });
+
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+    logger.error("Error updating event items:", error.message);
+    return response.status(500).json({
+      ok: false,
+      error: error.message || "An internal error occurred while updating items.",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+};
+
 const insertingDeviceInEventDirectly = async (request, response) => {
   try {
     const { item_id, event_id } = request.body;
@@ -631,4 +777,6 @@ module.exports = {
   allocateDeviceMarkedAsContainerInEvent,
   lockItemsForEvent,
   reserveItemsInInventoryForEvent,
+  updateEventItemShipping,
+  getEventItemShipping
 };
