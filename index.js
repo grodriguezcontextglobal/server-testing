@@ -109,7 +109,7 @@ const configureMiddleware = (app) => {
   app.use(cors("*"));
   // app.use(cors(corsOptions));
   // Handle pre-flight requests
-  // app.options("*", cors(corsOptions));
+  app.options("*", cors(corsOptions));
   app.use(compression());
 
   // Route-specific high JSON limits (100MB) for bulk operations
@@ -130,6 +130,11 @@ const configureMiddleware = (app) => {
   // Default JSON limits (50MB) for all other routes
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // // SQL Injection detection middleware
+  // const { sqlInjectionDetector } = require("./middlewares/sql-injection-detector");
+  // app.use(sqlInjectionDetector);
+
   app.use(express.static("public"));
 };
 
