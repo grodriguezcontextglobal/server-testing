@@ -51,6 +51,59 @@ const insertingItemInEvent = async (request, response) => {
   }
 };
 
+const removeEventItemShipping = async (request, response) => {
+  let connection;
+  try {
+    const { event_id, items } = request.body;
+
+    if (!event_id || !Array.isArray(items) || items.length === 0) {
+      return response.status(400).json({
+        ok: false,
+        message: "event_id and a non-empty array of item IDs are required.",
+      });
+    }
+
+    connection = await getConnection().getConnection();
+    await connection.beginTransaction();
+
+    const query = `
+      DELETE FROM event_item_shipping
+      WHERE event_id = ? AND item_id IN (?);
+    `;
+
+    const [result] = await connection.query(query, [event_id, items]);
+    
+    await connection.commit();
+
+    if (result.affectedRows === 0) {
+      return response.status(404).json({
+        ok: false,
+        message: "No matching items found for the given event to remove.",
+      });
+    }
+
+    return response.status(200).json({
+      ok: true,
+      message: `${result.affectedRows} item(s) have been removed from the event shipping list.`,
+      total_removed: result.affectedRows,
+    });
+
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+    logger.error("Error removing event items:", error.message);
+    return response.status(500).json({
+      ok: false,
+      error: error.message || "An internal error occurred while removing items.",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+};
+
 const getEventItemShipping = async (request, response) => {
   let connection;
   try {
@@ -91,9 +144,7 @@ const getEventItemShipping = async (request, response) => {
     const query = `
       SELECT 
         eis.*, 
-        ii.serial_number, 
-        ii.category_name, 
-        ii.item_group,
+        ii.*,
         ei.event_name, 
         CONCAT_WS(', ', ei.street_address, ei.city_address, ei.state_address, ei.zip_address) as event_address
       FROM event_item_shipping eis
@@ -778,5 +829,6 @@ module.exports = {
   lockItemsForEvent,
   reserveItemsInInventoryForEvent,
   updateEventItemShipping,
-  getEventItemShipping
+  getEventItemShipping,
+  removeEventItemShipping
 };
