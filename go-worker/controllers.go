@@ -1022,27 +1022,62 @@ func cleanHierarchyNode(node *HierarchyNode) {
 
 // UpdateItemWarehouseRequest matches the request for UpdateItemWarehouse
 type UpdateItemWarehouseRequest struct {
-	ItemIDs   []int `json:"item_ids"`
-	Warehouse int   `json:"warehouse"`
+	ItemIDs []int                  `json:"item_ids"`
+	Updates map[string]interface{} `json:"updates"`
 }
 
-// UpdateItemWarehouse handles bulk update of warehouse status
+// UpdateItemWarehouse handles bulk update of item properties
 func UpdateItemWarehouse(db *sql.DB, req UpdateItemWarehouseRequest) (int64, error) {
 	if len(req.ItemIDs) == 0 {
 		return 0, nil
 	}
+	if len(req.Updates) == 0 {
+		return 0, fmt.Errorf("no update fields provided")
+	}
+
+	// Whitelist of allowed columns to prevent SQL injection
+	allowedColumns := map[string]bool{
+		"category_name":       true,
+		"item_group":          true,
+		"cost":                true,
+		"brand":               true,
+		"descript_item":       true,
+		"ownership":           true,
+		"main_warehouse":      true,
+		"warehouse":           true,
+		"location":            true,
+		"current_location":    true,
+		"status":              true,
+		"container":           true,
+		"container_id":        true,
+		"display_item":        true,
+		"location_id":         true,
+		"logistic_status":     true,
+		"enableAssignFeature": true,
+	}
+
+	var setClauses []string
+	var updateValues []interface{}
+
+	for col, val := range req.Updates {
+		if !allowedColumns[col] {
+			return 0, fmt.Errorf("disallowed column for update: %s", col)
+		}
+		setClauses = append(setClauses, fmt.Sprintf("`%s` = ?", col))
+		updateValues = append(updateValues, val)
+	}
 
 	// Build query with placeholders
 	placeholders := make([]string, len(req.ItemIDs))
-	args := make([]interface{}, len(req.ItemIDs)+1)
+	args := make([]interface{}, 0, len(updateValues)+len(req.ItemIDs))
+	args = append(args, updateValues...)
 
-	args[0] = req.Warehouse
 	for i, id := range req.ItemIDs {
 		placeholders[i] = "?"
-		args[i+1] = id
+		args = append(args, id)
 	}
 
-	query := fmt.Sprintf("UPDATE item_inv SET warehouse = ? WHERE item_id IN (%s)", strings.Join(placeholders, ","))
+	query := fmt.Sprintf("UPDATE item_inv SET %s WHERE item_id IN (%s)", strings.Join(setClauses, ", "), strings.Join(placeholders, ","))
 
 	result, err := db.Exec(query, args...)
 	if err != nil {
