@@ -71,13 +71,13 @@ const removePoolRecordsByCriteria = async (options) => {
 
   for (const key in groupingDataInRightFormat) {
     const mongoQuery = {
+      type: key,
+      company: nosql_company_id,
+      contract_type: "event",
       device: {
         $in: groupingDataInRightFormat[key].map((item) => item.serial_number),
       },
-      company: nosql_company_id,
       eventSelected: eventSelected,
-      contract_type: "event",
-      type: key,
     };
     const result = await ReceiversPool.deleteMany(mongoQuery);
     totalDeleted += result.deletedCount;
@@ -174,10 +174,10 @@ const insertingItem = async (request, response) => {
 
     if (locationId && subLocName) {
       const subLocationData = {
+        active: true,
         location_id: locationId,
         name: subLocName,
         parent_id: sub_location_parent_id || sub_location?.parent_id || null,
-        active: true,
       };
 
       let isSimpleName = true;
@@ -299,21 +299,21 @@ const insertingItem = async (request, response) => {
     await connection.commit();
 
     return response.status(201).json({
-      ok: true,
       item: {
         ...result,
         location_id: locationId,
         sub_location_id: subLocationId,
       },
       msg: "Item created successfully",
+      ok: true,
     });
   } catch (error) {
     await connection.rollback();
     logger.error("insertingItem error:", error);
     const status = error.message.includes("not found") ? 404 : 500;
     return response.status(status).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   } finally {
     connection.release();
@@ -358,8 +358,8 @@ const insertBulkItem = async (request, response) => {
     const locName = typeof location === "string" ? location : location?.name;
     if (!locName || !company_id) {
       return response.status(400).json({
-        ok: false,
         msg: "Company ID and Location Name are required.",
+        ok: false,
       });
     }
 
@@ -367,15 +367,15 @@ const insertBulkItem = async (request, response) => {
     const locationId = await getLocationId(connection, company_id, locName);
     if (!locationId) {
       return response.status(404).json({
-        ok: false,
         msg: `Location '${locName}' not found.`,
+        ok: false,
       });
     }
 
     if (!min_serial_number || !max_serial_number) {
       return response.status(400).json({
-        ok: false,
         msg: "Minimum and maximum serial numbers are required.",
+        ok: false,
       });
     }
 
@@ -393,8 +393,8 @@ const insertBulkItem = async (request, response) => {
 
     if (serialNumbers.length === 0) {
       return response.status(400).json({
-        ok: false,
         msg: "No serial numbers generated.",
+        ok: false,
       });
     }
 
@@ -473,14 +473,14 @@ const insertBulkItem = async (request, response) => {
     //   .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
 
     return response.status(201).json({
-      ok: true,
       item: result,
+      ok: true,
     });
   } catch (error) {
     response.status(500).json({
-      ok: false,
-      msg: `${error.message}`,
       err: error,
+      msg: `${error.message}`,
+      ok: false,
     });
   }
 };
@@ -493,16 +493,16 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
     const locName = typeof location === "string" ? location : location?.name;
     if (!locName || !company_id) {
       return response.status(400).json({
-        ok: false,
         msg: "Company ID and Location Name are required.",
+        ok: false,
       });
     }
 
     const locationId = await getLocationId(connection, company_id, locName);
     if (!locationId) {
       return response.status(404).json({
-        ok: false,
         msg: `Location '${locName}' not found.`,
+        ok: false,
       });
     }
 
@@ -513,14 +513,14 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
     await insertBulkItemAlhpanumericFormatWorker(connection, request.body);
 
     return response.status(201).json({
-      ok: true,
       msg: "Alpha bulk items inserted successfully",
+      ok: true,
     });
   } catch (error) {
     logger.error("Error in insertBulkItemAlhpanumericFormat:", error);
     response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -535,14 +535,14 @@ const consultingItem = async (request, response) => {
     const query = `SELECT * FROM item_inv WHERE ${formatting};`;
     const [result] = await connection.execute(query, values);
     return response.status(201).json({
-      ok: true,
       items: result,
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -554,14 +554,14 @@ const deleteItem = async (request, response) => {
     const values = [request.body.item_id];
     const [result] = await connection.execute(query, values);
     return response.status(201).json({
-      ok: true,
       item_deleted: result,
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -573,14 +573,14 @@ const consultingItemTable = async (request, response) => {
     const values = [request.body.company];
     const [result] = await connection.execute(query, values);
     return response.status(201).json({
-      ok: true,
       items: result,
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -619,14 +619,14 @@ const consultingItemInWarehouseTable = async (request, response) => {
     const [result] = await connection.execute(query, values);
 
     return response.status(201).json({
-      ok: true,
       items: result,
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -685,8 +685,8 @@ const updateItemInTable = async (request, response) => {
 
     if (whereParts.length === 0) {
       return response.status(400).json({
-        ok: false,
         msg: "Provide at least one identifying field to target the item (e.g., item_id or serial_number with company_id).",
+        ok: false,
       });
     }
 
@@ -703,8 +703,8 @@ const updateItemInTable = async (request, response) => {
 
     if (setParts.length === 0) {
       return response.status(400).json({
-        ok: false,
         msg: "No valid fields provided to update.",
+        ok: false,
       });
     }
 
@@ -716,16 +716,16 @@ const updateItemInTable = async (request, response) => {
     const [result] = await connection.execute(query, values);
 
     return response.status(201).json({
-      ok: true,
       items: result,
+      ok: true,
       updated_fields: setParts.map((u) => u.split(" = ")[0]),
       where_fields: whereParts.map((w) => w.split(" = ")[0]),
     });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -767,23 +767,23 @@ const returningLeasedEquipmentToCompany = async (request, response) => {
       // Check if any rows were updated
       if (result.changedRows === 0) {
         return response.status(200).json({
-          ok: true,
-          message: "No changes were made to the item.",
           items: result,
+          message: "No changes were made to the item.",
+          ok: true,
         });
       }
 
       return response.status(201).json({
-        ok: true,
-        message: "Item updated successfully.",
         items: result,
+        message: "Item updated successfully.",
+        ok: true,
       });
     });
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({
-      ok: false,
       msg: `${error.message}`,
+      ok: false,
     });
   }
 };
@@ -805,8 +805,8 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
       data.length === 0
     ) {
       return response.status(400).json({
-        ok: false,
         msg: "Missing required fields or invalid data format",
+        ok: false,
       });
     }
     const pool = getConnection();
@@ -835,8 +835,8 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
 
     if (!results || results.length === 0) {
       return response.status(404).json({
-        ok: false,
         msg: "No matching items found",
+        ok: false,
       });
     }
 
@@ -856,8 +856,8 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     await connection.execute(updateQuery, updateValues);
 
     return response.status(201).json({
-      ok: true,
       msg: "Items updated successfully",
+      ok: true,
     });
   } catch (error) {
     logger.error(
@@ -865,9 +865,9 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
       error,
     );
     response.status(500).json({
-      ok: false,
-      msg: `Server error: ${error.message}`,
       error: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      msg: `Server error: ${error.message}`,
+      ok: false,
     });
   }
 };
@@ -907,14 +907,14 @@ const returningItemToStockWhenEventIsFinished = async (request, response) => {
     const [result] = await connection.execute(query, values);
 
     return response?.status(201)?.json({
-      ok: true,
       items: result,
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({
-      ok: false,
       msg: `${error.message}`,
+      ok: false,
     });
   }
 };
@@ -933,8 +933,8 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
 
     if (!groupingDevicesFromNoSQL || !allInventoryOfEvent) {
       return response.status(400).json({
-        ok: false,
         msg: "groupingDevicesFromNoSQL and allInventoryOfEvent are required.",
+        ok: false,
       });
     }
 
@@ -945,9 +945,9 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
 
     if (!allInventory || allInventory.length === 0) {
       return response.status(200).json({
-        ok: true,
         affectedRows: 0,
         msg: "No items to update.",
+        ok: true,
       });
     }
 
@@ -1005,16 +1005,16 @@ const returningItemToStockWhenEventIsFinishedRefactored = async (
     }
 
     return response.status(201).json({
-      ok: true,
       affectedRows: totalAffectedRows,
       msg: `Successfully updated ${totalAffectedRows} items`,
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     logger.error("Stack:", error.stack);
     return response.status(500).json({
-      ok: false,
       msg: `${error.message}`,
+      ok: false,
     });
   }
 };
@@ -1034,14 +1034,14 @@ const itemFinalStatusWhenEventIsFinished = async (request, response) => {
     const values = [status, condition, updated_at, serial_number, event_id];
     const [result] = await connection.execute(query, values);
     return response?.status(201)?.json({
-      ok: true,
       items: result,
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({
-      ok: false,
       msg: `${error.message}`,
+      ok: false,
     });
   }
 };
@@ -1059,22 +1059,22 @@ const itemFinalStatusWhenEventIsFinishedRefactored = async (
     } = request.body;
 
     const result = await runGoWorker("item-final-status", {
-      groupingDevicesFromNoSQL: String(groupingDevicesFromNoSQL),
       allInventoryOfEvent: String(allInventoryOfEvent),
       eventId: String(eventId),
+      groupingDevicesFromNoSQL: String(groupingDevicesFromNoSQL),
       update_at: String(update_at),
     });
 
     return response.status(201).json({
-      ok: true,
       affectedRows: result.affectedRows,
       msg: `Successfully updated ${result.affectedRows} items`,
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: `${error.message}`,
+      ok: false,
     });
   }
 };
@@ -1100,8 +1100,8 @@ const consultingInventoryTracking = async (request, response) => {
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({
-      ok: false,
       msg: `${error.message}`,
+      ok: false,
     });
   }
 };
@@ -1149,8 +1149,8 @@ const checkingInventoryCurrentState = async (request, response) => {
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -1162,8 +1162,8 @@ const checkingItem = async (request, response) => {
     // Validate required company_id
     if (!filters.company_id) {
       return response.status(400).json({
-        ok: false,
         msg: "company_id is required",
+        ok: false,
       });
     }
 
@@ -1204,14 +1204,14 @@ const checkingItem = async (request, response) => {
 
     return response.status(201).json({
       cached: false,
-      ok: true,
       items: result,
+      ok: true,
     });
   } catch (error) {
     logger.error("checkingItem - Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: `${error.message}`,
+      ok: false,
     });
   }
 };
@@ -1256,9 +1256,9 @@ const searchingInventoryTracking = async (request, response) => {
     });
   } catch (error) {
     response.status(500).json({
-      ok: false,
-      msg: `Error: ${error.message}`,
       error,
+      msg: `Error: ${error.message}`,
+      ok: false,
     });
   }
 };
@@ -1303,9 +1303,9 @@ const searchingGetInventoryTracking = async (request, response) => {
     });
   } catch (error) {
     response.status(500).json({
-      ok: false,
-      msg: `Error: ${error.message}`,
       error,
+      msg: `Error: ${error.message}`,
+      ok: false,
     });
   }
 };
@@ -1361,15 +1361,15 @@ const fragmentData = async (request, response) => {
     //   .expire(`inventory_${company_id}_${offset}_${limit}`, 120);
 
     return response.status(201).json({
-      ok: true,
       items: result,
+      ok: true,
     });
   } catch (error) {
     const responseTemplate = {
-      ok: false,
-      msg: `Error: ${error.message}`,
-      error,
       codeStatus: 500,
+      error,
+      msg: `Error: ${error.message}`,
+      ok: false,
     };
     response.send(JSON.stringify(responseTemplate));
   }
@@ -1412,16 +1412,16 @@ const gettingDataFromLocationOption = async (request, response) => {
     }));
 
     return response.status(201).json({
-      ok: true,
-      items: formattedResult,
       cached: false,
+      items: formattedResult,
+      ok: true,
     });
   } catch (error) {
     const responseTemplate = {
-      ok: false,
-      msg: `Error: ${error.message}`,
-      error,
       codeStatus: 500,
+      error,
+      msg: `Error: ${error.message}`,
+      ok: false,
     };
     response.send(JSON.stringify(responseTemplate));
   }
@@ -1458,16 +1458,16 @@ const checkInventoryCompanyExists = async (request, response) => {
     //   .promise()
     //   .set(`company_${company_id}_inventory_counting`, JSON.stringify(result));
     return response.json({
-      statusCode: 200,
       cached: false,
-      ok: true,
       items: JSON.stringify(result),
+      ok: true,
+      statusCode: 200,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -1508,8 +1508,8 @@ const containerItemsDetails = async (props) => {
   } catch (error) {
     logger.error("Error:", error);
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -1527,19 +1527,19 @@ const updateContentInContainerItem = async (request, response) => {
     const values = [container_items, item_id];
     const [result] = await connection.execute(query, values);
     await containerItemsDetails({
-      data: container_items,
       container_id: item_id,
+      data: container_items,
       remove: ref,
     });
     return response.status(201).json({
-      ok: true,
       items: result,
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -1565,14 +1565,14 @@ const updateItemInTableAfterBeingAddedToEventFromContainer = async (
       await connection.execute(query, values);
     }
     return response.status(201).json({
-      ok: true,
       msg: "Items updated successfully in the warehouse",
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -1594,8 +1594,8 @@ const checkingIfCompanyHasInventory = async (request, response) => {
     });
   } catch (error) {
     response.status(500).json({
-      ok: false,
       msg: `${error.message}`,
+      ok: false,
     });
   }
 };
@@ -1626,11 +1626,11 @@ const retrieveItemLocationQuantityForEvent = async (request, response) => {
     // Initialize options with summary info
     for (const summary of locationSummaries) {
       options.set(summary.location, {
-        qty: summary.qty,
-        start: summary.min_serial,
         end: summary.max_serial,
-        serialNumberList: [],
         hasFullData: false,
+        qty: summary.qty,
+        serialNumberList: [],
+        start: summary.min_serial,
       });
     }
 
@@ -1659,13 +1659,13 @@ const retrieveItemLocationQuantityForEvent = async (request, response) => {
 
     return response.status(200).json({
       cached: false,
-      ok: true,
       items: Object.fromEntries(options),
+      ok: true,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -1687,8 +1687,8 @@ const consultItemDataFromSerialNumber = async (request, response) => {
 
     if (!location || !quantity || !company_id || !item_group) {
       return response.status(400).json({
-        ok: false,
         msg: "Missing required parameters: location, quantity, company_id, item_group",
+        ok: false,
       });
     }
 
@@ -1729,14 +1729,14 @@ const consultItemDataFromSerialNumber = async (request, response) => {
     const [results] = await connection.execute(query, values);
 
     return response.status(200).json({
-      ok: true,
       count: results.length,
       data: results,
+      ok: true,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -1798,13 +1798,13 @@ const getGroupedItemInventory = async (request, response) => {
     }
 
     return response.status(200).json({
-      ok: true,
       groupedInventory: result,
+      ok: true,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -1856,14 +1856,14 @@ const consultingCompanyInventoryWithPagination = async (request, response) => {
     const [result] = await connection.execute(query, queryValues);
 
     return response.status(200).json({
-      ok: true,
       items: result,
       nextCursor: result.length > 0 ? result[result.length - 1].item_id : null,
+      ok: true,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -1915,14 +1915,14 @@ const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
 
     const [result] = await connection.execute(query, queryValues);
     return response.status(201).json({
-      ok: true,
       count: result.length,
       items: result,
+      ok: true,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -1991,13 +1991,13 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
     const [rows] = await connection.execute(query, values);
 
     return response.status(200).json({
-      ok: true,
       groupedInventory: rows,
+      ok: true,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -2040,9 +2040,9 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
-      msg: error.message,
       err: JSON.stringify(error),
+      msg: error.message,
+      ok: false,
     });
   }
 };
@@ -2059,17 +2059,17 @@ const retrieveItemData = async (request, response) => {
 
     const result = await runGoWorker("retrieve-item-data", workerPayload);
     return response.status(200).json({
-      ok: true,
-      totalAvailable: result.totalAvailable,
-      total: result.total,
-      groupedData: result.groupedData,
-      query: result.query,
       args: result.args,
+      groupedData: result.groupedData,
+      ok: true,
+      query: result.query,
+      total: result.total,
+      totalAvailable: result.totalAvailable,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -2119,49 +2119,49 @@ const retrieveCompanyInventory = async (request, response) => {
     const itemsWithUsage = items.map((item) => {
       if (item.warehouse === 0) {
         return {
-          category_name: item.category_name,
-          item_group: item.item_group,
-          warehouse: item.warehouse,
-          status: item.status,
-          enableAssignFeature: item.enableAssignFeature,
           brand: item.brand,
-          ownership: item.ownership,
+          category_name: item.category_name,
+          enableAssignFeature: item.enableAssignFeature,
+          image_url: item.image_url,
+          item: item.item_id,
+          item_group: item.item_group,
           location: item.location,
           main_warehouse: item.main_warehouse,
-          image_url: item.image_url,
+          ownership: item.ownership,
           serial_number: item.serial_number,
-          item: item.item_id,
+          status: item.status,
           usage: usageMap.has(item.item_id)
             ? usageMap.get(item.item_id)[0]
             : [],
+          warehouse: item.warehouse,
         };
       }
 
       return {
-        category_name: item.category_name,
-        item_group: item.item_group,
-        warehouse: item.warehouse,
-        status: item.status,
-        enableAssignFeature: item.enableAssignFeature,
         brand: item.brand,
-        ownership: item.ownership,
+        category_name: item.category_name,
+        enableAssignFeature: item.enableAssignFeature,
+        image_url: item.image_url,
+        item: item.item_id,
+        item_group: item.item_group,
         location: item.location,
         main_warehouse: item.main_warehouse,
-        image_url: item.image_url,
+        ownership: item.ownership,
         serial_number: item.serial_number,
-        item: item.item_id,
+        status: item.status,
         usage: [],
+        warehouse: item.warehouse,
       };
     });
 
     return response.status(200).json({
-      ok: true,
       items: itemsWithUsage,
+      ok: true,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -2225,9 +2225,9 @@ const updateAllItemsInInventory = async (request, response) => {
       return_date: return_date,
       returnedRentedInfo: returnedRentedInfo,
       sub_location: sub_location,
+      supplier_info: supplier_info ?? null,
       update_at: update_at,
       warehouse: warehouse,
-      supplier_info: supplier_info ?? null,
     };
 
     const keys = Object.keys(queryToUpdateParams);
@@ -2241,15 +2241,15 @@ const updateAllItemsInInventory = async (request, response) => {
     const updateValues = [...sanitizedParams, ...itemIds];
     const [finalResult] = await connection.execute(updateQuery, updateValues);
     return response.status(200).json({
-      ok: true,
       msg: "Items updated successfully in the warehouse",
+      ok: true,
       result: finalResult,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
-      msg: error.message,
       err: JSON.stringify(error),
+      msg: error.message,
+      ok: false,
     });
   }
 };
@@ -2282,8 +2282,8 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
     } = request.body;
     if (!min_serial_number || !max_serial_number) {
       return response.status(400).json({
-        ok: false,
         msg: "Minimum and maximum serial numbers are required.",
+        ok: false,
       });
     }
     const serialNumbers = [];
@@ -2315,27 +2315,27 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
     const [result] = await connection.execute(findQuery, findValues);
     const itemIds = result.map((item) => item.item_id);
     const queryToUpdateParams = {
-      category_name: category_name,
-      item_group: item_group,
-      cost: cost,
       brand: brand,
-      descript_item: descript_item,
-      ownership: ownership,
-      warehouse: warehouse,
-      main_warehouse: main_warehouse,
-      update_at: update_at,
-      location: location,
-      current_location: current_location,
-      sub_location: sub_location,
-      extra_serial_number: extra_serial_number,
-      return_date: return_date,
-      returnedRentedInfo: returnedRentedInfo,
+      category_name: category_name,
       container: container,
       containerSpotLimit: containerSpotLimit,
+      cost: cost,
+      current_location: current_location,
+      descript_item: descript_item,
       display_item: display_item,
       enableAssignFeature: enableAssignFeature,
+      extra_serial_number: extra_serial_number,
       image_url: image_url,
+      item_group: item_group,
+      location: location,
+      main_warehouse: main_warehouse,
+      ownership: ownership,
+      return_date: return_date,
+      returnedRentedInfo: returnedRentedInfo,
+      sub_location: sub_location,
       supplier_info: supplier_info || null,
+      update_at: update_at,
+      warehouse: warehouse,
     };
 
     const keys = Object.keys(queryToUpdateParams);
@@ -2351,16 +2351,16 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
     const [finalResult] = await connection.execute(updateQuery, updateValues);
 
     return response.status(200).json({
-      ok: true,
       msg: "Items updated successfully in the warehouse",
+      ok: true,
       queryToUpdateParams,
       result: finalResult,
     });
   } catch (error) {
     logger.error("Error:", error.message);
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -2385,18 +2385,18 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => 
     if (!company_id) {
       return response
         .status(400)
-        .json({ ok: false, msg: "company_id is a required primary key." });
+        .json({ msg: "company_id is a required primary key.", ok: false });
     }
     if (!updateAll && (!Array.isArray(list) || list.length === 0)) {
       return response.status(400).json({
-        ok: false,
         msg: "When 'updateAll' is false, a 'list' of serial numbers is required.",
+        ok: false,
       });
     }
     if (!updateAll && !extra_serial_number) {
       return response.status(400).json({
-        ok: false,
         msg: "When 'updateAll' is false, 'extra_serial_number' is required.",
+        ok: false,
       });
     }
 
@@ -2433,8 +2433,8 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => 
       await connection.commit();
 
       return response.status(200).json({
-        ok: true,
         msg: `${result.affectedRows} item(s) updated successfully.`,
+        ok: true,
         updated_count: result.affectedRows,
       });
     } else {
@@ -2496,8 +2496,8 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => 
 
       await connection.commit();
       return response.status(200).json({
-        ok: true,
         msg: `${totalAffectedRows} item(s) updated successfully.`,
+        ok: true,
         updated_count: totalAffectedRows,
       });
     }
@@ -2507,8 +2507,8 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => 
     }
     logger.error("Error in bulk item update:", error);
     return response.status(500).json({
-      ok: false,
       msg: `Internal server error: ${error.message}`,
+      ok: false,
     });
   } finally {
     if (connection) {
@@ -2530,16 +2530,16 @@ const insertContainerItems = async (request, response) => {
       child_ids.length === 0
     ) {
       return response.status(400).json({
-        ok: false,
         msg: "Container ID and at least one child ID are required",
+        ok: false,
       });
     }
 
     // Validate container_item_id is a number
     if (!Number.isInteger(container_item_id)) {
       return response.status(400).json({
-        ok: false,
         msg: "Container ID must be an integer",
+        ok: false,
       });
     }
 
@@ -2562,24 +2562,24 @@ const insertContainerItems = async (request, response) => {
     if ((err, results.affectedRows === 0)) {
       logger.error("Error inserting container items:", err);
       return response.status(500).json({
-        ok: false,
-        msg: "Error inserting container items",
         error: process.env.NODE_ENV === "development" ? err.message : undefined,
+        msg: "Error inserting container items",
+        ok: false,
       });
     }
     return response.json({
-      ok: true,
-      msg: "Container items inserted successfully",
       affected_rows: results.affectedRows,
-      container_item_id,
       child_ids,
+      container_item_id,
+      msg: "Container items inserted successfully",
+      ok: true,
     });
   } catch (error) {
     logger.error("Error in insertContainerItems:", error);
     return response.status(500).json({
-      ok: false,
-      msg: "Internal server error",
       error: process.env.NODE_ENV === "development" ? error.message : undefined,
+      msg: "Internal server error",
+      ok: false,
     });
   }
 };
@@ -2592,8 +2592,8 @@ const getContainerItems = async (request, response) => {
     // Validate input
     if (!container_item_id || isNaN(container_item_id)) {
       return response.status(400).json({
-        ok: false,
         msg: "Invalid container_item_id provided",
+        ok: false,
       });
     }
 
@@ -2606,8 +2606,8 @@ const getContainerItems = async (request, response) => {
 
     if (!containerResults.length) {
       return response.status(404).json({
-        ok: false,
         msg: "Container not found",
+        ok: false,
       });
     }
 
@@ -2632,20 +2632,20 @@ const getContainerItems = async (request, response) => {
         containerResults[0].child_ids,
       );
       return response.status(400).json({
-        ok: false,
-        msg: "Invalid child_ids format in container",
         error: parseError.message,
+        msg: "Invalid child_ids format in container",
+        ok: false,
       });
     }
 
     if (childIds.length === 0) {
       return response.json({
-        ok: true,
         container: {
           container_item_id: parseInt(containerResults[0].container_item_id),
           child_ids: [],
           items: [],
         },
+        ok: true,
       });
     }
 
@@ -2668,31 +2668,31 @@ const getContainerItems = async (request, response) => {
     const [itemsResults] = await connection.query(itemsQuery, [childIds]);
     // // Format response
     const containerData = {
-      container_item_id: parseInt(containerResults[0].container_item_id),
       child_ids: childIds,
+      container_item_id: parseInt(containerResults[0].container_item_id),
       items: itemsResults.map((item) => ({
-        item_id: parseInt(item.item_id),
         id: parseInt(item.item_id),
-        item_group: item.item_group,
-        serial_number: item.serial_number,
-        category_name: item.category_name,
-        ownership: item.ownership,
-        descript_item: item.descript_item,
         brand: item.brand,
+        category_name: item.category_name,
         cost: item.cost,
+        descript_item: item.descript_item,
+        item_group: item.item_group,
+        item_id: parseInt(item.item_id),
+        ownership: item.ownership,
+        serial_number: item.serial_number,
       })),
     };
 
     return response.json({
-      ok: true,
       container: containerData,
+      ok: true,
     });
   } catch (error) {
     logger.error("Error in getContainerItems:", error);
     return response.status(500).json({
-      ok: false,
-      msg: "Error retrieving container items",
       error: error.message,
+      msg: "Error retrieving container items",
+      ok: false,
     });
   }
 };
@@ -2705,8 +2705,8 @@ const deleteContainerItem = async (request, response) => {
     // Validate input
     if (!container_item_id || isNaN(container_item_id)) {
       return response.status(400).json({
-        ok: false,
         msg: "Invalid container_item_id provided",
+        ok: false,
       });
     }
 
@@ -2719,8 +2719,8 @@ const deleteContainerItem = async (request, response) => {
 
     if (!checkResult.length) {
       return response.status(404).json({
-        ok: false,
         msg: "Container not found",
+        ok: false,
       });
     }
 
@@ -2733,22 +2733,22 @@ const deleteContainerItem = async (request, response) => {
 
     if (deleteResult.affectedRows === 0) {
       return response.status(500).json({
-        ok: false,
         msg: "Failed to delete container",
+        ok: false,
       });
     }
 
     return response.json({
-      ok: true,
-      msg: "Container deleted successfully",
       container_item_id: parseInt(container_item_id),
+      msg: "Container deleted successfully",
+      ok: true,
     });
   } catch (error) {
     logger.error("Error in deleteContainerItem:", error);
     return response.status(500).json({
-      ok: false,
-      msg: "Error deleting container",
       error: error.message,
+      msg: "Error deleting container",
+      ok: false,
     });
   }
 };
@@ -2762,15 +2762,15 @@ const updateContainerItems = async (request, response) => {
     // Validate input
     if (!container_item_id || isNaN(container_item_id)) {
       return response.status(400).json({
-        ok: false,
         msg: "Invalid container_item_id provided",
+        ok: false,
       });
     }
 
     if (!Array.isArray(child_ids)) {
       return response.status(400).json({
-        ok: false,
         msg: "child_ids must be an array",
+        ok: false,
       });
     }
 
@@ -2783,8 +2783,8 @@ const updateContainerItems = async (request, response) => {
 
     if (!checkResult.length) {
       return response.status(404).json({
-        ok: false,
         msg: "Container not found",
+        ok: false,
       });
     }
 
@@ -2798,25 +2798,25 @@ const updateContainerItems = async (request, response) => {
 
     if (updateResult.affectedRows === 0) {
       return response.status(500).json({
-        ok: false,
         msg: "Failed to update container",
+        ok: false,
       });
     }
 
     return response.json({
-      ok: true,
-      msg: "Container updated successfully",
       container: {
         container_item_id: parseInt(container_item_id),
         child_ids: child_ids,
       },
+      msg: "Container updated successfully",
+      ok: true,
     });
   } catch (error) {
     logger.error("Error in updateContainerItems:", error);
     return response.status(500).json({
-      ok: false,
-      msg: "Error updating container",
       error: error.message,
+      msg: "Error updating container",
+      ok: false,
     });
   }
 };
@@ -2836,27 +2836,35 @@ const checkLargeData = async (request, response) => {
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
 
 const updateLargeData = async (request, response) => {
   try {
-    const { item_ids, warehouse } = request.body;
+    const { item_ids, updates } = request.body;
 
     // Ensure item_ids is an array and not empty
     if (!Array.isArray(item_ids) || item_ids.length === 0) {
       return response.status(400).json({
-        ok: false,
         msg: "item_ids must be a non-empty array",
+        ok: false,
+      });
+    }
+
+    // Ensure updates is a non-empty object
+    if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
+      return response.status(400).json({
+        msg: "'updates' must be a non-empty object",
+        ok: false,
       });
     }
 
     const workerResponse = await runGoWorker("update-item-warehouse", {
       item_ids: item_ids,
-      warehouse: Number(warehouse),
+      updates: updates,
     });
 
     if (workerResponse.status === "error") {
@@ -2870,8 +2878,8 @@ const updateLargeData = async (request, response) => {
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -2889,9 +2897,9 @@ const updateSubLocation = async (req, res) => {
       path.length === 0
     ) {
       return res.status(400).json({
-        success: false,
         message:
           "Missing required fields: newName, path (array), currentIndex, and company_id",
+        success: false,
       });
     }
 
@@ -2925,9 +2933,9 @@ const updateSubLocation = async (req, res) => {
       ]);
 
       return res.status(200).json({
-        ok: true,
-        message: "Location updated successfully",
         affectedRows: locResult.affectedRows,
+        message: "Location updated successfully",
+        ok: true,
       });
     }
 
@@ -2942,7 +2950,7 @@ const updateSubLocation = async (req, res) => {
     );
 
     if (locations.length === 0) {
-      return res.status(404).json({ ok: false, message: "Location not found" });
+      return res.status(404).json({ message: "Location not found", ok: false });
     }
     const locationId = locations[0].location_id;
 
@@ -2975,8 +2983,8 @@ const updateSubLocation = async (req, res) => {
         // If we can't find the path in relational table, we might need to fallback to JSON update or fail
         // For now, let's assume migration has run and fail if not found
         return res.status(404).json({
-          ok: false,
           message: `Sub-location segment '${nameToFind}' not found in relational structure`,
+          ok: false,
         });
       }
 
@@ -3024,16 +3032,16 @@ const updateSubLocation = async (req, res) => {
     ]);
 
     return res.status(200).json({
-      ok: true,
-      message: "Sub location updated successfully",
       affectedRows: updateResult.affectedRows,
+      message: "Sub location updated successfully",
+      ok: true,
     });
   } catch (error) {
     logger.error("Error updating sub location:", error);
     return res.status(500).json({
-      ok: false,
-      message: "Internal server error while updating sub location",
       error: error.message,
+      message: "Internal server error while updating sub location",
+      ok: false,
     });
   }
 };
@@ -3044,8 +3052,8 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
     const connection = getConnection();
     if (!company_id) {
       return response.status(400).json({
-        ok: false,
         msg: "company_id is required",
+        ok: false,
       });
     }
 
@@ -3087,11 +3095,11 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
       locationGroups[location].push({
         data: {
           item_group: item.item_group,
-          warehouse: item.warehouse,
           sub_location:
             typeof item.sub_location === "string"
               ? JSON.parse(item.sub_location)
               : item.sub_location,
+          warehouse: item.warehouse,
         },
       });
     });
@@ -3102,10 +3110,10 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
     for (const [location, items] of Object.entries(locationGroups)) {
       if (!result[location]) {
         result[location] = {
-          total: 0,
           available: 0,
-          types: [],
           children: {},
+          total: 0,
+          types: [],
         };
       }
 
@@ -3133,10 +3141,10 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
 
           if (!pointer.children[subKey]) {
             pointer.children[subKey] = {
-              total: 0,
               available: 0,
-              types: [],
               children: {},
+              total: 0,
+              types: [],
             };
           }
 
@@ -3175,13 +3183,13 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
     }
 
     return response.status(200).json({
-      ok: true,
       data: result,
+      ok: true,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -3193,15 +3201,15 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
 
     if (!company_id) {
       return response.status(400).json({
-        ok: false,
         msg: "company_id is required",
+        ok: false,
       });
     }
 
     if (!searchParameter) {
       return response.status(400).json({
-        ok: false,
         msg: "searchParameter is required",
+        ok: false,
       });
     }
 
@@ -3229,11 +3237,11 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
 
     // Initialize result structure
     const result = {
-      item_group: {},
-      category_name: {},
       brand: {},
-      ownership: {},
+      category_name: {},
+      item_group: {},
       main_location: {},
+      ownership: {},
     };
 
     // Process each item and group by different fields
@@ -3244,8 +3252,8 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
       if (item.item_group) {
         if (!result.item_group[item.item_group]) {
           result.item_group[item.item_group] = {
-            total: 0,
             available: 0,
+            total: 0,
           };
         }
         result.item_group[item.item_group].total += 1;
@@ -3256,8 +3264,8 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
       if (item.category_name) {
         if (!result.category_name[item.category_name]) {
           result.category_name[item.category_name] = {
-            total: 0,
             available: 0,
+            total: 0,
           };
         }
         result.category_name[item.category_name].total += 1;
@@ -3269,8 +3277,8 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
       if (item.brand) {
         if (!result.brand[item.brand]) {
           result.brand[item.brand] = {
-            total: 0,
             available: 0,
+            total: 0,
           };
         }
         result.brand[item.brand].total += 1;
@@ -3281,8 +3289,8 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
       if (item.ownership) {
         if (!result.ownership[item.ownership]) {
           result.ownership[item.ownership] = {
-            total: 0,
             available: 0,
+            total: 0,
           };
         }
         result.ownership[item.ownership].total += 1;
@@ -3293,8 +3301,8 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
       if (item.main_location) {
         if (!result.main_location[item.main_location]) {
           result.main_location[item.main_location] = {
-            total: 0,
             available: 0,
+            total: 0,
           };
         }
         result.main_location[item.main_location].total += 1;
@@ -3304,15 +3312,15 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
     });
 
     return response.status(200).json({
+      data: result,
       ok: true,
       searchParameter,
       totalResults: items.length,
-      data: result,
     });
   } catch (error) {
     return response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -3349,8 +3357,8 @@ const filterSuppliersInfoItems = async (request, response) => {
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -3362,21 +3370,21 @@ const deleteBulkItems = async (request, response) => {
     // Validate input
     if (!Array.isArray(item_ids) || item_ids.length === 0) {
       return response.status(400).json({
-        ok: false,
         msg: "item_ids must be a non-empty array",
+        ok: false,
       });
     }
 
     if (!company_id) {
       return response.status(400).json({
-        ok: false,
         msg: "company_id is required",
+        ok: false,
       });
     }
 
     const workerResponse = await runGoWorker("delete-bulk-items", {
-      item_ids: item_ids,
       company_id: company_id,
+      item_ids: item_ids,
     });
 
     if (workerResponse.status === "error") {
@@ -3390,8 +3398,8 @@ const deleteBulkItems = async (request, response) => {
   } catch (error) {
     logger.error("Error:", error.message);
     response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   }
 };
@@ -3432,12 +3440,12 @@ const retrieveCompanyItemsWithLocations = async (request, response) => {
     ) {
       return response
         .status(400)
-        .json({ ok: false, msg: "company_id is required" });
+        .json({ msg: "company_id is required", ok: false });
     }
     if (locations !== undefined && !Array.isArray(locations)) {
       return response
         .status(400)
-        .json({ ok: false, msg: "locations must be an array if provided" });
+        .json({ msg: "locations must be an array if provided", ok: false });
     }
 
     const lim = Number.isInteger(limit) && limit > 0 ? limit : 50;
@@ -3474,10 +3482,10 @@ const retrieveCompanyItemsWithLocations = async (request, response) => {
     );
 
     const payload = {
-      ok: true,
       cached: false,
-      metadata: { total, limit: lim, offset: off, returned: rows.length },
       items: rows,
+      metadata: { total, limit: lim, offset: off, returned: rows.length },
+      ok: true,
     };
 
     await cache.set(cacheKey, JSON.stringify(payload));
@@ -3486,7 +3494,7 @@ const retrieveCompanyItemsWithLocations = async (request, response) => {
     return response.status(200).json(payload);
   } catch (error) {
     logger.error("retrieveCompanyItemsWithLocations error:", error);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -3614,22 +3622,22 @@ const confirmItemsReturnedToStock = async (request, response) => {
     if (!Array.isArray(serial_numbers) || serial_numbers.length === 0) {
       return response
         .status(400)
-        .json({ ok: false, msg: "An array of serial numbers is required." });
+        .json({ msg: "An array of serial numbers is required.", ok: false });
     }
     if (!company_id) {
       return response
         .status(400)
-        .json({ ok: false, msg: "SQL and NoSQL company IDs are required." });
+        .json({ msg: "SQL and NoSQL company IDs are required.", ok: false });
     }
     if (!noSqlEventName) {
       return response
         .status(400)
-        .json({ ok: false, msg: "noSqlEventName is required." });
+        .json({ msg: "noSqlEventName is required.", ok: false });
     }
     if (!user_id) {
       return response
         .status(400)
-        .json({ ok: false, msg: "user_id is required for logging." });
+        .json({ msg: "user_id is required for logging.", ok: false });
     }
 
     await connection.beginTransaction();
@@ -3654,26 +3662,26 @@ const confirmItemsReturnedToStock = async (request, response) => {
     // 3. Remove devices from the event pool in MongoDB
     const deletedPoolCount = await removePoolRecordsByCriteria({
       connection,
+      eventSelected: noSqlEventName,
+      nosql_company_id: noSqlCompanyId,
       serial_numbers,
       sql_company_id: company_id,
-      nosql_company_id: noSqlCompanyId,
-      eventSelected: noSqlEventName,
     });
 
     await connection.commit();
 
     return response.status(200).json({
-      ok: true,
       msg: `Updated ${updateResult.affectedRows} items to 'in_stock' and processed pool records.`,
-      sql_updated: updateResult.affectedRows,
+      ok: true,
       pool_records_deleted: deletedPoolCount,
+      sql_updated: updateResult.affectedRows,
     });
   } catch (error) {
     if (connection) await connection.rollback();
     logger.error("Error confirming item return:", error.message);
     response.status(500).json({
-      ok: false,
       msg: error.message,
+      ok: false,
     });
   } finally {
     if (connection) connection.release();
@@ -3692,8 +3700,8 @@ const deleteBulkItemBasedOnCriteria = async (request, response) => {
 
     if (!company_id || !category_name) {
       return response.status(400).json({
-        ok: false,
         msg: "company_id and category_name are required.",
+        ok: false,
       });
     }
 
@@ -3726,18 +3734,18 @@ const deleteBulkItemBasedOnCriteria = async (request, response) => {
     if (deletedCount === 0) {
       await connection.commit();
       return response.status(200).json({
-        ok: true,
-        msg: "No items found matching the provided criteria. No changes were made.",
         deleted_count: 0,
+        msg: "No items found matching the provided criteria. No changes were made.",
+        ok: true,
       });
     }
 
     await connection.commit();
 
     return response.status(200).json({
-      ok: true,
-      msg: `${deletedCount} item(s) deleted successfully.`,
       deleted_count: deletedCount,
+      msg: `${deletedCount} item(s) deleted successfully.`,
+      ok: true,
     });
   } catch (error) {
     if (connection) {
@@ -3745,9 +3753,9 @@ const deleteBulkItemBasedOnCriteria = async (request, response) => {
     }
     logger.error("deleteBulkItemBasedOnCriteria error:", error);
     return response.status(500).json({
-      ok: false,
-      msg: "An internal error occurred. Please contact the administrator.",
       error: error.message,
+      msg: "An internal error occurred. Please contact the administrator.",
+      ok: false,
     });
   } finally {
     if (connection) {
@@ -3761,8 +3769,8 @@ const retrieveCompanyInventoryBasedOnParams = async (request, response) => {
   const connection = getConnection();
   if (!company_id || !location) {
     return response.status(400).json({
-      ok: false,
       message: "company_id and location are required.",
+      ok: false,
     });
   }
   const query = `
@@ -3776,26 +3784,26 @@ const retrieveCompanyInventoryBasedOnParams = async (request, response) => {
   try {
     const [result] = await connection.execute(query, values);
     return response.status(200).json({
-      ok: true,
       items: result,
       mapped_result: JSON.stringify(result.map(item => item.item_id)),
+      ok: true,
     });
   } catch (error) {
     logger.error("Error retrieving company inventory:", error.message);
     return response.status(500).json({
-      ok: false,
       error: error.message || "An internal error occurred while retrieving items.",
+      ok: false,
     });
   }
 }
 
 module.exports = {
-  retrieveCompanyItemsWithLocations,
   checkingIfCompanyHasInventory,
   checkingInventoryCurrentState,
   checkingItem,
   checkInventoryCompanyExists,
   checkLargeData,
+  confirmItemsReturnedToStock,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
   consultingCompanyInventoryWithPagination,
@@ -3804,10 +3812,14 @@ module.exports = {
   consultingItemInWarehouseTable,
   consultingItemTable,
   consultItemDataFromSerialNumber,
+  deleteBulkItemBasedOnCriteria,
+  deleteBulkItems,
   deleteContainerItem,
   deleteItem,
+  filterSuppliersInfoItems,
   fragmentData,
   getContainerItems,
+  getGroupedInventoryBySearchParameter,
   getGroupedItemInventory,
   getGroupedItemWithFormatInventory,
   getInventoryHierarchyWithTypes,
@@ -3819,6 +3831,8 @@ module.exports = {
   itemFinalStatusWhenEventIsFinished,
   itemFinalStatusWhenEventIsFinishedRefactored,
   retrieveCompanyInventory,
+  retrieveCompanyInventoryBasedOnParams,
+  retrieveCompanyItemsWithLocations,
   retrieveItemData,
   retrieveItemLocationQuantityForEvent,
   returningItemToStockWhenEventIsFinished,
@@ -3836,10 +3850,4 @@ module.exports = {
   updateItemsBasedOnSerialNumber,
   updateLargeData,
   updateSubLocation,
-  getGroupedInventoryBySearchParameter,
-  filterSuppliersInfoItems,
-  deleteBulkItems,
-  confirmItemsReturnedToStock,
-  deleteBulkItemBasedOnCriteria,
-  retrieveCompanyInventoryBasedOnParams,
 };
