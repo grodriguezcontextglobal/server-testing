@@ -100,7 +100,7 @@ const configureMiddleware = (app) => {
   // Timeout middleware (30 seconds)
   app.use((req, res, next) => {
     res.setTimeout(30000, () => {
-      res.status(408).json({ ok: false, msg: "Request timeout" });
+      res.status(408).json({ msg: "Request timeout", ok: false });
     });
     next();
   });
@@ -124,12 +124,12 @@ const configureMiddleware = (app) => {
   // Apply 100MB limits to specific routes
   highLimitRoutes.forEach((route) => {
     app.use(route, express.json({ limit: "100mb" }));
-    app.use(route, express.urlencoded({ limit: "100mb", extended: true }));
+    app.use(route, express.urlencoded({ extended: true, limit: "100mb" }));
   });
 
   // Default JSON limits (50MB) for all other routes
   app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
   // // SQL Injection detection middleware
   // const { sqlInjectionDetector } = require("./middlewares/sql-injection-detector");
@@ -142,33 +142,33 @@ const configureMiddleware = (app) => {
 const configureRoutes = (app) => {
   // MongoDB Routes
   const mongoRoutes = {
+    admin: require("./routes/admin"),
+    article: require("./routes/article"),
     auth: require("./routes/auth"),
+    "cash-report": require("./routes/cashReport"),
+    company: require("./routes/company"),
+    devitrak: require("./routes/devitrakApp"),
+    document: require("./routes/document"),
+    error_log: require("./routes/errorLog"),
+    event: require("./routes/event"),
+    "event-log": require("./routes/eventLog"),
+    feedback: require("./routes/feedback"),
+    "heavy-task": require("./routes/heavyTask"),
+    image: require("./routes/image"),
+    inventory: require("./routes/inventory"),
+    item: require("./routes/item"),
+    lease: require("./routes/lease"),
+    nodeMailer: require("./routes/nodeMailer"),
+    notificationLog: require("./routes/notificationLog"),
+    post: require("./routes/post"),
+    receiver: require("./routes/receivers"),
+    search: require("./routes/search"),
+    staff: require("./routes/staff"),
+    "staff-activity-log": require("./routes/staffActivityLog"),
     stripe: require("./routes/stripe"),
     subscription: require("./routes/subscription"),
     transaction: require("./routes/transaction"),
-    admin: require("./routes/admin"),
-    company: require("./routes/company"),
-    receiver: require("./routes/receivers"),
-    article: require("./routes/article"),
-    staff: require("./routes/staff"),
-    "staff-activity-log": require("./routes/staffActivityLog"),
-    "event-log": require("./routes/eventLog"),
-    event: require("./routes/event"),
     "transaction-audit-log": require("./routes/transactionAuditLog"),
-    notificationLog: require("./routes/notificationLog"),
-    "cash-report": require("./routes/cashReport"),
-    nodeMailer: require("./routes/nodeMailer"),
-    inventory: require("./routes/inventory"),
-    item: require("./routes/item"),
-    image: require("./routes/image"),
-    lease: require("./routes/lease"),
-    search: require("./routes/search"),
-    feedback: require("./routes/feedback"),
-    error_log: require("./routes/errorLog"),
-    post: require("./routes/post"),
-    document: require("./routes/document"),
-    devitrak: require("./routes/devitrakApp"),
-    "heavy-task": require("./routes/heavyTask"),
   };
 
   // MySQL Routes
@@ -186,6 +186,7 @@ const configureRoutes = (app) => {
     member: require("./mysql/routes/members"),
     location: require("./mysql/routes/location"),
     "sub_location": require("./mysql/routes/sub_location"),
+    shipment: require("./mysql/routes/shipment"),
     // utils: require("./mysql/routes/utils")
   };
 
@@ -214,8 +215,8 @@ const configureRoutes = (app) => {
 //route health endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({
-    status: 'operational',
     server: 'standby',
+    status: 'operational',
     timestamp: new Date().toISOString(),
   });
 });
@@ -224,20 +225,20 @@ app.get('/health', (req, res) => {
 const configureErrorHandling = (app) => {
   app.use((err, req, res, next) => {
     const clientInfo = {
-      userAgent: req.get("User-Agent"),
-      requestId: req.get("X-Request-ID"),
       realIP: req.get("X-Real-IP") || req.get("X-Forwarded-For") || req.ip,
+      requestId: req.get("X-Request-ID"),
       timezone: req.get("X-Timezone"),
+      userAgent: req.get("User-Agent"),
     };
 
     logger.error("Unhandled Error", {
       type: "unhandled_error",
-      error: err.message,
-      stack: err.stack,
-      method: req.method,
-      url: req.originalUrl,
       clientInfo,
+      error: err.message,
+      method: req.method,
+      stack: err.stack,
       timestamp: new Date().toISOString(),
+      url: req.originalUrl,
     });
 
     res.status(500).json({
@@ -276,7 +277,7 @@ const startServer = () => {
 
     // Determine executable name based on platform
     const isWindows = process.platform === "win32";
-    const execName = isWindows ? "processor.exe" : "processor";
+    const execName = isWindows ? "worker.exe" : "worker";
     const workerPath = path.resolve(__dirname, "go-worker", execName);
 
     // Check if file exists
