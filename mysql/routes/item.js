@@ -38,13 +38,15 @@ const {
   checkingInventoryCurrentState,
   updateEventItemShipping,
   getEventItemShipping,
-  removeEventItemShipping
+  removeEventItemShipping,
+  bulkUpdateEventItemShipping
 } = require("../controllers/items_events");
 const router = express.Router();
 
 router.put("/event-items", updateEventItemShipping);
 router.post("/event-items/search", getEventItemShipping);
 router.delete("/event-items", removeEventItemShipping);
+router.put("/event-items/bulk-update", bulkUpdateEventItemShipping);
 
 //delete items in bulk way based on criteria
 router.post("/delete-bulk-items-criteria", deleteBulkItemBasedOnCriteria);
