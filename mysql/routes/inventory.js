@@ -30,7 +30,7 @@ router.put("/container/:container_item_id", updateContainerItems);
 
 router.post("/check-large-data", checkLargeData);
 
-router.post("/update-large-data", checkLargeData);
+// router.post("/update-large-data", checkLargeData);
 
 router.post("/update-location-sub-location", updateSubLocation);
 
