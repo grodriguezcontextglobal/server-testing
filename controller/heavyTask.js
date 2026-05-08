@@ -13,7 +13,7 @@ const handleHeavyTask = async (req, res) => {
     // 2. Define path to Go executable
     const goExecutable = path.join(
       __dirname,
-      "../go-worker/processor.exe"
+      "../go-worker/worker.exe"
     );
 
     // 3. Spawn the Go process
