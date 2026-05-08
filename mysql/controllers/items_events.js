@@ -22,8 +22,8 @@ const insertingItemInEvent = async (request, response) => {
       data.length === 0
     ) {
       return response.status(400).json({
-        ok: false,
         msg: "Missing required fields or invalid data format",
+        ok: false,
       });
     }
 
@@ -32,22 +32,105 @@ const insertingItemInEvent = async (request, response) => {
 
     // Offload to Go Worker
     const result = await runGoWorker("insert-item-event", {
-      event_id: String(event_id),
-      item_group,
       category_name,
       company_id: String(company_id),
       data: serialNumbers,
+      event_id: String(event_id),
+      item_group,
     });
 
     response.status(201).json({
-      ok: true,
-      msg: "Items inserted successfully into event",
       inserted_items: result.inserted_items,
+      msg: "Items inserted successfully into event",
+      ok: true,
       total_items: result.total_items,
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    response.status(500).json({ msg: error.message, ok: false });
+  }
+};
+
+const bulkUpdateEventItemShipping = async (request, response) => {
+  let connection;
+  try {
+    const { company_id, event_id, updates, filters } = request.body;
+
+    if (!company_id || !event_id) {
+      return response.status(400).json({
+        message: "company_id and event_id are required.",
+        ok: false,
+      });
+    }
+    if (!updates || Object.keys(updates).length === 0) {
+      return response.status(400).json({
+        message: "At least one update field must be provided.",
+        ok: false,
+      });
+    }
+    if (!filters || Object.keys(filters).length === 0) {
+      return response.status(400).json({
+        message: "At least one filter condition must be provided.",
+        ok: false,
+      });
+    }
+
+    const allowedFields = ["shipping_status", "active", "notes"];
+    const fieldsToUpdate = Object.keys(updates).filter(field => allowedFields.includes(field));
+    const filterKeys = Object.keys(filters).filter(field => allowedFields.includes(field));
+
+    if (fieldsToUpdate.length === 0) {
+      return response.status(400).json({
+            message: `No valid fields to update. Allowed fields are: ${allowedFields.join(", ")}`,
+            ok: false,
+        });
+    }
+     if (filterKeys.length === 0) {
+      return response.status(400).json({
+            message: `No valid filter fields provided. Allowed fields are: ${allowedFields.join(", ")}`,
+            ok: false,
+        });
+    }
+
+    connection = await getConnection().getConnection();
+    await connection.beginTransaction();
+
+    const setClause = fieldsToUpdate.map(field => `${field} = ?`).join(", ");
+    const updateValues = fieldsToUpdate.map(field => updates[field]);
+
+    const whereConditions = filterKeys.map(key => `${key} = ?`);
+    const filterValues = filterKeys.map(key => filters[key]);
+    
+    const query = `
+      UPDATE event_item_shipping
+      SET ${setClause}
+      WHERE event_id = ? AND company_id = ? AND ${whereConditions.join(" AND ")};
+    `;
+
+    const queryParams = [...updateValues, event_id, company_id, ...filterValues];
+    const [result] = await connection.query(query, queryParams);
+    
+    await connection.commit();
+
+    return response.status(200).json({
+      message: `${result.affectedRows} item(s) have been updated for event ${event_id}.`,
+      ok: true,
+      total_updated: result.affectedRows,
+    });
+
+  } catch (error) {
+    if (connection) {
+      await connection.rollback();
+    }
+    logger.error("Error during bulk update of event items:", error.message);
+    return response.status(500).json({
+      error: error.message || "An internal error occurred while updating items.",
+      ok: false,
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
@@ -58,8 +141,8 @@ const removeEventItemShipping = async (request, response) => {
 
     if (!event_id || !Array.isArray(items) || items.length === 0) {
       return response.status(400).json({
-        ok: false,
         message: "event_id and a non-empty array of item IDs are required.",
+        ok: false,
       });
     }
 
@@ -77,14 +160,14 @@ const removeEventItemShipping = async (request, response) => {
 
     if (result.affectedRows === 0) {
       return response.status(404).json({
-        ok: false,
         message: "No matching items found for the given event to remove.",
+        ok: false,
       });
     }
 
     return response.status(200).json({
-      ok: true,
       message: `${result.affectedRows} item(s) have been removed from the event shipping list.`,
+      ok: true,
       total_removed: result.affectedRows,
     });
 
@@ -94,8 +177,8 @@ const removeEventItemShipping = async (request, response) => {
     }
     logger.error("Error removing event items:", error.message);
     return response.status(500).json({
-      ok: false,
       error: error.message || "An internal error occurred while removing items.",
+      ok: false,
     });
   } finally {
     if (connection) {
@@ -111,8 +194,8 @@ const getEventItemShipping = async (request, response) => {
 
     if (!company_id) {
       return response.status(400).json({
-        ok: false,
         message: "company_id is a required field.",
+        ok: false,
       });
     }
 
@@ -156,15 +239,15 @@ const getEventItemShipping = async (request, response) => {
     const [rows] = await connection.query(query, queryValues);
 
     return response.status(200).json({
-      ok: true,
       items: rows,
+      ok: true,
     });
 
   } catch (error) {
     logger.error("Error retrieving event item shipping data:", error.message);
     return response.status(500).json({
-      ok: false,
       error: error.message || "An internal error occurred while retrieving data.",
+      ok: false,
     });
   } finally {
     if (connection) {
@@ -181,15 +264,15 @@ const updateEventItemShipping = async (request, response) => {
 
     if (!company_id || !event_id || !Array.isArray(items) || items.length === 0) {
       return response.status(400).json({
-        ok: false,
         message: "company_id, event_id, and a non-empty array of item IDs are required.",
+        ok: false,
       });
     }
 
     if (!updates || Object.keys(updates).length === 0) {
         return response.status(400).json({
-            ok: false,
             message: "At least one update field must be provided.",
+            ok: false,
         });
     }
 
@@ -199,8 +282,8 @@ const updateEventItemShipping = async (request, response) => {
 
     if (invalidFields.length > 0) {
         return response.status(400).json({
-            ok: false,
             message: `Invalid fields for update: ${invalidFields.join(", ")}`,
+            ok: false,
         });
     }
 
@@ -227,8 +310,8 @@ const updateEventItemShipping = async (request, response) => {
     await connection.commit();
 
     return response.status(200).json({
-      ok: true,
       message: `${totalAffectedRows} item(s) have been updated for event ${event_id}.`,
+      ok: true,
       total_updated: totalAffectedRows,
     });
 
@@ -238,8 +321,8 @@ const updateEventItemShipping = async (request, response) => {
     }
     logger.error("Error updating event items:", error.message);
     return response.status(500).json({
-      ok: false,
       error: error.message || "An internal error occurred while updating items.",
+      ok: false,
     });
   } finally {
     if (connection) {
@@ -254,18 +337,18 @@ const insertingDeviceInEventDirectly = async (request, response) => {
 
     // Offload to Go Worker (via HTTP, no process spawning per request)
     const result = await runGoWorker("insert-device-event-directly", {
-      item_id,
       event_id: String(event_id),
+      item_id,
     });
 
     response.status(201).json({
-      ok: true,
-      msg: "Item inserted successfully into event",
       inserted_items: result.inserted_items || 0,
+      msg: "Item inserted successfully into event",
+      ok: true,
     });
   } catch (error) {
     logger.error("Error inserting device directly:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -288,13 +371,13 @@ const deletingItemsInEventAfterDeviceInventoryIsUpdated = async (
     const [result] = await connection.execute(query, values);
 
     response.status(200).json({
-      ok: true,
-      msg: "Items deleted successfully from event",
       deleted_items: result.affectedRows,
+      msg: "Items deleted successfully from event",
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -321,7 +404,7 @@ const consultingInventoryCurrentState = async (request, response) => {
     response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -392,7 +475,7 @@ const checkingInventoryCurrentState = async (request, response) => {
     response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -417,7 +500,7 @@ const consultingInventoryInEvent = async (request, response) => {
     response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -436,7 +519,7 @@ const consultingRowInItemInvAssignedEventTable = async (request, response) => {
     response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -447,13 +530,13 @@ const deletingRecordInItemInvAssignedEventRow = async (request, response) => {
 
     const [result] = await connection.execute(query, [event_id, item_id]);
     response.status(200).json({
-      ok: true,
-      msg: "Item deleted successfully from event",
       deleted_items: result.affectedRows,
+      msg: "Item deleted successfully from event",
+      ok: true,
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -470,16 +553,16 @@ const insertingDeviceInEventDirectlyFromContainer = async (
 
     // Offload to Go Worker
     await runGoWorker("insert-device-event-container", {
-      refDatabase,
       event_id: String(event_id),
+      refDatabase,
     });
 
     response
       .status(201)
-      .json({ ok: true, msg: "Items inserted successfully into event" });
+      .json({ msg: "Items inserted successfully into event", ok: true });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -491,7 +574,7 @@ const consultingLeaseInformationConsumer = async (request, response) => {
     if (keys.length === 0) {
       return response
         .status(400)
-        .json({ ok: false, msg: "No filters provided in request.body" });
+        .json({ msg: "No filters provided in request.body", ok: false });
     }
 
     // Guard against SQL injection via column names; allow typical identifier characters
@@ -499,7 +582,7 @@ const consultingLeaseInformationConsumer = async (request, response) => {
     if (validKeys.length === 0) {
       return response
         .status(400)
-        .json({ ok: false, msg: "No valid filter keys provided" });
+        .json({ msg: "No valid filter keys provided", ok: false });
     }
 
     const formatting = validKeys.map((k) => `\`${k}\`=?`).join(" AND ");
@@ -511,7 +594,7 @@ const consultingLeaseInformationConsumer = async (request, response) => {
     return response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -521,8 +604,8 @@ const allocateDeviceToEvent = async (request, response) => {
       request.body;
     if (!data || data.length === 0) {
       return response.status(400).json({
-        ok: false,
         message: "No items were provided to be allocated to the event.",
+        ok: false,
       });
     }
     const connection = getConnection();
@@ -541,22 +624,22 @@ const allocateDeviceToEvent = async (request, response) => {
       const update = await updateLargeData(itemIdsForUpdateLargeData, response);
       const insertedItemInEvent = await insertingItemInEvent(request, response);
       response.status(200).json({
+        bodyForUpdate: itemIdsForUpdateLargeData,
+        inserted: insertedItemInEvent,
         ok: true,
         result,
-        bodyForUpdate: itemIdsForUpdateLargeData,
         updateResult: update,
-        inserted: insertedItemInEvent,
       });
     } else {
       response.status(500).json({
-        ok: false,
-        msg: "No items to allocate"
+        msg: "No items to allocate",
+        ok: false
       })
     }
   } catch (error) {
     response.status(500).json({
-      ok: false,
       error: error.message,
+      ok: false,
     });
   }
 };
@@ -570,13 +653,13 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
     if (!company_id || !event_id) {
       return response
         .status(400)
-        .json({ ok: false, message: "company_id and event_id are required." });
+        .json({ message: "company_id and event_id are required.", ok: false });
     }
 
     if (!Array.isArray(data) || data.length === 0) {
       return response.status(400).json({
-        ok: false,
         message: "No items were provided to be allocated to the event.",
+        ok: false,
       });
     }
 
@@ -600,8 +683,8 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
     if (containers.length === 0) {
       await connection.rollback();
       return response.status(404).json({
-        ok: false,
         message: "No containers found with the provided serial numbers.",
+        ok: false,
       });
     }
 
@@ -631,7 +714,7 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
       await connection.rollback();
       return response
         .status(200)
-        .json({ ok: true, message: "The specified containers are empty." });
+        .json({ message: "The specified containers are empty.", ok: true });
     }
 
     // 1) Update warehouse + 2) Assign to event (do both in SQL transaction)
@@ -682,27 +765,27 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
     // Now push to Mongo pool (only if there are child devices)
     if (resultProps.length > 0) {
       const poolPayload = {
-        deviceList: resultProps.map((item) => ({
-          device: item.serial_number,
-          item_group: item.item_group,
-          category_name: item.category_name,
-        })),
-        status: "Operational",
+        type: resultProps[0]?.item_group,
         activity: false,
         comment: "No comment.",
+        company: company_id_nosql,
+        deviceList: resultProps.map((item) => ({
+          category_name: item.category_name,
+          device: item.serial_number,
+          item_group: item.item_group,
+        })),
         eventSelected: eventName,
         provider: providerName,
-        type: resultProps[0]?.item_group,
-        company: company_id_nosql,
+        status: "Operational",
       };
       await poolReceiversBulkWorker(poolPayload);
     }
 
     return response.status(200).json({
-      ok: true,
       message: `${allItemsToProcess.length} total items (including containers and their contents) were allocated to the event.`,
-      result: { allItemsToProcess },
+      ok: true,
       props: resultProps,
+      result: { allItemsToProcess },
     });
   } catch (error) {
     if (connection) {
@@ -713,8 +796,8 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
     logger.error(error);
 
     return response.status(500).json({
-      ok: false,
       error: error?.message || "Unknown error",
+      ok: false,
     });
   } finally {
     if (connection) connection.release();
@@ -729,8 +812,8 @@ const lockItemsForEvent = async (request, response) => {
 
     if (!event_id || !company_id || !Array.isArray(items) || items.length === 0) {
       return response.status(400).json({
-        ok: false,
         message: "event_id, company_id, and a non-empty array of item IDs are required.",
+        ok: false,
       });
     }
 
@@ -752,8 +835,8 @@ const lockItemsForEvent = async (request, response) => {
     await connection.commit();
 
     return response.status(201).json({
-      ok: true,
       message: `${totalAffectedRows} item(s) have been locked for event ${event_id}.`,
+      ok: true,
       total_locked: totalAffectedRows,
     });
 
@@ -763,8 +846,8 @@ const lockItemsForEvent = async (request, response) => {
     }
     logger.error("Error locking items for event:", error.message);
     return response.status(500).json({
-      ok: false,
       error: error.message || "An internal error occurred while locking items.",
+      ok: false,
     });
   } finally {
     if (connection) {
@@ -791,20 +874,20 @@ const reserveItemsInInventoryForEvent = async (request, response) => {
     ]);
     if (result.affectedRows === 0) {
       return response.status(404).json({
-        ok: false,
         message: "No items found in the inventory to reserve.",
+        ok: false,
       });
     }
     return response.status(200).json({
-      ok: true,
       message: `${result.affectedRows} item(s) have been reserved in the inventory.`,
+      ok: true,
       total_reserved: result.affectedRows,
     });
   } catch (error) {
     logger.error("Error reserving items in inventory for event:", error.message);
     return response.status(500).json({
-      ok: false,
       error: error.message || "An internal error occurred while reserving items.",
+      ok: false,
     });
   } finally {
     if (connection) {
@@ -814,21 +897,22 @@ const reserveItemsInInventoryForEvent = async (request, response) => {
 };
 
 module.exports = {
-  insertingItemInEvent,
+  allocateDeviceMarkedAsContainerInEvent,
+  allocateDeviceToEvent,
+  bulkUpdateEventItemShipping,
+  checkingInventoryCurrentState,
   consultingInventoryCurrentState,
   consultingInventoryInEvent,
-  deletingItemsInEventAfterDeviceInventoryIsUpdated,
-  consultingRowInItemInvAssignedEventTable,
-  deletingRecordInItemInvAssignedEventRow,
-  insertingDeviceInEventDirectly,
-  checkingInventoryCurrentState,
-  insertingDeviceInEventDirectlyFromContainer,
   consultingLeaseInformationConsumer,
-  allocateDeviceToEvent,
-  allocateDeviceMarkedAsContainerInEvent,
-  lockItemsForEvent,
-  reserveItemsInInventoryForEvent,
-  updateEventItemShipping,
+  consultingRowInItemInvAssignedEventTable,
+  deletingItemsInEventAfterDeviceInventoryIsUpdated,
+  deletingRecordInItemInvAssignedEventRow,
   getEventItemShipping,
-  removeEventItemShipping
+  insertingDeviceInEventDirectly,
+  insertingDeviceInEventDirectlyFromContainer,
+  insertingItemInEvent,
+  lockItemsForEvent,
+  removeEventItemShipping,
+  reserveItemsInInventoryForEvent,
+  updateEventItemShipping
 };
