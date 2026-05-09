@@ -600,7 +600,7 @@ const consultingLeaseInformationConsumer = async (request, response) => {
 
 const allocateDeviceToEvent = async (request, response) => {
   try {
-    const { item_group, company_id, category_name, data, warehouse } =
+    const { item_group, company_id, category_name, data, warehouse, logistic_status } =
       request.body;
     if (!data || data.length === 0) {
       return response.status(400).json({
@@ -618,7 +618,10 @@ const allocateDeviceToEvent = async (request, response) => {
       const itemIdsForUpdateLargeData = {
         body: {
           item_ids: [...result.map((item) => item.item_id)],
-          warehouse: warehouse,
+          updates:{
+            logistic_status: logistic_status,
+            warehouse: warehouse,
+          }
         },
       };
       const update = await updateLargeData(itemIdsForUpdateLargeData, response);
