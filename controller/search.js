@@ -373,7 +373,7 @@ const inventoryQuery = async (payload) => {
     const connection = getConnection();
 
     // Build dynamic query with proper parameterization
-    let query = `SELECT category_name, item_group, location, current_location, image_url, serial_number, main_warehouse, return_date, brand, cost, status FROM item_inv WHERE ownership = ? ${
+    let query = `SELECT item_id, category_name, item_group, location, current_location, image_url, serial_number, main_warehouse, return_date, brand, cost, status FROM item_inv WHERE ownership = ? ${
       ownership === "Rent" ? "AND return_date IS NOT NULL AND " : "AND"
     } company_id = ?`;
     const params = [ownership, company_sql_id];
