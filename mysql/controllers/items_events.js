@@ -651,7 +651,7 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
   let connection;
 
   try {
-    const { company_id, event_id, data, warehouse, eventName, company_id_nosql } = request.body;
+    const { company_id, event_id, data, warehouse, eventName, company_id_nosql, logistic_status } = request.body;
 
     if (!company_id || !event_id) {
       return response
@@ -725,11 +725,11 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
 
     const updateQuery = `
       UPDATE item_inv
-      SET warehouse = ?
+      SET warehouse = ?, logistic_status = ?
       WHERE company_id = ?
         AND item_id IN (${allItemsPlaceholder});
     `;
-    await connection.execute(updateQuery, [warehouse, company_id, ...allItemsToProcess]);
+    await connection.execute(updateQuery, [warehouse, logistic_status, company_id, ...allItemsToProcess]);
 
     const insertPlaceholders = allItemsToProcess.map(() => "(?, ?)").join(", ");
     const insertQuery = `
