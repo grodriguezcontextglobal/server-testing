@@ -2367,69 +2367,105 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
 
 const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => {
   let connection;
+
+  const ALLOWED_REFERENCE_KEYS = ["item_group", "category_name", "brand"];
+
+  const CONTROL_FIELDS = [
+    "reference",
+    "updateAll",
+    "list",
+    "company_id",
+  ];
+
   try {
     connection = await getConnection().getConnection();
     await connection.beginTransaction();
 
     const {
       company_id,
-      item_group,
-      category_name,
-      list,
       updateAll = false,
-      extra_serial_number, // Stringified JSON
-      ...updateData
+      list = [],
+      reference = {},
+      extra_serial_number,
+      ...rawUpdateData
     } = request.body;
 
-    // --- Validation ---
     if (!company_id) {
-      return response
-        .status(400)
-        .json({ msg: "company_id is a required primary key.", ok: false });
-    }
-    if (!updateAll && (!Array.isArray(list) || list.length === 0)) {
       return response.status(400).json({
-        msg: "When 'updateAll' is false, a 'list' of serial numbers is required.",
-        ok: false,
-      });
-    }
-    if (!updateAll && !extra_serial_number) {
-      return response.status(400).json({
-        msg: "When 'updateAll' is false, 'extra_serial_number' is required.",
+        msg: "company_id is required.",
         ok: false,
       });
     }
 
     if (updateAll) {
-      // Logic for updating all items matching the criteria.
-      const validUpdateData = { ...updateData };
-      if (extra_serial_number) {
-        // If provided, it will be applied to all matched items.
+      const referenceEntries = Object.entries(reference).filter(
+        ([key, value]) =>
+          ALLOWED_REFERENCE_KEYS.includes(key) &&
+          value !== undefined &&
+          value !== null &&
+          String(value).trim() !== ""
+      );
+
+      if (referenceEntries.length === 0) {
+        return response.status(400).json({
+          msg: "reference must include at least one old value: item_group, category_name, or brand.",
+          ok: false,
+        });
+      }
+
+      const validUpdateData = {};
+
+      for (const [key, value] of Object.entries(rawUpdateData)) {
+        if (
+          !CONTROL_FIELDS.includes(key) &&
+          value !== undefined
+        ) {
+          validUpdateData[key] = value;
+        }
+      }
+
+      if (extra_serial_number !== undefined) {
         validUpdateData.extra_serial_number = extra_serial_number;
       }
+
       validUpdateData.update_at = new Date();
 
-      const setClause = Object.keys(validUpdateData)
-        .map((key) => `${key} = ?`)
+      const updateEntries = Object.entries(validUpdateData);
+
+      if (updateEntries.length === 0) {
+        return response.status(400).json({
+          msg: "At least one field is required to update.",
+          ok: false,
+        });
+      }
+
+      const setClause = updateEntries
+        .map(([key]) => `${key} = ?`)
         .join(", ");
-      const setValues = Object.values(validUpdateData);
 
-      const whereClauses = ["company_id = ?"];
-      const whereValues = [company_id];
-      if (item_group) {
-        whereClauses.push("item_group = ?");
-        whereValues.push(item_group);
-      }
-      if (category_name) {
-        whereClauses.push("category_name = ?");
-        whereValues.push(category_name);
-      }
+      const setValues = updateEntries.map(([, value]) => value);
 
-      const query = `UPDATE item_inv SET ${setClause} WHERE ${whereClauses.join(
-        " AND "
-      )}`;
-      const values = [...setValues, ...whereValues];
-      const [result] = await connection.execute(query, values);
+      const whereClause = [
+        "company_id = ?",
+        ...referenceEntries.map(([key]) => `${key} = ?`),
+      ].join(" AND ");
+
+      const whereValues = [
+        company_id,
+        ...referenceEntries.map(([, value]) => value),
+      ];
+
+      const query = `
+        UPDATE item_inv
+        SET ${setClause}
+        WHERE ${whereClause}
+      `;
+
+      const [result] = await connection.execute(query, [
+        ...setValues,
+        ...whereValues,
+      ]);
+
       await connection.commit();
 
       return response.status(200).json({
@@ -2437,83 +2473,23 @@ const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => 
         ok: true,
         updated_count: result.affectedRows,
       });
-    } else {
-      // Logic for updating specific items from the 'list'.
-      const parsedExtraSerial = JSON.parse(extra_serial_number);
-
-      const serialDataMap = {};
-      for (const entry of parsedExtraSerial) {
-        const serial = Object.keys(entry)[0];
-        const detailsArray = entry[serial];
-        const itemIdObject = detailsArray.find((d) => d.keyObject === "item_id");
-        const itemId = itemIdObject ? itemIdObject.valueObject : null;
-
-        // Filter out item_id to prepare the data for storage.
-        const dataToStore = detailsArray.filter(
-          (d) => d.keyObject !== "item_id"
-        );
-
-        if (itemId) {
-          serialDataMap[serial] = {
-            itemId: itemId,
-            jsonToStore: JSON.stringify(dataToStore),
-          };
-        }
-      }
-
-      const commonUpdateData = { ...updateData };
-      commonUpdateData.update_at = new Date();
-
-      let totalAffectedRows = 0;
-      for (const serial of list) {
-        const data = serialDataMap[String(serial)];
-        if (!data || !data.itemId) {
-          logger.warn(`No mapping found for serial ${serial}. Skipping.`);
-          continue;
-        }
-
-        const itemSpecificUpdateData = {
-          ...commonUpdateData,
-          serial_number: serial, // Update serial_number with the identifier
-          extra_serial_number: data.jsonToStore, // Update with filtered JSON
-        };
-
-        const setClauses = Object.keys(itemSpecificUpdateData).map(
-          (key) => `${key} = ?`
-        );
-        const setValues = Object.values(itemSpecificUpdateData);
-
-        if (setClauses.length === 0) continue;
-
-        const query = `UPDATE item_inv SET ${setClauses.join(
-          ", "
-        )} WHERE item_id = ? AND company_id = ?`;
-        const values = [...setValues, data.itemId, company_id];
-
-        const [result] = await connection.execute(query, values);
-        totalAffectedRows += result.affectedRows;
-      }
-
-      await connection.commit();
-      return response.status(200).json({
-        msg: `${totalAffectedRows} item(s) updated successfully.`,
-        ok: true,
-        updated_count: totalAffectedRows,
-      });
     }
+
+    return response.status(400).json({
+      msg: "This version only shows the fixed updateAll=true branch.",
+      ok: false,
+    });
   } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
+    if (connection) await connection.rollback();
+
     logger.error("Error in bulk item update:", error);
+
     return response.status(500).json({
       msg: `Internal server error: ${error.message}`,
       ok: false,
     });
   } finally {
-    if (connection) {
-      connection.release();
-    }
+    if (connection) connection.release();
   }
 };
 
