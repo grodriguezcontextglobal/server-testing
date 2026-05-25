@@ -42,7 +42,66 @@ const {
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
-const { request } = require("http");
+
+const normalizeLostFeePayload = (body = {}) => {
+  const consumer = body.consumer || body.consumerInfo || body.client || {};
+
+  const rawDevice =
+    body.device ||
+    body.deviceInfo ||
+    body.transactionData ||
+    body.item ||
+    {};
+
+  const deviceText =
+    typeof rawDevice === "string"
+      ? rawDevice
+      : rawDevice.type ||
+        rawDevice.deviceType ||
+        rawDevice.item_group ||
+        rawDevice.category_name ||
+        "";
+
+  const serialNumber =
+    rawDevice.serialNumber ||
+    rawDevice.serial_number ||
+    rawDevice.deviceSerialNumber ||
+    rawDevice.key ||
+    "";
+
+  return {
+    consumerName:
+      consumer.name ||
+      `${consumer.firstName || ""} ${consumer.lastName || ""}`.trim() ||
+      body.consumerName ||
+      "Customer",
+
+    consumerEmail:
+      consumer.email ||
+      body.email ||
+      body.consumerEmail ||
+      "",
+
+    deviceType: deviceText,
+    serialNumber:
+      serialNumber ||
+      String(deviceText).match(/serialNumber:\s*([^,]+)/i)?.[1] ||
+      "N/A",
+
+    amount: body.amount || body.total || body.value || "0.00",
+    event: body.event || body.eventName || body.eventSelected || "Event",
+    company: body.company || body.companyName || "Devitrak",
+    date: body.date || new Date().toDateString(),
+    time: body.time || new Date().toLocaleTimeString(),
+    transaction:
+      body.transaction ||
+      body.paymentIntent ||
+      body.payment_intent ||
+      "N/A",
+
+    link: body.link || body.url || body.confirmationLink || "#",
+  };
+};
 // const e = require("express");
 const assingDeviceNotification = async (request, response) => {
   try {
@@ -250,27 +309,41 @@ const editingDeviceAdminNotification = async (request, response) => {
 
 const lostDeviceFeeCollectedNotification = async (request, response) => {
   try {
+    const data = normalizeLostFeePayload(request.body);
+
+    if (!data.consumerEmail) {
+      return response.status(400).json({
+        ok: false,
+        message: "Consumer email is required",
+      });
+    }
+
     const msg = {
-      to: `${request.body.consumer.email}`,
+      to: data.consumerEmail,
       from: "Devitrak Notifications <noreply@devitrak.com>",
-      subject: "Lost device fee payment receipt",
-      html: lostDeviceFeeReceipt(request.body),
+      subject: `Lost device fee receipt - ${data.company}`,
+      html: lostDeviceFeeReceipt(data, normalizeLostFeePayload),
     };
 
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
+    await sgMail.send(msg);
+
+    return response.status(201).json({
+      ok: true,
+      notification: "Email sent",
     });
   } catch (error) {
-    response.status(500).json({
+    console.error("Lost device fee email error:", {
+      message: error.message,
+      sendgrid: error.response?.body,
+    });
+
+    return response.status(500).json({
       ok: false,
-      error: error,
+      message: error.message,
+      sendgrid: error.response?.body,
     });
   }
 };
-
 const confirmationLinkNewConsumerNotification = async (request, response) => {
   try {
     const msg = {
