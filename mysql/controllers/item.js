@@ -3624,7 +3624,7 @@ const confirmItemsReturnedToStock = async (request, response) => {
       : sub_location;
     const updateQuery = `
       UPDATE item_inv
-      SET warehouse = 1, main_warehouse= ?, location = ?, sub_location = ?, logistic_status = 'in_stock', update_at = NOW()
+      SET warehouse = 1, main_warehouse= ?, location = ?, sub_location = ?, logistic_status = 'in-stock', update_at = NOW()
       WHERE company_id = ? AND serial_number IN (?);
     `;
     const [updateResult] = await connection.query(updateQuery, [
