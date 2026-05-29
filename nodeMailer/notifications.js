@@ -39,6 +39,7 @@ const {
   liabilityContractMemberNotificationMessageHtml,
   returnConfirmationLeaseMemberMessageHtml,
   forceLogoutNotificationHtmlTemplate,
+  memberEmailNotificationHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
@@ -57,10 +58,10 @@ const normalizeLostFeePayload = (body = {}) => {
     typeof rawDevice === "string"
       ? rawDevice
       : rawDevice.type ||
-        rawDevice.deviceType ||
-        rawDevice.item_group ||
-        rawDevice.category_name ||
-        "";
+      rawDevice.deviceType ||
+      rawDevice.item_group ||
+      rawDevice.category_name ||
+      "";
 
   const serialNumber =
     rawDevice.serialNumber ||
@@ -1381,10 +1382,10 @@ const completedTask = async (
 ) => {
   try {
     // Send email to consumer
-    const msg = { 
+    const msg = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `grodriguez@devitrak.com`,
-      subject: "Task - Completed Notification", 
+      subject: "Task - Completed Notification",
       html: `<p>SUCCESS</p>`,
     };
     const result = await sgMail.send(msg);
@@ -1411,7 +1412,7 @@ const failedTask = async (
 ) => {
   try {
     // Send email to consumer
-    const msg = { 
+    const msg = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `grodriguez@devitrak.com`,
       subject: "Task - Failed Notification",
@@ -1441,8 +1442,7 @@ const forcingRevokingActiveSession = async (
 ) => {
   try {
     // Send email to consumer
-    console.log(request.body);
-    const msg = { 
+    const msg = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${request.body.email}`,
       subject: "Action Required: End Your Active Session",
@@ -1466,11 +1466,35 @@ const forcingRevokingActiveSession = async (
   }
 };
 
+const memberEmailNotification = async (request, response) => {
+  try {
+    const msg = {
+      to: request.body.consumer,
+      from: "Devitrak Notifications <noreply@devitrak.com>",
+      subject: `${request.body.subject} - Power by Devitrak`,
+      html: memberEmailNotificationHtml(request.body),
+    };
+
+    await sgMail.send(msg);
+
+    return response.status(201).json({
+      notification: "Email sent",
+      ok: true,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      error,
+    });
+  }
+};
+
 module.exports = {
   assingDeviceNotification,
   cancelDepositNotification,
   captureDepositNotification,
   chargeInvoice,
+  completedTask,
   confirmationLinkNewConsumerNotification,
   consumerDocumentSigningCompletionNotification,
   consumerLeaseEndedDeviceReturnedNotification,
@@ -1484,6 +1508,8 @@ module.exports = {
   eventBeginsReminderNotification,
   eventLinkEvent,
   eventStaffNotification,
+  failedTask,
+  forcingRevokingActiveSession,
   internalNotification,
   itemInfoStaffNotification,
   liabilityContractConsumerNotification,
@@ -1494,6 +1520,7 @@ module.exports = {
   loginLinkExistingConsumerNotification,
   lostDeviceFeeCollectedNotification,
   massiveEventCustomerNotification,
+  memberEmailNotification,
   newUserInvitationNotification,
   refundInvoice,
   returnedItemsToRenterNotification,
@@ -1502,7 +1529,4 @@ module.exports = {
   singleEmailNotification,
   staffInternalNotification,
   termsAndConditionsAcceptanceNotification,
-  completedTask,
-  failedTask,
-  forcingRevokingActiveSession,
 };
