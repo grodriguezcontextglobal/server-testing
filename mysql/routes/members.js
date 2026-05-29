@@ -28,7 +28,7 @@ router.post("/new-member", insertNewMember);
 router.post("/bulk-members", insertBulkMembers);
 
 //update member info
-router.post("/update-member-info", updateMemberInfo);
+router.patch("/update-member-info", updateMemberInfo);
 
 //delete member info
 router.post("/delete-member-info", deleteMember);
