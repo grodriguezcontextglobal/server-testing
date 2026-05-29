@@ -7035,6 +7035,138 @@ const forceLogoutNotificationHtmlTemplate = (userEmail) => {
   `;
 };
 
+const memberEmailNotificationHtml = (props) => {
+  const subject = props?.subject || "Notification";
+  const message = props?.message || "";
+
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Devitrak Notification</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #101828;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 24px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        line-height: 24px;
+        margin-bottom: 20px;
+      }
+
+      .message-box {
+        background-color: #f9fafb;
+        border: 1px solid #eaecf0;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 24px 0;
+      }
+
+      .footer {
+        font-size: 12px;
+        color: #475467;
+        text-align: center;
+        margin-top: 40px;
+      }
+
+      @media only screen and (max-width: 600px) {
+        h1 {
+          font-size: 20px;
+        }
+
+        p {
+          font-size: 14px;
+        }
+
+        .container {
+          padding: 16px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="container">
+      <div style="margin-bottom: 2.5rem;">
+        <p style="
+          text-align: left;
+          color: #475467;
+          font-size: 9px;
+          font-weight: 500;
+          line-height: 9px;
+          margin-bottom: 4px;
+        ">
+          Powered by
+        </p>
+
+        <div style="display: flex; align-items: center;">
+          <img
+            src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+            alt="devitrak-logo"
+            style="object-fit: contain;"
+          />
+          <img
+            src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+            alt="devitrak-name"
+            style="object-fit: contain;"
+          />
+        </div>
+      </div>
+
+      <h1>${subject}</h1>
+
+      <p>
+        Hello,
+      </p>
+
+      <p>
+        You have received a notification from your staff/company through Devitrak.
+      </p>
+
+      <div class="message-box">
+        <p style="margin: 0;">
+          ${message}
+        </p>
+      </div>
+
+      <p>
+        Please contact your staff/company directly if you have any questions about this message.
+      </p>
+
+      <div class="footer">
+        <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
+      </div>
+    </div>
+  </body>
+</html>
+`;
+};
+
 module.exports = {
   assigningDeviceMessageHtml,
   cancelingDepositMessageHtml,
@@ -7072,4 +7204,5 @@ module.exports = {
   staffInternalNotificationMessageHtml,
   staffNotificationMessageHtml,
   termsAndConditionsAcceptanceMessageHtml,
+  memberEmailNotificationHtml
 };
