@@ -148,5 +148,36 @@ const getShipments = async (req, res) => {
     }
 };
 
+const retrievePackageList = async (req, res) => {
+  let connection;
+  try {
+    connection = await getConnection().getConnection();
+    const { package_list } = req.body;
+    console.log(package_list)
+    if (!package_list) {
+        return res.status(400).json({ ok: false, message: "package_list is a required field." });
+    }
 
-module.exports = { createShipment, updateShipment, deleteShipment, getShipments };
+    // The package_list is a string of comma-separated IDs. Split it into an array.
+    const itemIds = package_list.map(id => id);
+
+    if (itemIds.length === 0) {
+        return res.status(400).json({ ok: false, message: "No valid item IDs provided in package_list." });
+    }
+
+    const placeholders = itemIds.map(() => '?').join(',');
+    const query = `SELECT * FROM item_inv WHERE item_id IN (${placeholders})`;
+
+    const [rows] = await connection.query(query, itemIds);
+
+    res.status(200).json({ ok: true, items: rows });
+
+  } catch (error) {
+    logger.error("Error retrieving package list:", error.message);
+    res.status(500).json({ ok: false, error: error.message });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
+module.exports = { createShipment, updateShipment, deleteShipment, getShipments, retrievePackageList };
