@@ -613,7 +613,6 @@ const allocateDeviceToEvent = async (request, response) => {
     const query = `SELECT item_id from item_inv 
                    where company_id = ? AND item_group = ? 
                    AND category_name = ? AND warehouse = 0 
-                   AND logistic_status = "in-transit" 
                    AND serial_number IN (${placeholders})`;
     const values = [company_id, item_group, category_name, ...data];
     const [result] = await connection.execute(query, values);
