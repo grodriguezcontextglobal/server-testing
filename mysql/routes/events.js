@@ -25,6 +25,7 @@ const {
   allocateDeviceMarkedAsContainerInEvent,
   lockItemsForEvent,
   reserveItemsInInventoryForEvent,
+  removeReservedItemsInInventoryForEvent,
 } = require("../controllers/items_events");
 const {
   returningItemToStockWhenEventIsFinished,
@@ -151,6 +152,9 @@ router.post(
 
 //reserve items in inventory for event
 router.post("/reserve-items-for-event", reserveItemsInInventoryForEvent);
+
+//remove reserved items in inventory for event
+router.post("/remove-reserved-items-for-event", removeReservedItemsInInventoryForEvent);
 
 //lock items to be used in event
 router.post("/lock-items-for-event", lockItemsForEvent);
