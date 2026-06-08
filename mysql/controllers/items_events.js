@@ -612,10 +612,11 @@ const allocateDeviceToEvent = async (request, response) => {
     const placeholders = data.map(() => "?").join(",");
     const query = `SELECT item_id from item_inv 
                    where company_id = ? AND item_group = ? 
-                   AND category_name = ? AND warehouse = 0 
+                   AND category_name = ? 
                    AND serial_number IN (${placeholders})`;
     const values = [company_id, item_group, category_name, ...data];
     const [result] = await connection.execute(query, values);
+    logger.info("result", result)
     if (result.length > 0) {
       //call controller to insert item into event inventory sql
       const itemIdsForUpdateLargeData = {
