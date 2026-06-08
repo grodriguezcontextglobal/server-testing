@@ -903,6 +903,36 @@ const reserveItemsInInventoryForEvent = async (request, response) => {
   }
 };
 
+const removeReservedItemsInInventoryForEvent = async (request, response) => { 
+try {
+  const { event_id, company_id, item_id } = request.body;
+  const queryToRemoveReservedItems = `
+    DELETE FROM event_item_shipping
+    WHERE event_id = ?
+      AND company_id = ?
+      AND item_id IN (${item_id.map(() => "?").join(",")});
+  `;
+  const [result] = await connection.execute(queryToRemoveReservedItems, [
+    event_id,
+    company_id,
+    ...item_id,
+  ]);
+  if (result.affectedRows === 0) {
+    return response.status(404).json({
+      message: "No items found in the event item shipping table to remove.",
+      ok: false,
+    });
+  }
+  return response.status(200).json({
+    message: `${result.affectedRows} item(s) have been removed from the event item shipping table.`,
+    ok: true,
+    total_removed: result.affectedRows,
+  });
+} catch (error) {
+  
+}
+}
+
 module.exports = {
   allocateDeviceMarkedAsContainerInEvent,
   allocateDeviceToEvent,
@@ -921,5 +951,6 @@ module.exports = {
   lockItemsForEvent,
   removeEventItemShipping,
   reserveItemsInInventoryForEvent,
-  updateEventItemShipping
+  updateEventItemShipping,
+  removeReservedItemsInInventoryForEvent
 };
