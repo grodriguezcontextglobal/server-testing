@@ -38,6 +38,7 @@ const {
   retrieveCompanyInventoryBasedOnParams,
 } = require("../controllers/item");
 const router = Router();
+router.use(require('express').json());
 
 // Check company info
 router.post("/consulting-company", consultingCompany);
