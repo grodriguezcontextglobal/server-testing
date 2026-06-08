@@ -44,11 +44,19 @@ const insertingCompany = async (request, response) => {
 const consultingCompany = async (request, response) => {
   try {
     const connection = await getConnection();
-    const reference = Object.entries(request.body);
-    const query = `SELECT * FROM company_info WHERE \`${reference[0][0]}\` = ?`;
-    const values = [reference[0][1]];
+    const filters = request.body;
+
+    let query = "SELECT * FROM company_info";
+    const values = [];
+
+    if (Object.keys(filters).length > 0) {
+      const whereClauses = Object.keys(filters).map(key => `\`${key}\` = ?`);
+      query += ` WHERE ${whereClauses.join(" AND ")}`;
+      values.push(...Object.values(filters));
+    }
+
     const [result] = await connection.execute(query, values);
-    return response.status(200).json({ ok: true, company: result });
+    return response.status(200).json({ ok: true, companies: result });
   } catch (err) {
     logger.error("Error:", err.message);
     return response.status(500).json({ ok: false, msg: err.message });
