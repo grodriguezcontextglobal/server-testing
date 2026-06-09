@@ -48,7 +48,7 @@ const searchingConsumer = async (variable, company, lastId = null) => {
   }
   const limit = 11;
   const results = await User.find(query).sort({ _id: 1 }) //.limit(limit);
-  const hasMore = results.length === limit;
+  const hasMore = false //results.length === limit;
   if (hasMore) {
     results.pop();
   }
@@ -99,7 +99,7 @@ const searchingDeviceTransaction = async (variable, company, lastId = null) => {
   }
   const limit = 11;
   const results = await Receivers.find(query).sort({ _id: 1 }) //.limit(limit);
-  const hasMore = results.length === limit;
+  const hasMore = false //results.length === limit;
   if (hasMore) {
     results.pop();
   }
@@ -124,7 +124,7 @@ const searchingDevicePool = async (variable, company, lastId = null) => {
   const devicesFoundInPool = await ReceiversPool.find(query)
     .sort({ _id: 1 })
     // .limit(limit);
-  const hasMore = devicesFoundInPool.length === limit;
+  const hasMore = false //devicesFoundInPool.length === limit;
   if (hasMore) {
     devicesFoundInPool.pop();
   }
@@ -269,7 +269,7 @@ const previousConsumer = async (req, res) => {
     }
     const limit = 11;
     const results = await User.find(query).sort({ _id: -1 }) //.limit(limit);
-    const hasMore = results.length === limit;
+    const hasMore = false //results.length === limit;
     if (hasMore) {
       results.pop();
     }
