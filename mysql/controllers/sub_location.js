@@ -8,7 +8,7 @@ const logger = require("../../helpers/logger");
  * @returns {Object} - { sub_location_id, name }
  */
 const processSubLocation = async (connection, data) => {
-  const { location_id, name, parent_id, active } = data;
+  const { location_id, name, parent_id, active, company_id } = data;
 
   if (!location_id || !name) {
     throw new Error(
@@ -36,14 +36,15 @@ const processSubLocation = async (connection, data) => {
 
   // Create new sub-location
   const insertQuery = `
-    INSERT INTO sub_locations (location_id, name, parent_id, active)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO sub_locations (location_id, name, parent_id, active, company_id)
+    VALUES (?, ?, ?, ?, ?)
   `;
   const [result] = await connection.execute(insertQuery, [
     location_id,
     name,
     parent_id || null,
-    active !== undefined ? active : true,
+    active !== undefined ? active : 1,
+    company_id || null,
   ]);
 
   return {
@@ -54,12 +55,12 @@ const processSubLocation = async (connection, data) => {
 
 const createSubLocation = async (req, res) => {
   const connection = getConnection();
-  const { location_id, name, parent_id } = req.body;
+  const { location_id, name, parent_id, company_id } = req.body;
 
-  if (!location_id || !name) {
+  if (!location_id || !name || !company_id) {
     return res.status(400).json({
       ok: false,
-      msg: "Missing required fields: location_id, name",
+      msg: "Missing required fields: location_id, name, company_id",
     });
   }
 
@@ -181,6 +182,43 @@ const updateSubLocation = async (req, res) => {
   }
 };
 
+const deleteSubLocation = async (req, res) => {
+  const connection = getConnection();
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ ok: false, msg: "Sub-location ID is required" });
+  }
+
+  try {
+    const [children] = await connection.execute(
+      "SELECT sub_location_id FROM sub_locations WHERE parent_id = ? AND active = 1",
+      [id]
+    );
+
+    if (children.length > 0) {
+      return res.status(409).json({
+        ok: false,
+        msg: "Cannot delete sub-location with active children. Remove or reassign children first.",
+      });
+    }
+
+    const [result] = await connection.execute(
+      "DELETE FROM sub_locations WHERE sub_location_id = ?",
+      [id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ ok: false, msg: "Sub-location not found" });
+    }
+
+    return res.status(200).json({ ok: true, msg: "Sub-location deleted successfully" });
+  } catch (error) {
+    logger.error("deleteSubLocation error:", error);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 const checkSubLocation = async (req, res) => {
   const connection = getConnection();
   const { location_id, name, parent_id } = req.body;
@@ -219,5 +257,6 @@ module.exports = {
   getSubLocationsHierarchy,
   updateSubLocation,
   checkSubLocation,
+  deleteSubLocation,
   processSubLocation,
 };
