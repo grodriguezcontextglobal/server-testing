@@ -5,7 +5,8 @@ const {
   createSubLocation,
   getSubLocationsHierarchy,
   updateSubLocation,
-  checkSubLocation
+  checkSubLocation,
+  deleteSubLocation,
 } = require("../controllers/sub_location");
 
 const router = Router();
@@ -26,5 +27,6 @@ router.put("/sub-locations/:id", updateSubLocation);
 
 router.post("/sub-locations/check", checkSubLocation);
 
+router.delete("/sub-locations/:id", deleteSubLocation);
 
 module.exports = router;

@@ -5,6 +5,7 @@ const {
   createLocation,
   bulkAssignInventory,
   getCompanyLocations,
+  getCompanyLocationTree,
   deleteLocation,
 } = require("../controllers/location");
 
@@ -35,5 +36,7 @@ router.put(
 router.get("/companies/:id/locations", getCompanyLocations);
 
 router.post("/companies/:id/locations", getCompanyLocations);
+
+router.get("/companies/:id/locations/tree", getCompanyLocationTree);
 
 module.exports = router;
