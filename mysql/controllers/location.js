@@ -350,6 +350,154 @@ const getCompanyLocations = async (req, res) => {
   }
 };
 
+const getCompanyLocationTree = async (req, res) => {
+  const connection = getConnection();
+  const { id: company_id } = req.params;
+
+  if (!company_id) {
+    return res.status(400).json({ ok: false, msg: "Company ID is required" });
+  }
+
+  try {
+    // 1. Fetch all active locations for the company
+    const [locations] = await connection.execute(
+      `SELECT location_id, location_name
+       FROM locations WHERE company_id = ? AND status = 'active'
+       ORDER BY location_name ASC`,
+      [company_id]
+    );
+
+    if (locations.length === 0) {
+      return res.status(200).json({ ok: true, data: {} });
+    }
+
+    const locationIds = locations.map((l) => l.location_id);
+    const placeholders = locationIds.map(() => "?").join(",");
+
+    // 2. Fetch all sub-locations for those locations (source of truth for the tree)
+    const [subLocations] = await connection.execute(
+      `SELECT sub_location_id, location_id, name, parent_id
+       FROM sub_locations
+       WHERE location_id IN (${placeholders}) AND active = 1
+       ORDER BY parent_id, name`,
+      locationIds
+    );
+
+    // 3. Fetch item inventory to compute counts
+    const [items] = await connection.execute(
+      `SELECT location_id, sub_location, item_group, status
+       FROM item_inv
+       WHERE company_id = ? AND location_id IN (${placeholders})`,
+      [company_id, ...locationIds]
+    );
+
+    // 4. Build a node for every sub-location keyed by id
+    //    children is an object keyed by name so path traversal works the same
+    //    way item_inv.sub_location names are matched
+    const subLocById = {};
+    subLocations.forEach((sl) => {
+      subLocById[sl.sub_location_id] = {
+        sub_location_id: sl.sub_location_id,
+        total: 0,
+        available: 0,
+        types: new Set(),
+        children: {},
+        _location_id: sl.location_id,
+        _parent_id: sl.parent_id,
+        _name: sl.name,
+      };
+    });
+
+    // rootsByLocation: location_id -> { subLocName -> node }
+    const rootsByLocation = {};
+    subLocations.forEach((sl) => {
+      if (!rootsByLocation[sl.location_id]) rootsByLocation[sl.location_id] = {};
+      const node = subLocById[sl.sub_location_id];
+      if (!sl.parent_id) {
+        rootsByLocation[sl.location_id][sl.name] = node;
+      } else if (subLocById[sl.parent_id]) {
+        subLocById[sl.parent_id].children[sl.name] = node;
+      }
+    });
+
+    // 5. Build root data structure keyed by location name
+    const locationMap = {};
+    const data = {};
+
+    locations.forEach((loc) => {
+      locationMap[loc.location_id] = loc.location_name;
+      data[loc.location_name] = {
+        location_id: loc.location_id,
+        total: 0,
+        available: 0,
+        types: new Set(),
+        children: rootsByLocation[loc.location_id] || {},
+      };
+    });
+
+    // 6. Walk each item, match its sub_location name path through the tree
+    //    and accumulate counts at every level it passes through
+    items.forEach((item) => {
+      const locName = locationMap[item.location_id];
+      if (!locName || !data[locName]) return;
+
+      const isAvailable = item.status === "Operational";
+      const type = item.item_group;
+
+      let parsedSub = [];
+      try {
+        parsedSub =
+          typeof item.sub_location === "string"
+            ? JSON.parse(item.sub_location)
+            : item.sub_location;
+      } catch (_) {}
+      if (!Array.isArray(parsedSub)) parsedSub = [];
+
+      // Always count at the location root
+      const locNode = data[locName];
+      locNode.total += 1;
+      if (isAvailable) locNode.available += 1;
+      if (type) locNode.types.add(type);
+
+      // Walk down sub-location path by name
+      let currentChildren = locNode.children;
+      for (const subName of parsedSub) {
+        if (typeof subName !== "string" || !subName.trim()) break;
+        const name = subName.trim();
+        if (!currentChildren[name]) break; // not registered in sub_locations table
+        const subNode = currentChildren[name];
+        subNode.total += 1;
+        if (isAvailable) subNode.available += 1;
+        if (type) subNode.types.add(type);
+        currentChildren = subNode.children;
+      }
+    });
+
+    // 7. Post-process: Set -> sorted array, strip internal fields,
+    //    convert empty children {} to null
+    const processNode = (node) => {
+      node.types = Array.from(node.types).sort();
+      delete node._location_id;
+      delete node._parent_id;
+      delete node._name;
+
+      const childKeys = Object.keys(node.children);
+      if (childKeys.length === 0) {
+        node.children = null;
+      } else {
+        childKeys.forEach((key) => processNode(node.children[key]));
+      }
+    };
+
+    Object.values(data).forEach(processNode);
+
+    return res.status(200).json({ ok: true, data });
+  } catch (error) {
+    logger.error("getCompanyLocationTree error:", error);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 /**
  * Deletes a location by ID
  * @param {Object} req - Express request object
@@ -399,6 +547,7 @@ module.exports = {
   createLocation,
   bulkAssignInventory,
   getCompanyLocations,
+  getCompanyLocationTree,
   processLocation,
   deleteLocation,
 };
