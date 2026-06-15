@@ -37,6 +37,17 @@ const {
   checkingItem,
   retrieveCompanyInventoryBasedOnParams,
 } = require("../controllers/item");
+const { validateJWT } = require("../../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
+const {
+  listCompanyCategories,
+  upsertCategory,
+  deleteCategory,
+  listCompanyGroups,
+  upsertGroup,
+  deleteGroup,
+  getInventoryGroupedFull,
+} = require("../controllers/categories_groups");
 const router = Router();
 router.use(require('express').json());
 
@@ -111,6 +122,8 @@ router.post("/get-inventory-company", getGroupedItemInventory);
 //consulting company inventory based on submitted parameters
 router.post(
   "/inventory-based-on-submitted-parameters",
+  validateJWT,
+  checkTokenVersion,
   consultingCompanyInventoryBasedOnSubmittedParameters
 );
 
@@ -149,5 +162,23 @@ router.post("/check-item", checkingItem);
 
 //retrieve company items with locations
 router.post("/retrieve-company-items-with-locations", retrieveCompanyInventory);
+
+// ─── Categories ──────────────────────────────────────────────────────────────
+router.post("/categories", validateJWT, checkTokenVersion, listCompanyCategories);
+router.post("/categories/upsert", validateJWT, checkTokenVersion, upsertCategory);
+router.delete("/categories/:category_id", validateJWT, checkTokenVersion, deleteCategory);
+
+// ─── Groups ──────────────────────────────────────────────────────────────────
+router.post("/groups", validateJWT, checkTokenVersion, listCompanyGroups);
+router.post("/groups/upsert", validateJWT, checkTokenVersion, upsertGroup);
+router.delete("/groups/:group_id", validateJWT, checkTokenVersion, deleteGroup);
+
+// ─── Inventory grouped with sub-levels (new — does not affect existing endpoints)
+router.post(
+  "/company-inventory-grouped-full",
+  validateJWT,
+  checkTokenVersion,
+  getInventoryGroupedFull,
+);
 
 module.exports = router;
