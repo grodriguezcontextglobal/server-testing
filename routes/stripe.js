@@ -249,7 +249,7 @@ router.post(
   partialRefundStripePaymentIntent
 );
 //removing duplicate entries in database
-router.delete("/remove-duplicate/:id",  ...optionalJWT, removeDuplicateEntries);
+router.delete("/remove-duplicate/:id",  optionalJWT, removeDuplicateEntries);
 
 //!new route for transaction model fro new design
 //*saving new transaction
