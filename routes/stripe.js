@@ -106,38 +106,38 @@ router.post("/create-subscriptions_no_trial", optionalJWT, createSubscriptionNoT
 //update payment method in subscription
 router.post(
   "/payment-method/subscriptions/:id",
-  ...internalStripeGuard,
+  optionalJWT,
   updateDefaultPaymentMethodInSubscription
 );
 
 //update payment method in customer
 router.post(
   "/payment_methods/:id/attach",
-  ...internalStripeGuard,
+  optionalJWT,
   updateDefaultPaymentMethodInCustomer
 );
 
 //update payment method in customer
 router.post(
   "/payment_intents/:id/update-payment-method",
-  ...internalStripeGuard,
+  optionalJWT,
   updatePaymentMethodFromAdminDashboard
 );
 
 //list all payment intent created
-router.get("/payment-intents/search", ...internalStripeGuard, searchStripeTransaction);
+router.get("/payment-intents/search", optionalJWT, searchStripeTransaction);
 
 //search subscription by setup id
-router.post("/setup-search", ...internalStripeGuard, findSubscriptionIdBySetUpId);
+router.post("/setup-search", optionalJWT, findSubscriptionIdBySetUpId);
 
 //list all customers created
-router.get("/customers", ...internalStripeGuard, listAllCustomers);
+router.get("/customers", optionalJWT, listAllCustomers);
 
 //list all customers created
 router.post("/customers", optionalJWT, listAllCustomers);
 
 //search customer
-router.get("/customers/search", ...internalStripeGuard, searchCustomerId);
+router.get("/customers/search", optionalJWT, searchCustomerId);
 
 //retrieve paymentIntent
 router.get("/payment_intents/:id", optionalJWT, retrievePaymentIntent);
@@ -145,14 +145,14 @@ router.get("/payment_intents/:id", optionalJWT, retrievePaymentIntent);
 //get list of stripe transactions saved
 router.get(
   "/stripe-transactions-saved-list",
-  ...internalStripeGuard,
+  optionalJWT,
   getListOfAllSavedStripeTransaction
 );
 
 //get saved stripe transaction by query
 router.post(
   "/stripe-transactions-saved-list",
-  ...internalStripeGuard,
+  optionalJWT,
   getListOfAllSavedStripeTransaction
 );
 
@@ -160,19 +160,19 @@ router.post(
 router.post("/company-account-stripe/", optionalJWT, stripeCompanyAccountFound);
 
 //retrieve all invoices per subscription
-router.get("/invoices", ...internalStripeGuard, displayAllPaidInvoicesPerSubscription);
+router.get("/invoices", optionalJWT, displayAllPaidInvoicesPerSubscription);
 
 //retrieve all invoices per subscription
-router.post("/invoices", ...internalStripeGuard, displayAllPaidInvoicesPerSubscription);
+router.post("/invoices", optionalJWT, displayAllPaidInvoicesPerSubscription);
 
 //update subscription for cancel at the end of period or
-router.post("/cancel/subscriptions/:id", ...internalStripeGuard, updateCancelSubscription);
+router.post("/cancel/subscriptions/:id", optionalJWT, updateCancelSubscription);
 
 //save object {device, paymentIntentId, clientSecret} in database
 router.post("/stripe-transaction", optionalJWT, saveStripeTransaction);
 
 //save object {device, paymentIntentId, clientSecret} in database
-router.post("/stripe-transaction-admin", ...internalStripeGuard, saveStripeTransactionAdmin);
+router.post("/stripe-transaction-admin", optionalJWT, saveStripeTransactionAdmin);
 
 //capture payment intent amount
 router.post(
@@ -195,7 +195,7 @@ router.post(
 //internal/admin aliases for the same operations
 router.post(
   "/internal/payment-intents/:id/capture",
-  ...internalStripeGuard,
+  optionalJWT,
   validatePaymentIntentIdParam,
   idempotencyMutationCache,
   captureStripePaymentIntent
@@ -203,7 +203,7 @@ router.post(
 
 router.post(
   "/internal/payment-intents/:id/cancel",
-  ...internalStripeGuard,
+  optionalJWT,
   validatePaymentIntentIdParam,
   idempotencyMutationCache,
   cancelStripePaymentIntent
@@ -235,7 +235,7 @@ router.post(
 
 router.post(
   "/internal/refund",
-  ...internalStripeGuard,
+  optionalJWT,
   validateRefundPayload,
   idempotencyMutationCache,
   refundStripePaymentIntent
@@ -243,7 +243,7 @@ router.post(
 
 router.post(
   "/internal/partial-refund",
-  ...internalStripeGuard,
+  optionalJWT,
   validateRefundPayload,
   idempotencyMutationCache,
   partialRefundStripePaymentIntent
@@ -256,7 +256,7 @@ router.delete("/remove-duplicate/:id",  optionalJWT, removeDuplicateEntries);
 router.post("/save-transaction", saveTransaction);
 
 //*saving new transaction
-router.post("/save-transaction-admin-dashboard", ...internalStripeGuard, saveTransactionAdmin);
+router.post("/save-transaction-admin-dashboard", optionalJWT, saveTransactionAdmin);
 
 //*saving new transaction
 router.post(
@@ -265,21 +265,21 @@ router.post(
 );
 
 //*saving new transaction
-router.get("/transaction", ...internalStripeGuard, getListOfAllSavedTransaction);
+router.get("/transaction", optionalJWT, getListOfAllSavedTransaction);
 
 //*remove duplicate entry in transaction document
-router.delete("/removing/:id", ...internalStripeGuard, removeDuplicateEntry);
+router.delete("/removing/:id", optionalJWT, removeDuplicateEntry);
 
 //search subscription information
-router.get("/subscriptions/:id", ...internalStripeGuard, searchSubscriptions);
+router.get("/subscriptions/:id", optionalJWT, searchSubscriptions);
 
 //updating stored subscription
-router.patch("/updating-subscription/:id", ...internalStripeGuard, updateSubcriptionInCompanyAccount);
+router.patch("/updating-subscription/:id", optionalJWT, updateSubcriptionInCompanyAccount);
 
 //cancel subscription
-router.delete("/subscriptions/:id", ...internalStripeGuard, cancelSubscriptionCompany);
+router.delete("/subscriptions/:id", optionalJWT, cancelSubscriptionCompany);
 
 //updating stripe company account
-router.post("/company-account-stripe/update", ...internalStripeGuard, stripeCompanyAccountUpdate);
+router.post("/company-account-stripe/update", optionalJWT, stripeCompanyAccountUpdate);
 
 module.exports = router;
