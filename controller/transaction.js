@@ -200,15 +200,15 @@ const removeDuplicateEntry = async (request, response) => {
         });
       }
     }
-    const duplicateEntry = await Transaction.findByIdAndDelete(
-      request.params.id
-    );
-    if (duplicateEntry) {
-      return response.status(201).json({
-        ok: true,
-        msg: `Duplicate entry ID ${request.params.id} removed from transaction document`,
-      });
-    }
+    // const duplicateEntry = await Transaction.findByIdAndDelete(
+    //   request.params.id
+    // );
+    // if (duplicateEntry) {
+    //   return response.status(201).json({
+    //     ok: true,
+    //     msg: `Duplicate entry ID ${request.params.id} removed from transaction document`,
+    //   });
+    // }
   } catch (error) {
     logger.error(error);
     return response.status(500).json({
