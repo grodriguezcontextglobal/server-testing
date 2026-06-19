@@ -568,7 +568,7 @@ const updateGlobalStateOfEvent = async (request, response) => {
 
     const updatedEvent = await Event.findByIdAndUpdate(
       event_id,
-      { $set: { deviceSetup: updatedDeviceSetup } },
+      { $set: { deviceSetup: updatedDeviceSetup, logistic_inventory_status:"in-idle" } },
       { new: true },
     );
 
