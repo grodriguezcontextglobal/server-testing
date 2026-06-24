@@ -1,7 +1,15 @@
 const express = require("express");
 const Company = require("../models/Company");
+const AdminUser = require("../models/AdminUser");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const logger = require("../helpers/logger");
+const getConnection = require("../mysql/database/config");
+const { v4: uuid } = require("uuid");
+
+const VALID_ROLE_TYPES = new Set([
+  'root_admin', 'admin', 'sale_manager',
+  'event_manager', 'inventory_manager', 'assistant',
+]);
 
 const createCompany = async (request, response = express.response) => {
   try {
@@ -49,6 +57,10 @@ const createCompany = async (request, response = express.response) => {
             status: employees.at(-1).status,
             super_user: employees.at(-1).super_user,
             role: employees.at(-1).role,
+            roleType: VALID_ROLE_TYPES.has(employees.at(-1).roleType)
+              ? employees.at(-1).roleType
+              : undefined,
+            userId: employees.at(-1).userId || undefined,
           },
         ],
         location: location,
@@ -56,6 +68,32 @@ const createCompany = async (request, response = express.response) => {
       });
 
       await companyInfo.save();
+
+      // Sync founder employee to company_staff SQL
+      try {
+        const emp = employees.at(-1);
+        const roleType = VALID_ROLE_TYPES.has(emp.roleType) ? emp.roleType : null;
+        if (roleType) {
+          const sqlConn = getConnection();
+          const staffUser = emp.userId
+            ? { _id: emp.userId }
+            : await AdminUser.findOne({ email: emp.user }).select("_id").lean();
+
+          const [roleRows] = await sqlConn.query(
+            "SELECT id FROM roles WHERE role_type = ?",
+            [roleType]
+          );
+
+          if (staffUser && roleRows.length) {
+            await sqlConn.query(
+              "INSERT IGNORE INTO company_staff (id, company_id, staff_id, role_id, is_active) VALUES (?,?,?,?,1)",
+              [uuid(), companyInfo._id.toString(), staffUser._id.toString(), roleRows[0].id]
+            );
+          }
+        }
+      } catch (sqlErr) {
+        logger.error("company_staff sync failed:", sqlErr.message);
+      }
 
       return response.status(201).json({
         ok: true,
