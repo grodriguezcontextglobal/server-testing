@@ -5,8 +5,21 @@ const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
 const { processSubLocation } = require("./sub_location");
 const ReceiversPool = require("../../models/ReceiversPool");
+const Company = require("../../models/Company");
 const { groupBy } = require("lodash");
 require("dotenv").config();
+
+// Derives role and preference from the authenticated user's Company employee record.
+// Never trusts values submitted by the client.
+const getUserRoleAndPreference = async (uid) => {
+  const company = await Company.findOne({ "employees.userId": uid });
+  if (!company) return null;
+  const emp = company.employees.find(
+    (e) => e.userId && e.userId.toString() === uid.toString()
+  );
+  if (!emp) return null;
+  return { role: emp.role, preference: emp.preference };
+};
 
 // throw new Error("SERVER HAS RESTARTED AND LOADED THE NEW FILE. This is an intentional test.");
 
@@ -600,7 +613,14 @@ const consultingItemTable = async (request, response) => {
 const consultingItemInWarehouseTable = async (request, response) => {
   try {
     const connection = getConnection();
-    const { role, preference, ...filters } = request.body;
+    // Strip role/preference from body so they cannot influence the SQL filter
+    const { role: _role, preference: _pref, ...filters } = request.body;
+
+    const userInfo = await getUserRoleAndPreference(request.uid);
+    if (!userInfo) {
+      return response.status(403).json({ ok: false, msg: "User record not found" });
+    }
+    const { role, preference } = userInfo;
 
     // Base query construction
     let formatting = Object.keys(filters)
@@ -608,13 +628,11 @@ const consultingItemInWarehouseTable = async (request, response) => {
       .join(" AND ");
     const values = Object.values(filters);
 
-    // Apply location filtering if role is not root admin ("0") and preferences exist
-    let locations = [];
-    if (Array.isArray(preference)) {
-      locations = preference;
-    } else if (preference && preference.inventory_location) {
-      locations = preference.inventory_location;
-    }
+    // Owner (0) and Administrator (1) see all company inventory; roles 2+ are location-scoped
+    const locations =
+      preference && preference.inventory_location
+        ? preference.inventory_location
+        : [];
 
     if (role !== "0" && role !== "1" && locations.length > 0) {
       const locationPlaceholders = locations.map(() => "?").join(",");
@@ -1171,10 +1189,11 @@ const checkingInventoryCurrentState = async (request, response) => {
 
 const checkingItem = async (request, response) => {
   try {
-    const { role, preference, ...filters } = request.body;
+    // Strip role/preference from body so they cannot influence the query
+    const { role: _role, preference: _pref, ...bodyFilters } = request.body;
 
     // Validate required company_id
-    if (!filters.company_id) {
+    if (!bodyFilters.company_id) {
       return response.status(400).json({
         msg: "company_id is required",
         ok: false,
@@ -1183,7 +1202,7 @@ const checkingItem = async (request, response) => {
 
     // Validate filters to prevent undefined values
     const cleanFilters = {};
-    for (const [key, value] of Object.entries(filters)) {
+    for (const [key, value] of Object.entries(bodyFilters)) {
       if (value !== undefined) {
         cleanFilters[key] = value;
       }
@@ -1191,29 +1210,22 @@ const checkingItem = async (request, response) => {
 
     const workerPayload = { filters: cleanFilters };
 
-    let locations = [];
-    let parsedPreference = preference;
-
-    // Handle stringified preference if it comes as a string
-    if (typeof preference === "string") {
-      try {
-        parsedPreference = JSON.parse(preference);
-      } catch (e) {
-        // keep original value
-      }
+    const userInfo = await getUserRoleAndPreference(request.uid);
+    if (!userInfo) {
+      return response.status(403).json({ ok: false, msg: "User record not found" });
     }
+    const { role, preference } = userInfo;
 
-    if (Array.isArray(parsedPreference)) {
-      locations = parsedPreference;
-    } else if (parsedPreference && parsedPreference.inventory_location) {
-      locations = parsedPreference.inventory_location;
-    }
+    // Owner (0) and Administrator (1) see all company inventory; roles 2+ are location-scoped
+    const locations =
+      preference && preference.inventory_location
+        ? preference.inventory_location
+        : [];
 
-    if (role && role !== "0" && role !== "1" && locations.length > 0) {
+    if (role !== "0" && role !== "1" && locations.length > 0) {
       workerPayload.locations = locations;
     }
 
-    // Explicitly log before calling worker
     const result = await runGoWorker("check-item", workerPayload);
 
     return response.status(201).json({
