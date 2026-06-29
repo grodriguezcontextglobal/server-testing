@@ -1,6 +1,7 @@
 const { Router } = require("express");
 const { check } = require("express-validator");
 const validateFields = require("../../middlewares/validate-field");
+const { validateJWT } = require("../../middlewares/validate-jwt");
 const {
   createLocation,
   bulkAssignInventory,
@@ -34,9 +35,9 @@ router.put(
   bulkAssignInventory
 );
 
-router.get("/companies/:id/locations", getCompanyLocations);
+router.get("/companies/:id/locations", validateJWT, getCompanyLocations);
 
-router.post("/companies/:id/locations", getCompanyLocations);
+router.post("/companies/:id/locations", validateJWT, getCompanyLocations);
 
 router.get("/companies/:id/locations/tree", getCompanyLocationTree);
 
