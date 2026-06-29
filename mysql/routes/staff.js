@@ -11,6 +11,7 @@ const {
   addCompanyStaff,
   updateCompanyStaffRole,
   getStaffPermissions,
+  getStaffCompanies,
 } = require("../controllers/staff");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
@@ -24,5 +25,8 @@ router.post("/new_member", insertingStaffMember);
 router.post("/company-staff",             validateJWT, checkTokenVersion, addCompanyStaff);
 router.patch("/company-staff/role",       validateJWT, checkTokenVersion, updateCompanyStaffRole);
 router.post("/company-staff/permissions", validateJWT, checkTokenVersion, getStaffPermissions);
+
+// login: lista de empresas del staff con roleType y locations (reemplaza /company/search-company)
+router.get("/companies", validateJWT, checkTokenVersion, getStaffCompanies);
 
 module.exports = router;
