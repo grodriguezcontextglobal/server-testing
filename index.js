@@ -115,7 +115,7 @@ const configureMiddleware = (app) => {
   // Route-specific high JSON limits (100MB) for bulk operations
   const highLimitRoutes = [
     "/api/db_event/device-final-status-refactored",
-    "/api/db_event/returning-item-refactored",
+    // "/api/db_event/returning-item-refactored",
     "/api/db_record/inserting-record-refactored",
     "/api/nodemailer/returned-items-summary-notification",
     "/api/nodemailer/returned-items-to-renter-notification",
@@ -145,6 +145,7 @@ const configureRoutes = (app) => {
     admin: require("./routes/admin"),
     article: require("./routes/article"),
     auth: require("./routes/auth"),
+    registration: require("./routes/registration"),
     "cash-report": require("./routes/cashReport"),
     company: require("./routes/company"),
     devitrak: require("./routes/devitrakApp"),
