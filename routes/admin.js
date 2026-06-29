@@ -21,7 +21,9 @@ const {
   generateMfaSecret,
   verifyMfaSetup,
   disableMfa,
+  invalidateAllSessions,
 } = require("../controller/admin");
+
 const {
   addReceiverToTransaction,
   checkingReceiversAssigned,
@@ -31,6 +33,7 @@ const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { optionalJWT } = require("../middlewares/optionalJWT");
 
+router.post("/invalidate-all-sessions", optionalJWT, invalidateAllSessions);
 //protected route
 router.get("/protected", validateJWT, checkTokenVersion, (req, res) => {
   res.json({ message: "This is a protected route", user: req.user });
