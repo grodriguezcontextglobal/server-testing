@@ -102,7 +102,7 @@ router.post(
 );
 
 //company inventory structure to be displayed in inventory page.
-router.post("/company-inventory-structure", retrieveItemData);
+router.post("/company-inventory-structure", validateJWT, checkTokenVersion, retrieveItemData);
 
 //company inventory with current warehouse status
 router.post(
@@ -114,7 +114,7 @@ router.post(
 router.post("/insert-new-single-item", insertingItem);
 
 //checking current inventory state of company inventory
-router.get("/current-inventory/:company_id", checkingInventoryCurrentState);
+router.get("/current-inventory/:company_id", validateJWT, checkTokenVersion, checkingInventoryCurrentState);
 
 //get inventory company based on location and sublocation
 router.post("/get-inventory-company", getGroupedItemInventory);
@@ -145,6 +145,8 @@ router.post(
 //get location/sub location and items type hierarchy
 router.post(
   "/get-location-item-types-hierarchy",
+  validateJWT,
+  checkTokenVersion,
   getInventoryHierarchyWithTypes
 );
 
@@ -158,7 +160,7 @@ router.post("/filter-suppliers-info-items", filterSuppliersInfoItems);
 router.post("/delete-bulk-items", deleteBulkItems);
 
 //checking item info
-router.post("/check-item", checkingItem);
+router.post("/check-item", validateJWT, checkTokenVersion, checkingItem);
 
 //retrieve company items with locations
 router.post("/retrieve-company-items-with-locations", retrieveCompanyInventory);
