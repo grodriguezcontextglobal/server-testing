@@ -10,6 +10,7 @@ const {
   consultingStaffMemberInformation,
   addCompanyStaff,
   updateCompanyStaffRole,
+  updateCompanyStaff,
   getStaffPermissions,
   getStaffCompanies,
 } = require("../controllers/staff");
@@ -23,6 +24,7 @@ router.post("/new_member", insertingStaffMember);
 
 // company_staff role management (requieren JWT)
 router.post("/company-staff",             validateJWT, checkTokenVersion, addCompanyStaff);
+router.patch("/company-staff",            validateJWT, checkTokenVersion, updateCompanyStaff);
 router.patch("/company-staff/role",       validateJWT, checkTokenVersion, updateCompanyStaffRole);
 router.post("/company-staff/permissions", validateJWT, checkTokenVersion, getStaffPermissions);
 
