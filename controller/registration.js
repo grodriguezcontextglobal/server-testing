@@ -411,7 +411,149 @@ const registerExistingUserNewCompany = async (request, response) => {
   }
 };
 
+// ----- POST /api/registration/accept-invitation -----
+// Acepta una invitación de empresa. Crea el usuario en MongoDB+SQL si es nuevo,
+// o reutiliza el existente. Inserta en company_staff con el rol de la invitación.
+// Body: { user: { name, lastName, email, password? }, company: { company_name }, roleType }
+const acceptInvitation = async (request, response) => {
+  const { user, company, roleType } = request.body;
+
+  if (!user?.email || !company?.company_name) {
+    return response.status(400).json({
+      ok: false,
+      msg: "user.email y company.company_name son requeridos.",
+    });
+  }
+
+  const validRoleType = VALID_ROLE_TYPES.has(roleType) ? roleType : "assistant";
+
+  try {
+    // ── Buscar empresa en MongoDB ──────────────────────────────────────────────
+    const companyDoc = await Company.findOne({ company_name: company.company_name });
+    if (!companyDoc) {
+      return response.status(404).json({
+        ok: false,
+        msg: `La empresa "${company.company_name}" no existe.`,
+      });
+    }
+
+    const sqlConn = getConnection();
+
+    // ── Usuario: nuevo o existente ─────────────────────────────────────────────
+    let adminUser = await AdminUser.findOne({ email: user.email });
+    const isNewUser = !adminUser;
+
+    if (isNewUser) {
+      if (!user.password) {
+        return response.status(400).json({
+          ok: false,
+          msg: "user.password es requerido para usuarios nuevos.",
+        });
+      }
+      const salt = bcrypt.genSaltSync();
+      adminUser = new AdminUser({
+        name: user.name || "",
+        lastName: user.lastName || "",
+        email: user.email,
+        password: bcrypt.hashSync(user.password, salt),
+        phone: user.phone || "",
+        imageProfile: "",
+        role: 0,
+        active: true,
+      });
+      await adminUser.save();
+    }
+
+    // ── Marcar empleado como Confirmed en MongoDB ──────────────────────────────
+    const empIndex = companyDoc.employees.findIndex((e) => e.user === user.email);
+    if (empIndex >= 0) {
+      companyDoc.employees[empIndex].status = "Confirmed";
+      if (isNewUser) companyDoc.employees[empIndex].userId = adminUser._id;
+      await companyDoc.save();
+    }
+
+    // ── SQL: crear o encontrar staff_member ───────────────────────────────────
+    let sqlStaffId = null;
+    try {
+      const [[existingStaff]] = await sqlConn.execute(
+        "SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1",
+        [user.email]
+      );
+      if (existingStaff) {
+        sqlStaffId = existingStaff.staff_id;
+      } else {
+        sqlStaffId = await insertStaffMemberSQL(sqlConn, {
+          first_name: adminUser.name,
+          last_name: adminUser.lastName,
+          email: adminUser.email,
+          phone_number: adminUser.phone || null,
+        });
+      }
+    } catch (sqlErr) {
+      logger.warn("staff_member insert/lookup falló para invitación", {
+        email: user.email,
+        err: sqlErr.message,
+      });
+    }
+
+    // ── SQL: obtener company_id de company_info ───────────────────────────────
+    let sqlCompanyId = null;
+    try {
+      const [[companyRow]] = await sqlConn.execute(
+        "SELECT company_id FROM company_info WHERE company_name = ? LIMIT 1",
+        [company.company_name]
+      );
+      sqlCompanyId = companyRow?.company_id ?? null;
+    } catch (sqlErr) {
+      logger.warn("company_info lookup falló para invitación", {
+        company_name: company.company_name,
+        err: sqlErr.message,
+      });
+    }
+
+    // ── SQL: insertar company_staff ────────────────────────────────────────────
+    if (sqlCompanyId && sqlStaffId) {
+      try {
+        await syncCompanyStaffSQL(sqlConn, {
+          email: user.email,
+          sqlCompanyId,
+          roleType: validRoleType,
+          staffId: sqlStaffId,
+        });
+      } catch (sqlErr) {
+        logger.warn("company_staff sync falló para invitación", { err: sqlErr.message });
+      }
+    }
+
+    const statusCode = isNewUser ? 201 : 200;
+    return response.status(statusCode).json({
+      ok: true,
+      user: {
+        uid: adminUser.id,
+        name: adminUser.name,
+        lastName: adminUser.lastName,
+        email: adminUser.email,
+        isNewUser,
+        sqlStaffId,
+      },
+      company: {
+        _id: companyDoc._id,
+        company_name: companyDoc.company_name,
+        sql_id: sqlCompanyId,
+      },
+    });
+  } catch (error) {
+    logger.error("acceptInvitation error", { error: error.message, stack: error.stack });
+    return response.status(500).json({
+      ok: false,
+      msg: "La aceptación de la invitación falló.",
+      err: error.message,
+    });
+  }
+};
+
 module.exports = {
   registerNewUserAndCompany,
   registerExistingUserNewCompany,
+  acceptInvitation,
 };
