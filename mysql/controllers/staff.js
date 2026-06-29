@@ -275,9 +275,10 @@ const getStaffCompanies = async (request, response) => {
     }
 
     const [companyRows] = await connection.query(
-      `SELECT cs.id AS company_staff_id, cs.company_id, cs.company_name, r.role_type, r.role_level
+      `SELECT cs.id AS company_staff_id, cs.company_id, ci.company_name, r.role_type, r.role_level
        FROM company_staff cs
        JOIN roles r ON cs.role_id = r.id
+       JOIN company_info ci ON cs.company_id = ci.company_id
        WHERE cs.staff_id = ? AND cs.is_active = 1`,
       [sqlStaffId]
     );
