@@ -3,6 +3,7 @@
  * host + /api/db_item
  */
 const express = require("express");
+const { validateJWT } = require("../../middlewares/validate-jwt");
 const {
   consultingItem,
   consultingItemTable,
@@ -58,7 +59,7 @@ router.use(express.json());
 router.post("/consulting-item", consultingItem);
 
 //check item in warehouse
-router.post("/warehouse-items", consultingItemInWarehouseTable);
+router.post("/warehouse-items", validateJWT, consultingItemInWarehouseTable);
 
 //check table
 router.post("/items_information", consultingItemTable);
@@ -110,10 +111,10 @@ router.post("/search-inventory", searchingInventoryTracking);
 router.get("/search-inventory", searchingGetInventoryTracking);
 
 //get item info
-router.post("/check-item", checkingItem);
+router.post("/check-item", validateJWT, checkingItem);
 
 //get current inventory state
-router.get("/check-inventory/:company_id", checkingInventoryCurrentState);
+router.get("/check-inventory/:company_id", validateJWT, checkingInventoryCurrentState);
 
 //get fragment data
 router.get("/fragment-data", fragmentData);
@@ -154,6 +155,6 @@ router.post(
 //get inventory company based on location and sublocation
 router.post("/get-inventory-company", getGroupedItemInventory);
 
-router.post("/retrieve-item-data", retrieveItemData);
+router.post("/retrieve-item-data", validateJWT, retrieveItemData);
 
 module.exports = router;
