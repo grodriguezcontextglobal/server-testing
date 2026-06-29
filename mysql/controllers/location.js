@@ -1,5 +1,6 @@
 const getConnection = require("../database/config");
 const logger = require("../../helpers/logger");
+const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
 
 /**
  * Helper to process location data (Find or Create) within a transaction
@@ -160,76 +161,34 @@ const bulkAssignInventory = async (req, res) => {
 const getCompanyLocations = async (req, res) => {
   const connection = getConnection();
   const { id: company_id } = req.params;
-  const { role, preference } = req.body;
 
   try {
-    // 1. Input Validation
     if (!company_id) {
       return res.status(400).json({ ok: false, msg: "Company ID is required" });
+    }
+
+    const access = await getStaffCompanyAccess(req.sqlStaffId, company_id);
+    if (!access) {
+      return res.status(403).json({ ok: false, msg: "Access denied" });
     }
 
     let locations = [];
     let items = [];
 
-    // 2. Determine location filter based on role and preference
-    let allowedLocationNames = null; // null means all locations (Admin)
-
-    // Normalize role check: 0 (number) or "0" (string) are Admin
-    const isAdmin = role === 0 || role === "0";
-
-    if (!isAdmin) {
-      // Non-Admin Role: Check preference.managerLocation
-      if (preference && Array.isArray(preference.managerLocation)) {
-        // Extract location names from managerLocation array of objects
-        // Filter criteria:
-        // 1. item exists
-        // 2. actions.view is true
-        // 3. location is a valid string
-        // 4. _id is a valid string (as requested)
-        allowedLocationNames = preference.managerLocation
-          .filter(
-            (item) =>
-              item &&
-              item.actions &&
-              item.actions.view === true &&
-              typeof item.location === "string" &&
-              item.location.trim().length > 0 &&
-              typeof item._id === "string" &&
-              item._id.trim().length > 0
-          )
-          .map((item) => item.location);
-      } else {
-        // Fallback: No valid preference found for non-admin -> No access
-        allowedLocationNames = [];
-      }
-    }
-
-    // 3. Fetch locations
-    if (allowedLocationNames) {
-      if (allowedLocationNames.length === 0) {
-        return res.status(200).json({ ok: true, data: {} });
-      }
-
-      // Use placeholders for safe parameter injection
-      const placeholders = allowedLocationNames.map(() => "?").join(",");
-      const query = `
-        SELECT location_id, location_name 
-        FROM locations 
-        WHERE company_id = ? 
-        AND location_name IN (${placeholders}) 
-        ORDER BY location_name ASC
-      `;
-
-      const [rows] = await connection.execute(query, [
-        company_id,
-        ...allowedLocationNames,
-      ]);
-      locations = rows;
-    } else {
-      // Admin: Fetch all locations
+    if (FULL_INVENTORY_ROLES.has(access.role_level)) {
       const [rows] = await connection.execute(
         "SELECT location_id, location_name FROM locations WHERE company_id = ? ORDER BY location_name ASC",
         [company_id]
+      );
+      locations = rows;
+    } else {
+      if (access.locations.length === 0) {
+        return res.status(200).json({ ok: true, data: {} });
+      }
+      const placeholders = access.locations.map(() => "?").join(",");
+      const [rows] = await connection.execute(
+        `SELECT location_id, location_name FROM locations WHERE company_id = ? AND location_id IN (${placeholders}) ORDER BY location_name ASC`,
+        [company_id, ...access.locations]
       );
       locations = rows;
     }
