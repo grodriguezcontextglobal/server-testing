@@ -5,21 +5,10 @@ const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
 const { processSubLocation } = require("./sub_location");
 const ReceiversPool = require("../../models/ReceiversPool");
-const Company = require("../../models/Company");
 const { groupBy } = require("lodash");
 require("dotenv").config();
 
-// Derives role and preference from the authenticated user's Company employee record.
-// Never trusts values submitted by the client.
-const getUserRoleAndPreference = async (uid) => {
-  const company = await Company.findOne({ "employees.userId": uid });
-  if (!company) return null;
-  const emp = company.employees.find(
-    (e) => e.userId && e.userId.toString() === uid.toString()
-  );
-  if (!emp) return null;
-  return { role: emp.role, preference: emp.preference };
-};
+const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
 
 // throw new Error("SERVER HAS RESTARTED AND LOADED THE NEW FILE. This is an intentional test.");
 
@@ -613,51 +602,37 @@ const consultingItemTable = async (request, response) => {
 const consultingItemInWarehouseTable = async (request, response) => {
   try {
     const connection = getConnection();
-    // Strip role/preference from body so they cannot influence the SQL filter
     const { role: _role, preference: _pref, ...filters } = request.body;
+    const { company_id } = filters;
 
-    const userInfo = await getUserRoleAndPreference(request.uid);
-    if (!userInfo) {
-      return response.status(403).json({ ok: false, msg: "User record not found" });
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role, preference } = userInfo;
+    const { role_level, locations } = userAccess;
 
     // Base query construction
-    let formatting = Object.keys(filters)
-      .map((item) => `${item}=?`)
-      .join(" AND ");
+    let formatting = Object.keys(filters).map((item) => `${item}=?`).join(" AND ");
     const values = Object.values(filters);
 
-    // Owner (0) and Administrator (1) see all company inventory; roles 2+ are location-scoped
-    const locations =
-      preference && preference.inventory_location
-        ? preference.inventory_location
-        : [];
-
-    if (role !== "0" && role !== "1" && locations.length > 0) {
+    // Roles 0 (root_admin), 1 (admin), 4 (inventory_manager) see all inventory; others are location-scoped
+    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
       const locationPlaceholders = locations.map(() => "?").join(",");
-
       if (formatting) {
         formatting += ` AND location IN (${locationPlaceholders})`;
       } else {
         formatting = `location IN (${locationPlaceholders})`;
       }
-
       values.push(...locations);
     }
+
     const query = `SELECT * FROM item_inv WHERE ${formatting};`;
     const [result] = await connection.execute(query, values);
 
-    return response.status(201).json({
-      items: result,
-      ok: true,
-    });
+    return response.status(201).json({ items: result, ok: true });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -1141,49 +1116,27 @@ const consultingInventoryTracking = async (request, response) => {
 const checkingInventoryCurrentState = async (request, response) => {
   try {
     const company_id = request.params.company_id;
-    const { role, preference } = request.query;
-    let locations = [];
-    if (role !== "0" && role !== "1" && preference) {
-      if (Array.isArray(preference)) {
-        locations = preference;
-      } else {
-        try {
-          const parsed = JSON.parse(preference);
-          if (Array.isArray(parsed)) {
-            locations = parsed;
-          } else if (parsed.inventory_location) {
-            locations = parsed.inventory_location;
-          } else {
-            locations = [preference];
-          }
-        } catch (e) {
-          locations = [preference];
-        }
-      }
+
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    const { role_level, locations } = userAccess;
+
+    const workerPayload = { company_id };
+    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
+      workerPayload.locations = locations;
     }
 
-    const workerResponse = await runGoWorker(
-      "checking-inventory-current-state",
-      {
-        company_id: company_id,
-        locations: locations,
-      },
-    );
-
+    const workerResponse = await runGoWorker("checking-inventory-current-state", workerPayload);
     if (workerResponse.status === "error") {
       throw new Error(workerResponse.message);
     }
 
-    return response.status(201).json({
-      ok: true,
-      result: workerResponse.data,
-    });
+    return response.status(201).json({ ok: true, result: workerResponse.data });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    response.status(500).json({ msg: error.message, ok: false });
   }
 };
 
@@ -1210,19 +1163,13 @@ const checkingItem = async (request, response) => {
 
     const workerPayload = { filters: cleanFilters };
 
-    const userInfo = await getUserRoleAndPreference(request.uid);
-    if (!userInfo) {
-      return response.status(403).json({ ok: false, msg: "User record not found" });
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, bodyFilters.company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role, preference } = userInfo;
+    const { role_level, locations } = userAccess;
 
-    // Owner (0) and Administrator (1) see all company inventory; roles 2+ are location-scoped
-    const locations =
-      preference && preference.inventory_location
-        ? preference.inventory_location
-        : [];
-
-    if (role !== "0" && role !== "1" && locations.length > 0) {
+    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
       workerPayload.locations = locations;
     }
 
@@ -2075,12 +2022,21 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
 
 const retrieveItemData = async (request, response) => {
   try {
-    const { role, company_id, locations } = request.body;
-    const workerPayload = {
-      company_id: company_id,
-    };
-    if (role !== "0") {
-      workerPayload.locations = locations || [];
+    const { company_id } = request.body;
+
+    if (!company_id) {
+      return response.status(400).json({ ok: false, msg: "company_id is required" });
+    }
+
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    const { role_level, locations } = userAccess;
+
+    const workerPayload = { company_id };
+    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
+      workerPayload.locations = locations;
     }
 
     const result = await runGoWorker("retrieve-item-data", workerPayload);
@@ -2093,10 +2049,7 @@ const retrieveItemData = async (request, response) => {
       totalAvailable: result.totalAvailable,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return response.status(500).json({ msg: error.message, ok: false });
   }
 };
 const retrieveCompanyInventory = async (request, response) => {
@@ -3121,17 +3074,20 @@ const updateSubLocation = async (req, res) => {
 
 const getInventoryHierarchyWithTypes = async (request, response) => {
   try {
-    const { company_id, role, preference } = request.body;
+    const { company_id } = request.body;
     const connection = getConnection();
     if (!company_id) {
-      return response.status(400).json({
-        msg: "company_id is required",
-        ok: false,
-      });
+      return response.status(400).json({ msg: "company_id is required", ok: false });
     }
 
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    const { role_level, locations } = userAccess;
+
     let query = `
-      SELECT 
+      SELECT
         item_id, item_group, warehouse, location, sub_location
       FROM item_inv
       WHERE company_id = ?
@@ -3139,15 +3095,7 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
 
     const values = [company_id];
 
-    if (
-      role &&
-      role !== "0" &&
-      role !== "1" &&
-      preference &&
-      preference.inventory_location &&
-      preference.inventory_location.length > 0
-    ) {
-      const locations = preference.inventory_location;
+    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
       const placeholders = locations.map(() => "?").join(",");
       query += ` AND location IN (${placeholders})`;
       values.push(...locations);
