@@ -3,6 +3,7 @@ const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
 const { groupBy } = require("lodash");
 const connection = getConnection();
+const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
 
 const runGoWorker = require("../../helpers/goWorker");
 const { updateLargeData } = require("./item");
@@ -410,52 +411,34 @@ const consultingInventoryCurrentState = async (request, response) => {
 
 const checkingInventoryCurrentState = async (request, response) => {
   try {
+    const company_id = request.params.company_id;
     const params = request._parsedOriginalUrl.query;
     const splitting = params ? params.split("&") : [];
 
-    let role = null;
-    let preference = null;
-    const filters = [];
-    const values = [];
+    // Start with company_id filter; skip client-submitted role/preference
+    const filters = [`ii.company_id=?`];
+    const values = [company_id];
 
     splitting.forEach((item) => {
       const [key, value] = item.split("=");
-      if (key === "role") {
-        role = value;
-      } else if (key === "preference") {
-        try {
-          preference = JSON.parse(decodeURIComponent(value));
-        } catch (e) {
-          preference = value;
-        }
-      } else if (key) {
+      if (key && key !== "role" && key !== "preference" && key !== "company_id") {
         filters.push(`ii.${key}=?`);
         values.push(value);
       }
     });
 
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    const { role_level, locations } = userAccess;
+
     let formatting = filters.join(" AND ");
 
-    let locations = [];
-    if (Array.isArray(preference)) {
-      locations = preference;
-    } else if (preference && preference.inventory_location) {
-      locations = preference.inventory_location;
-    }
-
-    if (role !== "0" && role !== "1" && locations.length > 0) {
+    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
       const locPlaceholders = locations.map(() => "?").join(",");
-      if (formatting) {
-        formatting += ` AND ii.location IN (${locPlaceholders})`;
-      } else {
-        formatting = `ii.location IN (${locPlaceholders})`;
-      }
+      formatting += ` AND ii.location IN (${locPlaceholders})`;
       values.push(...locations);
-    }
-
-    // Fallback to 1=1 if no filters to avoid SQL syntax error
-    if (!formatting) {
-      formatting = "1=1";
     }
 
     const query = `
