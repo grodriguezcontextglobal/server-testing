@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const AdminUser = require("../models/AdminUser");
 const { generateJWT } = require("../helpers/jwt");
+const getConnection = require("../mysql/database/config");
 const StripeTransaction = require("../models/StripeTransaction");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const { loginActivityNotification } = require("../nodeMailer/notifications");
@@ -162,6 +163,19 @@ const loginUser = async (request, response) => {
       }
     }
 
+    // Resolve SQL staff_id for JWT enrichment
+    let sqlStaffId = null;
+    try {
+      const sqlConn = getConnection();
+      const [[staffRow]] = await sqlConn.execute(
+        "SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1",
+        [adminUser.email]
+      );
+      if (staffRow) sqlStaffId = staffRow.staff_id;
+    } catch (sqlErr) {
+      logger.warn("staff_member lookup failed during login — sqlStaffId will be null", { email: adminUser.email, err: sqlErr.message });
+    }
+
     //generate jwt (json web token)
     let token;
     try {
@@ -169,7 +183,8 @@ const loginUser = async (request, response) => {
         adminUser.id,
         adminUser.name,
         adminUser.tokenVersion,
-        rememberMe
+        rememberMe,
+        sqlStaffId
       );
     } catch (e) {
       // Rollback the claim if token generation fails
@@ -524,10 +539,26 @@ const deleteAdminUser = async (request, response) => {
 };
 
 const renewToken = async (request, response = express.response) => {
-  const { uid, name } = request;
+  const { uid, name, sqlStaffId: existingSqlStaffId } = request;
 
-  //genrate a new jwt and return it in this request
-  const token = await generateJWT(uid, name);
+  let sqlStaffId = existingSqlStaffId ?? null;
+  if (!sqlStaffId) {
+    try {
+      const sqlConn = getConnection();
+      const adminUser = await AdminUser.findById(uid).select("email").lean();
+      if (adminUser?.email) {
+        const [[staffRow]] = await sqlConn.execute(
+          "SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1",
+          [adminUser.email]
+        );
+        if (staffRow) sqlStaffId = staffRow.staff_id;
+      }
+    } catch (sqlErr) {
+      logger.warn("staff_member lookup failed during token renewal", { uid, err: sqlErr.message });
+    }
+  }
+
+  const token = await generateJWT(uid, name, request.tokenVersion, false, sqlStaffId);
 
   return response.json({
     ok: true,
@@ -830,6 +861,17 @@ const forceEndSession = async (request, response) => {
   }
 };
 
+const invalidateAllSessions = async (req, res) => {
+  try {
+    console.log(req)
+    await AdminUser.updateMany({}, { $inc: { tokenVersion: 1 } });
+    res.status(200).json({ ok: true, msg: "All user sessions have been invalidated." });
+  } catch (error) {
+    logger.error("Error invalidating all sessions:", { error: error.message });
+    res.status(500).json({ ok: false, msg: "An internal error occurred." });
+  }
+};
+
 module.exports = {
   renewToken,
   loginUser,
@@ -850,4 +892,5 @@ module.exports = {
   verifyMfaSetup,
   disableMfa,
   forceEndSession,
+  invalidateAllSessions,
 };
