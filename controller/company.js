@@ -75,19 +75,22 @@ const createCompany = async (request, response = express.response) => {
         const roleType = VALID_ROLE_TYPES.has(emp.roleType) ? emp.roleType : null;
         if (roleType) {
           const sqlConn = getConnection();
-          const staffUser = emp.userId
-            ? { _id: emp.userId }
-            : await AdminUser.findOne({ email: emp.user }).select("_id").lean();
 
-          const [roleRows] = await sqlConn.query(
-            "SELECT id FROM roles WHERE role_type = ?",
-            [roleType]
-          );
+          // Resolve the email: prefer emp.userId owner email, fall back to emp.user
+          const staffEmail = emp.userId
+            ? (await AdminUser.findOne({ email: emp.user }).select("email").lean())?.email ?? emp.user
+            : emp.user;
 
-          if (staffUser && roleRows.length) {
+          const [[staffRows], [roleRows]] = await Promise.all([
+            sqlConn.execute("SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1", [staffEmail]),
+            sqlConn.query("SELECT id FROM roles WHERE role_type = ?", [roleType]),
+          ]);
+          const staffRow = staffRows?.[0];
+
+          if (staffRow && roleRows.length) {
             await sqlConn.query(
               "INSERT IGNORE INTO company_staff (id, company_id, staff_id, role_id, is_active) VALUES (?,?,?,?,1)",
-              [uuid(), companyInfo._id.toString(), staffUser._id.toString(), roleRows[0].id]
+              [uuid(), companyInfo._id.toString(), staffRow.staff_id, roleRows[0].id]
             );
           }
         }
