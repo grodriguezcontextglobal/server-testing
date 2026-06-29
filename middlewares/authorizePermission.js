@@ -11,11 +11,11 @@ const getConnection = require("../mysql/database/config");
  */
 const authorizePermission = (resource, action) => async (req, res, next) => {
   try {
-    const staffId   = req.uid;
+    const staffId   = req.sqlStaffId;
     const companyId = req.params?.company_id || req.body?.company_id || req.query?.company_id;
 
     if (!staffId || !companyId) {
-      return res.status(401).json({ ok: false, msg: "Unauthorized: missing uid or company_id" });
+      return res.status(401).json({ ok: false, msg: "Unauthorized: missing staff identity or company_id" });
     }
 
     const connection = getConnection();
