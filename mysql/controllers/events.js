@@ -15,6 +15,19 @@ const connection = getConnection();
 //   },
 // })
 
+const EVENT_INFO_COLUMNS = new Set([
+  "event_id",
+  "event_name",
+  "venue_name",
+  "street_address",
+  "city_address",
+  "state_address",
+  "zip_address",
+  "email_company",
+  "phone_number",
+  "company_assigned_event_id",
+]);
+
 const insertingEvent = async (request, response) => {
   try {
     const {
@@ -87,9 +100,14 @@ const updateEventInfo = async (request, response) => {
 
   try {
     connection = await pool.getConnection();
-    
+
+    const invalidCols = Object.keys(updates).filter((k) => !EVENT_INFO_COLUMNS.has(k));
+    if (invalidCols.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    }
+
     const setClauses = Object.keys(updates)
-      .map((key) => `${key} = ?`)
+      .map((key) => `\`${key}\` = ?`)
       .join(", ");
     const values = [...Object.values(updates), event_id];
 
@@ -125,10 +143,13 @@ const updateEventInfo = async (request, response) => {
 
 const consultingEventInformation = async (request, response) => {
   try {
-    // const reference = Object.entries(request.body);
-    const formatting = Object.keys(request.body).map((item) => item + "=?");
-    const keys = formatting.toString().replaceAll(",", " AND ");
-    const values = [...Object.values(request.body).map((item) => item)];
+    const invalidCols = Object.keys(request.body).filter((k) => !EVENT_INFO_COLUMNS.has(k));
+    if (invalidCols.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    }
+    const formatting = Object.keys(request.body).map((item) => `\`${item}\`=?`);
+    const keys = formatting.join(" AND ");
+    const values = Object.values(request.body);
 
     const query = `select * from event_info where ${keys}`;
     const [result] = await connection.execute(query, values);
@@ -155,9 +176,13 @@ const consultingEventInformation = async (request, response) => {
 
 const consultingEventTable = async (request, response) => {
   try {
-    const formatting = Object.keys(request.body).map((item) => item + "=?");
-    const keys = formatting.toString().replaceAll(",", " AND ");
-    const values = [...Object.values(request.body).map((item) => item)];
+    const invalidCols = Object.keys(request.body).filter((k) => !EVENT_INFO_COLUMNS.has(k));
+    if (invalidCols.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    }
+    const formatting = Object.keys(request.body).map((item) => `\`${item}\`=?`);
+    const keys = formatting.join(" AND ");
+    const values = Object.values(request.body);
     const query = `select * from event_info where ${keys};`;
     // const valu es = [event_name, zip_address];
     const [result] = await connection.execute(query, values);

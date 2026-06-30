@@ -12,7 +12,7 @@ const { dbConnection } = require("./database/config");
 require("dotenv").config();
 
 // Configuration imports
-// const { corsOptions } = require("./config/cors");
+const { corsOptions } = require("./config/cors");
 const {
   requestLogger,
   securityLogger,
@@ -77,25 +77,20 @@ const configureMiddleware = (app) => {
   // Security headers
   app.use(helmet());
 
-  // Rate limiting: TEMPORARILY DISABLED
-  // const limiter = rateLimit({
-  //   windowMs: 15 * 60 * 1000, // 15 minutes
-  //   max: 300, // limit each IP to 300 requests per windowMs
-  //   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  //   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  //   // Custom key generator to handle IPs with ports (common in some environments)
-  //   keyGenerator: (req, res) => {
-  //     logger.info(`Request IP: ${req.ip}`);
-  //     // Handle undefined req.ip
-  //     if (!req.ip) return "unknown";
-  //     return req.ip.replace(/:\d+[^:]*$/, "");
-  //   },
-  //   message: {
-  //     ok: false,
-  //     msg: "Too many requests from this IP, please try again later",
-  //   },
-  // });
-  // app.use(limiter);
+  // Rate limiting
+  const { rateLimit } = require("express-rate-limit");
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+      if (!req.ip) return "unknown";
+      return req.ip.replace(/:\d+[^:]*$/, "");
+    },
+    message: { ok: false, msg: "Too many requests from this IP, please try again later" },
+  });
+  app.use(limiter);
 
   // Timeout middleware (30 seconds)
   app.use((req, res, next) => {
@@ -106,10 +101,8 @@ const configureMiddleware = (app) => {
   });
 
   // Security and parsing middleware
-  app.use(cors("*"));
-  // app.use(cors(corsOptions));
-  // Handle pre-flight requests
-  // app.options("*", cors(corsOptions));
+  app.use(cors(corsOptions));
+  app.options("*", cors(corsOptions));
   app.use(compression());
 
   // Route-specific high JSON limits (100MB) for bulk operations

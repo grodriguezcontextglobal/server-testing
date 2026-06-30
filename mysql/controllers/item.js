@@ -10,6 +10,39 @@ require("dotenv").config();
 
 const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
 
+const ITEM_INV_COLUMNS = new Set([
+  "item_id",
+  "category_name",
+  "sub_category_name",
+  "item_group",
+  "sub_item_group",
+  "cost",
+  "brand",
+  "descript_item",
+  "ownership",
+  "main_warehouse",
+  "serial_number",
+  "warehouse",
+  "company",
+  "location",
+  "sub_location",
+  "location_id",
+  "current_location",
+  "extra_serial_number",
+  "company_id",
+  "return_date",
+  "container",
+  "containerSpotLimit",
+  "enableAssignFeature",
+  "image_url",
+  "returnedRentedInfo",
+  "container_id",
+  "display_item",
+  "supplier_info",
+  "create_at",
+  "update_at",
+]);
+
 // throw new Error("SERVER HAS RESTARTED AND LOADED THE NEW FILE. This is an intentional test.");
 
 /**
@@ -542,8 +575,12 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
 const consultingItem = async (request, response) => {
   try {
     const connection = getConnection();
+    const invalidCols = Object.keys(request.body).filter((k) => !ITEM_INV_COLUMNS.has(k));
+    if (invalidCols.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    }
     const formatting = Object.keys(request.body)
-      .map((item) => `${item}=?`)
+      .map((item) => `\`${item}\`=?`)
       .join(" AND ");
     const values = Object.values(request.body);
     const query = `SELECT * FROM item_inv WHERE ${formatting};`;
@@ -1578,8 +1615,12 @@ const retrieveItemLocationQuantityForEvent = async (request, response) => {
     const connection = getConnection();
     const options = new Map();
 
+    const invalidCols = Object.keys(request.body).filter((k) => !ITEM_INV_COLUMNS.has(k));
+    if (invalidCols.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    }
     const formatting = Object.keys(request.body)
-      .map((item) => `${item}=?`)
+      .map((item) => `\`${item}\`=?`)
       .join(" AND ");
     const values = Object.values(request.body);
 
@@ -1868,7 +1909,11 @@ const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
 
     // Step 1: extract company filters
     const formattingKeys = Object.keys(request.body);
-    const formatting = formattingKeys.map((item) => `${item}=?`).join(" AND ");
+    const invalidCols = formattingKeys.filter((k) => !ITEM_INV_COLUMNS.has(k));
+    if (invalidCols.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    }
+    const formatting = formattingKeys.map((item) => `\`${item}\`=?`).join(" AND ");
     const formattingValues = Object.values(request.body);
     const sublocationParam = request.query.sub_location || "null";
     // Step 2: extract sub_location path from query
