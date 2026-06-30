@@ -40,6 +40,8 @@ const {
   consultingCompanyInventoryBasedOnSubmittedParameters,
   confirmItemsReturnedToStock,
 } = require("../controllers/item");
+const { validateJWT } = require("../../middlewares/validate-jwt");
+const { authorizePermission } = require("../../middlewares/authorizePermission");
 const router = Router();
 
 //check event info
@@ -128,7 +130,13 @@ router.post(
 );
 
 //retrieve inventory structured by item group with its location and its quantity
-router.post("/retrieve-item-group-location-quantity", getGroupedItemInventory);
+// event_manager permission required — used only on the event inventory selection page
+router.post(
+  "/retrieve-item-group-location-quantity",
+  validateJWT,
+  authorizePermission("event", "read"),
+  getGroupedItemInventory,
+);
 
 //retrieve inventory structured by item group with its location and its quantity and more columns defined
 router.post(
@@ -151,7 +159,13 @@ router.post(
 );
 
 //reserve items in inventory for event
-router.post("/reserve-items-for-event", reserveItemsInInventoryForEvent);
+// event_manager permission required — updates event state (reserve = event:update)
+router.post(
+  "/reserve-items-for-event",
+  validateJWT,
+  authorizePermission("event", "update"),
+  reserveItemsInInventoryForEvent,
+);
 
 //remove reserved items in inventory for event
 router.post("/remove-reserved-items-for-event", removeReservedItemsInInventoryForEvent);
