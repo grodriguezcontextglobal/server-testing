@@ -6,10 +6,7 @@ const logger = require("../helpers/logger");
 const getConnection = require("../mysql/database/config");
 const { v4: uuid } = require("uuid");
 
-const VALID_ROLE_TYPES = new Set([
-  'root_admin', 'admin', 'sale_manager',
-  'event_manager', 'inventory_manager', 'assistant',
-]);
+const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
 
 const createCompany = async (request, response = express.response) => {
   try {
