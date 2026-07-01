@@ -15,10 +15,11 @@ const validateJWT = (request, response = response, next) => {
   try {
     const { uid, name, tokenVersion, sqlStaffId } = jwt.verify(token, process.env.SECRET_JWT_SEED);
 
-    request.uid         = uid;
-    request.name        = name;
+    request.uid = uid;
+    request.name = name;
     request.tokenVersion = tokenVersion;
-    request.sqlStaffId  = sqlStaffId ?? null;
+    const headerStaffId = request.header("s-token-lq");
+    request.sqlStaffId = sqlStaffId ?? (headerStaffId ? Number(headerStaffId) : null);
 
   } catch (error) {
     return response.status(401).json({
