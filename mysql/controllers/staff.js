@@ -4,10 +4,7 @@ const { v4: uuid } = require("uuid");
 
 const connection = getConnection();
 
-const VALID_ROLE_TYPES = new Set([
-  'root_admin', 'admin', 'sale_manager',
-  'event_manager', 'inventory_manager', 'assistant',
-]);
+const { VALID_ROLE_TYPES } = require('../constants/roles');
 
 // Whitelist for consultingStaffMemberInformation column filter
 const STAFF_MEMBER_COLUMNS = new Set(['id', 'first_name', 'last_name', 'email', 'phone_number']);
