@@ -6,14 +6,7 @@ const getConnection = require("../mysql/database/config");
 const { generateJWT } = require("../helpers/jwt");
 const logger = require("../helpers/logger");
 
-const VALID_ROLE_TYPES = new Set([
-  "root_admin",
-  "admin",
-  "sale_manager",
-  "event_manager",
-  "inventory_manager",
-  "assistant",
-]);
+const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
 
 // ----- shared SQL helpers -----
 
