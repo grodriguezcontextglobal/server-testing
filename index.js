@@ -95,7 +95,9 @@ const configureMiddleware = (app) => {
   // Timeout middleware (30 seconds)
   app.use((req, res, next) => {
     res.setTimeout(30000, () => {
-      res.status(408).json({ msg: "Request timeout", ok: false });
+      if (!res.headersSent) {
+        res.status(408).json({ msg: "Request timeout", ok: false });
+      }
     });
     next();
   });
@@ -235,14 +237,16 @@ const configureErrorHandling = (app) => {
       url: req.originalUrl,
     });
 
-    res.status(500).json({
-      error: "Something went wrong!",
-      message:
-        process.env.NODE_ENV === "development"
-          ? err.message
-          : "Internal server error",
-      requestId: clientInfo.requestId,
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "Something went wrong!",
+        message:
+          process.env.NODE_ENV === "development"
+            ? err.message
+            : "Internal server error",
+        requestId: clientInfo.requestId,
+      });
+    }
   });
 };
 
