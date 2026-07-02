@@ -24,6 +24,10 @@ const corsOptions = {
         "token",
         "s-token-lq",
         "sqlStaffId",
+        "s-company-lq",
+        "s-company-id",
+        "x-company-id",
+        "X-Company-ID",
         // Client information headers (both cases for compatibility)
         "User-Agent",
         "Accept-Language",
