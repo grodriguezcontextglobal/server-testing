@@ -10,14 +10,13 @@ const { validatePublicPaymentPayload } = require("../middlewares/validatePublicP
 const { attachServerIdempotencyKey } = require("../middlewares/attachServerIdempotencyKey");
 const { optionalJWT } = require("../middlewares/optionalJWT");
 const { validateJWT } = require("../middlewares/validate-jwt");
-const { authorizeAdminRoles } = require("../middlewares/authorizeAdminRoles");
+const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
 const {
   validatePaymentIntentIdParam,
   validateRefundPayload,
 } = require("../middlewares/validateStripeRoutePayload");
 const { idempotencyMutationCache } = require("../middlewares/idempotencyMutationCache");
-
-const internalStripeGuard = [validateJWT, authorizeAdminRoles()];
 const {
   stripePaymentIntent,
   listAllCustomers,
@@ -131,13 +130,13 @@ router.get("/payment-intents/search", optionalJWT, searchStripeTransaction);
 router.post("/setup-search", optionalJWT, findSubscriptionIdBySetUpId);
 
 //list all customers created
-router.get("/customers", optionalJWT, listAllCustomers);
+router.get("/customers", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "read"), listAllCustomers);
 
 //list all customers created
-router.post("/customers", optionalJWT, listAllCustomers);
+router.post("/customers", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "read"), listAllCustomers);
 
 //search customer
-router.get("/customers/search", optionalJWT, searchCustomerId);
+router.get("/customers/search", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "read"), searchCustomerId);
 
 //retrieve paymentIntent
 router.get("/payment_intents/:id", optionalJWT, retrievePaymentIntent);
@@ -172,7 +171,7 @@ router.post("/cancel/subscriptions/:id", optionalJWT, updateCancelSubscription);
 router.post("/stripe-transaction", optionalJWT, saveStripeTransaction);
 
 //save object {device, paymentIntentId, clientSecret} in database
-router.post("/stripe-transaction-admin", optionalJWT, saveStripeTransactionAdmin);
+router.post("/stripe-transaction-admin", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), saveStripeTransactionAdmin);
 
 //capture payment intent amount
 router.post(
@@ -195,7 +194,7 @@ router.post(
 //internal/admin aliases for the same operations
 router.post(
   "/internal/payment-intents/:id/capture",
-  optionalJWT,
+  validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"),
   validatePaymentIntentIdParam,
   idempotencyMutationCache,
   captureStripePaymentIntent
@@ -203,7 +202,7 @@ router.post(
 
 router.post(
   "/internal/payment-intents/:id/cancel",
-  optionalJWT,
+  validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"),
   validatePaymentIntentIdParam,
   idempotencyMutationCache,
   cancelStripePaymentIntent
@@ -235,7 +234,7 @@ router.post(
 
 router.post(
   "/internal/refund",
-  optionalJWT,
+  validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"),
   validateRefundPayload,
   idempotencyMutationCache,
   refundStripePaymentIntent
@@ -243,7 +242,7 @@ router.post(
 
 router.post(
   "/internal/partial-refund",
-  optionalJWT,
+  validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"),
   validateRefundPayload,
   idempotencyMutationCache,
   partialRefundStripePaymentIntent
