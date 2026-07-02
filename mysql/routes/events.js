@@ -41,6 +41,7 @@ const {
   confirmItemsReturnedToStock,
 } = require("../controllers/item");
 const { validateJWT } = require("../../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
 const { authorizePermission } = require("../../middlewares/authorizePermission");
 const router = Router();
 
@@ -91,7 +92,7 @@ router.post(
   itemFinalStatusWhenEventIsFinishedRefactored,
 );
 //delete event
-router.delete("/:id", deleteEvent);
+router.delete("/:id", validateJWT, checkTokenVersion, authorizePermission("event", "delete"), deleteEvent);
 
 //consulting all inventory in event
 router.get("/event-inventory/:id", consultingInventoryEvent);
