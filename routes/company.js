@@ -5,6 +5,9 @@
 
 const { Router } = require("express");
 const multer = require("multer");
+const { validateJWT } = require("../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
 const path = require("path");
 const {
   createCompany,
@@ -65,7 +68,7 @@ const router = Router();
 
 router.post("/new", createCompany);
 
-router.patch("/update-company/:id", updatingCompany);
+router.patch("/update-company/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("company", "update"), updatingCompany);
 
 router.post("/search-company", searchingCompany);
 
