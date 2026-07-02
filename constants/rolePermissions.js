@@ -63,31 +63,6 @@ const ROLE_PERMISSIONS = {
   ]),
 };
 
-// Nivel de privilegio por role_type (menor = más privilegio).
-// Espeja role_level de la tabla SQL roles.
-const ROLE_LEVEL = {
-  root_admin: 0,
-  admin: 1,
-  sale_manager: 2,
-  event_manager: 3,
-  inventory_manager: 4,
-  assistant: 5,
-  inventory_location_manager: 6,
-  inventory_location_assistant: 7,
-};
-
-/**
- * Devuelve el role_type de mayor privilegio de una lista (menor role_level).
- * Ignora valores no canónicos (null, undefined, roles desconocidos).
- * @param {Array<string|null>} roleTypes
- * @returns {string|null}
- */
-function highestPrivilegeRoleType(roleTypes) {
-  const valid = (roleTypes || []).filter((rt) => rt in ROLE_LEVEL);
-  if (valid.length === 0) return null;
-  return valid.reduce((best, rt) => (ROLE_LEVEL[rt] < ROLE_LEVEL[best] ? rt : best));
-}
-
 /**
  * Verifica si un role_type tiene permiso para resource:action.
  * @param {string} roleType  - Uno de los 8 role_types canónicos
@@ -101,4 +76,4 @@ function hasPermission(roleType, resource, action) {
   return perms.has(`${resource}:${action}`);
 }
 
-module.exports = { ROLE_PERMISSIONS, ROLE_LEVEL, hasPermission, highestPrivilegeRoleType };
+module.exports = { ROLE_PERMISSIONS, hasPermission };
