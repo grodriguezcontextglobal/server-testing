@@ -36,6 +36,16 @@ const AdminUserSchema = new Schema({
     type: String,
     default: "Editor",
   },
+  role_type: {
+    type: String,
+    enum: [
+      'root_admin', 'admin', 'sale_manager', 'event_manager',
+      'inventory_manager', 'assistant',
+      'inventory_location_manager', 'inventory_location_assistant',
+      null,
+    ],
+    default: null,
+  },
   active: {
     type: Boolean,
     default: true,
@@ -106,6 +116,16 @@ const AdminUserSchema = new Schema({
       role: {
         type: String,
         default: "Editor",
+      },
+      role_type: {
+        type: String,
+        enum: [
+          'root_admin', 'admin', 'sale_manager', 'event_manager',
+          'inventory_manager', 'assistant',
+          'inventory_location_manager', 'inventory_location_assistant',
+          null,
+        ],
+        default: null,
       },
     },
   ],
