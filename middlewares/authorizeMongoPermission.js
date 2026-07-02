@@ -7,12 +7,14 @@ const { hasPermission } = require('../constants/rolePermissions');
 /**
  * Middleware de autorización para rutas MongoDB.
  *
- * Fuente de verdad del rol:
- *   - Con company_id en el request → Company.employees (match por userId o email).roleType.
- *                                     Si no eres miembro activo de esa compañía → 403
- *                                     (NO cae al mirror global; evita escalación cross-tenant).
- *   - Sin company_id               → AdminUser.role_type (fallback de plataforma; poblado por
- *                                     scripts/backfillMongoRoles.js con el rol de mayor privilegio)
+ * FUENTE DE VERDAD DEL ROL: Company.employees. El rol es SIEMPRE por-compañía —
+ * un usuario puede pertenecer a varias compañías con distintos roles. El campo
+ * AdminUser.role_type NO participa en la autorización.
+ *
+ *   - super_user (flag de plataforma en AdminUser) → bypass total.
+ *   - Con company_id → se busca al employee (match por userId o email) en esa
+ *     compañía y se usa su roleType. Si no eres miembro activo → 403.
+ *   - Sin company_id → no hay contexto de compañía → sin rol → 403 (salvo super_user).
  *
  * Prerrequisito: validateJWT debe correr antes (setea req.uid).
  * El company_id (Mongo ObjectId) se lee de, en orden: req.params.company_id,
@@ -28,22 +30,21 @@ const authorizeMongoPermission = (resource, action) => async (req, res, next) =>
     }
 
     const adminUser = await AdminUser.findById(req.uid)
-      .select('role_type super_user active email');
+      .select('super_user active email');
 
     if (!adminUser || adminUser.active === false) {
       return res.status(403).json({ ok: false, msg: 'Forbidden' });
     }
 
-    // Bypass global para super_user (plataforma entera)
+    // Bypass global para super_user (flag de plataforma, no un rol)
     if (adminUser.super_user) {
-      req.adminRoleType = adminUser.role_type ?? null;
+      req.adminRoleType = null;
       req.isSuperUser   = true;
       return next();
     }
 
     // company_id (Mongo ObjectId) como selector de contexto. Puede venir en el
     // header x-company-id (recomendado) o en params/body/query (compatibilidad).
-    // Es solo un selector: el rol SIEMPRE se re-deriva del par (uid, compañía).
     const headerCompanyId =
       (typeof req.header === 'function' ? req.header('x-company-id') : undefined) ||
       req.headers?.['x-company-id'];
@@ -53,12 +54,11 @@ const authorizeMongoPermission = (resource, action) => async (req, res, next) =>
       || req.query?.company_id
       || headerCompanyId;
 
-    let effectiveRoleType;
-    let dbgCompanyFound = null; // TEMP DEBUG
-    let dbgEmpMatched   = null; // TEMP DEBUG
+    // El rol SIEMPRE viene de Company.employees. Sin contexto de compañía o sin
+    // membresía activa → sin rol → se deniega (no hay fallback a AdminUser.role_type).
+    let effectiveRoleType = null;
 
     if (companyId) {
-      // Contexto de compañía explícito: el rol DEBE salir de esa compañía.
       // El employee se identifica por userId (backfilled) o por email (`user`),
       // porque employees preexistentes no tienen userId. Ver scripts/backfillMongoRoles.js.
       const company = await Company.findOne(
@@ -72,9 +72,6 @@ const authorizeMongoPermission = (resource, action) => async (req, res, next) =>
           (adminUser.email != null && e.user === adminUser.email),
       );
 
-      dbgCompanyFound = !!company;                                   // TEMP DEBUG
-      dbgEmpMatched   = emp ? { user: emp.user, roleType: emp.roleType, active: emp.active } : null; // TEMP DEBUG
-
       if (emp && emp.active !== false) {
         // Bypass a nivel de compañía
         if (emp.super_user) {
@@ -83,35 +80,9 @@ const authorizeMongoPermission = (resource, action) => async (req, res, next) =>
           return next();
         }
         effectiveRoleType = emp.roleType ?? null;
-      } else {
-        // Seguridad: no es miembro activo de la compañía indicada. NO se usa el
-        // mirror global de AdminUser (evita escalación cross-tenant) → se deniega.
-        effectiveRoleType = null;
       }
-    } else {
-      // Sin contexto de compañía: fallback global para endpoints de plataforma.
-      effectiveRoleType = adminUser.role_type ?? null;
+      // Si no matchea o está inactivo → effectiveRoleType queda null → 403.
     }
-
-    // ─── TEMP DEBUG (quitar tras diagnosticar el 403) ──────────────────────────
-    console.log('[authzMongo][DEBUG]', {
-      uid: String(req.uid),
-      adminEmail: adminUser.email ?? null,
-      adminRoleType: adminUser.role_type ?? null,
-      companyIdRecibido: companyId ?? null,
-      companyIdEn: {
-        params: req.params?.company_id ?? null,
-        body:   req.body?.company_id ?? null,
-        query:  req.query?.company_id ?? null,
-        header: headerCompanyId ?? null,
-      },
-      companyFound: dbgCompanyFound,
-      empMatched:   dbgEmpMatched,
-      effectiveRoleType,
-      resource, action,
-      permitido: hasPermission(effectiveRoleType, resource, action),
-    });
-    // ───────────────────────────────────────────────────────────────────────────
 
     if (!hasPermission(effectiveRoleType, resource, action)) {
       return res.status(403).json({ ok: false, msg: 'Forbidden: insufficient permissions' });
