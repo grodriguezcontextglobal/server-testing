@@ -39,6 +39,7 @@ const {
 } = require("../controllers/item");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
+const { authorizePermission } = require("../../middlewares/authorizePermission");
 const {
   listCompanyCategories,
   upsertCategory,
@@ -64,13 +65,20 @@ router.post("/industry", consultingIndustryCompanyTable);
 router.post("/new_company", insertingCompany);
 
 // update company data
-router.post("/update_company", updateCompanyData);
+router.post("/update_company", validateJWT, checkTokenVersion, authorizePermission("company", "update"), updateCompanyData);
 
 //retrieve company inventory based on params
 router.post("/retrieve-company-inventory", retrieveCompanyInventoryBasedOnParams);
 
-// Delete company
-router.delete("/:id", deleteCompany);
+// Delete company — mapea :id a company_id para que authorizePermission lo encuentre
+router.delete(
+  "/:id",
+  validateJWT,
+  checkTokenVersion,
+  (req, _res, next) => { req.params.company_id = req.params.id; next(); },
+  authorizePermission("company", "delete"),
+  deleteCompany,
+);
 
 //retuning leased equipment to original company
 router.post("/returning-leased-equipment", returningLeasedEquipmentToCompany);
