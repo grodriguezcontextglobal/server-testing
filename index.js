@@ -205,6 +205,10 @@ const configureRoutes = (app) => {
   // Mount utility routes
   app.use("/api/cache_update", utilityRoutes.cache);
   app.use("/api/cloudinary", utilityRoutes.cloudinary);
+
+  // Mount consumer public namespace (attendees app; no token required)
+  app.use("/api/consumer", require("./routes/consumer"));
+
   app.use("/api", require("./routes/status"));
 };
 
