@@ -173,7 +173,8 @@ const searchingStaff = async (props) => {
   let result = [];
   for (let employee of employees) {
     const ref = JSON.stringify(employee);
-    if (String(ref).includes(variable)) {
+    // case-insensitive: consumers/devices/events all match with $options "i"
+    if (String(ref).toLowerCase().includes(String(variable).toLowerCase())) {
       const query = {
         email: JSON.parse(ref).user,
       };

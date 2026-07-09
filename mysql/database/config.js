@@ -11,9 +11,11 @@ const getConnection = () => {
       user: process.env.PLANETSCALE_DATABASE_USERNAME,
       password: process.env.PLANETSCALE_DATABASE_PASSWORD,
       database: process.env.PLANETSCALE_DATABASE_NAME,
-      ssl: {
-        rejectUnauthorized: true,
-      },
+      // SSL is required for PlanetScale, but a local MySQL uses plaintext.
+      // Set PLANETSCALE_DATABASE_SSL=false for local dev to skip it.
+      ...(process.env.PLANETSCALE_DATABASE_SSL === "false"
+        ? {}
+        : { ssl: { rejectUnauthorized: true } }),
     }).promise();
 
     connection.on('error', (err) => {

@@ -136,29 +136,33 @@ const loginUser = async (request, response) => {
       .update(`${userAgent}|${ipAddress}|${adminUser.id ?? adminUser.uid}`)
       .digest("hex");
 
-    // Try to claim; if it exists, allow reclaim for same owner or forceLogin
-    const claimed = await redis.set(sessionKey, "active", {
-      EX: ttlSeconds,
-      NX: true,
-    });
+    // Single-active-session guard. Disabled for local/demo use (multiple people
+    // may share one demo account) via DISABLE_SESSION_GUARD=true.
+    if (process.env.DISABLE_SESSION_GUARD !== "true") {
+      // Try to claim; if it exists, allow reclaim for same owner or forceLogin
+      const claimed = await redis.set(sessionKey, "active", {
+        EX: ttlSeconds,
+        NX: true,
+      });
 
-    if (!claimed) {
-      const currentOwner = await redis.get(ownerKey);
-      const isSameOwner = currentOwner && currentOwner === fingerprint;
+      if (!claimed) {
+        const currentOwner = await redis.get(ownerKey);
+        const isSameOwner = currentOwner && currentOwner === fingerprint;
 
-      if (isSameOwner || Boolean(forceLogin)) {
-        // Reclaim or force takeover: clear the existing session before proceeding
-        try {
-          await redis.del(sessionKey);
-          await redis.del(ownerKey);
-        } catch {}
-      } else {
-        return response.status(409).json({
-          ok: false,
-          msg:
-            "Active session already exists for this account. " +
-            "If this is you, please use 'Force Login' to end the previous session.",
-        });
+        if (isSameOwner || Boolean(forceLogin)) {
+          // Reclaim or force takeover: clear the existing session before proceeding
+          try {
+            await redis.del(sessionKey);
+            await redis.del(ownerKey);
+          } catch {}
+        } else {
+          return response.status(409).json({
+            ok: false,
+            msg:
+              "Active session already exists for this account. " +
+              "If this is you, please use 'Force Login' to end the previous session.",
+          });
+        }
       }
     }
 
