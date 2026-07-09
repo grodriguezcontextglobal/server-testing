@@ -19,7 +19,7 @@ INSERT IGNORE INTO permissions (resource, action) VALUES
   ('location','create'),('location','read'),('location','update'),('location','delete'),
   ('staff','create'),('staff','read'),('staff','update'),('staff','delete'),
   ('staff','update_contact'),
-  ('company','read'),('company','update'),
+  ('company','read'),('company','update'),('company','delete'),
   ('billing','read'),('billing','update');
 
 -- ─── ROLE_PERMISSIONS ─────────────────────────────────────────────────────────
@@ -68,3 +68,9 @@ INSERT IGNORE INTO role_permissions
 INSERT IGNORE INTO role_permissions
   SELECT r.id, p.id FROM roles r, permissions p
   WHERE p.resource = 'staff' AND p.action = 'update_contact';
+
+-- company:delete — solo root_admin (nivel 0) puede eliminar una empresa entera
+INSERT IGNORE INTO role_permissions
+  SELECT r.id, p.id FROM roles r, permissions p
+  WHERE r.role_type = 'root_admin'
+    AND p.resource = 'company' AND p.action = 'delete';
