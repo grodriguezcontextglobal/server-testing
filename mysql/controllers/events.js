@@ -26,6 +26,7 @@ const EVENT_INFO_COLUMNS = new Set([
   "email_company",
   "phone_number",
   "company_assigned_event_id",
+  "configuration",
 ]);
 
 const insertingEvent = async (request, response) => {
