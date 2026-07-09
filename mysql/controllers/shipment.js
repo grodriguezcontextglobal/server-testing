@@ -30,12 +30,12 @@ const createShipment = async (req, res) => {
     `;
     await connection.query(shipmentQuery, [shipmentId, event_id, company_id, destination, recipient_name, authorizer_name, courier, tracking_number]);
 
-    const updateNotesQuery = `
+    const linkItemsToShipmentQuery = `
       UPDATE event_item_shipping
-      SET notes = JSON_SET(COALESCE(notes, '{}'), '$.shipment_id', ?)
+      SET shipment_id = ?
       WHERE event_id = ? AND item_id IN (?);
     `;
-    await connection.query(updateNotesQuery, [shipmentId, event_id, package_list]);
+    await connection.query(linkItemsToShipmentQuery, [shipmentId, event_id, package_list]);
 
     await connection.commit();
     res.status(201).json({ ok: true, message: "Shipment created successfully.", shipment_id: shipmentId });
@@ -132,7 +132,7 @@ const getShipments = async (req, res) => {
         const query = `
             SELECT cs.*, GROUP_CONCAT(eis.item_id) as package_list
             FROM company_shipments cs
-            LEFT JOIN event_item_shipping eis ON JSON_EXTRACT(eis.notes, '$.shipment_id') = cs.shipment_id
+            LEFT JOIN event_item_shipping eis ON eis.shipment_id = cs.shipment_id
             ${whereClause}
             GROUP BY cs.shipment_id;
         `;
