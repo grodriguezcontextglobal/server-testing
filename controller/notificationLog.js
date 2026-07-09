@@ -1,23 +1,12 @@
 const express = require("express");
 const NotificationLog = require("../models/NotificationLog");
 const logger = require("../helpers/logger");
+const { createQueuedJobController } = require("../helpers/queuedController");
 
-const feedNotificationLog = async (request, response) => {
-  try {
-    let feedNotification = new NotificationLog(request.body);
-    await feedNotification.save();
-    return response.status(201).json({
-      ok: true,
-      feedNotification,
-    });
-  } catch (error) {
-    logger.error(error);
-    response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrater",
-    });
-  }
-};
+// Se encola en vez de guardar inline: sobrevive una caída de Mongo/servidor en
+// vez de perder el log. Responde 202 {ok:true, jobId} en lugar del documento
+// guardado síncronamente. Ver DESIGN_task_queue.md § Fase 1.
+const feedNotificationLog = createQueuedJobController("log:notification", (body) => body);
 
 const notificationLogList = async (request, response) => {
   try {
