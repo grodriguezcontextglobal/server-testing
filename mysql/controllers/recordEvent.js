@@ -77,20 +77,32 @@ const insertingRecordInEventRefactored = async (request, response) => {
       JOIN consumer_info AS ci ON ci.email = ?
       WHERE ii.item_group = ? AND ii.category_name = ? AND ii.serial_number = ?`;
 
-    for (const data of dataToStoreAsRecord) {
-      const values = [
-        renderStatus(data.device.status),
-        data.device.status,
-        event,
-        data.paymentIntent,
-        data.user,
-        data.device.deviceType,
-        groupingInventoryByGroupName[data.device.deviceType]?.at(-1)?.category,
-        data.device.serialNumber,
-      ];
+    // Cada fila necesita su propio INSERT...SELECT (el JOIN matchea contra
+    // item_inv/consumer_info con criterios distintos por registro, no se puede
+    // colapsar a 1 sola query sin arriesgar el resultado del join). Se envuelve
+    // en una transacción para que una falla a mitad de loop no deje records
+    // parciales — antes cada INSERT quedaba confirmado individualmente.
+    await connection.beginTransaction();
+    try {
+      for (const data of dataToStoreAsRecord) {
+        const values = [
+          renderStatus(data.device.status),
+          data.device.status,
+          event,
+          data.paymentIntent,
+          data.user,
+          data.device.deviceType,
+          groupingInventoryByGroupName[data.device.deviceType]?.at(-1)?.category,
+          data.device.serialNumber,
+        ];
 
-      const [result] = await connection.execute(query, values);
-      resultRowAffected += result.affectedRows;
+        const [result] = await connection.execute(query, values);
+        resultRowAffected += result.affectedRows;
+      }
+      await connection.commit();
+    } catch (innerError) {
+      await connection.rollback();
+      throw innerError;
     }
 
     return response.status(201).json({
