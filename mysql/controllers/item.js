@@ -3,7 +3,11 @@ const getConnection = require("../database/config");
 const { clientRedis } = require("../../database/cacheMemoryConfig");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
-const { processSubLocation } = require("./sub_location");
+const {
+  processSubLocation,
+  processSubLocationPath,
+  resolveSubLocationFilter,
+} = require("./sub_location");
 const ReceiversPool = require("../../models/ReceiversPool");
 const { groupBy } = require("lodash");
 require("dotenv").config();
@@ -197,41 +201,47 @@ const insertingItem = async (request, response) => {
       }
     }
 
-    // 2. Process Sub-Location (Optional)
+    // 2. Process Sub-Location (Optional) — Fase 4a
+    //    Resolvemos/creamos la cadena jerárquica completa y persistimos el
+    //    sub_location_id de la HOJA. Se sigue escribiendo el JSON legacy en la
+    //    columna `sub_location` (doble write temporal, no rompe la vista árbol).
     let subLocationId = null;
-    let finalSubLocationName = sub_location; // Default to input
+    let finalSubLocationName = sub_location; // Default to input (legacy column)
 
-    // Check if we have enough info to create/verify sub-location
-    // We need location_id (from step 1) and a sub-location name
-    const subLocName =
-      sub_location_name ||
-      (typeof sub_location === "string"
-        ? sub_location
-        : sub_location?.name || null);
-
-    if (locationId && subLocName) {
-      const subLocationData = {
+    if (locationId && sub_location_name) {
+      // Caso explícito: nombre único (+ parent opcional) — comportamiento original
+      const subLocResult = await processSubLocation(connection, {
         active: true,
         location_id: locationId,
-        name: subLocName,
-        parent_id: sub_location_parent_id || sub_location?.parent_id || null,
-      };
-
-      let isSimpleName = true;
-      try {
-        const parsed = JSON.parse(subLocName);
-        if (Array.isArray(parsed)) isSimpleName = false;
-      } catch (e) {
-        // Not JSON, so it's a simple string
+        name: sub_location_name,
+        parent_id: sub_location_parent_id || null,
+        company_id,
+      });
+      subLocationId = subLocResult.sub_location_id;
+      finalSubLocationName = subLocResult.name;
+    } else if (locationId && sub_location != null) {
+      // Caso path: array (o JSON string de array) de nombres, o nombre simple
+      let segments = [];
+      if (Array.isArray(sub_location)) {
+        segments = sub_location;
+      } else if (typeof sub_location === "string") {
+        try {
+          const parsed = JSON.parse(sub_location);
+          segments = Array.isArray(parsed) ? parsed : [sub_location];
+        } catch (e) {
+          segments = [sub_location];
+        }
+      } else if (typeof sub_location === "object" && sub_location.name) {
+        segments = [sub_location.name];
       }
 
-      if (isSimpleName) {
-        const subLocResult = await processSubLocation(
+      if (segments.length) {
+        subLocationId = await processSubLocationPath(
           connection,
-          subLocationData,
+          locationId,
+          segments,
+          company_id,
         );
-        subLocationId = subLocResult.sub_location_id;
-        finalSubLocationName = subLocResult.name;
       }
     }
 
@@ -289,6 +299,7 @@ const insertingItem = async (request, response) => {
         location,
         sub_location,
         location_id,
+        sub_location_id,
         current_location,
         extra_serial_number,
         company_id,
@@ -301,7 +312,7 @@ const insertingItem = async (request, response) => {
         container_id,
         display_item,
         supplier_info
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -320,6 +331,7 @@ const insertingItem = async (request, response) => {
       finalLocationName, // Legacy location column
       finalSubLocationName, // Legacy sub_location column
       locationId, // New location_id column
+      subLocationId, // New sub_location_id column (leaf of the path) — Fase 4a
       current_location,
       finalExtraSerialNumber,
       company_id,
@@ -1483,44 +1495,45 @@ const checkInventoryCompanyExists = async (request, response) => {
 };
 
 const containerItemsDetails = async (props) => {
+  const connection = getConnection();
   try {
-    const connection = getConnection();
-    //removing items from container
     const removingItems =
       typeof props.remove === "string"
         ? JSON.parse(props.remove)
         : props.remove;
-    for (let item of removingItems) {
-      const query = `
-      UPDATE item_inv
-      SET container_id = ?,
-      isItInContainer = ?,
-      display_item = ?
-      WHERE item_id = ?;
-      `;
-      const values = [null, 0, 1, item.item_id];
-      await connection.execute(query, values);
-    }
-    //adding new items to container
     const data =
       typeof props.data === "string" ? JSON.parse(props.data) : props.data;
-    for (let item of data) {
-      const query = `
-      UPDATE item_inv
-      SET container_id = ?,
-      isItInContainer = ?,
-      display_item = ?
-      WHERE item_id = ?;
-    `;
-      const values = [props.container_id, 1, 0, item.item_id];
-      await connection.execute(query, values);
+
+    const removeIds = removingItems.map((item) => item.item_id).filter(Boolean);
+    const addIds = data.map((item) => item.item_id).filter(Boolean);
+
+    await connection.beginTransaction();
+
+    // removing items from container — 1 UPDATE para todos en vez de 1 por item
+    if (removeIds.length) {
+      await connection.execute(
+        `UPDATE item_inv
+         SET container_id = ?, isItInContainer = ?, display_item = ?
+         WHERE item_id IN (${removeIds.map(() => "?").join(",")})`,
+        [null, 0, 1, ...removeIds]
+      );
     }
+
+    // adding new items to container — 1 UPDATE para todos en vez de 1 por item
+    if (addIds.length) {
+      await connection.execute(
+        `UPDATE item_inv
+         SET container_id = ?, isItInContainer = ?, display_item = ?
+         WHERE item_id IN (${addIds.map(() => "?").join(",")})`,
+        [props.container_id, 1, 0, ...addIds]
+      );
+    }
+
+    await connection.commit();
   } catch (error) {
+    await connection.rollback();
     logger.error("Error:", error);
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    throw error;
   }
 };
 
@@ -1925,9 +1938,29 @@ const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
     `;
     const queryValues = [...formattingValues];
     if (sublocationSegments[0] !== "null") {
-      const { clause, values } = buildSublocationQuery(sublocationSegments);
-      query += ` AND ${clause}`;
-      queryValues.push(...values);
+      // Fase 4a: si hay contexto de locación, resolvemos el path a ids del
+      // subárbol y filtramos por la columna indexada sub_location_id (evita el
+      // JSON_EXTRACT no-indexable). Si no hay location_id o el path no resuelve
+      // completo contra sub_locations, caemos al filtro JSON legacy → sin
+      // regresión (mismo comportamiento que antes).
+      // El frontend real (LocationDetail/Table.jsx) manda `location` (nombre),
+      // no `location_id` — se resuelve por nombre para que el fast-path aplique.
+      let locationId = request.body.location_id;
+      if (!locationId && request.body.company_id && request.body.location) {
+        locationId = await getLocationId(connection, request.body.company_id, request.body.location);
+      }
+      let resolved = null;
+      if (locationId) {
+        resolved = await resolveSubLocationFilter(connection, locationId, sublocationSegments);
+      }
+      if (resolved && resolved.ids.length) {
+        query += ` AND sub_location_id IN (${resolved.ids.map(() => "?").join(",")})`;
+        queryValues.push(...resolved.ids);
+      } else {
+        const { clause, values } = buildSublocationQuery(sublocationSegments);
+        query += ` AND ${clause}`;
+        queryValues.push(...values);
+      }
     }
     query += ` ORDER BY item_id ASC`;
 
@@ -3870,6 +3903,7 @@ module.exports = {
   checkInventoryCompanyExists,
   checkLargeData,
   confirmItemsReturnedToStock,
+  containerItemsDetails,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
   consultingCompanyInventoryWithPagination,

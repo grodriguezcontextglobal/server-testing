@@ -53,6 +53,109 @@ const processSubLocation = async (connection, data) => {
   };
 };
 
+/**
+ * PURA. Camina un path de nombres (raíz→hoja) sobre un conjunto de filas de
+ * sub_locations, siguiendo la cadena parent_id. Devuelve el nodo más profundo
+ * que matchee (deepest match), consistente con cómo getCompanyLocationTree
+ * cuenta items: avanza mientras los nombres matcheen, corta al primer segmento
+ * null/vacío o que no exista como hijo del nodo actual.
+ *
+ * IMPORTANTE: `rows` debe estar scopeado a UNA locación (los nombres se repiten
+ * entre locaciones; la cadena parent_id solo desambigua dentro de la misma).
+ *
+ * @returns {{ leafId: number|null, matchedDepth: number }}
+ */
+const walkSubLocationPath = (rows, segments) => {
+  let parentId = null;
+  let leafId = null;
+  let matchedDepth = 0;
+
+  for (const rawName of segments || []) {
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    if (!name) break;
+    const node = rows.find(
+      (r) => r.name === name && (r.parent_id ?? null) === parentId
+    );
+    if (!node) break;
+    leafId = node.sub_location_id;
+    parentId = node.sub_location_id;
+    matchedDepth++;
+  }
+
+  return { leafId, matchedDepth };
+};
+
+/**
+ * PURA. Devuelve el id de `rootId` más el de todos sus descendientes (subárbol).
+ * Se usa para preservar la semántica de "prefijo" del filtro JSON viejo: buscar
+ * por [Building A, Floor 3] debe devolver los items en Floor 3 y en cualquier
+ * nodo por debajo (Room 35, Shell A-1, ...).
+ */
+const collectSubtreeIds = (rows, rootId) => {
+  const ids = [];
+  const stack = [rootId];
+  while (stack.length) {
+    const id = stack.pop();
+    ids.push(id);
+    for (const r of rows) {
+      if ((r.parent_id ?? null) === id) stack.push(r.sub_location_id);
+    }
+  }
+  return ids;
+};
+
+/**
+ * Find-or-create de la cadena completa de sub-locaciones de un path multinivel,
+ * encadenando parent_id nivel por nivel (reutiliza processSubLocation por nodo).
+ * Corta al primer segmento null/vacío. Devuelve el sub_location_id de la HOJA
+ * (o null si no se creó/encontró ningún nodo — ej. path [null,null,null]).
+ */
+const processSubLocationPath = async (connection, location_id, segments, company_id) => {
+  let parentId = null;
+  let leafId = null;
+
+  for (const rawName of segments || []) {
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    if (!name) break;
+    const node = await processSubLocation(connection, {
+      location_id,
+      name,
+      parent_id: parentId,
+      active: 1,
+      company_id,
+    });
+    leafId = node.sub_location_id;
+    parentId = node.sub_location_id;
+  }
+
+  return leafId;
+};
+
+/**
+ * Read-only. Dado location_id + un path de nombres de búsqueda, resuelve el
+ * subárbol de sub_location_id a filtrar. Devuelve { ids } si el path resuelve
+ * COMPLETO contra la tabla sub_locations, o null si algún segmento no está
+ * registrado (señal para que el caller caiga al filtro JSON legacy y no pierda
+ * resultados).
+ */
+const resolveSubLocationFilter = async (connection, location_id, segments) => {
+  const meaningful = (segments || []).filter(
+    (s) => typeof s === "string" && s.trim()
+  ).length;
+  if (!meaningful) return null;
+
+  const [rows] = await connection.execute(
+    `SELECT sub_location_id, name, parent_id
+     FROM sub_locations WHERE location_id = ? AND active = 1`,
+    [location_id]
+  );
+
+  const { leafId, matchedDepth } = walkSubLocationPath(rows, segments);
+  if (leafId === null || matchedDepth < meaningful) return null; // fallback
+
+  return { ids: collectSubtreeIds(rows, leafId) };
+};
+
 const createSubLocation = async (req, res) => {
   const connection = getConnection();
   const { location_id, name, parent_id, company_id } = req.body;
@@ -259,4 +362,8 @@ module.exports = {
   checkSubLocation,
   deleteSubLocation,
   processSubLocation,
+  walkSubLocationPath,
+  collectSubtreeIds,
+  processSubLocationPath,
+  resolveSubLocationFilter,
 };
