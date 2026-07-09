@@ -1,0 +1,93 @@
+'use strict';
+
+/**
+ * Registro de handlers de la cola: type -> async (payload, job) => result
+ *
+ * Los handlers reales se registran en Fase 1 (correos), Fase 2 (Go worker,
+ * documentos), etc. Cada uno encapsula la lógica que hoy vive inline en los
+ * controllers. El worker (queue/worker.js) resuelve el handler por job.type.
+ */
+
+const handlers = new Map();
+
+function register(type, fn) {
+  if (typeof fn !== "function") {
+    throw new Error(`Handler para '${type}' debe ser una función`);
+  }
+  handlers.set(type, fn);
+}
+
+function getHandler(type) {
+  return handlers.get(type) || null;
+}
+
+// ─── Registro de handlers de producción ──────────────────────────────────────
+
+const sgMail = require("@sendgrid/mail");
+sgMail.setApiKey(process.env.SENDGRID_API_KEY_PAID);
+const { createEmailHandler } = require("./email");
+
+register("send-email", createEmailHandler((msg) => sgMail.send(msg)));
+// Fan-out por personalización (cada destinatario no ve a los demás) — distinto
+// de 'send-email' con un array (mensajes DISTINTOS). Mismo handler genérico,
+// solo cambia el método de SendGrid al que apunta.
+register("send-email-multiple", createEmailHandler((msg) => sgMail.sendMultiple(msg)));
+
+const { createEmailWithS3AttachmentsHandler } = require("./emailWithAttachments");
+const { fetchAttachmentAsBase64, deleteDocumentFromS3 } = require("../../helpers/s3Upload");
+
+// Adjuntos grandes: el job solo guarda `attachmentRefs` (keys de S3), nunca el
+// base64 (ver returnedItemsToRenterNotification en nodeMailer/notifications.js).
+register(
+  "send-email-multiple-with-attachments",
+  createEmailWithS3AttachmentsHandler((msg) => sgMail.sendMultiple(msg), {
+    fetchAttachment: fetchAttachmentAsBase64,
+    deleteAttachment: deleteDocumentFromS3,
+  })
+);
+
+const { createModelInsertHandler } = require("./dbWrite");
+const EventLog = require("../../models/EventLog");
+const NotificationLog = require("../../models/NotificationLog");
+const StaffActivityLog = require("../../models/StaffActivityLog");
+const ErrorLogs = require("../../models/ErrorLogs");
+
+register("log:event", createModelInsertHandler((payload) => EventLog.create(payload)));
+register("log:notification", createModelInsertHandler((payload) => NotificationLog.create(payload)));
+register("log:staff-activity", createModelInsertHandler((payload) => StaffActivityLog.create(payload)));
+// payload incluye el _id pre-generado en controller/errorLog.js (para que el
+// errorId respondido al cliente coincida con el documento que termina persistido).
+register("log:error", createModelInsertHandler((payload) => ErrorLogs.create(payload)));
+
+const { createGoWorkerHandler } = require("./goWorker");
+const runGoWorker = require("../../helpers/goWorker");
+
+// Única mutación del Go worker que es fire-and-forget de verdad — el resto
+// devuelve conteos/filas afectadas que el cliente usa en la misma respuesta,
+// no encajan en la cola sin un cambio de contrato (ver DESIGN_task_queue.md § Fase 2).
+register(
+  "go-worker:insert-device-event-container",
+  createGoWorkerHandler(runGoWorker, "insert-device-event-container")
+);
+
+const { createWebhookHandler } = require("./webhook");
+// Genérico: cualquier webhook externo disparado por la app (hoy solo el
+// disparo de importación de inventario en uploadExcelToS3).
+register("webhook:trigger", createWebhookHandler());
+
+const { createDocumentUploadHandler } = require("./documentUpload");
+const { uploadPdfToS3 } = require("../../helpers/s3Upload");
+const Document = require("../../models/Document");
+
+// Contrato async completo (202+jobId, ver controller/document.js § uploadDocument
+// y DESIGN_task_queue.md § Fase 2) — el cliente hace polling a GET /api/jobs/:jobId
+// y lee result.document.
+register(
+  "document:upload-pdf",
+  createDocumentUploadHandler({
+    uploadPdfToS3,
+    createDocument: (fields) => Document.create(fields),
+  })
+);
+
+module.exports = { register, getHandler, handlers };
