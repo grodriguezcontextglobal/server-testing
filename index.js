@@ -153,6 +153,7 @@ const configureRoutes = (app) => {
     image: require("./routes/image"),
     inventory: require("./routes/inventory"),
     item: require("./routes/item"),
+    jobs: require("./routes/jobs"),
     lease: require("./routes/lease"),
     nodeMailer: require("./routes/nodeMailer"),
     notificationLog: require("./routes/notificationLog"),
@@ -321,6 +322,14 @@ const startServer = () => {
       logger.warn(
         `Go worker executable not found at ${workerPath}. Skipping start.`
       );
+    }
+
+    // Start the durable task queue worker (single instance only).
+    // See DESIGN_task_queue.md.
+    try {
+      require("./queue/worker").start();
+    } catch (error) {
+      logger.error("Failed to start task queue worker:", { error: error.message });
     }
 
     // // Initialize Scheduled Jobs
