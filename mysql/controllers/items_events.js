@@ -6,6 +6,7 @@ const connection = getConnection();
 const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
 
 const runGoWorker = require("../../helpers/goWorker");
+const { createQueuedJobController } = require("../../helpers/queuedController");
 const { updateLargeData } = require("./item");
 const {
   poolReceiversBulk: poolReceiversBulkWorker,
@@ -523,31 +524,20 @@ const deletingRecordInItemInvAssignedEventRow = async (request, response) => {
   }
 };
 
-const insertingDeviceInEventDirectlyFromContainer = async (
-  request,
-  response,
-) => {
-  try {
-    const { refDatabase, event_id } = request.body;
-
-    // Parse refDatabase if string, else use as is
-    // Node.js logic handles both string and object. Go worker will need a structure.
-    // If it's a string, we can pass it as is. If object, pass as is.
-
-    // Offload to Go Worker
-    await runGoWorker("insert-device-event-container", {
-      event_id: String(event_id),
-      refDatabase,
-    });
-
-    response
-      .status(201)
-      .json({ msg: "Items inserted successfully into event", ok: true });
-  } catch (error) {
-    logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+// Fire-and-forget de verdad: el original no usaba el resultado del Go worker
+// para nada, solo respondía un mensaje genérico — por eso es la única
+// mutación del Go worker que se encola (ver DESIGN_task_queue.md § Fase 2).
+const buildInsertDeviceEventContainerPayload = (body) => ({
+  event_id: String(body.event_id),
+  refDatabase: body.refDatabase,
+});
+const insertingDeviceInEventDirectlyFromContainer = createQueuedJobController(
+  "go-worker:insert-device-event-container",
+  buildInsertDeviceEventContainerPayload,
+  {
+    buildSuccessBody: (job) => ({ msg: "Items queued for insertion into event", ok: true, jobId: job.id }),
   }
-};
+);
 
 const consultingLeaseInformationConsumer = async (request, response) => {
   try {
@@ -919,6 +909,7 @@ try {
 module.exports = {
   allocateDeviceMarkedAsContainerInEvent,
   allocateDeviceToEvent,
+  buildInsertDeviceEventContainerPayload,
   bulkUpdateEventItemShipping,
   checkingInventoryCurrentState,
   consultingInventoryCurrentState,

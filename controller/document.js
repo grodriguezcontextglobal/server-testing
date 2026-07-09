@@ -16,115 +16,116 @@ const {
 } = require("../nodeMailer/notifications");
 const AdminUser = require("../models/AdminUser");
 const logger = require("../helpers/logger");
+const { enqueue, extractJobContext } = require("../helpers/queue");
 const VerificationConsumersLeaseContracts = require("../models/VerificationConsumersLeaseContracts");
 const SignatureConsumer = require("../models/SignatureConsumer");
 const User = require("../models/User");
 const VerificationMemberLeaseContracts = require("../models/VerificationMemberLeaseContracts");
 
-const uploadDocument = async (req, res) => {
-  try {
-    const {
-      document_type,
-      trigger_action,
-      at_,
-      title,
-      description,
-      language,
-      requires_signature,
-      expiration_date,
-      applicable_locations,
-      applicable_items,
-      applicable_events,
-      tags,
-      metadata,
-      document_config,
-      company_id,
-      created_by,
-    } = req.body;
+// Migrado al contrato async completo (202 + jobId, ver DESIGN_task_queue.md §
+// Fase 2): a diferencia de correos/logs, el cliente SÍ necesita la URL final
+// del documento — por eso requiere polling a GET /api/jobs/:jobId (ya
+// construido) en vez del cambio cosmético que bastó para Fase 1. Un solo job
+// (no dos independientes como en createErrorFeed) porque crear el Document
+// depende de la URL que devuelve la subida a S3 — no se pueden separar.
+// El archivo de Multer (diskStorage en tmp/uploads, ver routes/document.js)
+// NO se autoborra al responder, así que sigue en disco cuando el worker lo
+// procese; asume que el worker corre en la MISMA máquina que recibió el
+// upload (cierto hoy: 1 sola máquina Windows con cluster pm2, ver DEPLOY.md).
+function buildDocumentUploadPayload(req, company) {
+  const {
+    document_type, trigger_action, at_, title, description, language,
+    requires_signature, expiration_date, applicable_locations,
+    applicable_items, applicable_events, tags, metadata, document_config,
+    created_by,
+  } = req.body;
 
-    if (!req.file) {
-      return res.status(400).json({
+  return {
+    file: { path: req.file.path, originalname: req.file.originalname, mimetype: req.file.mimetype },
+    company_id: company.company_id,
+    companyName: company.company_name,
+    document_type,
+    trigger_action,
+    at_,
+    title,
+    description,
+    language,
+    requires_signature,
+    expiration_date,
+    applicable_locations: applicable_locations ? JSON.parse(applicable_locations) : undefined,
+    applicable_items: applicable_items ? JSON.parse(applicable_items) : undefined,
+    applicable_events: applicable_events ? JSON.parse(applicable_events) : undefined,
+    tags: tags ? JSON.parse(tags) : undefined,
+    metadata: metadata ? JSON.parse(metadata) : undefined,
+    document_config: document_config ? JSON.parse(document_config) : undefined,
+    created_by,
+  };
+}
+
+function createUploadDocument({
+  findCompany = (companyId) => Company.findById(companyId),
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+} = {}) {
+  return async function uploadDocument(req, res) {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          ok: false,
+          msg: "No document file uploaded",
+        });
+      }
+
+      const company = await findCompany(req.body.company_id);
+      if (!company) {
+        return res.status(404).json({
+          ok: false,
+          msg: "Company not found",
+        });
+      }
+
+      const payload = buildDocumentUploadPayload(req, {
+        company_id: req.body.company_id,
+        company_name: company.company_name,
+      });
+
+      // El dueño del job = quien podrá hacer polling de GET /api/jobs/owned/:jobId.
+      // Esta ruta no corre validateJWT (req.uid es null), así que el uid del
+      // dueño se toma de created_by (el uid Mongo que el frontend ya envía).
+      const context = extractContextFn(req);
+      if (!context.uid) context.uid = req.body.created_by || null;
+
+      // Idempotencia: si el frontend manda un header Idempotency-Key (UUID por
+      // acción de subida), se usa como clave del job. Ante un request duplicado
+      // (React StrictMode en dev, doble-click, reintento de red) enqueue devuelve
+      // el MISMO job en vez de crear otro → no se sube dos veces el documento.
+      // Namespaced por tipo para no chocar con claves iguales de otros job types.
+      const clientKey =
+        typeof req.get === "function"
+          ? req.get("Idempotency-Key") || req.get("idempotency-key")
+          : undefined;
+      const idempotencyKey = clientKey ? `document:upload-pdf:${String(clientKey).trim()}` : undefined;
+
+      const job = await enqueueFn("document:upload-pdf", payload, { context, idempotencyKey });
+
+      return res.status(202).json({
+        ok: true,
+        msg: "Document queued for upload",
+        jobId: job.id,
+      });
+    } catch (error) {
+      logger.error(error);
+      // No incluir el objeto `error` crudo en la respuesta: serializar un
+      // MongoServerError/Error puede fallar y escalar al error handler global
+      // (enmascarando el 500 real). Solo el mensaje.
+      res.status(500).json({
         ok: false,
-        msg: "No document file uploaded",
+        msg: error.message,
       });
     }
-
-    // Get company details for folder organization
-    const company = await Company.findById(company_id);
-    if (!company) {
-      return res.status(404).json({
-        ok: false,
-        msg: "Company not found",
-      });
-    }
-
-    // Upload to S3 with organized folder structure
-    const uploadResult = await uploadPdfToS3(req.file, {
-      companyId: company_id,
-      companyName: company.company_name,
-      documentType: document_type,
-      metadata: {
-        trigger_action: trigger_action || undefined,
-        // Only include tags if it exists in req.body
-        ...(req.body.tags && { tags: encodeURIComponent(req.body.tags) }),
-      },
-    });
-
-    // Parse JSON strings from form data
-    const parsedMetadata = metadata ? JSON.parse(metadata) : undefined;
-    const parsedConfig = document_config
-      ? JSON.parse(document_config)
-      : undefined;
-    const parsedLocations = applicable_locations
-      ? JSON.parse(applicable_locations)
-      : undefined;
-    const parsedItems = applicable_items
-      ? JSON.parse(applicable_items)
-      : undefined;
-    const parsedEvents = applicable_events
-      ? JSON.parse(applicable_events)
-      : undefined;
-
-    const splittingLocation = uploadResult.Location.split(
-      ".s3.us-east-2.amazonaws.com/"
-    );
-    // Create document record
-    // In uploadDocument function, modify the document creation:
-    const document = new Document({
-      company_id,
-      document_url: `${process.env.AWS_S3_BUCKET_NAME}/${splittingLocation[1]}`, // Remove any extra spaces
-      document_type,
-      trigger_action,
-      at_: new Date(at_),
-      title,
-      description,
-      language,
-      requires_signature: requires_signature === "true",
-      expiration_date: expiration_date ? new Date(expiration_date) : undefined,
-      applicable_locations: parsedLocations,
-      applicable_items: parsedItems,
-      applicable_events: parsedEvents,
-      tags: tags ? JSON.parse(tags) : undefined,
-      metadata: parsedMetadata,
-      document_config: parsedConfig,
-      created_by,
-    });
-
-    await document.save();
-
-    res.status(201).json({
-      ok: true,
-      document,
-    });
-  } catch (error) {
-    logger.error(error);
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: error,
-    });
-  }
-};
+  };
+}
+const uploadDocument = createUploadDocument();
 
 const getCompanyDocuments = async (req, res) => {
   try {
@@ -1586,6 +1587,33 @@ const addSignatureToMemberDocument = async (req, res) => {
   }
 };
 
+// El disparo del webhook de importación se encola en vez de esperarlo síncrono
+// (ver DESIGN_task_queue.md § Fase 2): la respuesta de este endpoint nunca
+// dependió del CONTENIDO de la respuesta del webhook, solo de si estaba arriba
+// o no — y ese dato ya lo tenemos (s3Location/signedUrl) antes de llamarlo.
+// Cambio de comportamiento deliberado: antes, un webhook caído respondía 502
+// (con el archivo ya subido a S3); ahora responde 200 y el reintento de la
+// cola resuelve el disparo cuando el webhook vuelva a estar disponible.
+const buildInventoryImportWebhookJob = ({ targetUrl, signedUrl, company_id, company, userEmail, userSqlId }) => {
+  if (!targetUrl) return null;
+
+  return {
+    type: "webhook:trigger",
+    payload: {
+      url: targetUrl,
+      body: {
+        fileUrl: signedUrl,
+        callbackURLSuccess: process.env.callbackUrl_WEBHOOK_URL_SUCCESS,
+        callbackURLFail: process.env.callbackUrl_WEBHOOK_URL_FAIL,
+        company_id,
+        company,
+        userEmail,
+        user_sql_id: userSqlId,
+      },
+    },
+  };
+};
+
 const uploadExcelToS3 = async (req, res) => {
   try {
     if (!req.file) {
@@ -1610,49 +1638,17 @@ const uploadExcelToS3 = async (req, res) => {
 
     const signedUrl = await getTemporaryDownloadUrl(uploadResult.Key);
 
-    // Fetch to another server for handle inserting company inventory from xlsx file
-    const targetUrl = process.env.INVENTORY_IMPORT_WEBHOOK_URL;
+    const job = buildInventoryImportWebhookJob({
+      targetUrl: process.env.INVENTORY_IMPORT_WEBHOOK_URL,
+      signedUrl,
+      company_id,
+      company,
+      userEmail: req.user ? req.user.email : undefined,
+      userSqlId: req.user ? req.user.id : req.body.contact_staff_id,
+    });
 
-    if (targetUrl) {
-      const response = await fetch(targetUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          fileUrl: signedUrl,
-          callbackURLSuccess: process.env.callbackUrl_WEBHOOK_URL_SUCCESS,
-          callbackURLFail: process.env.callbackUrl_WEBHOOK_URL_FAIL,
-          company_id: company_id,
-          company: company,  
-          userEmail: req.user ? req.user.email : undefined,
-          user_sql_id: req.user ? req.user.id : req.body.contact_staff_id,
-        }),
-      });
-      logger.info(">>>>>>>", response);
-      if (!response.ok) {
-        const errorText = await response.text();
-        logger.error(
-          `Failed to trigger inventory import: ${response.status} ${errorText}`
-        );
-        return res.status(502).json({
-          ok: false,
-          msg: "File uploaded to S3 but failed to trigger inventory import on remote server.",
-          error: errorText,
-        });
-      }
-
-      //     {
-      //   "status": "completed",
-      //   "total_rows": 100,
-      //   "success": 98,
-      //   "failed": 2,
-      //   "errors": ["Row 5: Invalid cost"],
-      //   "company_id": "comp_123",
-      //   "user_email": "user@example.com",
-      //   "user_sql_id": 123
-      // }
-      logger.info("Inventory import process triggered successfully", response);
+    if (job) {
+      await enqueue(job.type, job.payload, { context: extractJobContext(req) });
     } else {
       logger.warn(
         "INVENTORY_IMPORT_WEBHOOK_URL is not defined. Skipping remote import trigger."
@@ -1661,7 +1657,7 @@ const uploadExcelToS3 = async (req, res) => {
 
     res.status(200).json({
       ok: true,
-      msg: "File uploaded and import process triggered",
+      msg: job ? "File uploaded; import process queued" : "File uploaded (import trigger not configured)",
       data: {
         s3Location: uploadResult.Location,
         signedUrl: signedUrl,
@@ -1679,6 +1675,7 @@ const uploadExcelToS3 = async (req, res) => {
 
 module.exports = {
   uploadExcelToS3,
+  buildInventoryImportWebhookJob,
   addSignatureToConsumerDocument,
   addSignatureToDocument,
   addSignatureToMemberDocument,
@@ -1707,4 +1704,6 @@ module.exports = {
   updateFolder,
   updateStampEventConsumerSignatures,
   uploadDocument,
+  buildDocumentUploadPayload,
+  createUploadDocument,
 };
