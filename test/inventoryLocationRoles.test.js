@@ -3,6 +3,23 @@ const test   = require('node:test');
 const assert = require('node:assert/strict');
 const path   = require('node:path');
 
+// ════════════════════════════════════════════════════════════════════════════════
+// REGRESIÓN — módulo compartido mysql/constants/roles.js
+// ════════════════════════════════════════════════════════════════════════════════
+
+const { VALID_ROLE_TYPES: ROLES_SET, VALID_ROLE_TYPES_LIST: ROLES_LIST } =
+  require('../mysql/constants/roles');
+
+test('roles/constants: exporta Set y Array con los 8 role_types canónicos', () => {
+  assert.equal(ROLES_SET.size, 8, 'Set debe tener exactamente 8 roles');
+  assert.equal(ROLES_LIST.length, 8, 'Array debe tener exactamente 8 roles');
+  assert.ok(ROLES_SET.has('inventory_location_manager'),   'debe incluir inventory_location_manager');
+  assert.ok(ROLES_SET.has('inventory_location_assistant'), 'debe incluir inventory_location_assistant');
+  assert.ok(ROLES_SET.has('inventory_manager'),            'inventory_manager no debe eliminarse');
+  // Set y Array deben ser consistentes
+  assert.deepEqual(new Set(ROLES_LIST), ROLES_SET, 'Set y Array deben contener los mismos valores');
+});
+
 // ─── Stub de DB para staff controller (captura a nivel de módulo) ─────────────
 // staff.js llama getConnection() al cargar el módulo, por lo que el stub debe
 // estar en cache ANTES del primer require del controlador.
@@ -180,54 +197,63 @@ test('getStaffPermissions: inventory_location_assistant tiene solo inventory(RU)
 // BLOQUE C — Scoping en staffAccess: los roles nuevos son location-scoped
 // staffAccess llama getConnection() dentro de la función → se puede recargar.
 // inventory_manager (level 4) sigue siendo full-access como regresión de control.
+//
+// Perf fix (fase 2 del audit SQL): rol + locations se resuelven en UNA sola query
+// (LEFT JOIN + GROUP_CONCAT) en vez de 2 queries secuenciales. Los roles full-access
+// siguen ignorando location_ids (bypass), pero ya no hay una segunda ida a la DB
+// para ningún caso.
 // ════════════════════════════════════════════════════════════════════════════════
 
-test('getStaffCompanyAccess: inventory_location_manager (level 6) ejecuta 2 queries — es location-scoped', async () => {
+test('getStaffCompanyAccess: inventory_location_manager (level 6) resuelve rol+locations en 1 query', async () => {
   const calls = [];
   const { getStaffCompanyAccess } = loadStaffAccess(async (sql) => {
     calls.push(sql.trim().slice(0, 20));
-    if (calls.length === 1) {
-      return [[{ company_staff_id: 'cs-10', role_type: 'inventory_location_manager', role_level: 6 }]];
-    }
-    return [[{ location_id: 3 }, { location_id: 7 }]];
+    return [[{ company_staff_id: 'cs-10', role_type: 'inventory_location_manager', role_level: 6, location_ids: '3,7' }]];
   });
 
   const result = await getStaffCompanyAccess(42, 5);
 
-  assert.equal(calls.length, 2, 'debe hacer 2 queries: rol y luego locations');
+  assert.equal(calls.length, 1, 'debe resolver rol y locations en una sola query');
   assert.equal(result.role_type, 'inventory_location_manager');
   assert.equal(result.role_level, 6);
   assert.deepEqual(result.locations, [3, 7]);
 });
 
-test('getStaffCompanyAccess: inventory_location_assistant (level 7) ejecuta 2 queries — es location-scoped', async () => {
+test('getStaffCompanyAccess: inventory_location_assistant (level 7) resuelve rol+locations en 1 query', async () => {
   const calls = [];
   const { getStaffCompanyAccess } = loadStaffAccess(async (sql) => {
     calls.push(sql.trim().slice(0, 20));
-    if (calls.length === 1) {
-      return [[{ company_staff_id: 'cs-11', role_type: 'inventory_location_assistant', role_level: 7 }]];
-    }
-    return [[{ location_id: 5 }]];
+    return [[{ company_staff_id: 'cs-11', role_type: 'inventory_location_assistant', role_level: 7, location_ids: '5' }]];
   });
 
   const result = await getStaffCompanyAccess(99, 5);
 
-  assert.equal(calls.length, 2, 'debe hacer 2 queries: rol y luego locations');
+  assert.equal(calls.length, 1, 'debe resolver rol y locations en una sola query');
   assert.equal(result.role_type, 'inventory_location_assistant');
   assert.equal(result.role_level, 7);
   assert.deepEqual(result.locations, [5]);
 });
 
-test('getStaffCompanyAccess: inventory_manager (level 4) sigue siendo full-access — solo 1 query (regresión)', async () => {
+test('getStaffCompanyAccess: location-scoped sin locations asignadas → array vacío (GROUP_CONCAT NULL)', async () => {
+  const { getStaffCompanyAccess } = loadStaffAccess(async () => {
+    return [[{ company_staff_id: 'cs-12', role_type: 'assistant', role_level: 5, location_ids: null }]];
+  });
+
+  const result = await getStaffCompanyAccess(50, 5);
+
+  assert.deepEqual(result.locations, []);
+});
+
+test('getStaffCompanyAccess: inventory_manager (level 4) sigue siendo full-access — 1 query, ignora location_ids', async () => {
   const calls = [];
   const { getStaffCompanyAccess } = loadStaffAccess(async (sql) => {
     calls.push(sql.trim().slice(0, 20));
-    return [[{ company_staff_id: 'cs-4', role_type: 'inventory_manager', role_level: 4 }]];
+    return [[{ company_staff_id: 'cs-4', role_type: 'inventory_manager', role_level: 4, location_ids: '99' }]];
   });
 
   const result = await getStaffCompanyAccess(74, 5);
 
-  assert.equal(calls.length, 1, 'inventory_manager hace solo 1 query — bypasea locations');
+  assert.equal(calls.length, 1, 'inventory_manager hace solo 1 query');
   assert.equal(result.role_type, 'inventory_manager');
-  assert.deepEqual(result.locations, []);
+  assert.deepEqual(result.locations, [], 'full-access debe ignorar location_ids aunque la query los traiga');
 });
