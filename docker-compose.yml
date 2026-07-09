@@ -1,0 +1,17 @@
+services:
+  api:
+    build: .
+    ports:
+      - "34001:34001"
+    env_file: .env
+    command: ["node_modules/.bin/nodemon", "index.js"]
+    volumes:
+      - .:/app
+      - /app/node_modules   # keeps node_modules from the image, not the host
+      - /app/go-worker      # keeps the compiled Go binary from the image
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:34001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+pnpm-lock.yaml
+logs/
+.env
+.env.*
+.git
+.gitignore
+.vscode
+*.exe
+go-worker/worker
+go-worker/processor
+tmp/
+uploads/
+Server_Updates_June2026.pptx
