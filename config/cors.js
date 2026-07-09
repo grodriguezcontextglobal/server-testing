@@ -28,6 +28,11 @@ const corsOptions = {
         "s-company-id",
         "x-company-id",
         "X-Company-ID",
+        // Idempotencia de mutaciones (upload de documento, pagos, etc.) — el
+        // frontend manda un UUID por acción; sin esto el preflight CORS rechaza
+        // el request (aparece "canceled"/0B en la network tab). Ver FRONTEND_task_queue_changes.md §4.1
+        "Idempotency-Key",
+        "idempotency-key",
         // Client information headers (both cases for compatibility)
         "User-Agent",
         "Accept-Language",
