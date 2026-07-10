@@ -57,8 +57,8 @@ function loadController(controllerRelPath, connectionImpl) {
 }
 
 function makeTrackedConnection(executeImpl) {
-  const calls = { execute: [], beginTransaction: 0, commit: 0, rollback: 0 };
-  return {
+  const calls = { execute: [], beginTransaction: 0, commit: 0, rollback: 0, release: 0 };
+  const conn = {
     calls,
     execute: async (sql, params) => {
       calls.execute.push({ sql: sql.trim(), params });
@@ -67,7 +67,13 @@ function makeTrackedConnection(executeImpl) {
     beginTransaction: async () => { calls.beginTransaction++; },
     commit:           async () => { calls.commit++; },
     rollback:          async () => { calls.rollback++; },
+    // Real code does `pool.getConnection()` to get a dedicated PoolConnection
+    // for transactions (the Pool itself has no beginTransaction/commit/rollback).
+    // Returning `conn` here keeps all calls tracked on the same object.
+    getConnection: async () => conn,
+    release: () => { calls.release++; },
   };
+  return conn;
 }
 
 // ════════════════════════════════════════════════════════════════════════════════

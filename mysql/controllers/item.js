@@ -1495,7 +1495,10 @@ const checkInventoryCompanyExists = async (request, response) => {
 };
 
 const containerItemsDetails = async (props) => {
-  const connection = getConnection();
+  // getConnection() devuelve el Pool, que no expone beginTransaction/commit/
+  // rollback — solo una PoolConnection individual los tiene.
+  const pool = getConnection();
+  const connection = await pool.getConnection();
   try {
     const removingItems =
       typeof props.remove === "string"
@@ -1534,6 +1537,8 @@ const containerItemsDetails = async (props) => {
     await connection.rollback();
     logger.error("Error:", error);
     throw error;
+  } finally {
+    connection.release();
   }
 };
 
