@@ -20,35 +20,364 @@ Claude must treat these rules as the default operating procedure for all develop
 
 # 1. Core Operating Principle
 
-## Graph first. Source second. Broad exploration last.
+## Automatic Graphify selection. Source second. Broad exploration last.
 
-When `graphify-out/graph.json` exists, Claude must use Graphify as the primary repository discovery mechanism.
+When `graphify-out/graph.json` exists, Claude must use Graphify as the primary repository-discovery mechanism whenever repository discovery is required.
 
-Do not begin a task by recursively browsing directories, reading many files, running broad grep searches, or loading large architecture reports.
+The user must not be required to:
+
+* mention Graphify
+* invoke `graphify query`
+* provide Graphify keywords
+* identify repository symbols
+* select between `query`, `explain`, `path`, or `affected`
+
+The user communicates the requested engineering outcome in natural language.
+
+Claude automatically determines the correct Graphify command.
+
+Use this decision hierarchy:
+
+```text
+Exact symbol explicitly known
+→ graphify explain "<exact symbol>"
+
+Exact file known but implementation symbol uncertain
+→ graphify explain "<exact file>"
+→ resolve the contained functional symbol when necessary
+
+No exact symbol known
+→ graphify query "<specific engineering question>" --budget 800
+→ select concrete candidates
+→ graphify explain "<candidate>"
+→ verify resolution
+
+Relationship between two known elements
+→ graphify explain "<A>"
+→ graphify explain "<B>"
+→ graphify path "<A>" "<B>"
+
+Change-impact question around a known symbol
+→ graphify affected "<exact symbol>"
+
+Weak or incomplete Graphify result
+→ targeted exact-symbol filesystem verification
+→ minimal source inspection
+```
+
+Do not begin with a broad query when an exact symbol is already known.
+
+Do not begin with `path` until both endpoints have been resolved independently.
+
+Do not modify code directly from query output.
 
 The expected workflow is:
 
 ```text
-Task
+Natural-language task
   ↓
-Graphify query
+Claude selects Graphify command automatically
   ↓
-Scoped relationships
+Exact symbol resolution
+  ↓
+Graph quality verification
   ↓
 Minimal source inspection
   ↓
-Plan
+Scoped plan
   ↓
 Implementation
   ↓
 Targeted validation
   ↓
-Graphify update
+graphify update .
 ```
 
-The purpose of Graphify is to reduce the amount of repository content that must enter Claude's context.
+Graphify is a context-discovery mechanism.
+
+Source code remains the final authority.
 
 ---
+
+## Phase 1 — Automatic Graph Discovery
+
+When repository discovery is necessary and `graphify-out/graph.json` exists, Claude must select the Graphify strategy automatically.
+
+### Exact symbol provided
+
+When the request identifies an exact function, controller, service, route handler, class, module, schema, file, or utility, begin with:
+
+```powershell
+graphify explain "<exact symbol>"
+```
+
+Examples:
+
+```powershell
+graphify explain "assignDevice"
+graphify explain "retrievePackageList"
+graphify explain "eventController"
+```
+
+Verify whether Graphify resolved:
+
+* the intended file
+* the intended function or class
+* a similarly named but unrelated symbol
+
+Do not treat file nodes and contained function nodes as interchangeable.
+
+### No exact symbol provided
+
+When the user describes a bug, feature, endpoint behavior, database operation, or business workflow without naming its implementation symbol, derive a scoped engineering question and run:
+
+```powershell
+graphify query "<specific engineering question>" --budget 800
+```
+
+Examples:
+
+```powershell
+graphify query "Which route, controller, and database operation handle deleting all records for a company?" --budget 800
+```
+
+```powershell
+graphify query "Which modules validate device assignment before inventory is updated?" --budget 800
+```
+
+```powershell
+graphify query "What handles request timeout behavior during large company deletion transactions?" --budget 800
+```
+
+Claude must create the query automatically from the user's natural-language task.
+
+The user must not be asked to provide Graphify keywords.
+
+### Mandatory query verification
+
+A query result is a candidate-discovery result, not implementation proof.
+
+After every query:
+
+1. Identify the strongest concrete symbols.
+2. Reject generic or unrelated high-degree nodes.
+3. Run `graphify explain` for the selected symbols.
+4. Verify the resolved path and symbol.
+5. Use targeted source inspection to confirm runtime behavior.
+6. Continue only after the implementation location is supported.
+
+Do not edit directly from a query result.
+
+### Relationship analysis
+
+When two exact elements may interact:
+
+```powershell
+graphify explain "<A>"
+graphify explain "<B>"
+graphify path "<A>" "<B>"
+```
+
+Never start with `path` when either endpoint is unresolved.
+
+An ambiguous path is non-conclusive.
+
+A path through generic infrastructure such as:
+
+* database clients
+* shared middleware
+* configuration modules
+* generic utilities
+* common response helpers
+* logging modules
+
+does not by itself establish direct runtime interaction.
+
+### Impact analysis
+
+When changing a known controller, service, utility, schema, or route handler, use when appropriate:
+
+```powershell
+graphify affected "<exact symbol>"
+```
+
+Use impact analysis automatically when the change could affect multiple callers or contracts.
+
+### Query budget
+
+Start with:
+
+```text
+800
+```
+
+Escalate only when necessary:
+
+```text
+800 → 1200 → 1500
+```
+
+Do not automatically use large query budgets.
+
+### Graphify recovery
+
+If Graphify returns:
+
+* no useful result
+* ambiguous matches
+* unrelated symbols
+* weak containment-only information
+* a very large noisy subgraph
+
+use this recovery order:
+
+```text
+narrower engineering query
+→ exact candidate explain
+→ targeted exact-symbol search
+→ minimal source inspection
+```
+
+Do not repeatedly issue equivalent queries with minor wording changes.
+
+---
+
+# 3. Graphify Usage Policy
+
+This project has a knowledge graph under:
+
+```text
+graphify-out/
+```
+
+It may contain:
+
+* graph data
+* god nodes
+* community structure
+* cross-file relationships
+* generated wiki navigation
+* architecture reports
+
+## Native CLI rule
+
+Always invoke Graphify directly:
+
+```powershell
+graphify explain "<symbol>"
+graphify query "<question>" --budget 800
+graphify path "<A>" "<B>"
+graphify affected "<symbol>"
+graphify update .
+```
+
+Never invoke Graphify through:
+
+```text
+npx
+npm exec
+pnpm exec
+yarn
+python -m
+pipx run
+```
+
+Do not probe Graphify installation before first use.
+
+Only investigate installation after a direct `graphify ...` command fails.
+
+## Preferred automatic discovery order
+
+### Level 1 — Exact symbol explanation
+
+```powershell
+graphify explain "<exact symbol>"
+```
+
+Use when an exact implementation symbol is already known.
+
+### Level 2 — Scoped candidate discovery
+
+```powershell
+graphify query "<specific engineering question>" --budget 800
+```
+
+Use when the implementation symbol is unknown or multiple modules may participate.
+
+Always validate returned candidates with `explain`.
+
+### Level 3 — Resolved relationship path
+
+```powershell
+graphify explain "<A>"
+graphify explain "<B>"
+graphify path "<A>" "<B>"
+```
+
+Use only after both endpoints are known.
+
+### Level 4 — Impact analysis
+
+```powershell
+graphify affected "<exact symbol>"
+```
+
+Use when evaluating change propagation.
+
+### Level 5 — Generated wiki
+
+Use:
+
+```text
+graphify-out/wiki/index.md
+```
+
+for broad repository navigation when focused commands are insufficient.
+
+### Level 6 — Architecture report
+
+Read:
+
+```text
+graphify-out/GRAPH_REPORT.md
+```
+
+only for repository-wide architectural analysis or when focused discovery remains insufficient.
+
+### Level 7 — Raw repository exploration
+
+Use broad grep or recursive source inspection only after Graphify and targeted filesystem verification fail.
+
+---
+
+# 14. Default Workflow Summary
+
+For most non-trivial tasks:
+
+```text
+1. Understand the user's natural-language outcome.
+2. Classify the task.
+3. Determine whether an exact implementation symbol is known.
+4. If known, run `graphify explain`.
+5. If unknown, derive and run one scoped `graphify query --budget 800`.
+6. Validate query candidates with `graphify explain`.
+7. Resolve both endpoints before using `graphify path`.
+8. Use `graphify affected` when change propagation matters.
+9. Verify ambiguous or incomplete graph results with targeted search.
+10. Inspect the minimum relevant source files.
+11. Establish a concise root-cause or implementation plan.
+12. Make the smallest complete change.
+13. Run targeted validation.
+14. Expand validation only when justified.
+15. Run `graphify update .`.
+16. Report changes, validation, and remaining risks.
+```
+
+The user must never need to invoke Graphify or provide Graphify keywords.
+
+The guiding principle is:
+
+> The user describes the desired engineering outcome. Claude automatically uses Graphify to decide which code deserves attention, verifies the result, and inspects only what the evidence requires.
 
 # 2. Mandatory Task Phases
 
@@ -84,30 +413,6 @@ Do not edit files merely because a task mentions a problem.
 For debugging tasks, first establish the likely failure path.
 
 ---
-
-## Phase 1 — Graph Discovery
-
-When `graphify-out/graph.json` exists, start with a targeted Graphify query.
-
-Examples:
-
-```powershell
-graphify query "Where is authentication handled and which modules depend on it?"
-```
-
-```powershell
-graphify query "What code handles inventory bulk actions?"
-```
-
-```powershell
-graphify query "Which controllers, services, and routes participate in device assignment?"
-```
-
-```powershell
-graphify query "What files are related to the reported error?"
-```
-
-Questions should describe the actual engineering task, not merely a filename.
 
 ### Relationship analysis
 
@@ -385,7 +690,7 @@ It may contain:
 * generated wiki navigation
 * architecture reports
 
-## Preferred discovery order
+<!-- ## Preferred discovery order
 
 ### Level 1 — Targeted query
 
@@ -456,7 +761,7 @@ Use broad grep, recursive browsing, or large-scale source inspection only when t
 
 This is the fallback, not the default.
 
----
+--- -->
 
 # 4. Context and Quota Efficiency
 
@@ -727,27 +1032,3 @@ When instructions conflict, use this priority:
 Never override an explicit user requirement merely because another pattern seems preferable.
 
 ---
-
-# 14. Default Workflow Summary
-
-For most non-trivial tasks:
-
-```text
-1. Understand the requested outcome.
-2. Classify the task.
-3. Run one targeted Graphify query.
-4. Use path/explain only when needed.
-5. Inspect the minimum relevant source files.
-6. Establish a concise root-cause or implementation plan.
-7. Make the smallest complete change.
-8. Run targeted validation.
-9. Expand validation only when justified.
-10. Run `graphify update .`.
-11. Report changes, validation, and remaining risks.
-```
-
-The repository must not be explored broadly by default.
-
-The guiding principle is:
-
-> Use the knowledge graph to decide what code deserves Claude's attention, then inspect and modify only what evidence requires.
