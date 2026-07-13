@@ -21,9 +21,7 @@ const {
   generateMfaSecret,
   verifyMfaSetup,
   disableMfa,
-  invalidateAllSessions,
 } = require("../controller/admin");
-
 const {
   addReceiverToTransaction,
   checkingReceiversAssigned,
@@ -32,9 +30,7 @@ const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { optionalJWT } = require("../middlewares/optionalJWT");
-const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
 
-router.post("/invalidate-all-sessions", optionalJWT, invalidateAllSessions);
 //protected route
 router.get("/protected", validateJWT, checkTokenVersion, (req, res) => {
   res.json({ message: "This is a protected route", user: req.user });
@@ -79,7 +75,7 @@ router.post("/manually_logout", manuallyLogoutUser);
 router.get("/renew", validateJWT, renewToken);
 
 //show all users in admin page
-router.get("/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), showAllUsers);
+router.get("/:id", showAllUsers);
 
 //show all users in admin page
 router.post("/users", showAllUsers);
@@ -88,10 +84,10 @@ router.post("/users", showAllUsers);
 router.patch("/profile/:id", validateJWT, editAdminUser);
 
 //edit admin user
-router.patch("/admin-user/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "update"), editOtherAdminUser);
+router.patch("/admin-user/:id", optionalJWT, editOtherAdminUser);
 
 //delete admin suer
-router.delete("/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "delete"), deleteAdminUser);
+router.delete("/:id", validateJWT, deleteAdminUser);
 
 //update password
 router.patch("/update-password", updatePassword);

@@ -1,5 +1,6 @@
 const { response, json, request } = require("express");
 const { default: mongoose } = require("mongoose");
+const Stripe = require("stripe");
 const StripeCustomer = require("../models/StripeCustomer");
 const StripeTransaction = require("../models/StripeTransaction");
 // const Transaction = require("../models/Transaction");
@@ -7,12 +8,7 @@ const StripeCompany = require("../models/StripeCompany");
 require("dotenv").config();
 const logger = require("../helpers/logger");
 
-// Cliente Stripe endurecido (Fase 3, DESIGN_task_queue.md): trae retry
-// idempotente (maxNetworkRetries del SDK) + circuit breaker compartido vía
-// runStripeMutation. Mismo objeto `stripe` que antes, así que las llamadas
-// existentes no cambian; las mutaciones sensibles se envuelven con
-// runStripeMutation para que un Stripe caído falle rápido.
-const { stripe, runStripeMutation } = require("../helpers/stripeClient");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const stripeCustomer = async (request, response) => {
   const { email, name, phoneNumber } = request.body;
@@ -784,13 +780,9 @@ const captureStripePaymentIntent = async (request, response) => {
   const { id, amount_to_capture } = request.body;
   const totalToCapture = amount_to_capture * 100;
   try {
-    const paymentIntent = await runStripeMutation(() =>
-      stripe.paymentIntents.capture(
-        id,
-        { amount_to_capture: totalToCapture },
-        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined
-      )
-    );
+    const paymentIntent = await stripe.paymentIntents.capture(id, {
+      amount_to_capture: totalToCapture,
+    });
     return response.status(201).json({
       ok: true,
       paymentIntent,
@@ -808,12 +800,7 @@ const captureStripePaymentIntent = async (request, response) => {
 const cancelStripePaymentIntent = async (request, response) => {
   const { id } = request.body;
   try {
-    const paymentIntent = await runStripeMutation(() =>
-      stripe.paymentIntents.cancel(
-        id,
-        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined
-      )
-    );
+    const paymentIntent = await stripe.paymentIntents.cancel(id);
     return response.status(201).json({
       ok: true,
       paymentIntent,
@@ -832,12 +819,9 @@ const cancelStripePaymentIntent = async (request, response) => {
 const refundStripePaymentIntent = async (request, response) => {
   try {
     const { paymentIntent } = request.body;
-    const refund = await runStripeMutation(() =>
-      stripe.refunds.create(
-        { payment_intent: paymentIntent },
-        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined
-      )
-    );
+    const refund = await stripe.refunds.create({
+      payment_intent: paymentIntent,
+    });
     return response.status(201).json({
       ok: true,
       refund,
@@ -853,12 +837,10 @@ const refundStripePaymentIntent = async (request, response) => {
 const partialRefundStripePaymentIntent = async (request, response) => {
   try {
     const { paymentIntent, total } = request.body;
-    const refund = await runStripeMutation(() =>
-      stripe.refunds.create(
-        { payment_intent: paymentIntent, amount: Number(total) * 100 },
-        request.idempotencyKey ? { idempotencyKey: request.idempotencyKey } : undefined
-      )
-    );
+    const refund = await stripe.refunds.create({
+      payment_intent: paymentIntent,
+      amount: Number(total) * 100,
+    });
     return response.status(201).json({
       ok: true,
       refund,

@@ -3,9 +3,6 @@
  * host + /api/db_item
  */
 const express = require("express");
-const { validateJWT } = require("../../middlewares/validate-jwt");
-const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
-const { authorizePermission } = require("../../middlewares/authorizePermission");
 const {
   consultingItem,
   consultingItemTable,
@@ -52,7 +49,7 @@ router.delete("/event-items", removeEventItemShipping);
 router.put("/event-items/bulk-update", bulkUpdateEventItemShipping);
 
 //delete items in bulk way based on criteria
-router.post("/delete-bulk-items-criteria", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteBulkItemBasedOnCriteria);
+router.post("/delete-bulk-items-criteria", deleteBulkItemBasedOnCriteria);
 
 // ✅ Force body parsing to ensure JSON bodies are read
 router.use(express.json());
@@ -61,7 +58,7 @@ router.use(express.json());
 router.post("/consulting-item", consultingItem);
 
 //check item in warehouse
-router.post("/warehouse-items", validateJWT, consultingItemInWarehouseTable);
+router.post("/warehouse-items", consultingItemInWarehouseTable);
 
 //check table
 router.post("/items_information", consultingItemTable);
@@ -95,10 +92,10 @@ router.post("/item-out-warehouse", updateItemInWarehouseAfterBeingAddedToEvent);
 router.post("/:id", deleteItem);
 
 //delete item in inventory
-router.post("/delete-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
+router.post("/delete-item", deleteItem);
 
 //bulk delete items
-router.post("/delete-bulk-items", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteBulkItems);
+router.post("/delete-bulk-items", deleteBulkItems);
 
 //consulting item inv assigned event table
 router.post(
@@ -113,10 +110,10 @@ router.post("/search-inventory", searchingInventoryTracking);
 router.get("/search-inventory", searchingGetInventoryTracking);
 
 //get item info
-router.post("/check-item", validateJWT, checkingItem);
+router.post("/check-item", checkingItem);
 
 //get current inventory state
-router.get("/check-inventory/:company_id", validateJWT, checkingInventoryCurrentState);
+router.get("/check-inventory/:company_id", checkingInventoryCurrentState);
 
 //get fragment data
 router.get("/fragment-data", fragmentData);
@@ -157,6 +154,6 @@ router.post(
 //get inventory company based on location and sublocation
 router.post("/get-inventory-company", getGroupedItemInventory);
 
-router.post("/retrieve-item-data", validateJWT, retrieveItemData);
+router.post("/retrieve-item-data", retrieveItemData);
 
 module.exports = router;

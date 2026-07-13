@@ -30,12 +30,12 @@ const createShipment = async (req, res) => {
     `;
     await connection.query(shipmentQuery, [shipmentId, event_id, company_id, destination, recipient_name, authorizer_name, courier, tracking_number]);
 
-    const linkItemsToShipmentQuery = `
+    const updateNotesQuery = `
       UPDATE event_item_shipping
-      SET shipment_id = ?
+      SET notes = JSON_SET(COALESCE(notes, '{}'), '$.shipment_id', ?)
       WHERE event_id = ? AND item_id IN (?);
     `;
-    await connection.query(linkItemsToShipmentQuery, [shipmentId, event_id, package_list]);
+    await connection.query(updateNotesQuery, [shipmentId, event_id, package_list]);
 
     await connection.commit();
     res.status(201).json({ ok: true, message: "Shipment created successfully.", shipment_id: shipmentId });
@@ -132,7 +132,7 @@ const getShipments = async (req, res) => {
         const query = `
             SELECT cs.*, GROUP_CONCAT(eis.item_id) as package_list
             FROM company_shipments cs
-            LEFT JOIN event_item_shipping eis ON eis.shipment_id = cs.shipment_id
+            LEFT JOIN event_item_shipping eis ON JSON_EXTRACT(eis.notes, '$.shipment_id') = cs.shipment_id
             ${whereClause}
             GROUP BY cs.shipment_id;
         `;
@@ -148,36 +148,5 @@ const getShipments = async (req, res) => {
     }
 };
 
-const retrievePackageList = async (req, res) => {
-  let connection;
-  try {
-    connection = await getConnection().getConnection();
-    const { package_list } = req.body;
-    console.log(package_list)
-    if (!package_list) {
-        return res.status(400).json({ ok: false, message: "package_list is a required field." });
-    }
 
-    // The package_list is a string of comma-separated IDs. Split it into an array.
-    const itemIds = package_list.map(id => id);
-
-    if (itemIds.length === 0) {
-        return res.status(400).json({ ok: false, message: "No valid item IDs provided in package_list." });
-    }
-
-    const placeholders = itemIds.map(() => '?').join(',');
-    const query = `SELECT * FROM item_inv WHERE item_id IN (${placeholders})`;
-
-    const [rows] = await connection.query(query, itemIds);
-
-    res.status(200).json({ ok: true, items: rows });
-
-  } catch (error) {
-    logger.error("Error retrieving package list:", error.message);
-    res.status(500).json({ ok: false, error: error.message });
-  } finally {
-    if (connection) connection.release();
-  }
-};
-
-module.exports = { createShipment, updateShipment, deleteShipment, getShipments, retrievePackageList };
+module.exports = { createShipment, updateShipment, deleteShipment, getShipments };

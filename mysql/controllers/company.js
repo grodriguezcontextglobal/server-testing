@@ -44,19 +44,11 @@ const insertingCompany = async (request, response) => {
 const consultingCompany = async (request, response) => {
   try {
     const connection = await getConnection();
-    const filters = request.body;
-
-    let query = "SELECT * FROM company_info";
-    const values = [];
-
-    if (Object.keys(filters).length > 0) {
-      const whereClauses = Object.keys(filters).map(key => `\`${key}\` = ?`);
-      query += ` WHERE ${whereClauses.join(" AND ")}`;
-      values.push(...Object.values(filters));
-    }
-
+    const reference = Object.entries(request.body);
+    const query = `SELECT * FROM company_info WHERE \`${reference[0][0]}\` = ?`;
+    const values = [reference[0][1]];
     const [result] = await connection.execute(query, values);
-    return response.status(200).json({ ok: true, companies: result });
+    return response.status(200).json({ ok: true, company: result });
   } catch (err) {
     logger.error("Error:", err.message);
     return response.status(500).json({ ok: false, msg: err.message });
@@ -237,49 +229,40 @@ const updateGroupItems = async (request, response) => {
       image_url,
     }));
 
-    // Todos los campos del SET salvo serial_number son compartidos por todo el
-    // batch (vienen de request.body, no del item individual). Por eso se puede
-    // colapsar el loop de N UPDATEs en 1 solo, usando CASE/WHEN únicamente para
-    // el campo que sí varía por fila.
-    const validItems = copyData.filter((item) => item.item_id);
+    const query = `
+      UPDATE item_inv
+      SET serial_number=?, category_name=?, item_group=?, cost=?, brand=?, descript_item=?, ownership=?,
+          main_warehouse=?, warehouse=?, company=?, location=?, sub_location=?, current_location=?, 
+          extra_serial_number=?, company_id=?, return_date=?, update_at=?, enableAssignFeature=?, 
+          container=?, containerSpotLimit=?, image_url=?
+      WHERE item_id=?`;
 
-    if (validItems.length) {
-      const first = validItems[0];
-      const serialCases = validItems.map(() => "WHEN ? THEN ?").join(" ");
-      const itemIdsPlaceholders = validItems.map(() => "?").join(",");
-
-      const query = `
-        UPDATE item_inv
-        SET serial_number = CASE item_id ${serialCases} END,
-            category_name=?, item_group=?, cost=?, brand=?, descript_item=?, ownership=?,
-            main_warehouse=?, warehouse=?, company=?, location=?, sub_location=?, current_location=?,
-            extra_serial_number=?, company_id=?, return_date=?, update_at=?, enableAssignFeature=?,
-            container=?, containerSpotLimit=?, image_url=?
-        WHERE item_id IN (${itemIdsPlaceholders})`;
+    for (const item of copyData) {
+      if (!item.item_id) continue;
 
       const values = [
-        ...validItems.flatMap((item) => [item.item_id, item.serial_number]),
-        first.category_name,
-        first.item_group,
-        first.cost,
-        first.brand,
-        first.descript_item,
-        first.ownership,
-        first.main_warehouse,
-        first.warehouse,
-        first.company,
-        first.location,
-        first.sub_location,
-        first.current_location,
-        JSON.stringify(first.extra_serial_number),
-        first.company_id,
-        first.return_date,
-        first.update_at,
-        first.enableAssignFeature,
-        first.container,
-        first.containerSpotLimit,
-        first.image_url,
-        ...validItems.map((item) => item.item_id),
+        item.serial_number,
+        item.category_name,
+        item.item_group,
+        item.cost,
+        item.brand,
+        item.descript_item,
+        item.ownership,
+        item.main_warehouse,
+        item.warehouse,
+        item.company,
+        item.location,
+        item.sub_location,
+        item.current_location,
+        JSON.stringify(item.extra_serial_number),
+        item.company_id,
+        item.return_date,
+        item.update_at,
+        item.enableAssignFeature,
+        item.container,
+        item.containerSpotLimit,
+        item.image_url,
+        item.item_id,
       ];
 
       await connection.execute(query, values);

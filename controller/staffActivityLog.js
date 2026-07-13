@@ -1,21 +1,9 @@
 const StaffActivityLog = require("../models/StaffActivityLog");
 const AdminUser = require("../models/AdminUser");
 const logger = require("../helpers/logger");
-const { enqueue } = require("../helpers/queue");
 
 /**
  * Logs a staff member's activity.
- *
- * Encolado en vez de guardado inline (ver DESIGN_task_queue.md § Fase 1): antes,
- * si el `save()` fallaba, el error se tragaba en el catch y el log se perdía
- * para siempre en silencio. Ahora el job sobrevive esa falla y reintenta con
- * backoff / dead-letter. El contrato para los 12 call-sites existentes
- * (admin.js, event.js, inventory.js) no cambia: nunca lanza, no devuelve nada.
- *
- * No lleva `context` (identidad de quién audita) porque el propio payload YA
- * es el registro de auditoría — `staff_member_id`/`company_id` son el sujeto
- * del log, no metadata de quién lo encoló.
- *
  * @param {Object} data - The activity data.
  * @param {string} data.staff_member_id - ID of the staff member.
  * @param {string} data.company_id - ID of the company.
@@ -25,13 +13,34 @@ const { enqueue } = require("../helpers/queue");
  * @param {Object} [data.details] - Additional details about the action.
  * @param {string} [data.ip_address] - IP address of the user.
  * @param {string} [data.device_info] - Device/User Agent info.
- * @param {object} [opts] - Inyectable en tests (enqueueFn); en producción usa el enqueue real.
  */
-const logStaffActivity = async (data, { enqueueFn = enqueue } = {}) => {
+const logStaffActivity = async (data) => {
   try {
-    await enqueueFn("log:staff-activity", data);
+    const {
+      staff_member_id,
+      company_id,
+      action,
+      target_model,
+      target_id,
+      details,
+      ip_address,
+      device_info,
+    } = data;
+
+    const log = new StaffActivityLog({
+      staff_member_id,
+      company_id,
+      action,
+      target_model,
+      target_id,
+      details,
+      ip_address,
+      device_info,
+    });
+
+    await log.save();
   } catch (error) {
-    logger.error("Error enqueuing staff activity log:", error);
+    logger.error("Error saving staff activity log:", error);
   }
 };
 

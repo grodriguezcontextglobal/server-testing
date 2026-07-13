@@ -5,9 +5,6 @@
 
 const { Router } = require("express");
 const { consultingConsumerInfo, insertingCustomer, consultingConsumerTable, deleteCustomer } = require("../controllers/consumer");
-const { validateJWT } = require("../../middlewares/validate-jwt");
-const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
-const { authorizePermission } = require("../../middlewares/authorizePermission");
 
 const router = Router();
 
@@ -20,7 +17,7 @@ router.post('/consumers_information', consultingConsumerTable)
 //insert new consumer
 router.post('/new_consumer', insertingCustomer)
 
-//delete consumer
-router.delete('/:id', validateJWT, checkTokenVersion, authorizePermission("consumer", "delete"), deleteCustomer)
+//delete event
+router.delete('/:id', deleteCustomer)
 
 module.exports = router;

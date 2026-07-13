@@ -10,17 +10,14 @@
  } = require("../controller/admin");
 const { searchCustomerByParameters } = require("../controller/stripe");
 const { optionalJWT } = require("../middlewares/optionalJWT");
-const { validateJWT } = require("../middlewares/validate-jwt");
-const { checkTokenVersion } = require("../middlewares/checkValidateToken");
-const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
 
  //display all admin users
-router.get("/admin-users", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), displayAllAdminUser);
+router.get("/admin-users", optionalJWT,  displayAllAdminUser);
 
 //display all admin by queries
-router.post("/admin-users", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), displayAllAdminUser);
+router.post("/admin-users", optionalJWT, displayAllAdminUser);
 
- router.patch("/edit-admin/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "update"), editOtherAdminUser);
+ router.patch("/edit-admin/:id", optionalJWT, editOtherAdminUser);
  
  //search stripe customer by parameters
  router.get('/consumers/search',searchCustomerByParameters)

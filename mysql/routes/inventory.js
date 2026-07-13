@@ -14,14 +14,13 @@ const {
   updateLargeData,
   checkingItem,
 } = require("../controllers/item");
-const { validateJWT } = require("../../middlewares/validate-jwt");
 
 const router = Router();
 
 // insert items into container
 router.post("/container-items", insertContainerItems);
 
-router.post("/check-item", validateJWT, checkingItem);
+router.post("/check-item", checkingItem);
 
 router.get("/container-items/:container_item_id", getContainerItems);
 

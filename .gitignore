@@ -4,7 +4,7 @@ node_modules
 //mongoDB 
 DBConexion.txt
 tmp/uploads/
-# .env
+.env
 
 # Go Binaries
 *.exe

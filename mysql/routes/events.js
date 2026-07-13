@@ -25,7 +25,6 @@ const {
   allocateDeviceMarkedAsContainerInEvent,
   lockItemsForEvent,
   reserveItemsInInventoryForEvent,
-  removeReservedItemsInInventoryForEvent,
 } = require("../controllers/items_events");
 const {
   returningItemToStockWhenEventIsFinished,
@@ -40,9 +39,6 @@ const {
   consultingCompanyInventoryBasedOnSubmittedParameters,
   confirmItemsReturnedToStock,
 } = require("../controllers/item");
-const { validateJWT } = require("../../middlewares/validate-jwt");
-const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
-const { authorizePermission } = require("../../middlewares/authorizePermission");
 const router = Router();
 
 //check event info
@@ -92,7 +88,7 @@ router.post(
   itemFinalStatusWhenEventIsFinishedRefactored,
 );
 //delete event
-router.delete("/:id", validateJWT, checkTokenVersion, authorizePermission("event", "delete"), deleteEvent);
+router.delete("/:id", deleteEvent);
 
 //consulting all inventory in event
 router.get("/event-inventory/:id", consultingInventoryEvent);
@@ -131,13 +127,7 @@ router.post(
 );
 
 //retrieve inventory structured by item group with its location and its quantity
-// event_manager permission required — used only on the event inventory selection page
-router.post(
-  "/retrieve-item-group-location-quantity",
-  validateJWT,
-  authorizePermission("event", "read"),
-  getGroupedItemInventory,
-);
+router.post("/retrieve-item-group-location-quantity", getGroupedItemInventory);
 
 //retrieve inventory structured by item group with its location and its quantity and more columns defined
 router.post(
@@ -160,16 +150,7 @@ router.post(
 );
 
 //reserve items in inventory for event
-// event_manager permission required — updates event state (reserve = event:update)
-router.post(
-  "/reserve-items-for-event",
-  validateJWT,
-  authorizePermission("event", "update"),
-  reserveItemsInInventoryForEvent,
-);
-
-//remove reserved items in inventory for event
-router.post("/remove-reserved-items-for-event", removeReservedItemsInInventoryForEvent);
+router.post("/reserve-items-for-event", reserveItemsInInventoryForEvent);
 
 //lock items to be used in event
 router.post("/lock-items-for-event", lockItemsForEvent);

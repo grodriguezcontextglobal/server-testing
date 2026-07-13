@@ -77,40 +77,20 @@ const insertingRecordInEventRefactored = async (request, response) => {
       JOIN consumer_info AS ci ON ci.email = ?
       WHERE ii.item_group = ? AND ii.category_name = ? AND ii.serial_number = ?`;
 
-    // Cada fila necesita su propio INSERT...SELECT (el JOIN matchea contra
-    // item_inv/consumer_info con criterios distintos por registro, no se puede
-    // colapsar a 1 sola query sin arriesgar el resultado del join). Se envuelve
-    // en una transacción para que una falla a mitad de loop no deje records
-    // parciales — antes cada INSERT quedaba confirmado individualmente.
-    // `connection` a nivel de módulo es el Pool (getConnection().promise()),
-    // que no expone beginTransaction/commit/rollback — solo una PoolConnection
-    // individual los tiene, por eso hay que sacar una del pool para la transacción.
-    const txConnection = await connection.getConnection();
-    try {
-      await txConnection.beginTransaction();
-      try {
-        for (const data of dataToStoreAsRecord) {
-          const values = [
-            renderStatus(data.device.status),
-            data.device.status,
-            event,
-            data.paymentIntent,
-            data.user,
-            data.device.deviceType,
-            groupingInventoryByGroupName[data.device.deviceType]?.at(-1)?.category,
-            data.device.serialNumber,
-          ];
+    for (const data of dataToStoreAsRecord) {
+      const values = [
+        renderStatus(data.device.status),
+        data.device.status,
+        event,
+        data.paymentIntent,
+        data.user,
+        data.device.deviceType,
+        groupingInventoryByGroupName[data.device.deviceType]?.at(-1)?.category,
+        data.device.serialNumber,
+      ];
 
-          const [result] = await txConnection.execute(query, values);
-          resultRowAffected += result.affectedRows;
-        }
-        await txConnection.commit();
-      } catch (innerError) {
-        await txConnection.rollback();
-        throw innerError;
-      }
-    } finally {
-      txConnection.release();
+      const [result] = await connection.execute(query, values);
+      resultRowAffected += result.affectedRows;
     }
 
     return response.status(201).json({

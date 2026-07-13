@@ -1,19 +1,12 @@
-# Stage 1: compile Go worker
-FROM golang:1.24-bullseye AS go-builder
-WORKDIR /go-worker
-COPY go-worker/ .
-RUN go build -o worker .
-
-# Stage 2: Node production image
 FROM node:18.18.0-bullseye
+
 WORKDIR /app
 
-# native deps for canvas + curl for HEALTHCHECK
+# install native deps for canvas
 RUN apt-get update && apt-get install -y \
   python3 \
   make \
   g++ \
-  curl \
   libcairo2-dev \
   libpango1.0-dev \
   libjpeg-dev \
@@ -24,19 +17,9 @@ RUN apt-get update && apt-get install -y \
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# copy Go binary from builder stage
-COPY --from=go-builder /go-worker/worker ./go-worker/worker
-
 COPY . .
-
-# run as non-root user
-RUN chown -R node:node /app
-USER node
 
 ENV PORT=34001
 EXPOSE 34001
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -f http://localhost:34001/health || exit 1
 
 CMD ["node", "index.js"]

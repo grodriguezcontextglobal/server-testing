@@ -1,12 +1,7 @@
 const express = require("express");
 const Company = require("../models/Company");
-const AdminUser = require("../models/AdminUser");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const logger = require("../helpers/logger");
-const getConnection = require("../mysql/database/config");
-const { v4: uuid } = require("uuid");
-
-const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
 
 const createCompany = async (request, response = express.response) => {
   try {
@@ -54,10 +49,6 @@ const createCompany = async (request, response = express.response) => {
             status: employees.at(-1).status,
             super_user: employees.at(-1).super_user,
             role: employees.at(-1).role,
-            roleType: VALID_ROLE_TYPES.has(employees.at(-1).roleType)
-              ? employees.at(-1).roleType
-              : undefined,
-            userId: employees.at(-1).userId || undefined,
           },
         ],
         location: location,
@@ -65,35 +56,6 @@ const createCompany = async (request, response = express.response) => {
       });
 
       await companyInfo.save();
-
-      // Sync founder employee to company_staff SQL
-      try {
-        const emp = employees.at(-1);
-        const roleType = VALID_ROLE_TYPES.has(emp.roleType) ? emp.roleType : null;
-        if (roleType) {
-          const sqlConn = getConnection();
-
-          // Resolve the email: prefer emp.userId owner email, fall back to emp.user
-          const staffEmail = emp.userId
-            ? (await AdminUser.findOne({ email: emp.user }).select("email").lean())?.email ?? emp.user
-            : emp.user;
-
-          const [[staffRows], [roleRows]] = await Promise.all([
-            sqlConn.execute("SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1", [staffEmail]),
-            sqlConn.query("SELECT id FROM roles WHERE role_type = ?", [roleType]),
-          ]);
-          const staffRow = staffRows?.[0];
-
-          if (staffRow && roleRows.length) {
-            await sqlConn.query(
-              "INSERT IGNORE INTO company_staff (id, company_id, staff_id, role_id, is_active) VALUES (?,?,?,?,1)",
-              [uuid(), companyInfo._id.toString(), staffRow.staff_id, roleRows[0].id]
-            );
-          }
-        }
-      } catch (sqlErr) {
-        logger.error("company_staff sync failed:", sqlErr.message);
-      }
 
       return response.status(201).json({
         ok: true,

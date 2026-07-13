@@ -5,8 +5,6 @@
 
 const { Router } = require("express");
 const { createItem, editItem, deleteItem, listOfItems } = require("../controller/item");
-const { validateJWT } = require("../middlewares/validate-jwt");
-const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const router = Router();
 
 // create an event
@@ -16,7 +14,7 @@ router.post("/create-item", createItem);
 router.patch("/edit-item/:id", editItem)
 
 //edit/update a specific value of an event
-router.delete("/delete-item/:id", validateJWT, checkTokenVersion, deleteItem)
+router.delete("/delete-item/:id", deleteItem)
 
 //display event list
 router.get("/list-items", listOfItems);

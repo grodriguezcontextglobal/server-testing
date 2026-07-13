@@ -155,59 +155,6 @@ const uploadExcelToS3 = async (file, options) => {
   }
 };
 
-/**
- * Sube un adjunto de correo (base64) a S3 antes de encolar el envío (ver
- * nodeMailer/notifications.js § returnedItemsToRenterNotification). El job de
- * la cola solo guarda la key devuelta aquí, nunca el base64 — evita acercarse
- * al límite de 16MB por documento de MongoDB con adjuntos grandes.
- * @param {Object} params
- * @param {string} params.content - Contenido en base64.
- * @param {string} params.filename
- * @param {string} [params.contentType]
- * @returns {Promise<{key: string}>}
- */
-const uploadNotificationAttachment = async ({ content, filename, contentType }) => {
-  const key = `notification-attachments/${Date.now()}-${filename}`;
-  const buffer = Buffer.from(content, "base64");
-
-  await s3Client.send(
-    new PutObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET_NAME,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType || "application/octet-stream",
-    })
-  );
-
-  return { key };
-};
-
-const streamToBuffer = (stream) =>
-  new Promise((resolve, reject) => {
-    const chunks = [];
-    stream.on("data", (chunk) => chunks.push(chunk));
-    stream.on("error", reject);
-    stream.on("end", () => resolve(Buffer.concat(chunks)));
-  });
-
-/**
- * Descarga un objeto de S3 y lo devuelve como base64 — usado por el worker
- * justo antes de enviar el correo, para resolver los `attachmentRefs` del job
- * a los `attachments` reales que espera SendGrid.
- * @param {string} key
- * @returns {Promise<string>} contenido en base64
- */
-const fetchAttachmentAsBase64 = async (key) => {
-  const command = new GetObjectCommand({
-    Bucket: process.env.AWS_S3_BUCKET_NAME,
-    Key: key,
-  });
-
-  const response = await s3Client.send(command);
-  const buffer = await streamToBuffer(response.Body);
-  return buffer.toString("base64");
-};
-
 function extractS3Key(fullUrl) {
   // Extract everything after the .com/ or first forward slash if .com isn't present
   const matches = fullUrl.match(/\.com\/(.*)|\/(.*)/);
@@ -275,8 +222,6 @@ const deleteDocumentFromS3 = async (key) => {
 module.exports = {
   uploadPdfToS3,
   uploadExcelToS3,
-  uploadNotificationAttachment,
-  fetchAttachmentAsBase64,
   getTemporaryDownloadUrl,
   deleteDocumentFromS3,
 };

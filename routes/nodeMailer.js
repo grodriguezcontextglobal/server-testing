@@ -33,8 +33,7 @@ const {
   returningDeviceLeaseMemberNotification,
   completedTask,
   failedTask,
-  forcingRevokingActiveSession,
-  memberEmailNotification
+  forcingRevokingActiveSession
 } = require("../nodeMailer/notifications");
 const router = Router();
 
@@ -158,7 +157,6 @@ router.post("/failed-task-notification", failedTask)
 //notification for revoking active session
 router.post("/forcing-revoking-active-session", forcingRevokingActiveSession)
 
-//member email notification
-router.post("/member-email-notification", memberEmailNotification);
+
 
 module.exports = router;

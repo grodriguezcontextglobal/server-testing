@@ -3,49 +3,10 @@ const getConnection = require("../database/config");
 const { clientRedis } = require("../../database/cacheMemoryConfig");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
-const {
-  processSubLocation,
-  processSubLocationPath,
-  resolveSubLocationFilter,
-} = require("./sub_location");
+const { processSubLocation } = require("./sub_location");
 const ReceiversPool = require("../../models/ReceiversPool");
 const { groupBy } = require("lodash");
 require("dotenv").config();
-
-const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
-
-const ITEM_INV_COLUMNS = new Set([
-  "item_id",
-  "category_name",
-  "sub_category_name",
-  "item_group",
-  "sub_item_group",
-  "cost",
-  "brand",
-  "descript_item",
-  "ownership",
-  "main_warehouse",
-  "serial_number",
-  "warehouse",
-  "company",
-  "location",
-  "sub_location",
-  "location_id",
-  "current_location",
-  "extra_serial_number",
-  "company_id",
-  "return_date",
-  "container",
-  "containerSpotLimit",
-  "enableAssignFeature",
-  "image_url",
-  "returnedRentedInfo",
-  "container_id",
-  "display_item",
-  "supplier_info",
-  "create_at",
-  "update_at",
-]);
 
 // throw new Error("SERVER HAS RESTARTED AND LOADED THE NEW FILE. This is an intentional test.");
 
@@ -143,9 +104,7 @@ const insertingItem = async (request, response) => {
 
   const {
     category_name,
-    sub_category_name,
     item_group,
-    sub_item_group,
     cost,
     brand,
     descript_item,
@@ -201,47 +160,41 @@ const insertingItem = async (request, response) => {
       }
     }
 
-    // 2. Process Sub-Location (Optional) — Fase 4a
-    //    Resolvemos/creamos la cadena jerárquica completa y persistimos el
-    //    sub_location_id de la HOJA. Se sigue escribiendo el JSON legacy en la
-    //    columna `sub_location` (doble write temporal, no rompe la vista árbol).
+    // 2. Process Sub-Location (Optional)
     let subLocationId = null;
-    let finalSubLocationName = sub_location; // Default to input (legacy column)
+    let finalSubLocationName = sub_location; // Default to input
 
-    if (locationId && sub_location_name) {
-      // Caso explícito: nombre único (+ parent opcional) — comportamiento original
-      const subLocResult = await processSubLocation(connection, {
+    // Check if we have enough info to create/verify sub-location
+    // We need location_id (from step 1) and a sub-location name
+    const subLocName =
+      sub_location_name ||
+      (typeof sub_location === "string"
+        ? sub_location
+        : sub_location?.name || null);
+
+    if (locationId && subLocName) {
+      const subLocationData = {
         active: true,
         location_id: locationId,
-        name: sub_location_name,
-        parent_id: sub_location_parent_id || null,
-        company_id,
-      });
-      subLocationId = subLocResult.sub_location_id;
-      finalSubLocationName = subLocResult.name;
-    } else if (locationId && sub_location != null) {
-      // Caso path: array (o JSON string de array) de nombres, o nombre simple
-      let segments = [];
-      if (Array.isArray(sub_location)) {
-        segments = sub_location;
-      } else if (typeof sub_location === "string") {
-        try {
-          const parsed = JSON.parse(sub_location);
-          segments = Array.isArray(parsed) ? parsed : [sub_location];
-        } catch (e) {
-          segments = [sub_location];
-        }
-      } else if (typeof sub_location === "object" && sub_location.name) {
-        segments = [sub_location.name];
+        name: subLocName,
+        parent_id: sub_location_parent_id || sub_location?.parent_id || null,
+      };
+
+      let isSimpleName = true;
+      try {
+        const parsed = JSON.parse(subLocName);
+        if (Array.isArray(parsed)) isSimpleName = false;
+      } catch (e) {
+        // Not JSON, so it's a simple string
       }
 
-      if (segments.length) {
-        subLocationId = await processSubLocationPath(
+      if (isSimpleName) {
+        const subLocResult = await processSubLocation(
           connection,
-          locationId,
-          segments,
-          company_id,
+          subLocationData,
         );
+        subLocationId = subLocResult.sub_location_id;
+        finalSubLocationName = subLocResult.name;
       }
     }
 
@@ -284,22 +237,19 @@ const insertingItem = async (request, response) => {
     // 4. Insert Item
     const query = `
       INSERT INTO item_inv (
-        category_name,
-        sub_category_name,
-        item_group,
-        sub_item_group,
-        cost,
+        category_name, 
+        item_group, 
+        cost, 
         brand,
-        descript_item,
-        ownership,
+        descript_item, 
+        ownership, 
         main_warehouse,
-        serial_number,
-        warehouse,
-        company,
+        serial_number, 
+        warehouse, 
+        company, 
         location,
         sub_location,
         location_id,
-        sub_location_id,
         current_location,
         extra_serial_number,
         company_id,
@@ -312,14 +262,12 @@ const insertingItem = async (request, response) => {
         container_id,
         display_item,
         supplier_info
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
       category_name,
-      sub_category_name || null,
       item_group,
-      sub_item_group || null,
       parsedCost,
       brand,
       descript_item,
@@ -331,7 +279,6 @@ const insertingItem = async (request, response) => {
       finalLocationName, // Legacy location column
       finalSubLocationName, // Legacy sub_location column
       locationId, // New location_id column
-      subLocationId, // New sub_location_id column (leaf of the path) — Fase 4a
       current_location,
       finalExtraSerialNumber,
       company_id,
@@ -379,9 +326,7 @@ const insertBulkItem = async (request, response) => {
     // const cache_connection = await clientRedis();
     const {
       category_name,
-      sub_category_name,
       item_group,
-      sub_item_group,
       cost,
       brand,
       descript_item,
@@ -457,9 +402,7 @@ const insertBulkItem = async (request, response) => {
     INSERT INTO item_inv
     (
       category_name,
-      sub_category_name,
       item_group,
-      sub_item_group,
       cost,
       brand,
       descript_item,
@@ -492,9 +435,7 @@ const insertBulkItem = async (request, response) => {
     // Prepare an array of value arrays, each sub-array representing a row to be inserted
     const values = serialNumbers.map((serial_number) => [
       category_name,
-      sub_category_name || null,
       item_group,
-      sub_item_group || null,
       cost,
       brand,
       descript_item,
@@ -518,7 +459,7 @@ const insertBulkItem = async (request, response) => {
       containerId,
       display_item,
       enableAssignFeature,
-      image_url || null,
+      image_url || null, // Handle undefined image_url
       supplier_info,
     ]);
     const [result] = await connection.query(query, [values]);
@@ -587,12 +528,8 @@ const insertBulkItemAlhpanumericFormat = async (request, response) => {
 const consultingItem = async (request, response) => {
   try {
     const connection = getConnection();
-    const invalidCols = Object.keys(request.body).filter((k) => !ITEM_INV_COLUMNS.has(k));
-    if (invalidCols.length > 0) {
-      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
-    }
     const formatting = Object.keys(request.body)
-      .map((item) => `\`${item}\`=?`)
+      .map((item) => `${item}=?`)
       .join(" AND ");
     const values = Object.values(request.body);
     const query = `SELECT * FROM item_inv WHERE ${formatting};`;
@@ -651,37 +588,46 @@ const consultingItemTable = async (request, response) => {
 const consultingItemInWarehouseTable = async (request, response) => {
   try {
     const connection = getConnection();
-    const { role: _role, preference: _pref, ...filters } = request.body;
-    const { company_id } = filters;
-
-    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
-    if (!userAccess) {
-      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
-    }
-    const { role_level, locations } = userAccess;
+    const { role, preference, ...filters } = request.body;
 
     // Base query construction
-    let formatting = Object.keys(filters).map((item) => `${item}=?`).join(" AND ");
+    let formatting = Object.keys(filters)
+      .map((item) => `${item}=?`)
+      .join(" AND ");
     const values = Object.values(filters);
 
-    // Roles 0 (root_admin), 1 (admin), 4 (inventory_manager) see all inventory; others are location-scoped
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
+    // Apply location filtering if role is not root admin ("0") and preferences exist
+    let locations = [];
+    if (Array.isArray(preference)) {
+      locations = preference;
+    } else if (preference && preference.inventory_location) {
+      locations = preference.inventory_location;
+    }
+
+    if (role !== "0" && role !== "1" && locations.length > 0) {
       const locationPlaceholders = locations.map(() => "?").join(",");
+
       if (formatting) {
         formatting += ` AND location IN (${locationPlaceholders})`;
       } else {
         formatting = `location IN (${locationPlaceholders})`;
       }
+
       values.push(...locations);
     }
-
     const query = `SELECT * FROM item_inv WHERE ${formatting};`;
     const [result] = await connection.execute(query, values);
 
-    return response.status(201).json({ items: result, ok: true });
+    return response.status(201).json({
+      items: result,
+      ok: true,
+    });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ msg: error.message, ok: false });
+    return response.status(500).json({
+      msg: error.message,
+      ok: false,
+    });
   }
 };
 
@@ -696,9 +642,7 @@ const updateItemInTable = async (request, response) => {
     // Whitelist of known columns in item_inv to prevent invalid updates
     const allowedColumns = new Set([
       "category_name",
-      "sub_category_name",
       "item_group",
-      "sub_item_group",
       "cost",
       "brand",
       "descript_item",
@@ -1165,37 +1109,58 @@ const consultingInventoryTracking = async (request, response) => {
 const checkingInventoryCurrentState = async (request, response) => {
   try {
     const company_id = request.params.company_id;
-
-    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
-    if (!userAccess) {
-      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    const { role, preference } = request.query;
+    let locations = [];
+    if (role !== "0" && role !== "1" && preference) {
+      if (Array.isArray(preference)) {
+        locations = preference;
+      } else {
+        try {
+          const parsed = JSON.parse(preference);
+          if (Array.isArray(parsed)) {
+            locations = parsed;
+          } else if (parsed.inventory_location) {
+            locations = parsed.inventory_location;
+          } else {
+            locations = [preference];
+          }
+        } catch (e) {
+          locations = [preference];
+        }
+      }
     }
-    const { role_level, locations } = userAccess;
 
-    const workerPayload = { company_id };
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
-    }
+    const workerResponse = await runGoWorker(
+      "checking-inventory-current-state",
+      {
+        company_id: company_id,
+        locations: locations,
+      },
+    );
 
-    const workerResponse = await runGoWorker("checking-inventory-current-state", workerPayload);
     if (workerResponse.status === "error") {
       throw new Error(workerResponse.message);
     }
 
-    return response.status(201).json({ ok: true, result: workerResponse.data });
+    return response.status(201).json({
+      ok: true,
+      result: workerResponse.data,
+    });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+    response.status(500).json({
+      msg: error.message,
+      ok: false,
+    });
   }
 };
 
 const checkingItem = async (request, response) => {
   try {
-    // Strip role/preference from body so they cannot influence the query
-    const { role: _role, preference: _pref, ...bodyFilters } = request.body;
+    const { role, preference, ...filters } = request.body;
 
     // Validate required company_id
-    if (!bodyFilters.company_id) {
+    if (!filters.company_id) {
       return response.status(400).json({
         msg: "company_id is required",
         ok: false,
@@ -1204,7 +1169,7 @@ const checkingItem = async (request, response) => {
 
     // Validate filters to prevent undefined values
     const cleanFilters = {};
-    for (const [key, value] of Object.entries(bodyFilters)) {
+    for (const [key, value] of Object.entries(filters)) {
       if (value !== undefined) {
         cleanFilters[key] = value;
       }
@@ -1212,16 +1177,29 @@ const checkingItem = async (request, response) => {
 
     const workerPayload = { filters: cleanFilters };
 
-    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, bodyFilters.company_id);
-    if (!userAccess) {
-      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
-    }
-    const { role_level, locations } = userAccess;
+    let locations = [];
+    let parsedPreference = preference;
 
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
+    // Handle stringified preference if it comes as a string
+    if (typeof preference === "string") {
+      try {
+        parsedPreference = JSON.parse(preference);
+      } catch (e) {
+        // keep original value
+      }
+    }
+
+    if (Array.isArray(parsedPreference)) {
+      locations = parsedPreference;
+    } else if (parsedPreference && parsedPreference.inventory_location) {
+      locations = parsedPreference.inventory_location;
+    }
+
+    if (role && role !== "0" && role !== "1" && locations.length > 0) {
       workerPayload.locations = locations;
     }
 
+    // Explicitly log before calling worker
     const result = await runGoWorker("check-item", workerPayload);
 
     return response.status(201).json({
@@ -1495,50 +1473,44 @@ const checkInventoryCompanyExists = async (request, response) => {
 };
 
 const containerItemsDetails = async (props) => {
-  // getConnection() devuelve el Pool, que no expone beginTransaction/commit/
-  // rollback — solo una PoolConnection individual los tiene.
-  const pool = getConnection();
-  const connection = await pool.getConnection();
   try {
+    const connection = getConnection();
+    //removing items from container
     const removingItems =
       typeof props.remove === "string"
         ? JSON.parse(props.remove)
         : props.remove;
+    for (let item of removingItems) {
+      const query = `
+      UPDATE item_inv
+      SET container_id = ?,
+      isItInContainer = ?,
+      display_item = ?
+      WHERE item_id = ?;
+      `;
+      const values = [null, 0, 1, item.item_id];
+      await connection.execute(query, values);
+    }
+    //adding new items to container
     const data =
       typeof props.data === "string" ? JSON.parse(props.data) : props.data;
-
-    const removeIds = removingItems.map((item) => item.item_id).filter(Boolean);
-    const addIds = data.map((item) => item.item_id).filter(Boolean);
-
-    await connection.beginTransaction();
-
-    // removing items from container — 1 UPDATE para todos en vez de 1 por item
-    if (removeIds.length) {
-      await connection.execute(
-        `UPDATE item_inv
-         SET container_id = ?, isItInContainer = ?, display_item = ?
-         WHERE item_id IN (${removeIds.map(() => "?").join(",")})`,
-        [null, 0, 1, ...removeIds]
-      );
+    for (let item of data) {
+      const query = `
+      UPDATE item_inv
+      SET container_id = ?,
+      isItInContainer = ?,
+      display_item = ?
+      WHERE item_id = ?;
+    `;
+      const values = [props.container_id, 1, 0, item.item_id];
+      await connection.execute(query, values);
     }
-
-    // adding new items to container — 1 UPDATE para todos en vez de 1 por item
-    if (addIds.length) {
-      await connection.execute(
-        `UPDATE item_inv
-         SET container_id = ?, isItInContainer = ?, display_item = ?
-         WHERE item_id IN (${addIds.map(() => "?").join(",")})`,
-        [props.container_id, 1, 0, ...addIds]
-      );
-    }
-
-    await connection.commit();
   } catch (error) {
-    await connection.rollback();
     logger.error("Error:", error);
-    throw error;
-  } finally {
-    connection.release();
+    return response.status(500).json({
+      msg: error.message,
+      ok: false,
+    });
   }
 };
 
@@ -1633,12 +1605,8 @@ const retrieveItemLocationQuantityForEvent = async (request, response) => {
     const connection = getConnection();
     const options = new Map();
 
-    const invalidCols = Object.keys(request.body).filter((k) => !ITEM_INV_COLUMNS.has(k));
-    if (invalidCols.length > 0) {
-      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
-    }
     const formatting = Object.keys(request.body)
-      .map((item) => `\`${item}\`=?`)
+      .map((item) => `${item}=?`)
       .join(" AND ");
     const values = Object.values(request.body);
 
@@ -1927,11 +1895,7 @@ const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
 
     // Step 1: extract company filters
     const formattingKeys = Object.keys(request.body);
-    const invalidCols = formattingKeys.filter((k) => !ITEM_INV_COLUMNS.has(k));
-    if (invalidCols.length > 0) {
-      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
-    }
-    const formatting = formattingKeys.map((item) => `\`${item}\`=?`).join(" AND ");
+    const formatting = formattingKeys.map((item) => `${item}=?`).join(" AND ");
     const formattingValues = Object.values(request.body);
     const sublocationParam = request.query.sub_location || "null";
     // Step 2: extract sub_location path from query
@@ -1943,29 +1907,9 @@ const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
     `;
     const queryValues = [...formattingValues];
     if (sublocationSegments[0] !== "null") {
-      // Fase 4a: si hay contexto de locación, resolvemos el path a ids del
-      // subárbol y filtramos por la columna indexada sub_location_id (evita el
-      // JSON_EXTRACT no-indexable). Si no hay location_id o el path no resuelve
-      // completo contra sub_locations, caemos al filtro JSON legacy → sin
-      // regresión (mismo comportamiento que antes).
-      // El frontend real (LocationDetail/Table.jsx) manda `location` (nombre),
-      // no `location_id` — se resuelve por nombre para que el fast-path aplique.
-      let locationId = request.body.location_id;
-      if (!locationId && request.body.company_id && request.body.location) {
-        locationId = await getLocationId(connection, request.body.company_id, request.body.location);
-      }
-      let resolved = null;
-      if (locationId) {
-        resolved = await resolveSubLocationFilter(connection, locationId, sublocationSegments);
-      }
-      if (resolved && resolved.ids.length) {
-        query += ` AND sub_location_id IN (${resolved.ids.map(() => "?").join(",")})`;
-        queryValues.push(...resolved.ids);
-      } else {
-        const { clause, values } = buildSublocationQuery(sublocationSegments);
-        query += ` AND ${clause}`;
-        queryValues.push(...values);
-      }
+      const { clause, values } = buildSublocationQuery(sublocationSegments);
+      query += ` AND ${clause}`;
+      queryValues.push(...values);
     }
     query += ` ORDER BY item_id ASC`;
 
@@ -2105,21 +2049,12 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
 
 const retrieveItemData = async (request, response) => {
   try {
-    const { company_id } = request.body;
-
-    if (!company_id) {
-      return response.status(400).json({ ok: false, msg: "company_id is required" });
-    }
-
-    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
-    if (!userAccess) {
-      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
-    }
-    const { role_level, locations } = userAccess;
-
-    const workerPayload = { company_id };
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
+    const { role, company_id, locations } = request.body;
+    const workerPayload = {
+      company_id: company_id,
+    };
+    if (role !== "0") {
+      workerPayload.locations = locations || [];
     }
 
     const result = await runGoWorker("retrieve-item-data", workerPayload);
@@ -2132,7 +2067,10 @@ const retrieveItemData = async (request, response) => {
       totalAvailable: result.totalAvailable,
     });
   } catch (error) {
-    return response.status(500).json({ msg: error.message, ok: false });
+    return response.status(500).json({
+      msg: error.message,
+      ok: false,
+    });
   }
 };
 const retrieveCompanyInventory = async (request, response) => {
@@ -2429,200 +2367,153 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
 
 const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => {
   let connection;
-
-  const ALLOWED_REFERENCE_KEYS = ["item_group", "category_name", "brand"];
-  const CONTROL_FIELDS = ["reference", "updateAll", "list", "company_id", "update_at"];
-
-  // Parses the wrapped extra_serial_number format into a per-item Map.
-  //
-  // Input format (JSON string or array):
-  //   [{ "5001": [{ keyObject: "Serial Number", valueObject: "5001" },
-  //               { keyObject: "item_id",        valueObject: 57105  }] }]
-  //
-  // Output: Map { "5001" → '[{"keyObject":"Serial Number","valueObject":"5001"}]' }
-  //   — item_id entries are stripped because they are not stored in the column.
-  const buildExtraSerialNumberMap = (raw) => {
-    if (raw === undefined || raw === null) return new Map();
-    let parsed;
-    try {
-      parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-    } catch (e) {
-      throw new Error(`extra_serial_number contains invalid JSON: ${e.message}`);
-    }
-    if (!Array.isArray(parsed)) {
-      throw new Error("extra_serial_number must be a JSON array");
-    }
-    const map = new Map();
-    for (const entry of parsed) {
-      for (const [serial, data] of Object.entries(entry)) {
-        if (Array.isArray(data)) {
-          const filtered = data.filter((item) => item?.keyObject !== "item_id");
-          map.set(String(serial), JSON.stringify(filtered));
-        }
-      }
-    }
-    return map;
-  };
-
   try {
     connection = await getConnection().getConnection();
     await connection.beginTransaction();
 
     const {
       company_id,
+      item_group,
+      category_name,
+      list,
       updateAll = false,
-      list = [],
-      reference = {},
-      extra_serial_number,
-      ...rawUpdateData
+      extra_serial_number, // Stringified JSON
+      ...updateData
     } = request.body;
 
+    // --- Validation ---
     if (!company_id) {
-      return response.status(400).json({ msg: "company_id is required.", ok: false });
+      return response
+        .status(400)
+        .json({ msg: "company_id is a required primary key.", ok: false });
     }
-
-    // Build the common update payload, stripping control keys and undefineds
-    const validUpdateData = {};
-    for (const [key, value] of Object.entries(rawUpdateData)) {
-      if (!CONTROL_FIELDS.includes(key) && value !== undefined) {
-        validUpdateData[key] = value;
-      }
+    if (!updateAll && (!Array.isArray(list) || list.length === 0)) {
+      return response.status(400).json({
+        msg: "When 'updateAll' is false, a 'list' of serial numbers is required.",
+        ok: false,
+      });
+    }
+    if (!updateAll && !extra_serial_number) {
+      return response.status(400).json({
+        msg: "When 'updateAll' is false, 'extra_serial_number' is required.",
+        ok: false,
+      });
     }
 
     if (updateAll) {
-      // ── updateAll: update every item that matches the reference criteria ───────
-      // extra_serial_number is intentionally excluded here — we cannot assign
-      // per-item values when the target set is determined at runtime by a WHERE.
-      const referenceEntries = Object.entries(reference).filter(
-        ([key, value]) =>
-          ALLOWED_REFERENCE_KEYS.includes(key) &&
-          value !== undefined &&
-          value !== null &&
-          String(value).trim() !== "",
-      );
+      // Logic for updating all items matching the criteria.
+      const validUpdateData = { ...updateData };
+      if (extra_serial_number) {
+        // If provided, it will be applied to all matched items.
+        validUpdateData.extra_serial_number = extra_serial_number;
+      }
+      validUpdateData.update_at = new Date();
 
-      if (referenceEntries.length === 0) {
-        return response.status(400).json({
-          msg: "reference must include at least one of: item_group, category_name, brand.",
-          ok: false,
-        });
+      const setClause = Object.keys(validUpdateData)
+        .map((key) => `${key} = ?`)
+        .join(", ");
+      const setValues = Object.values(validUpdateData);
+
+      const whereClauses = ["company_id = ?"];
+      const whereValues = [company_id];
+      if (item_group) {
+        whereClauses.push("item_group = ?");
+        whereValues.push(item_group);
+      }
+      if (category_name) {
+        whereClauses.push("category_name = ?");
+        whereValues.push(category_name);
       }
 
-      const baseEntries = Object.entries(validUpdateData);
-      if (baseEntries.length === 0) {
-        return response.status(400).json({
-          msg: "At least one field is required to update.",
-          ok: false,
-        });
-      }
-
-      const updateEntries = [...baseEntries, ["update_at", new Date()]];
-      const setClause = updateEntries.map(([key]) => `${key} = ?`).join(", ");
-      const setValues = updateEntries.map(([, val]) => val);
-
-      const whereClause = [
-        "company_id = ?",
-        ...referenceEntries.map(([key]) => `${key} = ?`),
-      ].join(" AND ");
-      const whereValues = [company_id, ...referenceEntries.map(([, val]) => val)];
-
-      const [result] = await connection.execute(
-        `UPDATE item_inv SET ${setClause} WHERE ${whereClause}`,
-        [...setValues, ...whereValues],
-      );
-
+      const query = `UPDATE item_inv SET ${setClause} WHERE ${whereClauses.join(
+        " AND "
+      )}`;
+      const values = [...setValues, ...whereValues];
+      const [result] = await connection.execute(query, values);
       await connection.commit();
+
       return response.status(200).json({
         msg: `${result.affectedRows} item(s) updated successfully.`,
         ok: true,
         updated_count: result.affectedRows,
       });
-    }
+    } else {
+      // Logic for updating specific items from the 'list'.
+      const parsedExtraSerial = JSON.parse(extra_serial_number);
 
-    // ── list: update only the items whose serial numbers are in list ─────────────
+      const serialDataMap = {};
+      for (const entry of parsedExtraSerial) {
+        const serial = Object.keys(entry)[0];
+        const detailsArray = entry[serial];
+        const itemIdObject = detailsArray.find((d) => d.keyObject === "item_id");
+        const itemId = itemIdObject ? itemIdObject.valueObject : null;
 
-    // Build the map first so we can fall back to its keys when list is omitted.
-    let extraSerialMap;
-    try {
-      extraSerialMap = buildExtraSerialNumberMap(extra_serial_number);
-    } catch (e) {
-      return response.status(400).json({ ok: false, msg: e.message });
-    }
+        // Filter out item_id to prepare the data for storage.
+        const dataToStore = detailsArray.filter(
+          (d) => d.keyObject !== "item_id"
+        );
 
-    // If list is not provided, derive it from the serial number keys embedded
-    // in extra_serial_number so callers don't need to send it twice.
-    const effectiveList = Array.isArray(list) && list.length > 0
-      ? list
-      : [...extraSerialMap.keys()];
-
-    if (effectiveList.length === 0) {
-      return response.status(400).json({
-        msg: "Provide list or extra_serial_number with serial number keys.",
-        ok: false,
-      });
-    }
-
-    const baseEntries = Object.entries(validUpdateData);
-
-    if (baseEntries.length === 0 && extraSerialMap.size === 0) {
-      return response.status(400).json({
-        msg: "At least one field is required to update.",
-        ok: false,
-      });
-    }
-
-    const updateEntries = [...baseEntries, ["update_at", new Date()]];
-    const setClauses = updateEntries.map(([key]) => `${key} = ?`);
-    const setValues = updateEntries.map(([, val]) => val);
-
-    // Build a CASE WHEN expression so each serial number gets its own
-    // extra_serial_number value. Items not present in the map keep their
-    // current value (ELSE extra_serial_number).
-    if (extraSerialMap.size > 0) {
-      const whenClauses = [];
-      for (const serial of effectiveList) {
-        const stored = extraSerialMap.get(String(serial));
-        if (stored !== undefined) {
-          whenClauses.push("WHEN ? THEN ?");
-          setValues.push(String(serial), stored);
+        if (itemId) {
+          serialDataMap[serial] = {
+            itemId: itemId,
+            jsonToStore: JSON.stringify(dataToStore),
+          };
         }
       }
-      if (whenClauses.length > 0) {
-        setClauses.push(
-          `extra_serial_number = CASE serial_number ${whenClauses.join(" ")} ELSE extra_serial_number END`,
+
+      const commonUpdateData = { ...updateData };
+      commonUpdateData.update_at = new Date();
+
+      let totalAffectedRows = 0;
+      for (const serial of list) {
+        const data = serialDataMap[String(serial)];
+        if (!data || !data.itemId) {
+          logger.warn(`No mapping found for serial ${serial}. Skipping.`);
+          continue;
+        }
+
+        const itemSpecificUpdateData = {
+          ...commonUpdateData,
+          serial_number: serial, // Update serial_number with the identifier
+          extra_serial_number: data.jsonToStore, // Update with filtered JSON
+        };
+
+        const setClauses = Object.keys(itemSpecificUpdateData).map(
+          (key) => `${key} = ?`
         );
+        const setValues = Object.values(itemSpecificUpdateData);
+
+        if (setClauses.length === 0) continue;
+
+        const query = `UPDATE item_inv SET ${setClauses.join(
+          ", "
+        )} WHERE item_id = ? AND company_id = ?`;
+        const values = [...setValues, data.itemId, company_id];
+
+        const [result] = await connection.execute(query, values);
+        totalAffectedRows += result.affectedRows;
       }
+
+      await connection.commit();
+      return response.status(200).json({
+        msg: `${totalAffectedRows} item(s) updated successfully.`,
+        ok: true,
+        updated_count: totalAffectedRows,
+      });
     }
-
-    const placeholders = effectiveList.map(() => "?").join(", ");
-    const query = `
-      UPDATE item_inv
-      SET ${setClauses.join(", ")}
-      WHERE company_id = ? AND serial_number IN (${placeholders})
-    `;
-
-    const [result] = await connection.execute(query, [
-      ...setValues,
-      company_id,
-      ...effectiveList,
-    ]);
-
-    await connection.commit();
-    return response.status(200).json({
-      msg: `${result.affectedRows} item(s) updated successfully.`,
-      ok: true,
-      updated_count: result.affectedRows,
-    });
   } catch (error) {
-    if (connection) await connection.rollback();
+    if (connection) {
+      await connection.rollback();
+    }
     logger.error("Error in bulk item update:", error);
     return response.status(500).json({
       msg: `Internal server error: ${error.message}`,
       ok: false,
-      err: error,
     });
   } finally {
-    if (connection) connection.release();
+    if (connection) {
+      connection.release();
+    }
   }
 };
 
@@ -3157,20 +3048,17 @@ const updateSubLocation = async (req, res) => {
 
 const getInventoryHierarchyWithTypes = async (request, response) => {
   try {
-    const { company_id } = request.body;
+    const { company_id, role, preference } = request.body;
     const connection = getConnection();
     if (!company_id) {
-      return response.status(400).json({ msg: "company_id is required", ok: false });
+      return response.status(400).json({
+        msg: "company_id is required",
+        ok: false,
+      });
     }
-
-    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
-    if (!userAccess) {
-      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
-    }
-    const { role_level, locations } = userAccess;
 
     let query = `
-      SELECT
+      SELECT 
         item_id, item_group, warehouse, location, sub_location
       FROM item_inv
       WHERE company_id = ?
@@ -3178,7 +3066,15 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
 
     const values = [company_id];
 
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
+    if (
+      role &&
+      role !== "0" &&
+      role !== "1" &&
+      preference &&
+      preference.inventory_location &&
+      preference.inventory_location.length > 0
+    ) {
+      const locations = preference.inventory_location;
       const placeholders = locations.map(() => "?").join(",");
       query += ` AND location IN (${placeholders})`;
       values.push(...locations);
@@ -3752,7 +3648,7 @@ const confirmItemsReturnedToStock = async (request, response) => {
       : sub_location;
     const updateQuery = `
       UPDATE item_inv
-      SET warehouse = 1, main_warehouse= ?, location = ?, sub_location = ?, logistic_status = 'in-stock', update_at = NOW()
+      SET warehouse = 1, main_warehouse= ?, location = ?, sub_location = ?, logistic_status = 'in_stock', update_at = NOW()
       WHERE company_id = ? AND serial_number IN (?);
     `;
     const [updateResult] = await connection.query(updateQuery, [
@@ -3908,7 +3804,6 @@ module.exports = {
   checkInventoryCompanyExists,
   checkLargeData,
   confirmItemsReturnedToStock,
-  containerItemsDetails,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
   consultingCompanyInventoryWithPagination,
