@@ -3,6 +3,9 @@ const sgMail = require("@sendgrid/mail");
 const fs = require("fs");
 const path = require("path");
 sgMail.setApiKey(process.env.SENDGRID_API_KEY_PAID);
+const { createQueuedEmailController } = require("./queueEmail");
+const { createQueuedJobController } = require("../helpers/queuedController");
+const { enqueue } = require("../helpers/queue");
 
 const {
   assigningDeviceMessageHtml,
@@ -39,608 +42,347 @@ const {
   liabilityContractMemberNotificationMessageHtml,
   returnConfirmationLeaseMemberMessageHtml,
   forceLogoutNotificationHtmlTemplate,
+  memberEmailNotificationHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
-const { request } = require("http");
+
+const normalizeLostFeePayload = (body = {}) => {
+  const consumer = body.consumer || body.consumerInfo || body.client || {};
+
+  const rawDevice =
+    body.device ||
+    body.deviceInfo ||
+    body.transactionData ||
+    body.item ||
+    {};
+
+  const deviceText =
+    typeof rawDevice === "string"
+      ? rawDevice
+      : rawDevice.type ||
+      rawDevice.deviceType ||
+      rawDevice.item_group ||
+      rawDevice.category_name ||
+      "";
+
+  const serialNumber =
+    rawDevice.serialNumber ||
+    rawDevice.serial_number ||
+    rawDevice.deviceSerialNumber ||
+    rawDevice.key ||
+    "";
+
+  return {
+    consumerName:
+      consumer.name ||
+      `${consumer.firstName || ""} ${consumer.lastName || ""}`.trim() ||
+      body.consumerName ||
+      "Customer",
+
+    consumerEmail:
+      consumer.email ||
+      body.email ||
+      body.consumerEmail ||
+      "",
+
+    deviceType: deviceText,
+    serialNumber:
+      serialNumber ||
+      String(deviceText).match(/serialNumber:\s*([^,]+)/i)?.[1] ||
+      "N/A",
+
+    amount: body.amount || body.total || body.value || "0.00",
+    event: body.event || body.eventName || body.eventSelected || "Event",
+    company: body.company || body.companyName || "Devitrak",
+    date: body.date || new Date().toDateString(),
+    time: body.time || new Date().toLocaleTimeString(),
+    transaction:
+      body.transaction ||
+      body.paymentIntent ||
+      body.payment_intent ||
+      "N/A",
+
+    link: body.link || body.url || body.confirmationLink || "#",
+  };
+};
 // const e = require("express");
-const assingDeviceNotification = async (request, response) => {
-  try {
-    const info = {
+const buildAssignDeviceMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `${body.consumer.firstName} ${body.consumer.lastName} <${body.consumer.email}>`,
+  subject: "Assignment device notification",
+  html: assigningDeviceMessageHtml(body),
+});
+const assingDeviceNotification = createQueuedEmailController(buildAssignDeviceMessage);
+
+const buildReturningDeviceMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `${body.consumer.firstName} ${body.consumer.lastName} <${body.consumer.email}>`,
+  subject: "Returned device notification",
+  html: returnConfirmationMessageHtml(body),
+});
+const returningDeviceNotification = createQueuedEmailController(buildReturningDeviceMessage);
+
+const buildReturningDeviceLeaseMemberMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `${body.member.firstName} ${body.member.lastName} <${body.member.email}>`,
+  subject: "Returned device notification",
+  html: returnConfirmationLeaseMemberMessageHtml(body),
+});
+const returningDeviceLeaseMemberNotification = createQueuedEmailController(buildReturningDeviceLeaseMemberMessage);
+
+const buildDeviceReportPerTransactionMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `${body.consumer.firstName} ${body.consumer.lastName} <${body.consumer.email}>`,
+  subject: "Device Report Per Transaction",
+  html: deviceReportPerTransactionMessageHtml(body),
+});
+const deviceReportPerTransaction = createQueuedEmailController(buildDeviceReportPerTransactionMessage);
+
+const buildCancelDepositMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: body.consumer.email,
+  subject: "Deposit returned notification",
+  html: cancelingDepositMessageHtml(body),
+});
+const cancelDepositNotification = createQueuedEmailController(buildCancelDepositMessage);
+
+const buildCaptureDepositMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: body.consumer.email,
+  subject: "Deposit captured",
+  html: capturingDepositMessageHtml(body),
+});
+const captureDepositNotification = createQueuedEmailController(buildCaptureDepositMessage);
+
+// NOTA: el original tenía dos bugs preexistentes (ReferenceError: `msg` no
+// definido — usaba `info`; y `returnReminderMessageHtml` pasado como referencia
+// de función en vez de invocarlo) que hacían este endpoint 100% roto. Se
+// corrigen aquí porque son inherentes a extraer un builder correcto; el
+// template en sí (returnReminderMessageHtml) sigue siendo un stub que devuelve
+// "" — no se inventa contenido nuevo, fuera de alcance de esta migración.
+const buildEarlierReturningMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `<${body.consumer}>`,
+  subject: "Returning device reminder",
+  html: returnReminderMessageHtml(body),
+});
+const earlierReturningNotification = createQueuedEmailController(buildEarlierReturningMessage);
+
+const buildEventStaffMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: body.staff,
+  subject: "Staff event",
+  html: staffNotificationMessageHtml(body),
+});
+const eventStaffNotification = createQueuedEmailController(buildEventStaffMessage);
+
+const buildEditingDeviceAdminMessage = (body) => ({
+  to: `${body.contactAdminEmail}`,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: "Device edited notification",
+  html: editingDeviceAdminMessageHtml(body),
+});
+const editingDeviceAdminNotification = createQueuedEmailController(buildEditingDeviceAdminMessage);
+
+const validateLostDeviceFee = (body) => {
+  const data = normalizeLostFeePayload(body);
+  if (!data.consumerEmail) {
+    return { status: 400, body: { ok: false, message: "Consumer email is required" } };
+  }
+  return null;
+};
+const buildLostDeviceFeeMessage = (body) => {
+  const data = normalizeLostFeePayload(body);
+  return {
+    to: data.consumerEmail,
+    from: "Devitrak Notifications <noreply@devitrak.com>",
+    subject: `Lost device fee receipt - ${data.company}`,
+    html: lostDeviceFeeReceipt(data, normalizeLostFeePayload),
+  };
+};
+const lostDeviceFeeCollectedNotification = createQueuedEmailController(buildLostDeviceFeeMessage, {
+  validate: validateLostDeviceFee,
+});
+const buildConfirmationLinkNewConsumerMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `${body.consumer.email}`,
+  subject: "Confirmation link account",
+  html: confirmationNewConsumerAccountMessageHtml(body),
+});
+const confirmationLinkNewConsumerNotification = createQueuedEmailController(buildConfirmationLinkNewConsumerMessage);
+
+const buildLoginLinkExistingConsumerMessage = (body) => ({
+  to: `${body.consumer.email}`,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: "Link to login",
+  html: linkToLoginExistingConsumerMessageHtml(body),
+});
+const loginLinkExistingConsumerNotification = createQueuedEmailController(buildLoginLinkExistingConsumerMessage);
+
+// NOTA: el original tenía un bug preexistente — si sgMail.send fallaba, el
+// catch solo logueaba y NUNCA respondía, dejando al cliente colgado hasta el
+// timeout de 30s. La factory genérica siempre responde (200/500), así que esta
+// migración corrige ese cuelgue de paso.
+const buildLinkToResetPasswordMessage = (body) => ({
+  to: `${body.contactInfo.email}`,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: "Devitrak Notification - Reset Password Link",
+  html: linkToResetUserPassword(body),
+});
+const linkToResetPassword = createQueuedEmailController(buildLinkToResetPasswordMessage);
+
+const buildCustomizedEmailMessage = (body) => ({
+  to: `${body.consumersList}`,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: `Devitrak Notification - ${body.subject}`,
+  html: customizedEmailMessageHtml(body),
+});
+const customizedEmailNotification = createQueuedEmailController(buildCustomizedEmailMessage);
+
+const buildSingleEmailMessage = (body) => ({
+  to: body.consumer,
+  from: "Devitrak Notifications <noreply@devitrak.com>", // "notification@devitrak.net",
+  subject: `Devitrak Notification - ${body.subject}`,
+  html: singleEmailMessageHtml(body),
+});
+const singleEmailNotification = createQueuedEmailController(buildSingleEmailMessage);
+
+const buildNewUserInvitationMessage = (body) => ({
+  to: body.consumer,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: `Devitrak Notification - ${body.subject}`,
+  html: newUserInvitationMessageHtml(body),
+});
+const newUserInvitationNotification = createQueuedEmailController(buildNewUserInvitationMessage);
+
+const buildInternalNotificationMessage = (body) => ({
+  to: body.staff,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: `Devitrak Notification - ${body.subject}`,
+  html: staffNotificationMessageHtml(body),
+});
+const internalNotification = createQueuedEmailController(buildInternalNotificationMessage);
+
+const buildEventBeginsReminderMessage = (body) => ({
+  to: body.staff,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: `Devitrak Notification - ${body.subject}`,
+  html: eventBeginsReminderHtmlMessage(body),
+});
+const eventBeginsReminderNotification = createQueuedEmailController(buildEventBeginsReminderMessage);
+
+const buildStaffInternalMessage = (body) => ({
+  to: body.staff,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: `Devitrak Notification - ${body.subject}`,
+  html: staffInternalNotificationMessageHtml(body),
+});
+const staffInternalNotification = createQueuedEmailController(buildStaffInternalMessage);
+
+const buildItemInfoStaffMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: body.staff,
+  subject: `Devitrak Notification - ${body.subject}`,
+  html: itemInfoStaffNotificationMessageHtml(body),
+});
+const itemInfoStaffNotification = createQueuedEmailController(buildItemInfoStaffMessage);
+
+const buildEventLinkEventMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: body.list,
+  subject: `Devitrak Notification - Event Link.`,
+  html: eventLinkEventHtml(body),
+});
+const eventLinkEvent = createQueuedEmailController(buildEventLinkEventMessage);
+
+const buildChargeInvoiceMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: body.email,
+  subject: `Devitrak Notification - Payment confirmation.`,
+  html: serviceChargeInvoiceEmailHtml(body),
+});
+const chargeInvoice = createQueuedEmailController(buildChargeInvoiceMessage);
+
+const buildRefundInvoiceMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: body.email,
+  subject: `Devitrak Notification - Refund confirmation.`,
+  html: serviceRefundConfirmationEmailHtml(body),
+});
+const refundInvoice = createQueuedEmailController(buildRefundInvoiceMessage);
+
+// Ambas dependen de una consulta a DB (User.find) para armar la lista de
+// destinatarios, y usan sgMail.sendMultiple — fan-out por PERSONALIZACIÓN (cada
+// destinatario recibe su propio correo sin ver a los demás), que no es
+// intercambiable con `.send()` de un array de mensajes distintos (el que sí
+// usan documentSigningCompletionNotification y similares). Por eso se registra
+// un type nuevo 'send-email-multiple' (queue/handlers/index.js) en vez de
+// reusar 'send-email'.
+//
+// El builder es async y hace la consulta DENTRO de buildPayload (parametrizada
+// por findFn para poder testear sin Mongo). Si no hay destinatarios, devuelve
+// null: createQueuedJobController no encola nada y responde con
+// buildSkippedBody en vez de crear un job vacío.
+function createBuildMassiveEventCustomerMessage(
+  findConsumerEmails = (eventID) => User.find({ event_providers: eventID }, "email").lean()
+) {
+  return async (body) => {
+    const { eventID, eventSelected, subject } = body;
+    const consumerEventList = await findConsumerEmails(eventID);
+    if (!consumerEventList.length) return null;
+
+    return {
       from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${request.body.consumer.firstName} ${request.body.consumer.lastName} <${request.body.consumer.email}>`,
-      subject: "Assignment device notification",
-      html: assigningDeviceMessageHtml(request.body),
+      to: [...consumerEventList],
+      subject: `Event ${eventSelected} - ${subject}`,
+      html: customizedEmailMessageHtml(body),
     };
-    return sgMail.send(info).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
+  };
+}
+const buildMassiveEventCustomerMessage = createBuildMassiveEventCustomerMessage();
+const massiveEventCustomerNotification = createQueuedJobController(
+  "send-email-multiple",
+  buildMassiveEventCustomerMessage,
+  {
+    buildSkippedBody: () => ({ ok: true, notification: "No email sent to any consumers" }),
+    buildSuccessBody: (job) => ({ ok: true, notification: `Email queued for ${job.payload.to.length} consumers`, jobId: job.id }),
   }
-};
+);
 
-const returningDeviceNotification = async (request, response) => {
-  try {
-    const info = {
+function createBuildDevitrakFeedbackMessage(
+  findConsumers = (eventID) => User.find({ event_providers: eventID }, { email: 1, name: 1, lastName: 1, _id: 0 }).lean()
+) {
+  return async (body) => {
+    const { eventID } = body;
+    const consumerEventList = await findConsumers(eventID);
+    if (!consumerEventList.length) return null;
+
+    return {
       from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${request.body.consumer.firstName} ${request.body.consumer.lastName} <${request.body.consumer.email}>`,
-      subject: "Returned device notification",
-      html: returnConfirmationMessageHtml(request.body),
+      to: [...consumerEventList],
+      subject: `Share Your Feedback – Help Us Improve Your Experience!`,
+      html: nrffInterpretationFeedbackEmailMessageHtml(),
     };
-    return sgMail.send(info).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
+  };
+}
+const buildDevitrakFeedbackMessage = createBuildDevitrakFeedbackMessage();
+const devitrakFeedbackEmailNotification = createQueuedJobController(
+  "send-email-multiple",
+  buildDevitrakFeedbackMessage,
+  {
+    buildSkippedBody: () => ({ ok: true, notification: "No email sent to any consumers" }),
+    buildSuccessBody: (job) => ({ ok: true, notification: `Email queued for ${job.payload.to.length} consumers`, jobId: job.id }),
   }
-};
+);
 
-const returningDeviceLeaseMemberNotification = async (request, response) => {
-  try {
-    logger.info("request body", request.body);
-    const info = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${request.body.member.firstName} ${request.body.member.lastName} <${request.body.member.email}>`,
-      subject: "Returned device notification",
-      html: returnConfirmationLeaseMemberMessageHtml(request.body),
-    };
-    return sgMail.send(info).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-
-};
-const deviceReportPerTransaction = async (request, response) => {
-  try {
-    const info = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${request.body.consumer.firstName} ${request.body.consumer.lastName} <${request.body.consumer.email}>`,
-      subject: "Device Report Per Transaction",
-      html: deviceReportPerTransactionMessageHtml(request.body),
-    };
-    return sgMail.send(info).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const cancelDepositNotification = async (request, response) => {
-  try {
-    console.log(request.body);
-    const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: request.body.consumer.email,
-      subject: "Deposit returned notification",
-      html: cancelingDepositMessageHtml(request.body),
-    };
-
-    sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email notification`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const captureDepositNotification = async (request, response) => {
-  try {
-    const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: request.body.consumer.email,
-      subject: "Deposit captured",
-      html: capturingDepositMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email was sent.`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const earlierReturningNotification = async (request, response) => {
-  try {
-    const info = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `<${request.body.consumer}>`,
-      subject: "Returning device reminder",
-      html: returnReminderMessageHtml,
-    };
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email notification was sent.`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const eventStaffNotification = async (request, response) => {
-  try {
-    const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: request.body.staff,
-      subject: "Staff event",
-      html: staffNotificationMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const editingDeviceAdminNotification = async (request, response) => {
-  try {
-    const msg = {
-      to: `${request.body.contactAdminEmail}`,
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      subject: "Device edited notification",
-      html: editingDeviceAdminMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const lostDeviceFeeCollectedNotification = async (request, response) => {
-  try {
-    const msg = {
-      to: `${request.body.consumer.email}`,
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      subject: "Lost device fee payment receipt",
-      html: lostDeviceFeeReceipt(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const confirmationLinkNewConsumerNotification = async (request, response) => {
-  try {
-    const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${request.body.consumer.email}`,
-      subject: "Confirmation link account",
-      html: confirmationNewConsumerAccountMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const loginLinkExistingConsumerNotification = async (request, response) => {
-  try {
-    const msg = {
-      to: `${request.body.consumer.email}`,
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      subject: "Link to login",
-      html: linkToLoginExistingConsumerMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-const linkToResetPassword = async (request, response) => {
-  try {
-    const msg = {
-      to: `${request.body.contactInfo.email}`,
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      subject: "Devitrak Notification - Reset Password Link",
-      html: linkToResetUserPassword(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    logger.error("Error fetching access token:", error.response.data);
-  }
-};
-
-const customizedEmailNotification = (request, response) => {
-  try {
-    const msg = {
-      to: `${request.body.consumersList}`,
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      subject: `Devitrak Notification - ${request.body.subject}`,
-      html: customizedEmailMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const singleEmailNotification = async (request, response) => {
-  try {
-    const msg = {
-      to: request.body.consumer,
-      from: "Devitrak Notifications <noreply@devitrak.com>", // "notification@devitrak.net",
-      subject: `Devitrak Notification - ${request.body.subject}`,
-      html: singleEmailMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const newUserInvitationNotification = (request, response) => {
-  try {
-    const msg = {
-      to: request.body.consumer,
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      subject: `Devitrak Notification - ${request.body.subject}`,
-      html: newUserInvitationMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const internalNotification = async (request, response) => {
-  try {
-    const msg = {
-      to: request.body.staff,
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      subject: `Devitrak Notification - ${request.body.subject}`,
-      html: staffNotificationMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      message: error.message,
-    });
-  }
-};
-
-const eventBeginsReminderNotification = async (request, response) => {
-  try {
-    const msg = {
-      to: request.body.staff,
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      subject: `Devitrak Notification - ${request.body.subject}`,
-      html: eventBeginsReminderHtmlMessage(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      message: error.message,
-    });
-  }
-};
-
-const staffInternalNotification = async (request, response) => {
-  try {
-    const msg = {
-      to: request.body.staff,
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      subject: `Devitrak Notification - ${request.body.subject}`,
-      html: staffInternalNotificationMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    response.status(500).json({
-      ok: false,
-      message: error.message,
-    });
-  }
-};
-
-const itemInfoStaffNotification = async (request, response) => {
-  try {
-    const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: request.body.staff,
-      subject: `Devitrak Notification - ${request.body.subject}`,
-      html: itemInfoStaffNotificationMessageHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    logger.error("🚀 ~ internalNotification ~ error:", error);
-    response.status(500).json({
-      ok: false,
-      message: error.message,
-    });
-  }
-};
-
-const eventLinkEvent = async (request, response) => {
-  try {
-    const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: request.body.list,
-      subject: `Devitrak Notification - Event Link.`,
-      html: eventLinkEventHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    logger.error("🚀 ~ internalNotification ~ error:", error);
-    response.status(500).json({
-      ok: false,
-      message: error.message,
-    });
-  }
-};
-
-const chargeInvoice = async (request, response) => {
-  try {
-    const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: request.body.email,
-      subject: `Devitrak Notification - Payment confirmation.`,
-      html: serviceChargeInvoiceEmailHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    logger.error("🚀 ~ internalNotification ~ error:", error);
-    response.status(500).json({
-      ok: false,
-      message: error.message,
-    });
-  }
-};
-const refundInvoice = async (request, response) => {
-  try {
-    const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: request.body.email,
-      subject: `Devitrak Notification - Refund confirmation.`,
-      html: serviceRefundConfirmationEmailHtml(request.body),
-    };
-
-    return sgMail.send(msg).then(() => {
-      response.status(201).json({
-        notification: `Email sent`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    logger.error("🚀 ~ internalNotification ~ error:", error);
-    response.status(500).json({
-      ok: false,
-      message: error.message,
-    });
-  }
-};
-
-const massiveEventCustomerNotification = async (request, response) => {
-  try {
-    const { eventID, eventSelected, subject } = request.body;
-    const consumerEventList = await User.find(
-      {
-        event_providers: eventID,
-      },
-      "email"
-    ).lean();
-    if (consumerEventList.length > 0) {
-      const msg = {
-        from: "Devitrak Notifications <noreply@devitrak.com>",
-        to: [...consumerEventList],
-        subject: `Event ${eventSelected} - ${subject}`,
-        html: customizedEmailMessageHtml(request.body),
-      };
-      return sgMail.sendMultiple(msg).then(() => {
-        response.status(201).json({
-          notification: `Email sent to ${consumerEventList.length} consumers`,
-          ok: true,
-        });
-      });
-    } else {
-      response.status(201).json({
-        notification: `No email sent to any consumers`,
-        ok: true,
-      });
-    }
-  } catch (error) {
-    logger.error(error);
-  }
-};
-
-const devitrakFeedbackEmailNotification = async (request, response) => {
-  try {
-    const { eventID } = request.body;
-    const consumerEventList = await User.find(
-      {
-        event_providers: eventID,
-      },
-      { email: 1, name: 1, lastName: 1, _id: 0 }
-    ).lean();
-    if (consumerEventList.length > 0) {
-      const msg = {
-        from: "Devitrak Notifications <noreply@devitrak.com>",
-        to: [...consumerEventList],
-        subject: `Share Your Feedback – Help Us Improve Your Experience!`,
-        html: nrffInterpretationFeedbackEmailMessageHtml(),
-      };
-      return sgMail.sendMultiple(msg).then(() => {
-        response.status(201).json({
-          notification: `Email sent to ${consumerEventList.length} consumers`,
-          ok: true,
-        });
-      });
-    } else {
-      response.status(201).json({
-        notification: `No email sent to any consumers`,
-        ok: true,
-      });
-    }
-  } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      error: error,
-    });
-  }
-};
-
-const errorFeedbackEmailNotification = async (props) => {
-  try {
-    const htmlContent = `
+// Único llamador: controller/errorLog.js (createErrorFeed), que ahora encola
+// esto como 'send-email' en vez de enviarlo inline. Antes era una función
+// async que armaba Y enviaba (con sgMail.sendMultiple, aunque `to` es un solo
+// destinatario fijo — no había necesidad real de sendMultiple); ahora es un
+// builder puro, igual que el resto de las plantillas migradas.
+const buildErrorFeedbackMessage = (props) => {
+  const htmlContent = `
       <!DOCTYPE html>
       <html lang="en">
         <head>
@@ -696,7 +438,7 @@ const errorFeedbackEmailNotification = async (props) => {
             <h1>Devitrak Error Notification</h1>
             <p>Hello,</p>
             <p>We encountered the following error in our application. Your feedback helps us improve your experience. Please review the details below and let us know if you have any additional information or questions.</p>
-            
+
             <div class="error-details">
               <h2>Error Details</h2>
               <p><strong>Error ID:</strong> ${props.errorId}</p>
@@ -716,201 +458,125 @@ const errorFeedbackEmailNotification = async (props) => {
       </html>
     `;
 
-    const msg = {
-      from: "Devitrak Notifications <notification@devitrak.net>",
-      to: "Gustavo Rodriguez <grodriguez@contextglobal.com>",
-      subject: `Error Log - Devitrak Admin Dashboard.`,
-      html: htmlContent,
-    };
-
-    return sgMail.sendMultiple(msg).then(() => {
-      return {
-        notification: `Email sent successfully`,
-        ok: true,
-      };
-    });
-  } catch (error) {
-    logger.error(error);
-  }
+  return {
+    from: "Devitrak Notifications <notification@devitrak.net>",
+    to: "Gustavo Rodriguez <grodriguez@contextglobal.com>",
+    subject: `Error Log - Devitrak Admin Dashboard.`,
+    html: htmlContent,
+  };
 };
 
-const liabilityContractMemberNotification = async (request, response) => {
-  try {
-    const { member, contract_list, subject, items } = request.body;
-
-    // Validate required fields
-    if (!member || !member.email || !member.name) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Member information (name and email) is required",
-      });
-    }
-
-    if (!contract_list || contract_list.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "At least one contract is required",
-      });
-    }
-
-    if (!items || items.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "At least one item is required",
-      });
-    }
-
-    const info = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${member.name} <${member.email}>`,
-      subject: subject || "Device Liability Contract",
-      html: liabilityContractMemberNotificationMessageHtml(request.body),
-    };
-
-    return sgMail.send(info).then(() => {
-      response.status(201).json({
-        notification: `Liability contract email sent to ${member.name} (${member.email})`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    logger.info(`Error sending liability contract email: ${error}`);
-    response.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+// Las 3 notificaciones de contrato de responsabilidad (member/consumer/staff)
+// comparten exactamente la misma forma de validación — solo cambia el campo
+// del sujeto (member/consumer/staff) y el template.
+const validateLiabilityContractParty = (party, partyLabel) => {
+  if (!party || !party.email || !party.name) {
+    return { status: 400, body: { ok: false, msg: `${partyLabel} information (name and email) is required` } };
   }
+  return null;
+};
+const validateLiabilityContractShared = (contract_list, items) => {
+  if (!contract_list || contract_list.length === 0) {
+    return { status: 400, body: { ok: false, msg: "At least one contract is required" } };
+  }
+  if (!items || items.length === 0) {
+    return { status: 400, body: { ok: false, msg: "At least one item is required" } };
+  }
+  return null;
 };
 
-const liabilityContractConsumerNotification = async (request, response) => {
-  try {
-    const { consumer, contract_list, subject, items } = request.body;
+const validateLiabilityContractMember = (body) =>
+  validateLiabilityContractParty(body.member, "Member") || validateLiabilityContractShared(body.contract_list, body.items);
+const buildLiabilityContractMemberMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `${body.member.name} <${body.member.email}>`,
+  subject: body.subject || "Device Liability Contract",
+  html: liabilityContractMemberNotificationMessageHtml(body),
+});
+const liabilityContractMemberNotification = createQueuedEmailController(buildLiabilityContractMemberMessage, {
+  validate: validateLiabilityContractMember,
+});
 
-    // Validate required fields
-    if (!consumer || !consumer.email || !consumer.name) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Consumer information (name and email) is required",
-      });
-    }
+const validateLiabilityContractConsumer = (body) =>
+  validateLiabilityContractParty(body.consumer, "Consumer") || validateLiabilityContractShared(body.contract_list, body.items);
+const buildLiabilityContractConsumerMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `${body.consumer.name} <${body.consumer.email}>`,
+  subject: body.subject || "Device Liability Contract",
+  html: liabilityContractConsumerNotificationMessageHtml(body),
+});
+const liabilityContractConsumerNotification = createQueuedEmailController(buildLiabilityContractConsumerMessage, {
+  validate: validateLiabilityContractConsumer,
+});
 
-    if (!contract_list || contract_list.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "At least one contract is required",
-      });
-    }
+const validateLiabilityContractStaff = (body) =>
+  validateLiabilityContractParty(body.staff, "Staff") || validateLiabilityContractShared(body.contract_list, body.items);
+const buildLiabilityContractStaffMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `${body.staff.name} <${body.staff.email}>`,
+  subject: body.subject || "Device Liability Contract",
+  html: liabilityContractStaffNotificationMessageHtml(body),
+});
+const liabilityContractStaffNotification = createQueuedEmailController(buildLiabilityContractStaffMessage, {
+  validate: validateLiabilityContractStaff,
+});
 
-    if (!items || items.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "At least one item is required",
-      });
-    }
+// Adjuntos grandes (esta ruta tiene límite de 100MB de body en index.js): se
+// suben a S3 ANTES de encolar (createBuildReturnedItemsToRenterMessage) en vez
+// de guardar el base64 en el documento del job — evita acercarse al límite de
+// 16MB por documento de Mongo. El worker resuelve las referencias de vuelta a
+// base64 justo antes de enviar (queue/handlers/emailWithAttachments.js) y
+// limpia S3 después de un envío exitoso. Ver DESIGN_task_queue.md § Fase 1
+// (cierre) y test/returnedItemsToRenterQueue.test.js.
+//
+// La validación es IDÉNTICA a la original — mismos mensajes y status 400.
+const validateReturnedItemsToRenter = (body) => {
+  const { subject, staffEmails, attachments } = body;
 
-    const info = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${consumer.name} <${consumer.email}>`,
-      subject: subject || "Device Liability Contract",
-      html: liabilityContractConsumerNotificationMessageHtml(request.body),
-    };
-
-    return sgMail.send(info).then(() => {
-      response.status(201).json({
-        notification: `Liability contract email sent to ${consumer.name} (${consumer.email})`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    logger.error(`Error sending liability contract email: ${error}`);
-    response.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+  if (!subject) {
+    return { status: 400, body: { ok: false, msg: "Subject is required" } };
   }
+
+  if (!Array.isArray(staffEmails) || staffEmails.length === 0) {
+    return {
+      status: 400,
+      body: { ok: false, msg: "Staff emails array is required and must contain at least one email" },
+    };
+  }
+
+  const invalidEmails = staffEmails.filter((email) => !EMAIL_REGEX.test(email));
+  if (invalidEmails.length > 0) {
+    return { status: 400, body: { ok: false, msg: `Invalid email format(s): ${invalidEmails.join(", ")}` } };
+  }
+
+  if (attachments !== undefined) {
+    if (!Array.isArray(attachments)) {
+      return { status: 400, body: { ok: false, msg: "Attachments must be an array" } };
+    }
+
+    for (const file of attachments) {
+      if (file.content && file.filename) continue;
+      if (file.path && file.filename) {
+        if (!fs.existsSync(path.resolve(file.path))) {
+          return { status: 400, body: { ok: false, msg: `Attachment file not found: ${file.filename}` } };
+        }
+        continue;
+      }
+      return { status: 400, body: { ok: false, msg: "Invalid attachment object: missing content or filename" } };
+    }
+  }
+
+  return null;
 };
 
-const liabilityContractStaffNotification = async (request, response) => {
-  try {
-    const { staff, contract_list, subject, items } = request.body;
+// uploadAttachment se inyecta para testear sin tocar S3 real; en producción
+// usa helpers/s3Upload.js.
+function createBuildReturnedItemsToRenterMessage(
+  uploadAttachment = require("../helpers/s3Upload").uploadNotificationAttachment
+) {
+  return async (body) => {
+    const { subject, staffEmails, supplierInfo, attachments } = body;
 
-    // Validate required fields
-    if (!staff || !staff.email || !staff.name) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Staff information (name and email) is required",
-      });
-    }
-
-    if (!contract_list || contract_list.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "At least one contract is required",
-      });
-    }
-
-    if (!items || items.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "At least one item is required",
-      });
-    }
-
-    const info = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${staff.name} <${staff.email}>`,
-      subject: subject || "Device Liability Contract",
-      html: liabilityContractStaffNotificationMessageHtml(request.body),
-    };
-
-    return sgMail.send(info).then(() => {
-      response.status(201).json({
-        notification: `Liability contract email sent to ${staff.name} (${staff.email})`,
-        ok: true,
-      });
-    });
-  } catch (error) {
-    logger.info(`Error sending liability contract email: ${error}`);
-    response.status(500).json({
-      ok: false,
-      error: error.message,
-    });
-  }
-};
-
-const returnedItemsToRenterNotification = async (request, response) => {
-  try {
-    const { subject, staffEmails, supplierInfo, attachments } = request.body;
-
-    // Validate subject
-    if (!subject) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Subject is required",
-      });
-    }
-
-    // Validate email list
-    if (!Array.isArray(staffEmails) || staffEmails.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Staff emails array is required and must contain at least one email",
-      });
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const invalidEmails = staffEmails.filter(
-      (email) => !emailRegex.test(email)
-    );
-    if (invalidEmails.length > 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: `Invalid email format(s): ${invalidEmails.join(", ")}`,
-      });
-    }
-
-    // Build base email
     const msg = {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: staffEmails,
@@ -918,486 +584,311 @@ const returnedItemsToRenterNotification = async (request, response) => {
       html: returnedItemsToRenterNotificationMessageHtml({ supplierInfo }),
     };
 
-    // Validate and attach files
-    if (attachments && Array.isArray(attachments)) {
-      const formattedAttachments = [];
-
-      for (const file of attachments) {
-        // Either: file.content is already base64
-        // Or: file.path is a full path to local file (optional support)
-        if (file.content && file.filename) {
-          formattedAttachments.push({
-            content: file.content,
+    if (attachments && attachments.length) {
+      msg.attachmentRefs = await Promise.all(
+        attachments.map(async (file) => {
+          const content = file.content || fs.readFileSync(path.resolve(file.path)).toString("base64");
+          const uploaded = await uploadAttachment({
+            content,
             filename: file.filename,
-            type: file.type || "application/octet-stream",
-            disposition: "attachment",
+            contentType: file.type,
           });
-        } else if (file.path && file.filename) {
-          const filePath = path.resolve(file.path);
-          if (fs.existsSync(filePath)) {
-            const fileContent = fs.readFileSync(filePath).toString("base64");
-            formattedAttachments.push({
-              content: fileContent,
-              filename: file.filename,
-              type: file.type || "application/octet-stream",
-              disposition: "attachment",
-            });
-          } else {
-            return response.status(400).json({
-              ok: false,
-              msg: `Attachment file not found: ${file.filename}`,
-            });
-          }
-        } else {
-          return response.status(400).json({
-            ok: false,
-            msg: `Invalid attachment object: missing content or filename`,
-          });
-        }
-      }
-
-      msg.attachments = formattedAttachments;
-    } else if (attachments && !Array.isArray(attachments)) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Attachments must be an array",
-      });
+          return { key: uploaded.key, filename: file.filename, type: file.type || "application/octet-stream" };
+        })
+      );
     }
 
-    // Send email
-    await sgMail.sendMultiple(msg);
+    return msg;
+  };
+}
+const buildReturnedItemsToRenterMessage = createBuildReturnedItemsToRenterMessage();
 
-    return response.status(201).json({
+const returnedItemsToRenterNotification = createQueuedJobController(
+  "send-email-multiple-with-attachments",
+  buildReturnedItemsToRenterMessage,
+  {
+    validate: validateReturnedItemsToRenter,
+    buildSuccessBody: (job) => ({
       ok: true,
-      notification: `Email sent to ${staffEmails.length} staff member(s)`,
-      recipients: staffEmails,
-      attachmentsCount: msg.attachments ? msg.attachments.length : 0,
-    });
-  } catch (error) {
-    logger.error("Error sending returned items notification:", error);
-
-    return response.status(500).json({
-      ok: false,
-      msg: "Failed to send notification email",
-      error: error.response?.body || error.message,
-    });
+      notification: `Email queued for ${job.payload.to.length} staff member(s)`,
+      recipients: job.payload.to,
+      attachmentsCount: job.payload.attachmentRefs ? job.payload.attachmentRefs.length : 0,
+      jobId: job.id,
+    }),
   }
-};
+);
 
-const termsAndConditionsAcceptanceNotification = async (request, response) => {
-  try {
-    const { consumer, event, company, signature } = request.body;
+// Compartido por las rutas de Batch B que validan formato de email.
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-    // Validate required fields
-    if (!consumer || !consumer.email) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Consumer information with email is required",
-      });
-    }
-
-    if (!consumer.name || !consumer.lastName) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Consumer first name and last name are required",
-      });
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(consumer.email)) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Invalid email format",
-      });
-    }
-
-    const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${consumer.name} ${consumer.lastName} <${consumer.email}>`,
-      subject: "Terms and Conditions Acceptance Confirmation",
-      html: termsAndConditionsAcceptanceMessageHtml({
-        consumer,
-        event,
-        company,
-        signature,
-      }),
-    };
-
-    await sgMail.send(msg);
-
-    return response.status(201).json({
-      ok: true,
-      notification: "Terms and conditions acceptance email sent successfully",
-      recipient: consumer.email,
-    });
-  } catch (error) {
-    logger.error(
-      "Error sending terms and conditions acceptance notification:",
-      error
-    );
-    return response.status(500).json({
-      ok: false,
-      msg: "Failed to send notification email",
-      error: error.message,
-    });
+const validateTermsAndConditionsAcceptance = (body) => {
+  const { consumer } = body;
+  if (!consumer || !consumer.email) {
+    return { status: 400, body: { ok: false, msg: "Consumer information with email is required" } };
   }
+  if (!consumer.name || !consumer.lastName) {
+    return { status: 400, body: { ok: false, msg: "Consumer first name and last name are required" } };
+  }
+  if (!EMAIL_REGEX.test(consumer.email)) {
+    return { status: 400, body: { ok: false, msg: "Invalid email format" } };
+  }
+  return null;
 };
+const buildTermsAndConditionsAcceptanceMessage = (body) => {
+  const { consumer, event, company, signature } = body;
+  return {
+    from: "Devitrak Notifications <noreply@devitrak.com>",
+    to: `${consumer.name} ${consumer.lastName} <${consumer.email}>`,
+    subject: "Terms and Conditions Acceptance Confirmation",
+    html: termsAndConditionsAcceptanceMessageHtml({ consumer, event, company, signature }),
+  };
+};
+const termsAndConditionsAcceptanceNotification = createQueuedEmailController(buildTermsAndConditionsAcceptanceMessage, {
+  validate: validateTermsAndConditionsAcceptance,
+});
 
-const documentSigningCompletionNotification = async (request, response) => {
-  try {
-    const { assigner, staff, contract_list, verification_id } = request.body;
-
-    // Validate required fields
-    if (!assigner || !assigner.email || !staff || !staff.email) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Both assigner and staff information with emails are required",
-      });
-    }
-
-    if (!contract_list || contract_list.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Contract list is required",
-      });
-    }
-
-    // Validate email formats
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(assigner.email) || !emailRegex.test(staff.email)) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Invalid email format",
-      });
-    }
-
-    // Send email to assigner
-    const assignerMsg = {
+// NOTA: el payload de estos dos es un ARRAY de 2 mensajes (assigner + otro
+// destinatario). El handler genérico 'send-email' (queue/handlers/email.js)
+// reenvía el payload tal cual a sgMail.send(), que acepta un array para enviar
+// varios mensajes distintos en una sola llamada — equivalente al
+// Promise.all([send(msg1), send(msg2)]) original, sin necesidad de un handler
+// nuevo.
+const validateDocumentSigningCompletion = (body) => {
+  const { assigner, staff, contract_list } = body;
+  if (!assigner || !assigner.email || !staff || !staff.email) {
+    return { status: 400, body: { ok: false, msg: "Both assigner and staff information with emails are required" } };
+  }
+  if (!contract_list || contract_list.length === 0) {
+    return { status: 400, body: { ok: false, msg: "Contract list is required" } };
+  }
+  if (!EMAIL_REGEX.test(assigner.email) || !EMAIL_REGEX.test(staff.email)) {
+    return { status: 400, body: { ok: false, msg: "Invalid email format" } };
+  }
+  return null;
+};
+const buildDocumentSigningCompletionMessages = (body) => {
+  const { assigner, staff, contract_list, verification_id } = body;
+  return [
+    {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${assigner.name || "Assigner"} <${assigner.email}>`,
       subject: "Document Signing Complete - Equipment Ready for Delivery",
-      html: documentSigningCompletionMessageHtml({
-        recipientType: "assigner",
-        staff,
-        contract_list,
-        verification_id,
-      }),
-    };
-
-    // Send email to staff member
-    const staffMsg = {
+      html: documentSigningCompletionMessageHtml({ recipientType: "assigner", staff, contract_list, verification_id }),
+    },
+    {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${staff.name || "Staff Member"} <${staff.email}>`,
       subject: "Document Signing Complete - Awaiting Equipment Delivery",
-      html: documentSigningCompletionMessageHtml({
-        recipientType: "staff",
-        staff,
-        contract_list,
-        verification_id,
-      }),
-    };
-
-    // Send both emails
-    await Promise.all([sgMail.send(assignerMsg), sgMail.send(staffMsg)]);
-
-    return response.status(201).json({
-      ok: true,
-      notification: "Document signing completion emails sent successfully",
-      recipients: [assigner.email, staff.email],
-    });
-  } catch (error) {
-    logger.error(
-      "Error sending document signing completion notifications:",
-      error
-    );
-    return response.status(500).json({
-      ok: false,
-      msg: "Failed to send notification emails",
-      error: error.message,
-    });
-  }
+      html: documentSigningCompletionMessageHtml({ recipientType: "staff", staff, contract_list, verification_id }),
+    },
+  ];
 };
+const documentSigningCompletionNotification = createQueuedEmailController(buildDocumentSigningCompletionMessages, {
+  validate: validateDocumentSigningCompletion,
+});
 
-const consumerDocumentSigningCompletionNotification = async (
-  request,
-  response
-) => {
-  try {
-    const { assigner, consumer, contract_list, verification_id } = request.body;
-    // Validate required fields
-    if (!assigner || !assigner.email || !consumer || !consumer.email) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Both assigner and consumer information with emails are required",
-      });
-    }
-
-    if (!contract_list || contract_list.length === 0) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Contract list is required",
-      });
-    }
-
-    // Validate email formats
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(assigner.email) || !emailRegex.test(consumer.email)) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Invalid email format",
-      });
-    }
-
-    // Send email to assigner
-    const assignerMsg = {
+const validateConsumerDocumentSigningCompletion = (body) => {
+  const { assigner, consumer, contract_list } = body;
+  if (!assigner || !assigner.email || !consumer || !consumer.email) {
+    return { status: 400, body: { ok: false, msg: "Both assigner and consumer information with emails are required" } };
+  }
+  if (!contract_list || contract_list.length === 0) {
+    return { status: 400, body: { ok: false, msg: "Contract list is required" } };
+  }
+  if (!EMAIL_REGEX.test(assigner.email) || !EMAIL_REGEX.test(consumer.email)) {
+    return { status: 400, body: { ok: false, msg: "Invalid email format" } };
+  }
+  return null;
+};
+const buildConsumerDocumentSigningCompletionMessages = (body) => {
+  const { assigner, consumer, contract_list, verification_id } = body;
+  return [
+    {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${assigner.name || "Assigner"} <${assigner.email}>`,
       subject: "Document Signing Complete - Equipment Ready for Delivery",
-      html: documentSigningCompletionConsumerLeaseMessageHtml({
-        recipientType: "assigner",
-        consumer,
-        contract_list,
-        verification_id,
-      }),
-    };
-
-    // Send email to staff member
-    const staffMsg = {
+      html: documentSigningCompletionConsumerLeaseMessageHtml({ recipientType: "assigner", consumer, contract_list, verification_id }),
+    },
+    {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${consumer.name || "Consumer"} <${consumer.email}>`,
       subject: "Document Signing Complete - Awaiting Equipment Delivery",
-      html: documentSigningCompletionConsumerLeaseMessageHtml({
-        recipientType: "consumer",
-        consumer,
-        contract_list,
-        verification_id,
-      }),
-    };
+      html: documentSigningCompletionConsumerLeaseMessageHtml({ recipientType: "consumer", consumer, contract_list, verification_id }),
+    },
+  ];
+};
+const consumerDocumentSigningCompletionNotification = createQueuedEmailController(buildConsumerDocumentSigningCompletionMessages, {
+  validate: validateConsumerDocumentSigningCompletion,
+});
 
-    // Send both emails
-    await Promise.all([sgMail.send(assignerMsg), sgMail.send(staffMsg)]);
+const buildLoginActivityMessage = (adminUser, loginInfo) => {
+  // Sanitiza componentes del mensaje (evita inyección de markup en el HTML del correo).
+  const sanitizedName = (adminUser.name || "").replace(/[<>]/g, "");
+  const sanitizedLastName = (adminUser.lastName || "").replace(/[<>]/g, "");
+  const sanitizedEmail = adminUser.email.trim();
+  const sanitizedAdminUser = {
+    ...adminUser,
+    name: sanitizedName,
+    lastName: sanitizedLastName,
+    email: sanitizedEmail,
+    company: (adminUser.company || "Unknown").replace(/[<>]/g, ""),
+    role: (adminUser.role || "Admin").replace(/[<>]/g, ""),
+  };
 
-    return response.status(201).json({
-      ok: true,
-      notification: "Document signing completion emails sent successfully",
-      recipients: [assigner.email, consumer.email],
-    });
-  } catch (error) {
-    logger.error(
-      "Error sending document signing completion notifications:",
-      error
-    );
-    return response.status(500).json({
-      ok: false,
-      msg: "Failed to send notification emails",
-      error: error.message,
-    });
-  }
+  return {
+    from: "Devitrak Notifications <noreply@devitrak.com>",
+    bcc: "grodriguez@devitrak.com",
+    to: sanitizedEmail, // Use just the email address to avoid formatting issues
+    subject: `Login Activity Alert - ${sanitizedAdminUser.email}`, // Remove emoji that might cause issues
+    html: loginActivityNotificationMessageHtml({
+      adminUser: sanitizedAdminUser,
+      loginInfo: { ...loginInfo },
+    }),
+  };
 };
 
-const loginActivityNotification = async (adminUser, loginInfo) => {
+// Función interna (no HTTP) invocada desde controller/admin.js dentro de un
+// setImmediate — ya es fire-and-forget respecto a la respuesta de login. Se
+// encola en vez de enviar inline; el contrato para el caller no cambia: nunca
+// lanza, siempre devuelve {success, message, ...}. Sin `context` de auditoría:
+// adminUser ya es el sujeto del mensaje (mismo criterio que logStaffActivity).
+const loginActivityNotification = async (adminUser, loginInfo, { enqueueFn = enqueue } = {}) => {
   try {
-    // Validate required data
     if (!adminUser || !adminUser.email) {
       throw new Error("Admin user email is required");
     }
     if (!loginInfo) {
       throw new Error("Login info is required");
     }
-    // Sanitize and validate email components
-    const sanitizedName = (adminUser.name || "").replace(/[<>]/g, "");
-    const sanitizedLastName = (adminUser.lastName || "").replace(/[<>]/g, "");
-    const sanitizedEmail = adminUser.email.trim();
-    // Sanitize admin user data
-    const sanitizedAdminUser = {
-      ...adminUser,
-      name: sanitizedName,
-      lastName: sanitizedLastName,
-      email: sanitizedEmail,
-      company: (adminUser.company || "Unknown").replace(/[<>]/g, ""),
-      role: (adminUser.role || "Admin").replace(/[<>]/g, ""),
-    };
 
-    // Create email info object
-    const info = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      bcc: "grodriguez@devitrak.com",
-      to: sanitizedEmail, // Use just the email address to avoid formatting issues
-      subject: `Login Activity Alert - ${sanitizedAdminUser.email}`, // Remove emoji that might cause issues
-      html: loginActivityNotificationMessageHtml({
-        adminUser: sanitizedAdminUser,
-        loginInfo: { ...loginInfo },
-      }),
-    };
-    const result = await sgMail.send(info);
+    const msg = buildLoginActivityMessage(adminUser, loginInfo);
+    const job = await enqueueFn("send-email", msg);
+
     return {
       success: true,
-      message: `Login activity notification sent to ${sanitizedEmail}`,
-      result,
+      message: `Login activity notification queued for ${msg.to}`,
+      jobId: job.id,
     };
   } catch (error) {
-    logger.error("Error sending login activity notification:", error);
+    logger.error("Error queuing login activity notification:", error);
     return {
       success: false,
-      message: "Failed to send login activity notification",
+      message: "Failed to queue login activity notification",
       error: error.message,
       details: error.response?.body || null,
     };
   }
 };
 
-const consumerLeaseEndedDeviceReturnedNotification = async (
-  request,
-  response
-) => {
-  try {
-    const { consumer, devices, returnDate } = request.body;
-
-    // Validate required fields
-    if (!consumer || !consumer.email || !devices || !returnDate) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Consumer, devices, and return date are required",
-      });
-    }
-
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(consumer.email)) {
-      return response.status(400).json({
-        ok: false,
-        msg: "Invalid email format",
-      });
-    }
-
-    // Send email to consumer
-    const msg = {
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${consumer.name || "Consumer"} <${consumer.email}>`,
-      subject: "Lease - Device Returned Notification",
-      html: consumerLeaseEndedDeviceReturnedNotificationMessageHtml({
-        consumer,
-        devices,
-        returnDate,
-      }),
-    };
-    const result = await sgMail.send(msg);
-    return response.status(201).json({
-      ok: true,
-      notification: `Consumer lease device returned notification sent successfully to ${consumer.email}`,
-      recipient: consumer.email,
-      result,
-    });
-  } catch (error) {
-    logger.error(
-      "Error sending consumer lease ended device returned notification:",
-      error
-    );
-    return response.status(500).json({
-      ok: false,
-      msg: "Failed to send notification email",
-      error: error.message,
-    });
+const validateConsumerLeaseEndedDeviceReturned = (body) => {
+  const { consumer, devices, returnDate } = body;
+  if (!consumer || !consumer.email || !devices || !returnDate) {
+    return { status: 400, body: { ok: false, msg: "Consumer, devices, and return date are required" } };
   }
-};
-
-const completedTask = async (
-  request,
-  response
-) => {
-  try {
-    // Send email to consumer
-    const msg = { 
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `grodriguez@devitrak.com`,
-      subject: "Task - Completed Notification", 
-      html: `<p>SUCCESS</p>`,
-    };
-    const result = await sgMail.send(msg);
-    return response.status(201).json({
-      ok: true,
-      result,
-    });
-  } catch (error) {
-    logger.error(
-      "Error sending task completed notification:",
-      error
-    );
-    return response.status(500).json({
-      ok: false,
-      msg: "Failed to send notification email",
-      error: error.message,
-    });
+  if (!EMAIL_REGEX.test(consumer.email)) {
+    return { status: 400, body: { ok: false, msg: "Invalid email format" } };
   }
+  return null;
 };
+const buildConsumerLeaseEndedDeviceReturnedMessage = (body) => {
+  const { consumer, devices, returnDate } = body;
+  return {
+    from: "Devitrak Notifications <noreply@devitrak.com>",
+    to: `${consumer.name || "Consumer"} <${consumer.email}>`,
+    subject: "Lease - Device Returned Notification",
+    html: consumerLeaseEndedDeviceReturnedNotificationMessageHtml({ consumer, devices, returnDate }),
+  };
+};
+const consumerLeaseEndedDeviceReturnedNotification = createQueuedEmailController(buildConsumerLeaseEndedDeviceReturnedMessage, {
+  validate: validateConsumerLeaseEndedDeviceReturned,
+});
 
-const failedTask = async (
-  request,
-  response
-) => {
-  try {
-    // Send email to consumer
-    const msg = { 
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `grodriguez@devitrak.com`,
-      subject: "Task - Failed Notification",
-      html: `<p>FAILED</p>`,
-    };
-    const result = await sgMail.send(msg);
-    return response.status(201).json({
-      ok: true,
-      result,
-    });
-  } catch (error) {
-    logger.error(
-      "Error sending task failed notification:",
-      error
-    );
-    return response.status(500).json({
-      ok: false,
-      msg: "Failed to send notification email",
-      error: error.message,
-    });
-  }
-};
+const buildCompletedTaskMessage = () => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `grodriguez@devitrak.com`,
+  subject: "Task - Completed Notification",
+  html: `<p>SUCCESS</p>`,
+});
+const completedTask = createQueuedEmailController(buildCompletedTaskMessage);
 
-const forcingRevokingActiveSession = async (
-  request,
-  response
-) => {
-  try {
-    // Send email to consumer
-    console.log(request.body);
-    const msg = { 
-      from: "Devitrak Notifications <noreply@devitrak.com>",
-      to: `${request.body.email}`,
-      subject: "Action Required: End Your Active Session",
-      html: forceLogoutNotificationHtmlTemplate(request.body.email)
-    };
-    const result = await sgMail.send(msg);
-    return response.status(201).json({
-      ok: true,
-      result,
-    });
-  } catch (error) {
-    logger.error(
-      "Error sending session revoking notification:",
-      error
-    );
-    return response.status(500).json({
-      ok: false,
-      msg: "Failed to send notification email",
-      error: error.message,
-    });
-  }
-};
+const buildFailedTaskMessage = () => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `grodriguez@devitrak.com`,
+  subject: "Task - Failed Notification",
+  html: `<p>FAILED</p>`,
+});
+const failedTask = createQueuedEmailController(buildFailedTaskMessage);
+
+const buildForcingRevokingActiveSessionMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: `${body.email}`,
+  subject: "Action Required: End Your Active Session",
+  html: forceLogoutNotificationHtmlTemplate(body.email),
+});
+const forcingRevokingActiveSession = createQueuedEmailController(buildForcingRevokingActiveSessionMessage);
+
+const buildMemberEmailMessage = (body) => ({
+  to: body.consumer,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: `${body.subject} - Power by Devitrak`,
+  html: memberEmailNotificationHtml(body),
+});
+const memberEmailNotification = createQueuedEmailController(buildMemberEmailMessage);
 
 module.exports = {
   assingDeviceNotification,
+  buildAssignDeviceMessage,
+  buildLoginActivityMessage,
+  buildErrorFeedbackMessage,
+  createBuildMassiveEventCustomerMessage,
+  createBuildDevitrakFeedbackMessage,
+  validateReturnedItemsToRenter,
+  createBuildReturnedItemsToRenterMessage,
+  buildCancelDepositMessage,
+  buildCaptureDepositMessage,
+  buildChargeInvoiceMessage,
+  buildCompletedTaskMessage,
+  buildConfirmationLinkNewConsumerMessage,
+  buildCustomizedEmailMessage,
+  buildDeviceReportPerTransactionMessage,
+  buildEarlierReturningMessage,
+  buildEditingDeviceAdminMessage,
+  buildEventBeginsReminderMessage,
+  buildEventLinkEventMessage,
+  buildEventStaffMessage,
+  buildFailedTaskMessage,
+  buildForcingRevokingActiveSessionMessage,
+  buildInternalNotificationMessage,
+  buildItemInfoStaffMessage,
+  buildLinkToResetPasswordMessage,
+  buildLoginLinkExistingConsumerMessage,
+  buildMemberEmailMessage,
+  buildNewUserInvitationMessage,
+  buildRefundInvoiceMessage,
+  buildReturningDeviceLeaseMemberMessage,
+  buildReturningDeviceMessage,
+  buildSingleEmailMessage,
+  buildStaffInternalMessage,
+  buildConsumerDocumentSigningCompletionMessages,
+  buildConsumerLeaseEndedDeviceReturnedMessage,
+  buildDocumentSigningCompletionMessages,
+  buildLiabilityContractConsumerMessage,
+  buildLiabilityContractMemberMessage,
+  buildLiabilityContractStaffMessage,
+  buildLostDeviceFeeMessage,
+  buildTermsAndConditionsAcceptanceMessage,
+  validateConsumerDocumentSigningCompletion,
+  validateConsumerLeaseEndedDeviceReturned,
+  validateDocumentSigningCompletion,
+  validateLiabilityContractConsumer,
+  validateLiabilityContractMember,
+  validateLiabilityContractStaff,
+  validateLostDeviceFee,
+  validateTermsAndConditionsAcceptance,
   cancelDepositNotification,
   captureDepositNotification,
   chargeInvoice,
+  completedTask,
   confirmationLinkNewConsumerNotification,
   consumerDocumentSigningCompletionNotification,
   consumerLeaseEndedDeviceReturnedNotification,
@@ -1407,10 +898,11 @@ module.exports = {
   documentSigningCompletionNotification,
   earlierReturningNotification,
   editingDeviceAdminNotification,
-  errorFeedbackEmailNotification,
   eventBeginsReminderNotification,
   eventLinkEvent,
   eventStaffNotification,
+  failedTask,
+  forcingRevokingActiveSession,
   internalNotification,
   itemInfoStaffNotification,
   liabilityContractConsumerNotification,
@@ -1421,6 +913,7 @@ module.exports = {
   loginLinkExistingConsumerNotification,
   lostDeviceFeeCollectedNotification,
   massiveEventCustomerNotification,
+  memberEmailNotification,
   newUserInvitationNotification,
   refundInvoice,
   returnedItemsToRenterNotification,
@@ -1429,7 +922,4 @@ module.exports = {
   singleEmailNotification,
   staffInternalNotification,
   termsAndConditionsAcceptanceNotification,
-  completedTask,
-  failedTask,
-  forcingRevokingActiveSession,
 };

@@ -13,12 +13,14 @@ const validateJWT = (request, response = response, next) => {
   }
 
   try {
-    const { uid, name, tokenVersion } = jwt.verify(token, process.env.SECRET_JWT_SEED);
+    const { uid, name, tokenVersion, sqlStaffId } = jwt.verify(token, process.env.SECRET_JWT_SEED);
 
     request.uid = uid;
     request.name = name;
     request.tokenVersion = tokenVersion;
-    
+    const headerStaffId = request.header("s-token-lq");
+    request.sqlStaffId = sqlStaffId ?? (headerStaffId ? Number(headerStaffId) : null);
+
   } catch (error) {
     return response.status(401).json({
       ok: false,

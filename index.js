@@ -77,45 +77,40 @@ const configureMiddleware = (app) => {
   // Security headers
   app.use(helmet());
 
-  // Rate limiting: TEMPORARILY DISABLED
-  // const limiter = rateLimit({
-  //   windowMs: 15 * 60 * 1000, // 15 minutes
-  //   max: 300, // limit each IP to 300 requests per windowMs
-  //   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  //   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  //   // Custom key generator to handle IPs with ports (common in some environments)
-  //   keyGenerator: (req, res) => {
-  //     logger.info(`Request IP: ${req.ip}`);
-  //     // Handle undefined req.ip
-  //     if (!req.ip) return "unknown";
-  //     return req.ip.replace(/:\d+[^:]*$/, "");
-  //   },
-  //   message: {
-  //     ok: false,
-  //     msg: "Too many requests from this IP, please try again later",
-  //   },
-  // });
-  // app.use(limiter);
+  // Rate limiting
+  const { rateLimit } = require("express-rate-limit");
+  const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+      if (!req.ip) return "unknown";
+      return req.ip.replace(/:\d+[^:]*$/, "");
+    },
+    message: { ok: false, msg: "Too many requests from this IP, please try again later" },
+  });
+  app.use(limiter);
 
   // Timeout middleware (30 seconds)
   app.use((req, res, next) => {
     res.setTimeout(30000, () => {
-      res.status(408).json({ msg: "Request timeout", ok: false });
+      if (!res.headersSent) {
+        res.status(408).json({ msg: "Request timeout", ok: false });
+      }
     });
     next();
   });
 
   // Security and parsing middleware
-  app.use(cors("*"));
-  // app.use(cors(corsOptions));
-  // Handle pre-flight requests
+  app.use(cors(corsOptions));
   app.options("*", cors(corsOptions));
   app.use(compression());
 
   // Route-specific high JSON limits (100MB) for bulk operations
   const highLimitRoutes = [
     "/api/db_event/device-final-status-refactored",
-    "/api/db_event/returning-item-refactored",
+    // "/api/db_event/returning-item-refactored",
     "/api/db_record/inserting-record-refactored",
     "/api/nodemailer/returned-items-summary-notification",
     "/api/nodemailer/returned-items-to-renter-notification",
@@ -145,6 +140,7 @@ const configureRoutes = (app) => {
     admin: require("./routes/admin"),
     article: require("./routes/article"),
     auth: require("./routes/auth"),
+    registration: require("./routes/registration"),
     "cash-report": require("./routes/cashReport"),
     company: require("./routes/company"),
     devitrak: require("./routes/devitrakApp"),
@@ -157,6 +153,7 @@ const configureRoutes = (app) => {
     image: require("./routes/image"),
     inventory: require("./routes/inventory"),
     item: require("./routes/item"),
+    jobs: require("./routes/jobs"),
     lease: require("./routes/lease"),
     nodeMailer: require("./routes/nodeMailer"),
     notificationLog: require("./routes/notificationLog"),
@@ -209,6 +206,10 @@ const configureRoutes = (app) => {
   // Mount utility routes
   app.use("/api/cache_update", utilityRoutes.cache);
   app.use("/api/cloudinary", utilityRoutes.cloudinary);
+
+  // Mount consumer public namespace (attendees app; no token required)
+  app.use("/api/consumer", require("./routes/consumer"));
+
   app.use("/api", require("./routes/status"));
 };
 
@@ -241,14 +242,16 @@ const configureErrorHandling = (app) => {
       url: req.originalUrl,
     });
 
-    res.status(500).json({
-      error: "Something went wrong!",
-      message:
-        process.env.NODE_ENV === "development"
-          ? err.message
-          : "Internal server error",
-      requestId: clientInfo.requestId,
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        error: "Something went wrong!",
+        message:
+          process.env.NODE_ENV === "development"
+            ? err.message
+            : "Internal server error",
+        requestId: clientInfo.requestId,
+      });
+    }
   });
 };
 
@@ -319,6 +322,14 @@ const startServer = () => {
       logger.warn(
         `Go worker executable not found at ${workerPath}. Skipping start.`
       );
+    }
+
+    // Start the durable task queue worker (single instance only).
+    // See DESIGN_task_queue.md.
+    try {
+      require("./queue/worker").start();
+    } catch (error) {
+      logger.error("Failed to start task queue worker:", { error: error.message });
     }
 
     // // Initialize Scheduled Jobs

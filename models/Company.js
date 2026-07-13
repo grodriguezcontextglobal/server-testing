@@ -127,6 +127,11 @@ const Company = new Schema({
         type: String,
         required: true,
       },
+      roleType: {
+        type: String,
+        required: false,
+        enum: ['root_admin', 'admin', 'sale_manager', 'event_manager', 'inventory_manager', 'assistant', 'inventory_location_manager', 'inventory_location_assistant'],
+      },
       active: {
         type: Boolean,
         required: true,

@@ -8,7 +8,7 @@ const logger = require("../../helpers/logger");
  * @returns {Object} - { sub_location_id, name }
  */
 const processSubLocation = async (connection, data) => {
-  const { location_id, name, parent_id, active } = data;
+  const { location_id, name, parent_id, active, company_id } = data;
 
   if (!location_id || !name) {
     throw new Error(
@@ -36,14 +36,15 @@ const processSubLocation = async (connection, data) => {
 
   // Create new sub-location
   const insertQuery = `
-    INSERT INTO sub_locations (location_id, name, parent_id, active)
-    VALUES (?, ?, ?, ?)
+    INSERT INTO sub_locations (location_id, name, parent_id, active, company_id)
+    VALUES (?, ?, ?, ?, ?)
   `;
   const [result] = await connection.execute(insertQuery, [
     location_id,
     name,
     parent_id || null,
-    active !== undefined ? active : true,
+    active !== undefined ? active : 1,
+    company_id || null,
   ]);
 
   return {
@@ -52,14 +53,117 @@ const processSubLocation = async (connection, data) => {
   };
 };
 
+/**
+ * PURA. Camina un path de nombres (raíz→hoja) sobre un conjunto de filas de
+ * sub_locations, siguiendo la cadena parent_id. Devuelve el nodo más profundo
+ * que matchee (deepest match), consistente con cómo getCompanyLocationTree
+ * cuenta items: avanza mientras los nombres matcheen, corta al primer segmento
+ * null/vacío o que no exista como hijo del nodo actual.
+ *
+ * IMPORTANTE: `rows` debe estar scopeado a UNA locación (los nombres se repiten
+ * entre locaciones; la cadena parent_id solo desambigua dentro de la misma).
+ *
+ * @returns {{ leafId: number|null, matchedDepth: number }}
+ */
+const walkSubLocationPath = (rows, segments) => {
+  let parentId = null;
+  let leafId = null;
+  let matchedDepth = 0;
+
+  for (const rawName of segments || []) {
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    if (!name) break;
+    const node = rows.find(
+      (r) => r.name === name && (r.parent_id ?? null) === parentId
+    );
+    if (!node) break;
+    leafId = node.sub_location_id;
+    parentId = node.sub_location_id;
+    matchedDepth++;
+  }
+
+  return { leafId, matchedDepth };
+};
+
+/**
+ * PURA. Devuelve el id de `rootId` más el de todos sus descendientes (subárbol).
+ * Se usa para preservar la semántica de "prefijo" del filtro JSON viejo: buscar
+ * por [Building A, Floor 3] debe devolver los items en Floor 3 y en cualquier
+ * nodo por debajo (Room 35, Shell A-1, ...).
+ */
+const collectSubtreeIds = (rows, rootId) => {
+  const ids = [];
+  const stack = [rootId];
+  while (stack.length) {
+    const id = stack.pop();
+    ids.push(id);
+    for (const r of rows) {
+      if ((r.parent_id ?? null) === id) stack.push(r.sub_location_id);
+    }
+  }
+  return ids;
+};
+
+/**
+ * Find-or-create de la cadena completa de sub-locaciones de un path multinivel,
+ * encadenando parent_id nivel por nivel (reutiliza processSubLocation por nodo).
+ * Corta al primer segmento null/vacío. Devuelve el sub_location_id de la HOJA
+ * (o null si no se creó/encontró ningún nodo — ej. path [null,null,null]).
+ */
+const processSubLocationPath = async (connection, location_id, segments, company_id) => {
+  let parentId = null;
+  let leafId = null;
+
+  for (const rawName of segments || []) {
+    const name = typeof rawName === "string" ? rawName.trim() : "";
+    if (!name) break;
+    const node = await processSubLocation(connection, {
+      location_id,
+      name,
+      parent_id: parentId,
+      active: 1,
+      company_id,
+    });
+    leafId = node.sub_location_id;
+    parentId = node.sub_location_id;
+  }
+
+  return leafId;
+};
+
+/**
+ * Read-only. Dado location_id + un path de nombres de búsqueda, resuelve el
+ * subárbol de sub_location_id a filtrar. Devuelve { ids } si el path resuelve
+ * COMPLETO contra la tabla sub_locations, o null si algún segmento no está
+ * registrado (señal para que el caller caiga al filtro JSON legacy y no pierda
+ * resultados).
+ */
+const resolveSubLocationFilter = async (connection, location_id, segments) => {
+  const meaningful = (segments || []).filter(
+    (s) => typeof s === "string" && s.trim()
+  ).length;
+  if (!meaningful) return null;
+
+  const [rows] = await connection.execute(
+    `SELECT sub_location_id, name, parent_id
+     FROM sub_locations WHERE location_id = ? AND active = 1`,
+    [location_id]
+  );
+
+  const { leafId, matchedDepth } = walkSubLocationPath(rows, segments);
+  if (leafId === null || matchedDepth < meaningful) return null; // fallback
+
+  return { ids: collectSubtreeIds(rows, leafId) };
+};
+
 const createSubLocation = async (req, res) => {
   const connection = getConnection();
-  const { location_id, name, parent_id } = req.body;
+  const { location_id, name, parent_id, company_id } = req.body;
 
-  if (!location_id || !name) {
+  if (!location_id || !name || !company_id) {
     return res.status(400).json({
       ok: false,
-      msg: "Missing required fields: location_id, name",
+      msg: "Missing required fields: location_id, name, company_id",
     });
   }
 
@@ -181,6 +285,43 @@ const updateSubLocation = async (req, res) => {
   }
 };
 
+const deleteSubLocation = async (req, res) => {
+  const connection = getConnection();
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ ok: false, msg: "Sub-location ID is required" });
+  }
+
+  try {
+    const [children] = await connection.execute(
+      "SELECT sub_location_id FROM sub_locations WHERE parent_id = ? AND active = 1",
+      [id]
+    );
+
+    if (children.length > 0) {
+      return res.status(409).json({
+        ok: false,
+        msg: "Cannot delete sub-location with active children. Remove or reassign children first.",
+      });
+    }
+
+    const [result] = await connection.execute(
+      "DELETE FROM sub_locations WHERE sub_location_id = ?",
+      [id]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ ok: false, msg: "Sub-location not found" });
+    }
+
+    return res.status(200).json({ ok: true, msg: "Sub-location deleted successfully" });
+  } catch (error) {
+    logger.error("deleteSubLocation error:", error);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 const checkSubLocation = async (req, res) => {
   const connection = getConnection();
   const { location_id, name, parent_id } = req.body;
@@ -219,5 +360,10 @@ module.exports = {
   getSubLocationsHierarchy,
   updateSubLocation,
   checkSubLocation,
+  deleteSubLocation,
   processSubLocation,
+  walkSubLocationPath,
+  collectSubtreeIds,
+  processSubLocationPath,
+  resolveSubLocationFilter,
 };

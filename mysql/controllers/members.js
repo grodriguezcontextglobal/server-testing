@@ -470,116 +470,45 @@ const updateMemberInfo = async (request, response) => {
       return response.status(400).json({ message: "member_id is required." });
     }
 
-    // Normalize name fields (if provided)
-    let first_name = body.first_name
-      ? String(body.first_name).trim()
-      : undefined;
-    let last_name = body.last_name ? String(body.last_name).trim() : undefined;
-    if ((!first_name || !last_name) && body.name) {
-      const fullName = String(body.name).trim();
-      const parts = fullName.split(/\s+/);
-      if (!first_name)
-        first_name = parts.length > 1 ? parts.slice(0, -1).join(" ") : parts[0];
-      if (!last_name)
-        last_name = parts.length > 1 ? parts[parts.length - 1] : "";
-    }
+    const allowedColumns = [
+        'first_name', 'last_name', 'email', 'phone_number',
+        'address', 'address_street', 'address_city', 'address_state', 'address_zip',
+        'company_id', 'image_url', 'minor', 'parent_guardian_first_name',
+        'parent_guardian_last_name', 'parent_guardian_email', 'parent_guardian_phone_number'
+    ];
 
-    // Normalize address fields
-    let address = body.address ? String(body.address).trim() : undefined;
-    let address_street = body.address_street
-      ? String(body.address_street).trim()
-      : undefined;
-    let address_city = body.address_city
-      ? String(body.address_city).trim()
-      : undefined;
-    let address_state = body.address_state
-      ? String(body.address_state).trim()
-      : undefined;
-    let address_zip = body.address_zip
-      ? String(body.address_zip).trim()
-      : undefined;
+    const updateData = {};
 
-    // If full address provided, attempt to split into components
-    if (
-      address &&
-      (!address_street || !address_city || !address_state || !address_zip)
-    ) {
-      const byComma = address
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      if (byComma.length >= 3) {
-        address_street = address_street || byComma[0];
-        address_city = address_city || byComma[1];
-        const stateZip = byComma.slice(2).join(" ");
-        const m = stateZip.match(/^([A-Za-z]{2})\s+(\d{5}(-\d{4})?)$/);
-        if (m) {
-          address_state = address_state || m[1];
-          address_zip = address_zip || m[2];
-        } else {
-          const tokens = stateZip.split(/\s+/);
-          const last = tokens[tokens.length - 1];
-          if (/^\d{5}(-\d{4})?$/.test(last)) {
-            address_zip = address_zip || last;
-            address_state = address_state || tokens.slice(0, -1).join(" ");
-          } else {
-            address_state = address_state || stateZip;
-          }
+    for (const key in body) {
+        if (allowedColumns.includes(key)) {
+            if (typeof body[key] === 'string') {
+                updateData[key] = body[key].trim();
+            } else {
+                updateData[key] = body[key];
+            }
         }
-      }
     }
 
-    // If split parts provided but full address missing, compose it
-    if (
-      !address &&
-      (address_street || address_city || address_state || address_zip)
-    ) {
-      const composed = [
-        address_street,
-        address_city,
-        [address_state, address_zip].filter(Boolean).join(" "),
-      ]
-        .filter(Boolean)
-        .join(", ");
-      address = composed || undefined;
+    if (body.phone || body.phoneNumber) {
+        updateData.phone_number = String(body.phone || body.phoneNumber).trim();
     }
 
-    // Collect allowed columns to update
-    const allowed = {
-      first_name,
-      last_name,
-      email: body.email ? String(body.email).trim() : undefined,
-      phone_number:
-        body.phone_number ?? body.phone ?? body.phoneNumber
-          ? String(body.phone_number ?? body.phone ?? body.phoneNumber).trim()
-          : undefined,
-      address,
-      address_street,
-      address_city,
-      address_state,
-      address_zip,
-      company_id: body.company_id ? String(body.company_id).trim() : undefined,
-      image_url: body.image_url,
-    };
-
-    const columns = Object.keys(allowed).filter(
-      (k) => allowed[k] !== undefined
-    );
-    if (columns.length === 0) {
+    const columnsToUpdate = Object.keys(updateData);
+    if (columnsToUpdate.length === 0) {
       return response
         .status(400)
         .json({ message: "No updatable fields provided." });
     }
 
-    const setClause = columns.map((c) => `\`${c}\` = ?`).join(", ");
-    const values = columns.map((k) => allowed[k]);
+    const setClause = columnsToUpdate.map((c) => `\`${c}\` = ?`).join(", ");
+    const values = columnsToUpdate.map((k) => updateData[k]);
     const query = `UPDATE members_info SET ${setClause} WHERE member_id = ?`;
     values.push(String(member_id).trim());
 
     const [result] = await connection.query(query, values);
     return response.status(200).json({
       ok: true,
-      updated_fields: columns,
+      updated_fields: columnsToUpdate,
       affectedRows: result.affectedRows || 0,
     });
   } catch (error) {

@@ -3,8 +3,10 @@ const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
 const { groupBy } = require("lodash");
 const connection = getConnection();
+const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
 
 const runGoWorker = require("../../helpers/goWorker");
+const { createQueuedJobController } = require("../../helpers/queuedController");
 const { updateLargeData } = require("./item");
 const {
   poolReceiversBulk: poolReceiversBulkWorker,
@@ -410,52 +412,34 @@ const consultingInventoryCurrentState = async (request, response) => {
 
 const checkingInventoryCurrentState = async (request, response) => {
   try {
+    const company_id = request.params.company_id;
     const params = request._parsedOriginalUrl.query;
     const splitting = params ? params.split("&") : [];
 
-    let role = null;
-    let preference = null;
-    const filters = [];
-    const values = [];
+    // Start with company_id filter; skip client-submitted role/preference
+    const filters = [`ii.company_id=?`];
+    const values = [company_id];
 
     splitting.forEach((item) => {
       const [key, value] = item.split("=");
-      if (key === "role") {
-        role = value;
-      } else if (key === "preference") {
-        try {
-          preference = JSON.parse(decodeURIComponent(value));
-        } catch (e) {
-          preference = value;
-        }
-      } else if (key) {
+      if (key && key !== "role" && key !== "preference" && key !== "company_id") {
         filters.push(`ii.${key}=?`);
         values.push(value);
       }
     });
 
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    const { role_level, locations } = userAccess;
+
     let formatting = filters.join(" AND ");
 
-    let locations = [];
-    if (Array.isArray(preference)) {
-      locations = preference;
-    } else if (preference && preference.inventory_location) {
-      locations = preference.inventory_location;
-    }
-
-    if (role !== "0" && role !== "1" && locations.length > 0) {
+    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
       const locPlaceholders = locations.map(() => "?").join(",");
-      if (formatting) {
-        formatting += ` AND ii.location IN (${locPlaceholders})`;
-      } else {
-        formatting = `ii.location IN (${locPlaceholders})`;
-      }
+      formatting += ` AND ii.location IN (${locPlaceholders})`;
       values.push(...locations);
-    }
-
-    // Fallback to 1=1 if no filters to avoid SQL syntax error
-    if (!formatting) {
-      formatting = "1=1";
     }
 
     const query = `
@@ -540,31 +524,20 @@ const deletingRecordInItemInvAssignedEventRow = async (request, response) => {
   }
 };
 
-const insertingDeviceInEventDirectlyFromContainer = async (
-  request,
-  response,
-) => {
-  try {
-    const { refDatabase, event_id } = request.body;
-
-    // Parse refDatabase if string, else use as is
-    // Node.js logic handles both string and object. Go worker will need a structure.
-    // If it's a string, we can pass it as is. If object, pass as is.
-
-    // Offload to Go Worker
-    await runGoWorker("insert-device-event-container", {
-      event_id: String(event_id),
-      refDatabase,
-    });
-
-    response
-      .status(201)
-      .json({ msg: "Items inserted successfully into event", ok: true });
-  } catch (error) {
-    logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+// Fire-and-forget de verdad: el original no usaba el resultado del Go worker
+// para nada, solo respondía un mensaje genérico — por eso es la única
+// mutación del Go worker que se encola (ver DESIGN_task_queue.md § Fase 2).
+const buildInsertDeviceEventContainerPayload = (body) => ({
+  event_id: String(body.event_id),
+  refDatabase: body.refDatabase,
+});
+const insertingDeviceInEventDirectlyFromContainer = createQueuedJobController(
+  "go-worker:insert-device-event-container",
+  buildInsertDeviceEventContainerPayload,
+  {
+    buildSuccessBody: (job) => ({ msg: "Items queued for insertion into event", ok: true, jobId: job.id }),
   }
-};
+);
 
 const consultingLeaseInformationConsumer = async (request, response) => {
   try {
@@ -610,9 +583,13 @@ const allocateDeviceToEvent = async (request, response) => {
     }
     const connection = getConnection();
     const placeholders = data.map(() => "?").join(",");
-    const query = `SELECT item_id from item_inv where company_id = ? AND item_group = ? AND category_name = ? AND warehouse = 1 AND serial_number IN (${placeholders})`;
-    const values = [company_id, item_group, category_name,, ...data];
+    const query = `SELECT item_id from item_inv 
+                   where company_id = ? AND item_group = ? 
+                   AND category_name = ? 
+                   AND serial_number IN (${placeholders})`;
+    const values = [company_id, item_group, category_name, ...data];
     const [result] = await connection.execute(query, values);
+    logger.info("result", result)
     if (result.length > 0) {
       //call controller to insert item into event inventory sql
       const itemIdsForUpdateLargeData = {
@@ -651,7 +628,7 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
   let connection;
 
   try {
-    const { company_id, event_id, data, warehouse, eventName, company_id_nosql } = request.body;
+    const { company_id, event_id, data, warehouse, eventName, company_id_nosql, logistic_status } = request.body;
 
     if (!company_id || !event_id) {
       return response
@@ -725,11 +702,11 @@ const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
 
     const updateQuery = `
       UPDATE item_inv
-      SET warehouse = ?
+      SET warehouse = ?, logistic_status = ?
       WHERE company_id = ?
         AND item_id IN (${allItemsPlaceholder});
     `;
-    await connection.execute(updateQuery, [warehouse, company_id, ...allItemsToProcess]);
+    await connection.execute(updateQuery, [warehouse, logistic_status, company_id, ...allItemsToProcess]);
 
     const insertPlaceholders = allItemsToProcess.map(() => "(?, ?)").join(", ");
     const insertQuery = `
@@ -899,9 +876,40 @@ const reserveItemsInInventoryForEvent = async (request, response) => {
   }
 };
 
+const removeReservedItemsInInventoryForEvent = async (request, response) => { 
+try {
+  const { event_id, company_id, item_id } = request.body;
+  const queryToRemoveReservedItems = `
+    DELETE FROM event_item_shipping
+    WHERE event_id = ?
+      AND company_id = ?
+      AND item_id IN (${item_id.map(() => "?").join(",")});
+  `;
+  const [result] = await connection.execute(queryToRemoveReservedItems, [
+    event_id,
+    company_id,
+    ...item_id,
+  ]);
+  if (result.affectedRows === 0) {
+    return response.status(404).json({
+      message: "No items found in the event item shipping table to remove.",
+      ok: false,
+    });
+  }
+  return response.status(200).json({
+    message: `${result.affectedRows} item(s) have been removed from the event item shipping table.`,
+    ok: true,
+    total_removed: result.affectedRows,
+  });
+} catch (error) {
+  
+}
+}
+
 module.exports = {
   allocateDeviceMarkedAsContainerInEvent,
   allocateDeviceToEvent,
+  buildInsertDeviceEventContainerPayload,
   bulkUpdateEventItemShipping,
   checkingInventoryCurrentState,
   consultingInventoryCurrentState,
@@ -917,5 +925,6 @@ module.exports = {
   lockItemsForEvent,
   removeEventItemShipping,
   reserveItemsInInventoryForEvent,
-  updateEventItemShipping
+  updateEventItemShipping,
+  removeReservedItemsInInventoryForEvent
 };

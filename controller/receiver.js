@@ -17,7 +17,7 @@ const {
   updateBulkItemDataInPool: updateBulkItemDataInPoolWorker,
   returnAllItemsInTransactionInPool: returnAllItemsInTransactionInPoolWorker,
   updateBulkItemsInTransactionPerUserAtOnce:
-    updateBulkItemsInTransactionPerUserAtOnceWorker,
+  updateBulkItemsInTransactionPerUserAtOnceWorker,
   createBulkItemTransactionInUser: createBulkItemTransactionInUserWorker,
 } = require("./receiverWorker");
 
@@ -460,6 +460,22 @@ const removingItemFromTransaction = async (request, response) => {
   }
 };
 
+const getAllTransactionByEventAndConsumer = async (request, response) => {
+  try {
+    const { company, paymentIntentList } = request.body;
+    const items = await Receivers.find({ company, paymentIntent: { $in: paymentIntentList } });
+    return response.status(200).json({
+      ok: true,
+      listOfReceivers: items,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error,
+    });
+  }
+};
+
 module.exports = {
   addReceiverToTransaction,
   checkingReceiversAssigned,
@@ -484,4 +500,5 @@ module.exports = {
   updateBulkItemsInTransactionPerUserAtOnce,
   updateIssueDevice,
   updatePoolReceivers,
+  getAllTransactionByEventAndConsumer
 };

@@ -5,35 +5,30 @@
  */
 
 const { Router } = require("express");
-const { insertingStaffMember, consultingStaffMemberInformation } = require("../controllers/staff");
+const {
+  insertingStaffMember,
+  consultingStaffMemberInformation,
+  addCompanyStaff,
+  updateCompanyStaffRole,
+  updateCompanyStaff,
+  getStaffPermissions,
+  getStaffCompanies,
+} = require("../controllers/staff");
+const { validateJWT } = require("../../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
 const router = Router();
 
-//check item info
-router.post("/consulting-member", consultingStaffMemberInformation)
+// Basic staff_member table
+router.post("/consulting-member", consultingStaffMemberInformation);
+router.post("/new_member", insertingStaffMember);
 
-//check item in warehouse 
-// router.post('/warehouse-items', consultingItemInWarehouseTable)
+// company_staff role management (requieren JWT)
+router.post("/company-staff",             validateJWT, checkTokenVersion, addCompanyStaff);
+router.patch("/company-staff",            validateJWT, checkTokenVersion, updateCompanyStaff);
+router.patch("/company-staff/role",       validateJWT, checkTokenVersion, updateCompanyStaffRole);
+router.post("/company-staff/permissions", validateJWT, checkTokenVersion, getStaffPermissions);
 
-//check table
-// router.post('/items_information', consultingItemTable)
-
-//check inventory current state by query
-// router.post('/current-inventory', consultingInventoryCurrentState)
-
-//check inventory current state by query
-// router.post('/inventory_event/:id', consultingInventoryInEvent)
-
-//track item history
-// router.post('/tracking_item/:id', consultingInventoryTracking)
-
-//insert new item
-router.post('/new_member', insertingStaffMember)
-
-//insert new item
-// router.patch('/edit-item', updateItemInTable)
-
-//delete item
-// router.delete('/:id', deleteItem)
-
+// login: lista de empresas del staff con roleType y locations (reemplaza /company/search-company)
+router.get("/companies", validateJWT, checkTokenVersion, getStaffCompanies);
 
 module.exports = router;

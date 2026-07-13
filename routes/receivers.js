@@ -29,6 +29,7 @@ const {
   returnAllItemsInTransactionInPool,
   updateBulkItemsInTransactionPerUserAtOnce,
   receiverPoolBulkDelete,
+  getAllTransactionByEventAndConsumer,
 } = require("../controller/receiver");
 
 //post receivers per user per transaction
@@ -130,4 +131,5 @@ router.patch(
   updateBulkItemsInTransactionPerUserAtOnce
 );
 
+router.post('/all-transaction-by-event-and-consumer', getAllTransactionByEventAndConsumer)
 module.exports = router;

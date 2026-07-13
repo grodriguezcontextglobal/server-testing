@@ -16,6 +16,9 @@ const {
   getAllConsumersBasedOnAllEventsPerCompany,
 } = require("../controller/auth");
 const validateFields = require("../middlewares/validate-field");
+const { validateJWT } = require("../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const { optionalJWT } = require("../middlewares/optionalJWT");
 
 //render all users
 router.get("/users", showAllUsers)
@@ -47,12 +50,12 @@ router.post(
 router.patch("/:id", editUser);
 
 //retrieve consumer information
-router.get("/:id", getUser);
+router.get("/:id", optionalJWT, getUser);
 
 //check existing user
-router.post("/",check("email", "Email is mandatory").isEmail(), checkUser); 
+router.post("/",check("email", "Email is mandatory").isEmail(), checkUser);
 
 //get all consumers based on all events per company
-router.get("/all-consumers-based-on-all-events-per-company/:companyID", getAllConsumersBasedOnAllEventsPerCompany);
+router.get("/all-consumers-based-on-all-events-per-company/:companyID", validateJWT, checkTokenVersion, getAllConsumersBasedOnAllEventsPerCompany);
 
 module.exports = router;

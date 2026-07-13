@@ -1,6 +1,16 @@
 const { Router } = require("express");
 const multer = require("multer");
 const path = require("path");
+const fs = require("fs");
+
+// tmp/uploads está gitignoreado (tmp/uploads/), así que puede no existir en un
+// checkout limpio o si el OS/limpiador de temporales lo borra. Multer
+// diskStorage NO crea el directorio destino → falla al escribir con
+// "ENOENT ... open 'tmp/uploads/...'" ANTES de llegar al controller (500).
+// Se garantiza que exista, tanto al cargar el módulo como en cada upload.
+const UPLOAD_DIR = "tmp/uploads";
+const ensureUploadDir = () => fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+ensureUploadDir();
 
 const {
   uploadDocument,
@@ -31,7 +41,13 @@ const {
 // Configure multer
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, "tmp/uploads");
+    // recursive:true es idempotente; cubre el caso de que el dir se borre en runtime.
+    try {
+      ensureUploadDir();
+      cb(null, UPLOAD_DIR);
+    } catch (err) {
+      cb(err);
+    }
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
