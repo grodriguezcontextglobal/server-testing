@@ -1,5 +1,6 @@
 const ACCEPTED_ORIGINS = [
     "http://localhost:5522",
+    "http://localhost:5523", // local Cypress/test instance
     "https://devitrak-app-survey.pages.dev",
     "http://localhost:3791",
     "https://admin.devitrak.net",
