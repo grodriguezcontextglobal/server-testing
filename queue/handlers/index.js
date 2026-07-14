@@ -90,4 +90,15 @@ register(
   })
 );
 
+const { createInventoryBulkInsertHandler } = require("./inventoryBulkInsert");
+const getSqlConnection = require("../../mysql/database/config");
+
+// Hasta ~15,000 seriales por job (ver controller/item.js §
+// insertBulkItemAlhpanumericFormat y DESIGN_task_queue.md § Fase 4b). Corre en
+// una única transacción con conexión dedicada del pool.
+register(
+  "inventory:bulk-insert-alphanumeric",
+  createInventoryBulkInsertHandler({ getConnection: getSqlConnection })
+);
+
 module.exports = { register, getHandler, handlers };

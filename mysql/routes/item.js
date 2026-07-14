@@ -82,7 +82,7 @@ router.post("/new_item", insertingItem);
 router.post("/bulk-item", insertBulkItem);
 
 //insert bulk item alpha numeric format
-router.post("/bulk-item-alphanumeric", insertBulkItemAlhpanumericFormat);
+router.post("/bulk-item-alphanumeric", validateJWT, insertBulkItemAlhpanumericFormat);
 
 //update new item
 router.post("/edit-item", updateItemInTable);

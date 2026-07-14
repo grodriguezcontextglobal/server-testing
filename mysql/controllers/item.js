@@ -10,6 +10,7 @@ const {
 } = require("./sub_location");
 const ReceiversPool = require("../../models/ReceiversPool");
 const { groupBy } = require("lodash");
+const { enqueue, extractJobContext } = require("../../helpers/queue");
 require("dotenv").config();
 
 const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
@@ -544,45 +545,73 @@ const insertBulkItem = async (request, response) => {
   }
 };
 
-const insertBulkItemAlhpanumericFormat = async (request, response) => {
-  try {
-    const connection = getConnection();
-    const { location, company_id } = request.body;
+// Migrado al contrato async (202 + jobId, ver DESIGN_task_queue.md § Fase 4b):
+// hasta 15,000 seriales por request, insertados síncronamente antes sostenían
+// la conexión HTTP abierta varios segundos/minutos sin transacción real (cada
+// batch de 1000 se autocommiteaba independiente) ni idempotencia — un timeout
+// de cliente + retry duplicaba filas completas. Ahora solo se valida/resuelve
+// location_id (rápido) y se encola el resto; el INSERT real vive en
+// queue/handlers/inventoryBulkInsert.js dentro de una única transacción.
+function createInsertBulkItemAlphanumeric({
+  getLocationIdFn = getLocationId,
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  connectionFn = getConnection,
+} = {}) {
+  return async function insertBulkItemAlhpanumericFormat(request, response) {
+    try {
+      const { location, company_id } = request.body;
 
-    const locName = typeof location === "string" ? location : location?.name;
-    if (!locName || !company_id) {
-      return response.status(400).json({
-        msg: "Company ID and Location Name are required.",
+      const locName = typeof location === "string" ? location : location?.name;
+      if (!locName || !company_id) {
+        return response.status(400).json({
+          msg: "Company ID and Location Name are required.",
+          ok: false,
+        });
+      }
+
+      const connection = connectionFn();
+      const locationId = await getLocationIdFn(connection, company_id, locName);
+      if (!locationId) {
+        return response.status(404).json({
+          msg: `Location '${locName}' not found.`,
+          ok: false,
+        });
+      }
+
+      const payload = { ...request.body, location_id: locationId };
+      const context = extractContextFn(request);
+
+      // Idempotencia: mismo patrón que document:upload-pdf (controller/document.js).
+      // Namespaced por tipo para no chocar con claves iguales de otros job types.
+      const clientKey =
+        typeof request.get === "function"
+          ? request.get("Idempotency-Key") || request.get("idempotency-key")
+          : undefined;
+      const idempotencyKey = clientKey
+        ? `inventory:bulk-insert-alphanumeric:${String(clientKey).trim()}`
+        : undefined;
+
+      const job = await enqueueFn("inventory:bulk-insert-alphanumeric", payload, {
+        context,
+        idempotencyKey,
+      });
+
+      return response.status(202).json({
+        msg: "Bulk items queued for insertion",
+        ok: true,
+        jobId: job.id,
+      });
+    } catch (error) {
+      logger.error("Error in insertBulkItemAlhpanumericFormat:", error);
+      response.status(500).json({
+        msg: error.message,
         ok: false,
       });
     }
-
-    const locationId = await getLocationId(connection, company_id, locName);
-    if (!locationId) {
-      return response.status(404).json({
-        msg: `Location '${locName}' not found.`,
-        ok: false,
-      });
-    }
-
-    // Pass location_id to Worker
-    request.body.location_id = locationId;
-
-    // Execute Node.js Worker logic
-    await insertBulkItemAlhpanumericFormatWorker(connection, request.body);
-
-    return response.status(201).json({
-      msg: "Alpha bulk items inserted successfully",
-      ok: true,
-    });
-  } catch (error) {
-    logger.error("Error in insertBulkItemAlhpanumericFormat:", error);
-    response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
-  }
-};
+  };
+}
+const insertBulkItemAlhpanumericFormat = createInsertBulkItemAlphanumeric();
 
 const consultingItem = async (request, response) => {
   try {
@@ -3602,113 +3631,6 @@ const retrieveCompanyItemsWithLocations = async (request, response) => {
   }
 };
 
-const insertBulkItemAlhpanumericFormatWorker = async (connection, req) => {
-  const {
-    category_name,
-    item_group,
-    cost,
-    brand,
-    descript_item,
-    ownership,
-    list,
-    warehouse,
-    main_warehouse,
-    created_at,
-    update_at,
-    company,
-    location,
-    location_id,
-    current_location,
-    sub_location,
-    extra_serial_number,
-    company_id,
-    return_date,
-    container,
-    containerSpotLimit,
-    image_url,
-    supplier_info,
-  } = req;
-
-  if (!list || list.length === 0) {
-    throw new Error("no serial numbers provided");
-  }
-
-  let extraInfoMap = {};
-  if (extra_serial_number && typeof extra_serial_number === "string") {
-    try {
-      const parsedExtraInfo = JSON.parse(extra_serial_number);
-      if (Array.isArray(parsedExtraInfo)) {
-        extraInfoMap = parsedExtraInfo.reduce((acc, item) => {
-          if (item) {
-            const key = Object.keys(item)[0];
-            if (key) {
-              acc[key] = item[key];
-            }
-          }
-          return acc;
-        }, {});
-      } else if (
-        typeof parsedExtraInfo === "object" &&
-        parsedExtraInfo !== null
-      ) {
-        extraInfoMap = parsedExtraInfo;
-      }
-    } catch (e) {
-      logger.error("Failed to parse extra_serial_number JSON:", e);
-    }
-  }
-
-  const query = `
-    INSERT INTO item_inv (
-      category_name, item_group, cost, brand, descript_item, ownership,
-      serial_number, warehouse, main_warehouse, create_at, update_at,
-      company, location, location_id, current_location, sub_location, extra_serial_number,
-      company_id, return_date, returnedRentedInfo, container, containerSpotLimit,
-      container_id, display_item, enableAssignFeature, image_url, supplier_info
-    ) VALUES ?`;
-
-  const returnedRentedInfo = "[]";
-  const containerID = "[]";
-  const displayItem = 1;
-  const enableAssignFeature = 1;
-
-  const batchSize = 1000;
-
-  for (let i = 0; i < list.length; i += batchSize) {
-    const batch = list.slice(i, i + batchSize);
-    const values = batch.map((serial) => [
-      category_name,
-      item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial,
-      warehouse,
-      main_warehouse,
-      created_at,
-      update_at,
-      company,
-      location,
-      location_id,
-      current_location,
-      sub_location,
-      extraInfoMap[serial] ? JSON.stringify(extraInfoMap[serial]) : null,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      containerID,
-      displayItem,
-      enableAssignFeature,
-      image_url,
-      supplier_info,
-    ]);
-    await connection.query(query, [values]);
-  }
-};
-
 const confirmItemsReturnedToStock = async (request, response) => {
   const connection = await getConnection().getConnection();
   try {
@@ -3931,6 +3853,7 @@ module.exports = {
   gettingDataFromLocationOption,
   insertBulkItem,
   insertBulkItemAlhpanumericFormat,
+  createInsertBulkItemAlphanumeric,
   insertContainerItems,
   insertingItem,
   itemFinalStatusWhenEventIsFinished,
