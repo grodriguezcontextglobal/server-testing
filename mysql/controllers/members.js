@@ -98,6 +98,29 @@ const insertNewMember = async (request, response) => {
       address_zip,
       company_id: body.company_id ? String(body.company_id).trim() : null,
       image_url: body.image_url ? String(body.image_url).trim() : null,
+      external_id: body.external_id ? String(body.external_id).trim() : undefined,
+      // School track: minor + guardian info must be settable at creation,
+      // not only via update (guardian consent flows depend on it).
+      minor:
+        body.minor === undefined
+          ? undefined
+          : body.minor === true ||
+            body.minor === 1 ||
+            ["1", "true", "yes", "y"].includes(String(body.minor).toLowerCase().trim())
+          ? 1
+          : 0,
+      parent_guardian_first_name: body.parent_guardian_first_name
+        ? String(body.parent_guardian_first_name).trim()
+        : undefined,
+      parent_guardian_last_name: body.parent_guardian_last_name
+        ? String(body.parent_guardian_last_name).trim()
+        : undefined,
+      parent_guardian_email: body.parent_guardian_email
+        ? String(body.parent_guardian_email).trim()
+        : undefined,
+      parent_guardian_phone_number: body.parent_guardian_phone_number
+        ? String(body.parent_guardian_phone_number).trim()
+        : undefined,
     };
 
     const columns = Object.keys(allowed).filter(
@@ -301,7 +324,24 @@ const insertBulkMembers = async (request, response) => {
       "address_state",
       "address_zip",
       "company_id",
+      "minor",
+      "parent_guardian_first_name",
+      "parent_guardian_last_name",
+      "parent_guardian_email",
+      "parent_guardian_phone_number",
     ];
+
+    // Coerce school-track fields from spreadsheet-style values
+    for (const r of valid) {
+      if (r.minor !== undefined) {
+        r.minor =
+          r.minor === true ||
+          r.minor === 1 ||
+          ["1", "true", "yes", "y"].includes(String(r.minor).toLowerCase().trim())
+            ? 1
+            : 0;
+      }
+    }
 
     const present = new Set(["first_name", "last_name"]);
     for (const r of valid) {
@@ -670,8 +710,8 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
             : 0;
       }
       if (row.returned === undefined) {
-        // Default according to schema (boolean default 1)
-        row.returned = 1;
+        // A freshly created lease is outstanding, not returned.
+        row.returned = 0;
       }
 
       // Normalize date aliases if provided
