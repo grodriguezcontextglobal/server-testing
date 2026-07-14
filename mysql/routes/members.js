@@ -20,6 +20,8 @@ const {
   deleteMemberAssignedDeviceLeaseRows,
   retrieveMembersAssignedDevices,
   removeRowAssignedDeviceLeaseMember,
+  retrieveOverdueLeases,
+  bulkReturnMemberLeases,
 } = require("../controllers/members");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
@@ -77,5 +79,11 @@ router.post(
 
 //remove row in member_assigned_device_lease table for lease tracking
 router.post("/remove-row-lease-member", canDelete, removeRowAssignedDeviceLeaseMember);
+
+//outstanding leases past their expected return date (overdue dashboard)
+router.post("/overdue-leases", canRead, retrieveOverdueLeases);
+
+//end-of-term bulk return (all outstanding / by grade / by member_ids)
+router.post("/bulk-return", canUpdate, bulkReturnMemberLeases);
 
 module.exports = router;

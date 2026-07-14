@@ -99,6 +99,8 @@ const insertNewMember = async (request, response) => {
       company_id: body.company_id ? String(body.company_id).trim() : null,
       image_url: body.image_url ? String(body.image_url).trim() : null,
       external_id: body.external_id ? String(body.external_id).trim() : undefined,
+      grade: body.grade ? String(body.grade).trim() : undefined,
+      homeroom: body.homeroom ? String(body.homeroom).trim() : undefined,
       // School track: minor + guardian info must be settable at creation,
       // not only via update (guardian consent flows depend on it).
       minor:
@@ -324,6 +326,8 @@ const insertBulkMembers = async (request, response) => {
       "address_state",
       "address_zip",
       "company_id",
+      "grade",
+      "homeroom",
       "minor",
       "parent_guardian_first_name",
       "parent_guardian_last_name",
@@ -405,6 +409,9 @@ const retrieveMembersAssignedDevices = async (request, response) => {
       "assigned_date",
       "returned",
       "location",
+      "return_status",
+      "condition_note",
+      "returned_date",
     ];
     const allowedLeaseColumns = new Set(allowedLeaseColumnsArr);
 
@@ -514,7 +521,8 @@ const updateMemberInfo = async (request, response) => {
         'first_name', 'last_name', 'email', 'phone_number',
         'address', 'address_street', 'address_city', 'address_state', 'address_zip',
         'company_id', 'image_url', 'minor', 'parent_guardian_first_name',
-        'parent_guardian_last_name', 'parent_guardian_email', 'parent_guardian_phone_number'
+        'parent_guardian_last_name', 'parent_guardian_email', 'parent_guardian_phone_number',
+        'grade', 'homeroom', 'external_id'
     ];
 
     const updateData = {};
@@ -692,6 +700,9 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
       "returned",
       "location",
       "assigned_date",
+      "return_status",
+      "condition_note",
+      "returned_date",
     ];
     const allowedLeaseColumns = new Set(allowedLeaseColumnsArr);
     const schemaHas = (k) => schemaCols.has(k) && allowedLeaseColumns.has(k);
@@ -825,6 +836,9 @@ const updateMemberAssignedDeviceLeaseRow = async (request, response) => {
       "returned",
       "location",
       "assigned_date",
+      "return_status",
+      "condition_note",
+      "returned_date",
     ];
     const allowedLeaseColumns = new Set(allowedLeaseColumnsArr);
 
@@ -957,6 +971,9 @@ const deleteMemberAssignedDeviceLeaseRows = async (request, response) => {
       "returned",
       "location",
       "assigned_date",
+      "return_status",
+      "condition_note",
+      "returned_date",
     ];
     const allowedLeaseColumns = new Set(allowedLeaseColumnsArr);
 
@@ -1086,6 +1103,129 @@ const removeRowAssignedDeviceLeaseMember = async (request, response) => {
   }
 };
 
+// Outstanding leases past their expected return date, joined with the member
+// (incl. guardian contact for reminder emails) and device details.
+const retrieveOverdueLeases = async (request, response) => {
+  try {
+    const { company_id, grade } = request.body || {};
+    if (!company_id) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "company_id is required" });
+    }
+    const values = [String(company_id)];
+    let gradeClause = "";
+    if (grade !== undefined && grade !== null && String(grade).trim() !== "") {
+      gradeClause = " AND mi.grade = ?";
+      values.push(String(grade).trim());
+    }
+    const query = `
+      SELECT
+        madl.lease_id, madl.member_id, madl.device_id, madl.company_id,
+        madl.assigned_date, madl.expected_return_date, madl.location,
+        DATEDIFF(NOW(), madl.expected_return_date) AS days_overdue,
+        mi.first_name, mi.last_name, mi.email, mi.grade, mi.homeroom,
+        mi.minor, mi.parent_guardian_first_name, mi.parent_guardian_email,
+        ii.serial_number AS device_serial_number, ii.item_group AS device_item_group,
+        ii.category_name AS device_category_name, ii.brand AS device_brand
+      FROM member_assigned_device_lease madl
+      JOIN members_info mi ON mi.member_id = madl.member_id
+      LEFT JOIN item_inv ii ON ii.item_id = madl.device_id
+      WHERE madl.company_id = ? AND madl.returned = 0
+        AND madl.expected_return_date IS NOT NULL
+        AND madl.expected_return_date < NOW()${gradeClause}
+      ORDER BY madl.expected_return_date ASC`;
+    const [rows] = await connection.query(query, values);
+    return response.status(200).json({ ok: true, count: rows.length, rows });
+  } catch (error) {
+    return response
+      .status(500)
+      .json({ ok: false, msg: "Internal server error", error: error.message });
+  }
+};
+
+// Bulk return of outstanding leases — end-of-term collection. Scope by
+// member_ids, grade, or everything outstanding for the company. Marks the
+// lease rows returned (history preserved) and puts the devices back in the
+// warehouse (skipped for status 'lost' — those devices never came back).
+const bulkReturnMemberLeases = async (request, response) => {
+  try {
+    const {
+      company_id,
+      member_ids,
+      grade,
+      return_status = "returned",
+      condition_note = null,
+    } = request.body || {};
+    if (!company_id) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "company_id is required" });
+    }
+    if (!["returned", "lost", "damaged"].includes(return_status)) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "return_status must be returned|lost|damaged" });
+    }
+
+    // Resolve the outstanding leases in scope first so we can sync inventory.
+    const scopeValues = [String(company_id)];
+    let scopeClause = "";
+    if (Array.isArray(member_ids) && member_ids.length) {
+      scopeClause = ` AND madl.member_id IN (${member_ids.map(() => "?").join(",")})`;
+      scopeValues.push(...member_ids.map((m) => Number(m)));
+    } else if (grade !== undefined && grade !== null && String(grade).trim() !== "") {
+      scopeClause = " AND mi.grade = ?";
+      scopeValues.push(String(grade).trim());
+    }
+    const [leases] = await connection.query(
+      `SELECT madl.lease_id, madl.device_id
+       FROM member_assigned_device_lease madl
+       JOIN members_info mi ON mi.member_id = madl.member_id
+       WHERE madl.company_id = ? AND madl.returned = 0${scopeClause}`,
+      scopeValues
+    );
+    if (!leases.length) {
+      return response
+        .status(200)
+        .json({ ok: true, returned: 0, msg: "No outstanding leases in scope." });
+    }
+
+    const leaseIds = leases.map((l) => l.lease_id);
+    await connection.query(
+      `UPDATE member_assigned_device_lease
+       SET returned = 1, return_status = ?, condition_note = ?, returned_date = NOW()
+       WHERE lease_id IN (${leaseIds.map(() => "?").join(",")})`,
+      [return_status, condition_note, ...leaseIds]
+    );
+
+    // Physical devices come back for 'returned'/'damaged'; 'lost' stays out.
+    let devicesRestocked = 0;
+    if (return_status !== "lost") {
+      const deviceIds = [...new Set(leases.map((l) => l.device_id).filter(Boolean))];
+      if (deviceIds.length) {
+        const [res] = await connection.query(
+          `UPDATE item_inv SET warehouse = 1, logistic_status = 'in-stock', \`update_at\` = NOW()
+           WHERE company_id = ? AND item_id IN (${deviceIds.map(() => "?").join(",")})`,
+          [String(company_id), ...deviceIds]
+        );
+        devicesRestocked = res.affectedRows || 0;
+      }
+    }
+
+    return response.status(200).json({
+      ok: true,
+      returned: leaseIds.length,
+      devicesRestocked,
+      return_status,
+    });
+  } catch (error) {
+    return response
+      .status(500)
+      .json({ ok: false, msg: "Internal server error", error: error.message });
+  }
+};
+
 module.exports = {
   insertNewMember,
   insertBulkMembers,
@@ -1097,4 +1237,6 @@ module.exports = {
   deleteMemberAssignedDeviceLeaseRows,
   retrieveMembersAssignedDevices,
   removeRowAssignedDeviceLeaseMember,
+  retrieveOverdueLeases,
+  bulkReturnMemberLeases,
 };
