@@ -747,6 +747,17 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
         row.company_id = row.companyId;
       }
 
+      // Coerce any recognizable date format (incl. locale strings like
+      // "7/14/2026") into MySQL DATETIME, which rejects them raw.
+      for (const key of ["expected_return_date", "assigned_date", "returned_date"]) {
+        if (row[key] !== undefined && row[key] !== null && row[key] !== "") {
+          const d = new Date(row[key]);
+          if (!isNaN(d.getTime())) {
+            row[key] = d.toISOString().slice(0, 19).replace("T", " ");
+          }
+        }
+      }
+
       return row;
     };
 
