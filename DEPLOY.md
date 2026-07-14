@@ -1,59 +1,60 @@
-# Deploy & Producción — devitrak-backend
+# Deploy & Production — devitrak-backend
 
-Guía de despliegue del backend en el servidor de producción (Windows + IIS).
-El objetivo de este documento es que cualquier dev pueda entender, operar y recuperar
-el servicio sin conocimiento previo del setup.
-
----
-
-## Arquitectura en producción
-
-```
-Cliente  ──►  IIS (db.devitrak.net :80/:443)  ──►  reverse proxy  ──►  Node :34001
-                                                                        (cluster pm2-runtime -i max)
-                                                                        supervisado por el servicio Windows "DevitrakServer" (nssm)
-```
-
-- **IIS** termina 80/443 para el host `db.devitrak.net` y reescribe **todo** el tráfico a
-  `http://localhost:34001`. La regla vive en [`public/web.config`](public/web.config)
-  (`ReverseProxyInboundRule1`). **IIS no ejecuta Node** — solo hace de proxy.
-- **Node** (`index.js` en la raíz) escucha en el puerto **34001**.
-- El proceso Node lo administra un **servicio de Windows llamado `DevitrakServer`**, creado con
-  [**nssm**](https://nssm.cc/), que a su vez corre **`pm2-runtime`** para mantener el cluster multi-core (`-i max`).
-
-### ¿Por qué nssm y no PM2 directo?
-
-PM2 en Windows **no sobrevive a los reinicios** de la máquina de forma nativa (su `pm2 startup`
-no funciona igual que en Linux). Cuando Windows Update reiniciaba el servidor, PM2 no volvía y
-la app del cliente quedaba caída hasta que alguien entraba a levantarla a mano.
-
-nssm registra el proceso como **servicio nativo de Windows** con arranque automático en el boot
-(antes incluso de iniciar sesión) y reinicio automático si el proceso muere. Usamos `pm2-runtime`
-(no `node index.js` a secas) para **conservar el cluster multi-core** que teníamos con `pm2 start -i max`.
+Deployment guide for the backend on the production server (Windows + IIS).
+The goal of this document is for any dev to be able to understand, operate, and recover
+the service without prior knowledge of the setup.
 
 ---
 
-## ⚠️ Gotcha crítico: `PM2_HOME` es obligatorio en Windows
+## Production architecture
 
-`pm2-runtime` tiene un bug en Windows: en `node_modules/pm2/lib/binaries/Runtime4Docker.js:67`
-usa `process.env.HOME` (variable de **Linux**, inexistente en Windows) para ubicar su carpeta de datos.
-Sin `PM2_HOME` definido, arranca y **crashea al instante** con:
+```
+Client   ──►  IIS (db.devitrak.net :80/:443)  ──►  reverse proxy  ──►  Node :34001
+                                                                        (pm2-runtime cluster -i max)
+                                                                        supervised by the Windows service "DevitrakServer" (nssm)
+```
+
+- **IIS** terminates 80/443 for the host `db.devitrak.net` and rewrites **all** traffic to
+  `http://localhost:34001`. The rule lives in [`public/web.config`](public/web.config)
+  (`ReverseProxyInboundRule1`). **IIS does not run Node** — it only acts as a proxy.
+- **Node** (`index.js` at the root) listens on port **34001**.
+- The Node process is managed by a **Windows service named `DevitrakServer`**, created with
+  [**nssm**](https://nssm.cc/), which in turn runs **`pm2-runtime`** to keep the multi-core cluster
+  (`-i max`).
+
+### Why nssm and not PM2 directly?
+
+PM2 on Windows **does not natively survive machine restarts** (its `pm2 startup` doesn't work the
+same way as on Linux). When Windows Update restarted the server, PM2 wouldn't come back and the
+client app stayed down until someone manually logged in to bring it up.
+
+nssm registers the process as a **native Windows service** with automatic startup on boot (even
+before anyone logs in) and automatic restart if the process dies. We use `pm2-runtime` (not plain
+`node index.js`) to **preserve the multi-core cluster** we had with `pm2 start -i max`.
+
+---
+
+## ⚠️ Critical gotcha: `PM2_HOME` is mandatory on Windows
+
+`pm2-runtime` has a bug on Windows: in `node_modules/pm2/lib/binaries/Runtime4Docker.js:67` it uses
+`process.env.HOME` (a **Linux** variable, nonexistent on Windows) to locate its data folder.
+Without `PM2_HOME` set, it starts up and **crashes instantly** with:
 
 ```
 TypeError [ERR_INVALID_ARG_TYPE]: The "path" argument must be of type string. Received undefined
     at Object.instanciate (...\pm2\lib\binaries\Runtime4Docker.js:67:47)
 ```
 
-El servicio queda en estado `SERVICE_PAUSED` (nssm lo pausa tras varios reintentos fallidos).
+The service ends up in `SERVICE_PAUSED` state (nssm pauses it after several failed retries).
 
-**Solución:** el servicio define `PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2`.
-Con esa variable, `pm2-runtime` la usa directo y no llega al código roto.
+**Fix:** the service defines `PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2`.
+With that variable set, `pm2-runtime` uses it directly and never reaches the broken code path.
 
 ---
 
-## Deploy (actualizar código en producción)
+## Deploy (update production code)
 
-Reemplaza al viejo script `pm2-pull-run` de `package.json`. Desde PowerShell **como Administrador**:
+Replaces the old `pm2-pull-run` script from `package.json`. From PowerShell **as Administrator**:
 
 ```powershell
 cd "C:\Users\CGAdmin\Documents\Github\server-testing"
@@ -61,7 +62,7 @@ git pull
 nssm restart DevitrakServer
 ```
 
-Verifica que quedó arriba:
+Verify it's back up:
 
 ```powershell
 nssm status DevitrakServer      # SERVICE_RUNNING
@@ -70,18 +71,18 @@ Invoke-WebRequest http://localhost:34001 -UseBasicParsing | Select-Object Status
 
 ---
 
-## Operación diaria
+## Day-to-day operations
 
 ```powershell
-nssm status DevitrakServer        # estado del servicio
-nssm restart DevitrakServer       # reiniciar (tras un deploy)
-nssm stop DevitrakServer          # detener
-nssm start DevitrakServer         # arrancar
-nssm edit DevitrakServer          # abrir GUI de configuración
-Get-Service DevitrakServer        # estado vía Windows
+nssm status DevitrakServer        # service status
+nssm restart DevitrakServer       # restart (after a deploy)
+nssm stop DevitrakServer          # stop
+nssm start DevitrakServer         # start
+nssm edit DevitrakServer          # open the configuration GUI
+Get-Service DevitrakServer        # status via Windows
 ```
 
-**Logs** (stdout/stderr del servicio):
+**Logs** (service stdout/stderr):
 
 ```powershell
 Get-Content "C:\Users\CGAdmin\Documents\Github\server-testing\logs\service-out.log" -Tail 40
@@ -90,79 +91,80 @@ Get-Content "C:\Users\CGAdmin\Documents\Github\server-testing\logs\service-err.l
 
 ---
 
-## Recrear el servicio desde cero
+## Recreating the service from scratch
 
-Si hay que reinstalar el servidor o el servicio se corrompe. PowerShell **como Administrador**:
+If the server needs to be reinstalled or the service gets corrupted. PowerShell **as
+Administrator**:
 
 ```powershell
-# 0. (Si existiera un PM2 daemon viejo corriendo, sácalo del medio para que no pelee por el puerto)
+# 0. (If there's an old PM2 daemon running, get it out of the way so it doesn't fight over the port)
 pm2 delete all; pm2 kill
 
-# 1. Carpeta de logs
+# 1. Logs folder
 New-Item -ItemType Directory -Force "C:\Users\CGAdmin\Documents\Github\server-testing\logs"
 
-# 2. Crear el servicio (Application = ruta a node.exe)
+# 2. Create the service (Application = path to node.exe)
 nssm install DevitrakServer "C:\Program Files\nodejs\node.exe"
 
-# 3. Configurar
+# 3. Configure it
 nssm set DevitrakServer AppParameters "C:\Users\CGAdmin\Documents\Github\server-testing\node_modules\pm2\bin\pm2-runtime start index.js -i max"
 nssm set DevitrakServer AppDirectory "C:\Users\CGAdmin\Documents\Github\server-testing"
 nssm set DevitrakServer DisplayName "Devitrak Backend Server"
-nssm set DevitrakServer Description "Node backend (cluster -i max, puerto 34001) via pm2-runtime, reverse proxy desde IIS db.devitrak.net"
+nssm set DevitrakServer Description "Node backend (cluster -i max, port 34001) via pm2-runtime, reverse proxy from IIS db.devitrak.net"
 nssm set DevitrakServer Start SERVICE_AUTO_START
 nssm set DevitrakServer AppStdout "C:\Users\CGAdmin\Documents\Github\server-testing\logs\service-out.log"
 nssm set DevitrakServer AppStderr "C:\Users\CGAdmin\Documents\Github\server-testing\logs\service-err.log"
 nssm set DevitrakServer AppExit Default Restart
 nssm set DevitrakServer AppRestartDelay 3000
 
-# 4. ¡OBLIGATORIO! Sin esto pm2-runtime crashea en Windows (ver gotcha arriba)
+# 4. MANDATORY! Without this, pm2-runtime crashes on Windows (see gotcha above)
 nssm set DevitrakServer AppEnvironmentExtra PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2
 
-# 5. Arrancar y verificar
+# 5. Start and verify
 nssm start DevitrakServer
 nssm status DevitrakServer      # SERVICE_RUNNING
 Invoke-WebRequest http://localhost:34001 -UseBasicParsing | Select-Object StatusCode   # 200
 ```
 
-Para eliminar el servicio por completo: `nssm remove DevitrakServer confirm`
+To remove the service entirely: `nssm remove DevitrakServer confirm`
 
 ---
 
-## Verificar que sobrevive a un reinicio (la prueba que importa)
+## Verifying it survives a restart (the test that matters)
 
-Reinicia la máquina y, **sin iniciar sesión ni arrancar nada a mano**:
+Restart the machine and, **without logging in or starting anything by hand**:
 
 ```powershell
-Get-Service DevitrakServer      # debe estar Running tras el boot
+Get-Service DevitrakServer      # must be Running after boot
 Invoke-WebRequest http://localhost:34001 -UseBasicParsing | Select-Object StatusCode   # 200
 ```
 
-Y `https://db.devitrak.net` debe responder por sí solo.
+And `https://db.devitrak.net` must respond on its own.
 
 ---
 
-## Referencia rápida del setup
+## Quick setup reference
 
-| Pieza            | Valor                                                                    |
+| Item             | Value                                                                    |
 |------------------|--------------------------------------------------------------------------|
-| Servicio         | `DevitrakServer` (nssm, auto-start en boot)                              |
-| Ejecuta          | `node node_modules\pm2\bin\pm2-runtime start index.js -i max`            |
+| Service          | `DevitrakServer` (nssm, auto-start on boot)                              |
+| Runs             | `node node_modules\pm2\bin\pm2-runtime start index.js -i max`            |
 | Working dir      | `C:\Users\CGAdmin\Documents\Github\server-testing`                       |
-| Var obligatoria  | `PM2_HOME=...\server-testing\.pm2`                                        |
-| Puerto Node      | `34001`                                                                  |
+| Required var     | `PM2_HOME=...\server-testing\.pm2`                                        |
+| Node port        | `34001`                                                                  |
 | IIS              | reverse proxy `db.devitrak.net:80/443` → `localhost:34001` (`public/web.config`) |
 | node.exe         | `C:\Program Files\nodejs\node.exe`                                        |
 | Logs             | `...\server-testing\logs\service-*.log`                                   |
 
 ---
 
-## Limitación conocida (downtime durante el reinicio)
+## Known limitation (downtime during restart)
 
-nssm elimina la caída **permanente** tras un reinicio (el servicio vuelve solo). Pero durante los
-~30–60 s que la máquina tarda en reiniciar por Windows Update, IIS no tiene a quién reenviar y el
-cliente verá errores transitorios.
+nssm eliminates **permanent** downtime after a restart (the service comes back on its own). But
+during the ~30–60s the machine takes to reboot for Windows Update, IIS has nowhere to forward to,
+and the client will see transient errors.
 
-Para cerrar ese hueco (trabajo futuro, no cubierto por este setup):
-- Reintentos con backoff en el frontend, para absorber blips cortos.
-- Una segunda instancia detrás de un balanceador (reiniciar una a la vez), o migrar a un servicio
-  gestionado (Azure App Service / Container Apps) con múltiples réplicas y rolling updates.
+To close that gap (future work, not covered by this setup):
+- Retries with backoff on the frontend, to absorb short blips.
+- A second instance behind a load balancer (restart one at a time), or migrate to a managed service
+  (Azure App Service / Container Apps) with multiple replicas and rolling updates.

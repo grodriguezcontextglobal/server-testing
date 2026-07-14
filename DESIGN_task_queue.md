@@ -1,76 +1,77 @@
-# Diseño — Cola de tareas durable sobre MongoDB (store-and-forward)
+# Design — Durable task queue over MongoDB (store-and-forward)
 
-> Objetivo: que **ninguna tarea importante se pierda** aunque el servidor o una dependencia
-> externa (SendGrid, Stripe, S3, Go worker, DB) esté caída. Las tareas se persisten en una
-> colección de MongoDB Atlas, se responden al cliente de inmediato y un worker las procesa
-> cuando la dependencia vuelve a estar sana, con reintentos y backoff.
+> Goal: **no important task should ever be lost** even if the server or an external dependency
+> (SendGrid, Stripe, S3, Go worker, DB) is down. Tasks are persisted in a MongoDB Atlas
+> collection, the client gets an immediate response, and a worker processes them once the
+> dependency is healthy again, with retries and backoff.
 
-Este documento define la arquitectura, el modelo de datos, los cambios en servidor y frontend,
-y el **plan de acción por fases** siguiendo la metodología del equipo: **test → code → refactor**.
+This document defines the architecture, data model, server and frontend changes, and the
+**phased action plan** following the team's methodology: **test → code → refactor**.
 
 ---
 
-## 1. Alcance
+## 1. Scope
 
-**Sí entra en la cola** (efectos secundarios, fire-and-forget, idempotentes o dedupables):
+**Goes into the queue** (side effects, fire-and-forget, idempotent or dedupable):
 
-| Tier | Operaciones | Servicio | Cambio de frontend |
+| Tier | Operations | Service | Frontend change |
 |---|---|---|---|
-| **1 — Piloto** | Correos `/api/nodemailer/*` (33 rutas) | SendGrid / nodemailer | **Ninguno o mínimo** (ya son background) |
-| **1** | Logs: `notificationLog`, `eventLog`, `errorLog`, `staffActivityLog` | Mongo | Ninguno |
-| **1** | Escrituras del Go worker (`runGoWorker` de mutación) | Go worker | Ninguno |
-| **2** | Subidas a S3 / Cloudinary (documentos) | S3 / Cloudinary | Parcial (cliente quiere la URL) |
-| **3** | Mutaciones Stripe | Stripe | Se mantienen **síncronas** con retry + circuit breaker (NO se encolan a ciegas) |
+| **1 — Pilot** | Emails `/api/nodemailer/*` (33 routes) | SendGrid / nodemailer | **None or minimal** (already background) |
+| **1** | Logs: `notificationLog`, `eventLog`, `errorLog`, `staffActivityLog` | Mongo | None |
+| **1** | Go worker writes (mutating `runGoWorker`) | Go worker | None |
+| **2** | Uploads to S3 / Cloudinary (documents) | S3 / Cloudinary | Partial (client wants the URL) |
+| **3** | Stripe mutations | Stripe | Stay **synchronous** with retry + circuit breaker (NOT blindly queued) |
 
-**No entra** (siguen síncronas): todos los `GET`, login, validaciones que devuelven dato inmediato,
-lecturas del Go worker, y cualquier mutación de Stripe (dinero no se buffea).
+**Does NOT go in** (stays synchronous): all `GET`s, login, validations that return data
+immediately, Go worker reads, and any Stripe mutation (money doesn't get buffered).
 
-> Regla de oro para encolar: (1) el cliente no necesita el resultado al instante,
-> (2) toca un servicio externo que puede fallar, (3) es idempotente o dedupable por clave.
+> Golden rule for queueing: (1) the client doesn't need the result right away, (2) it touches an
+> external service that can fail, (3) it's idempotent or dedupable by key.
 
 ---
 
-## 2. Arquitectura
+## 2. Architecture
 
 ```
                                  ┌──────────────────────────────────────────────┐
-Cliente ─POST─► IIS ─► Node :34001                                               │
+Client ─POST─► IIS ─► Node :34001                                                │
  (frontend)              │                                                       │
-                         │ 1. enqueue(job)  ── inserta doc en Mongo (status=pending)
-                         │ 2. responde 202 { ok, jobId }  ◄── el cliente sigue    │
+                         │ 1. enqueue(job)  ── inserts doc into Mongo (status=pending)
+                         │ 2. responds 202 { ok, jobId }  ◄── client moves on     │
                          │                                                       │
                          ▼                                                       │
                  ┌─────────────────┐        ┌──────────────────────────────┐   │
                  │ MongoDB Atlas    │◄───────│  Worker / Dispatcher          │   │
-                 │  colección jobs  │ claim  │  (1 sola instancia:           │   │
-                 │  (durable)       │ atómico│   pm2 NODE_APP_INSTANCE==0)    │   │
+                 │  jobs collection │ atomic │  (single instance:            │   │
+                 │  (durable)       │ claim  │   pm2 NODE_APP_INSTANCE==0)    │   │
                  └─────────────────┘        │  - findOneAndUpdate            │   │
-                         ▲                   │  - ejecuta handler por type    │   │
-                         │  reintento         │  - backoff / dead-letter       │   │
-                         └───────────────────│  - polling node-schedule +     │   │
-                                             │    (opcional) Change Streams   │   │
+                         ▲                   │  - runs handler per type       │   │
+                         │  retry             │  - backoff / dead-letter       │   │
+                         └───────────────────│  - node-schedule polling +     │   │
+                                             │    (optional) Change Streams   │   │
                                              └──────────────┬─────────────────┘   │
                                                             ▼                     │
                                           SendGrid / Go worker / S3 / Mongo ...   │
-                                          (si está caído → job vuelve a pending,  │
-                                           NO se pierde, sobrevive reinicios)     │
+                                          (if down → job goes back to pending,   │
+                                           NOT lost, survives restarts)          │
                                                                                   ┘
 ```
 
-Decisiones clave:
-- **La cola vive en MongoDB Atlas.** Aprovecha `findOneAndUpdate` (claim atómico a nivel documento),
-  TTL index (auto-limpieza) y, opcionalmente, Change Streams (evita polling). No factura por lectura
-  como PlanetScale.
-- **Un solo worker.** Se arranca reutilizando el patrón `isPM2FirstInstance` de
-  [`index.js:270`](index.js) — así el cluster `pm2 -i max` no lo duplica. Evita de raíz el problema
-  de dos procesos tomando el mismo job.
-- **El enqueue corre en cualquier instancia** (es solo un insert).
+Key decisions:
+- **The queue lives in MongoDB Atlas.** It leverages `findOneAndUpdate` (atomic document-level
+  claim), a TTL index (auto-cleanup) and, optionally, Change Streams (avoids polling). Doesn't
+  bill per read like PlanetScale.
+- **A single worker.** Started by reusing the `isPM2FirstInstance` pattern from
+  [`index.js:270`](index.js) — so the `pm2 -i max` cluster doesn't duplicate it. This eliminates
+  at the root the problem of two processes claiming the same job.
+- **Enqueue runs on any instance** (it's just an insert).
 
 ---
 
-## 3. Modelo de datos — `models/Job.js`
+## 3. Data model — `models/Job.js`
 
-Sigue el patrón Mongoose del repo (`Schema` + `model` + `toJSON`, ver [`models/NotificationLog.js`](models/NotificationLog.js)).
+Follows the repo's Mongoose pattern (`Schema` + `model` + `toJSON`, see
+[`models/NotificationLog.js`](models/NotificationLog.js)).
 
 ```js
 const { Schema, model } = require("mongoose");
@@ -78,18 +79,18 @@ const { Schema, model } = require("mongoose");
 const JobSchema = Schema(
   {
     type:            { type: String, required: true, index: true }, // 'send-email:invoice', 'go-worker:insert-item-event', ...
-    payload:         { type: Schema.Types.Mixed, required: true },  // args de la tarea
+    payload:         { type: Schema.Types.Mixed, required: true },  // task args
     status:          { type: String, enum: ["pending","processing","done","failed","dead"], default: "pending", index: true },
     attempts:        { type: Number, default: 0 },
     maxAttempts:     { type: Number, default: 5 },
-    nextAttemptAt:   { type: Date, default: Date.now, index: true }, // para el backoff
-    lockedBy:        { type: String, default: null },                // id del worker que lo tomó
+    nextAttemptAt:   { type: Date, default: Date.now, index: true }, // for backoff
+    lockedBy:        { type: String, default: null },                // id of the worker that claimed it
     lockedAt:        { type: Date, default: null },
     idempotencyKey:  { type: String, default: null, unique: true, sparse: true }, // dedup
     lastError:       { type: String, default: null },
-    result:          { type: Schema.Types.Mixed, default: null },    // opcional: salida para consulta
-    doneAt:          { type: Date, default: null },                  // TTL borra 'done' viejos
-    context: {                                                       // ver §4 — snapshot de auditoría
+    result:          { type: Schema.Types.Mixed, default: null },    // optional: output for querying
+    doneAt:          { type: Date, default: null },                  // TTL removes old 'done' jobs
+    context: {                                                       // see §4 — audit snapshot
       uid:        { type: String, default: null },
       companyId:  { type: String, default: null },
       sqlStaffId: { type: Number, default: null },
@@ -98,11 +99,11 @@ const JobSchema = Schema(
   { timestamps: true } // createdAt / updatedAt
 );
 
-// Índice compuesto para el claim eficiente
+// Compound index for an efficient claim
 JobSchema.index({ status: 1, nextAttemptAt: 1 });
-// TTL: borra jobs 'done' 7 días después de doneAt (0 s tras la fecha)
+// TTL: removes 'done' jobs 7 days after doneAt (0s after the date)
 JobSchema.index({ doneAt: 1 }, { expireAfterSeconds: 7 * 24 * 3600 });
-// Auditoría/soporte: listar jobs por compañía (ej. "qué se encoló para C1")
+// Audit/support: list jobs by company (e.g. "what got queued for C1")
 JobSchema.index({ "context.companyId": 1, createdAt: -1 });
 
 JobSchema.method("toJSON", function () {
@@ -114,44 +115,44 @@ JobSchema.method("toJSON", function () {
 module.exports = model("Job", JobSchema);
 ```
 
-> `idempotencyKey` con `unique + sparse`: si intentas encolar dos veces la misma acción
-> (ej. mismo correo), el segundo insert falla → lo tratas como "ya encolado", sin duplicar.
+> `idempotencyKey` with `unique + sparse`: if you try to enqueue the same action twice (e.g. the
+> same email), the second insert fails → you treat it as "already queued", with no duplication.
 
 ---
 
-## 4. Contexto de auditoría en jobs (identidad, no credenciales)
+## 4. Audit context on jobs (identity, not credentials)
 
-### 4.1 El problema
+### 4.1 The problem
 
-Toda request al backend trae headers de sesión/contexto —hoy en este repo:
-`x-token`, `s-token-lq`, `x-company-id`, `s-company-id`— que los middlewares
-(`validateJWT`, `optionalJWT`, `authorizeMongoPermission`) leen y verifican, dejando el
-resultado colgado en `req` (`req.uid`, `req.sqlStaffId`, `req.adminRoleType`, ...).
+Every backend request carries session/context headers — in this repo today:
+`x-token`, `s-token-lq`, `x-company-id`, `s-company-id` — which middlewares (`validateJWT`,
+`optionalJWT`, `authorizeMongoPermission`) read and verify, leaving the result attached to `req`
+(`req.uid`, `req.sqlStaffId`, `req.adminRoleType`, ...).
 
-Cuando una tarea se encola, **el `req` que la originó deja de existir** en el momento en que
-el worker la ejecuta —puede ser segundos o hasta días después (dead-letter reintentado a
-mano). Si no se captura nada, el job queda "huérfano": no hay forma de saber quién lo pidió,
-bajo qué compañía, ni de auditar la acción después.
+When a task is enqueued, **the `req` that originated it stops existing** by the time the worker
+runs it — that could be seconds or even days later (a dead-letter retried by hand). If nothing is
+captured, the job ends up "orphaned": there's no way to know who requested it, under which
+company, or to audit the action later.
 
-### 4.2 La regla de fondo (aplica a cualquier header futuro, no solo a los 4 actuales)
+### 4.2 The underlying rule (applies to any future header, not just the current 4)
 
-> **Se persiste identidad ya verificada. Nunca se persisten credenciales.**
+> **Already-verified identity gets persisted. Credentials never do.**
 
-- `x-token` y `s-token-lq` son credenciales (JWT / id de staff derivado de sesión). **Jamás
-  se guardan crudos** en un documento de `jobs` — ese documento vive en Mongo, lo puede leer
-  cualquiera con acceso de lectura a la colección, y un JWT filtrado es una cuenta comprometida.
-- Lo que sí se guarda es el **resultado ya validado** por el middleware que corrió antes del
-  controller: `req.uid` (puesto por `validateJWT`/`optionalJWT` tras verificar la firma del
-  JWT), `req.sqlStaffId`, el `companyId` ya resuelto. Esa verificación **ya ocurrió** en la
-  request original; el job no reautentica, solo **audita quién disparó la acción**.
-- `s-company-id` está reservado en CORS ([`config/cors.js`](config/cors.js)) pero **ningún
-  middleware lo lee hoy** — no se incluye en el context todavía porque no existe semántica que
-  capturar. El día que se le dé uso, se agrega siguiendo el mismo patrón (§4.4).
+- `x-token` and `s-token-lq` are credentials (JWT / staff id derived from a session). **They are
+  never stored raw** in a `jobs` document — that document lives in Mongo, readable by anyone with
+  read access to the collection, and a leaked JWT is a compromised account.
+- What IS stored is the **already-validated result** from the middleware that ran before the
+  controller: `req.uid` (set by `validateJWT`/`optionalJWT` after verifying the JWT signature),
+  `req.sqlStaffId`, the already-resolved `companyId`. That verification **already happened** in the
+  original request; the job doesn't re-authenticate, it only **audits who triggered the action**.
+- `s-company-id` is reserved in CORS ([`config/cors.js`](config/cors.js)) but **no middleware reads
+  it today** — it's not included in the context yet because there's no semantics to capture. The
+  day it gets used, it gets added following the same pattern (§4.4).
 
-### 4.3 Diseño: `buildContext` como allowlist estricto
+### 4.3 Design: `buildContext` as a strict allowlist
 
-`queue/core.js` expone una función **pura** que normaliza cualquier objeto de entrada a
-exactamente 3 campos conocidos, descartando todo lo demás:
+`queue/core.js` exposes a **pure** function that normalizes any input object down to exactly 3
+known fields, discarding everything else:
 
 ```js
 // queue/core.js
@@ -161,16 +162,15 @@ function buildContext(source = {}) {
 }
 ```
 
-La propiedad importante: **es un allowlist, no un filtro de exclusión**. Si por error alguien
-pasa `{ uid, xToken: '<jwt-crudo>' }`, `xToken` se descarta silenciosamente — no hay forma de
-que un secreto se cuele en el documento aunque el código que llama a `enqueue` tenga un bug.
-Esto está verificado en `test/queue.test.js` (`buildContext: es un allowlist — descarta
-cualquier campo no reconocido`).
+The important property: **it's an allowlist, not an exclusion filter**. If someone mistakenly
+passes `{ uid, xToken: '<raw-jwt>' }`, `xToken` gets silently dropped — there's no way for a
+secret to leak into the document even if the code calling `enqueue` has a bug. This is verified
+in `test/queue.test.js` (`buildContext: is an allowlist — drops any unrecognized field`).
 
-`helpers/queue.js` expone la única pieza que sí toca `req` — un extractor delgado que replica
-el mismo orden de precedencia de `companyId` que ya usa
+`helpers/queue.js` exposes the only piece that actually touches `req` — a thin extractor that
+replicates the same `companyId` precedence order already used by
 [`authorizeMongoPermission.js`](middlewares/authorizeMongoPermission.js) (header → body →
-params → query), para no inventar una segunda convención:
+params → query), so as not to invent a second convention:
 
 ```js
 // helpers/queue.js
@@ -187,48 +187,48 @@ const extractJobContext = (req) => {
 };
 ```
 
-Uso en un controller (Fase 1+):
+Usage in a controller (Phase 1+):
 
 ```js
 const { enqueue, extractJobContext } = require("../helpers/queue");
 
 await enqueue("send-email:invoice", payload, {
   idempotencyKey: `invoice:${transactionId}`,
-  context: extractJobContext(req), // snapshot de auditoría, capturado mientras el req existe
+  context: extractJobContext(req), // audit snapshot, captured while req still exists
 });
 ```
 
-### 4.4 Cómo escalar esto cuando aparezcan nuevas necesidades
+### 4.4 How to scale this as new needs come up
 
-Este diseño se dejó pensado para crecer sin reescribirse. Casos previsibles y cómo resolverlos:
+This design was meant to grow without being rewritten. Foreseeable cases and how to solve them:
 
-| Necesidad futura | Dónde tocar | Qué NO hacer |
+| Future need | Where to touch | What NOT to do |
 |---|---|---|
-| Se le da uso real a `s-company-id` (ej. reemplaza a `x-company-id`) | Agregar la lectura en `extractJobContext` con la misma precedencia que su análogo actual | No leerlo "por si acaso" antes de que tenga semántica definida |
-| Un nuevo header de contexto (ej. `x-event-id`, `x-locale`) | 1) Añadir el campo a `buildContext` (allowlist) 2) Añadirlo al subschema `context` en `models/Job.js` 3) Leerlo en `extractJobContext` | Nunca hacer spread de `req.headers` completo en el context — rompe el allowlist y puede filtrar credenciales sin que nadie lo note |
-| Un handler necesita **reautorizar** en vez de solo auditar (ej. verificar que la compañía sigue activa antes de ejecutar) | El handler recibe `job.context.companyId` y vuelve a consultar `Company`/`hasPermission` él mismo, igual que hace `authorizeMongoPermission` hoy | No asumir que el permiso sigue vigente solo porque se validó al encolar — pueden pasar días hasta un reintento |
-| Se necesita **listar/depurar** jobs por compañía o por usuario | Ya existe el índice `{ "context.companyId": 1, createdAt: -1 }`; para `uid` agregar un índice análogo cuando haya una consulta real que lo use | No indexar especulativamente sin un query concreto que lo justifique |
-| Un tipo de job necesita un campo de auditoría que **no aplica a los demás** | No forzarlo al `context` genérico — va dentro de `payload`, que es libre por tipo | No inflar el `context` compartido con campos de un solo caso de uso |
+| `s-company-id` gets real use (e.g. replaces `x-company-id`) | Add the read in `extractJobContext` with the same precedence as its current counterpart | Don't read it "just in case" before it has defined semantics |
+| A new context header (e.g. `x-event-id`, `x-locale`) | 1) Add the field to `buildContext` (allowlist) 2) Add it to the `context` subschema in `models/Job.js` 3) Read it in `extractJobContext` | Never spread the full `req.headers` into the context — breaks the allowlist and can leak credentials without anyone noticing |
+| A handler needs to **re-authorize** instead of just auditing (e.g. verify the company is still active before executing) | The handler receives `job.context.companyId` and re-queries `Company`/`hasPermission` itself, the same way `authorizeMongoPermission` does today | Don't assume the permission is still valid just because it was checked at enqueue time — days may pass before a retry |
+| Need to **list/debug** jobs by company or by user | The `{ "context.companyId": 1, createdAt: -1 }` index already exists; for `uid` add an analogous index when there's an actual query that needs it | Don't index speculatively without a concrete query justifying it |
+| A job type needs an audit field that **doesn't apply to the others** | Don't force it into the generic `context` — it belongs in `payload`, which is free-form per type | Don't bloat the shared `context` with fields for a single use case |
 
-La idea central que hace esto escalable: **`context` es infraestructura transversal (quién,
-para qué compañía), `payload` es el dato específico del tipo de tarea.** Mientras esa
-separación se respete, agregar un campo transversal nuevo es un cambio de 3 líneas en 3
-archivos (core → schema → extractor), no un rediseño.
+The core idea that makes this scalable: **`context` is cross-cutting infrastructure (who, for
+which company), `payload` is the task-type-specific data.** As long as that separation is
+respected, adding a new cross-cutting field is a 3-line change across 3 files (core → schema →
+extractor), not a redesign.
 
 ---
 
-## 5. Componentes del servidor
+## 5. Server components
 
-### 5.1 `helpers/queue.js` — API de encolado (la usan los controllers)
+### 5.1 `helpers/queue.js` — enqueue API (used by controllers)
 ```js
-// enqueue(type, payload, { idempotencyKey, maxAttempts, context }) -> devuelve el jobId
-// Un simple Job.create(...). Si choca la idempotencyKey (E11000), devuelve el job existente.
-// extractJobContext(req) -> arma el context (ver §4) para pasarlo a enqueue.
+// enqueue(type, payload, { idempotencyKey, maxAttempts, context }) -> returns the jobId
+// A simple Job.create(...). If the idempotencyKey collides (E11000), returns the existing job.
+// extractJobContext(req) -> builds the context (see §4) to pass to enqueue.
 ```
 
-### 5.2 `queue/worker.js` — dispatcher (corre en 1 sola instancia)
-Responsabilidades:
-1. **Claim atómico** de N jobs listos:
+### 5.2 `queue/worker.js` — dispatcher (runs on a single instance)
+Responsibilities:
+1. **Atomic claim** of N ready jobs:
    ```js
    const job = await Job.findOneAndUpdate(
      { status: "pending", nextAttemptAt: { $lte: new Date() } },
@@ -236,147 +236,151 @@ Responsabilidades:
      { sort: { nextAttemptAt: 1 }, new: true }
    );
    ```
-2. **Ejecuta el handler** según `job.type` (ver 5.3). El handler recibe `(payload, job)`, así
-   que puede leer `job.context` si lo necesita (ej. para logging o re-scoping por compañía).
-3. **Éxito** → `status="done"`, `doneAt=now` (TTL lo limpia luego).
-4. **Fallo** → `attempts++`; si `attempts < maxAttempts`: `status="pending"`,
-   `nextAttemptAt = now + backoff(attempts)` (ej. `min(2^attempts * 1s, 5min)`);
-   si se agota: `status="dead"` (dead-letter, requiere intervención manual).
-5. **Recuperación de "processing" colgados**: al arrancar (o en un barrido), jobs con
-   `status="processing"` y `lockedAt` viejo (> timeout) vuelven a `pending`. Cubre el caso
-   de que el server muriera a mitad de un job.
+2. **Runs the handler** based on `job.type` (see 5.3). The handler receives `(payload, job)`, so
+   it can read `job.context` if needed (e.g. for logging or re-scoping by company).
+3. **Success** → `status="done"`, `doneAt=now` (TTL cleans it up later).
+4. **Failure** → `attempts++`; if `attempts < maxAttempts`: `status="pending"`,
+   `nextAttemptAt = now + backoff(attempts)` (e.g. `min(2^attempts * 1s, 5min)`);
+   once exhausted: `status="dead"` (dead-letter, requires manual intervention).
+5. **Recovery of hung "processing" jobs**: on startup (or in a sweep), jobs with
+   `status="processing"` and a stale `lockedAt` (older than the timeout) go back to `pending`.
+   Covers the case where the server died mid-job.
 
-Disparo del ciclo:
-- **Polling** con `setInterval` (`QUEUE_POLL_MS`, default 4s). Suficiente para correos/logs.
-- **Opcional (fase posterior)**: Change Streams sobre `jobs` para reaccionar al instante y bajar latencia.
+Cycle trigger:
+- **Polling** with `setInterval` (`QUEUE_POLL_MS`, default 4s). Enough for emails/logs.
+- **Optional (later phase)**: Change Streams on `jobs` to react instantly and reduce latency.
 
-### 5.3 `queue/handlers/` — registro de handlers por tipo
-Un mapa `type -> async (payload, job) => result`. Cada handler encapsula la lógica que hoy vive
-inline en el controller. Ejemplo: `send-email:invoice` reutiliza el HTML/envío de
+### 5.3 `queue/handlers/` — registry of handlers by type
+A `type -> async (payload, job) => result` map. Each handler encapsulates logic that today lives
+inline in the controller. Example: `send-email:invoice` reuses the HTML/send logic from
 [`nodeMailer/notifications.js`](nodeMailer/notifications.js).
 
-### 5.4 Arranque del worker
-En [`index.js`](index.js), dentro del bloque `isNativeMaster || isPM2FirstInstance`
-(junto al arranque del Go worker):
+### 5.4 Starting the worker
+In [`index.js`](index.js), inside the `isNativeMaster || isPM2FirstInstance` block (alongside the
+Go worker startup):
 ```js
 require("./queue/worker").start();
 ```
-Así corre **una sola vez**, no una por cada worker del cluster.
+This way it runs **only once**, not once per cluster worker.
 
 ---
 
-## 6. Idempotencia por tipo
+## 6. Idempotency by type
 
-| Tipo | Clave de idempotencia | Nota |
+| Type | Idempotency key | Note |
 |---|---|---|
-| Correos | `email + plantilla + entidad` (ej. `invoice:{transactionId}`) | Evita doble envío en reintento |
-| Go worker (mutación) | `operación + entidad` (ej. `insert-item-event:{itemId}:{eventId}`) | Reconciliable |
-| Logs | *(ninguna)* | Aceptan duplicados; no es crítico |
-| Documentos S3/Cloudinary | `documentId` | Evita subir dos veces |
+| Emails | `email + template + entity` (e.g. `invoice:{transactionId}`) | Avoids double-send on retry |
+| Go worker (mutation) | `operation + entity` (e.g. `insert-item-event:{itemId}:{eventId}`) | Reconcilable |
+| Logs | *(none)* | Duplicates are acceptable; not critical |
+| S3/Cloudinary documents | `documentId` | Avoids uploading twice |
 
 ---
 
-## 7. Cambios en el FRONTEND
+## 7. FRONTEND changes
 
-La clave: **el Tier 1 casi no requiere cambios**, porque esas operaciones ya son background.
+The key point: **Tier 1 requires almost no changes**, because those operations are already
+background.
 
-### Fase 1 — Correos y logs (impacto mínimo)
-- Hoy el frontend hace `POST /api/nodemailer/...` y normalmente solo necesita saber que
-  "se aceptó", no que "se entregó".
-- El endpoint pasa a responder **`202 { ok: true, jobId }`** de inmediato (antes respondía tras enviar).
-- **Cambio de frontend:**
-  - Si la UI solo muestra "correo enviado" → cambiar el texto a **"correo en cola / se enviará en breve"**
-    (semántica más honesta). Nada más.
-  - Si algún flujo **bloqueaba** esperando la confirmación de envío → quitar ese bloqueo; ya no aplica.
-- **No hay** cambio de endpoints ni de payload de entrada. Solo cambia la forma de la respuesta
-  (de `{ok:true}` a `{ok:true, jobId}`) y el momento (inmediato).
-- Los headers (`x-token`, `x-company-id`, ...) se siguen enviando exactamente igual que hoy —
-  el frontend no cambia nada ahí; es el backend el que los captura como `context` antes de
-  encolar (ver §4).
+### Phase 1 — Emails and logs (minimal impact)
+- Today the frontend does `POST /api/nodemailer/...` and typically only needs to know it was
+  "accepted", not that it was "delivered".
+- The endpoint now responds **`202 { ok: true, jobId }`** immediately (previously it responded
+  after sending).
+- **Frontend change:**
+  - If the UI only shows "email sent" → change the copy to **"email queued / will be sent
+    shortly"** (more honest semantics). Nothing else.
+  - If any flow **blocked** waiting for send confirmation → remove that block; it no longer
+    applies.
+- **No** change to endpoints or input payload. Only the response shape changes (from `{ok:true}`
+  to `{ok:true, jobId}`) and the timing (immediate).
+- Headers (`x-token`, `x-company-id`, ...) are still sent exactly the same as today — the
+  frontend doesn't change anything there; it's the backend that captures them as `context` before
+  enqueueing (see §4).
 
-### (Opcional) Seguimiento de estado de un job
-Si algún flujo quiere confirmar que se completó:
-- Nuevo endpoint **`GET /api/jobs/:jobId`** → `{ status, attempts, lastError, result }`.
-- El frontend hace **polling** (cada pocos s) hasta `done`/`dead`, o muestra el estado en un panel.
-- Alternativa a futuro: notificación push / websocket al completar (reutilizando `notificationLog`).
+### (Optional) Tracking a job's status
+If any flow wants to confirm it completed:
+- New endpoint **`GET /api/jobs/:jobId`** → `{ status, attempts, lastError, result }`.
+- The frontend **polls** (every few seconds) until `done`/`dead`, or shows the status in a panel.
+- Future alternative: push notification / websocket on completion (reusing `notificationLog`).
 
-### Fase 2 — Documentos (S3/Cloudinary)
-- Aquí el cliente sí suele querer la URL final. Contrato asíncrono:
+### Phase 2 — Documents (S3/Cloudinary)
+- Here the client usually does want the final URL. Async contract:
   1. `POST` → `202 { jobId }`.
-  2. Frontend hace polling a `GET /api/jobs/:jobId` hasta `done`, y toma `result.url`.
-- Requiere ajuste real en la pantalla de subida (mostrar "procesando…" y luego la URL).
+  2. Frontend polls `GET /api/jobs/:jobId` until `done`, and reads `result.url`.
+- Requires a real adjustment on the upload screen (show "processing…" then the URL).
 
-### Fase 3 — Stripe
-- **No cambia el frontend.** Se mantiene síncrono; solo se endurece el backend con retry + circuit breaker.
+### Phase 3 — Stripe
+- **The frontend doesn't change.** Stays synchronous; only the backend is hardened with retry +
+  circuit breaker.
 
 ---
 
-## 8. Operación y observabilidad
+## 8. Operations and observability
 
-### 8.1 Endpoints — `GET /api/jobs/*` ✅ implementados
+### 8.1 Endpoints — `GET /api/jobs/*` ✅ implemented
 
-Ambos protegidos con `requireSuperUser` (ver §8.2 — no `authorizeMongoPermission`, porque un job
-no pertenece a una sola compañía).
+Both protected with `requireSuperUser` (see §8.2 — not `authorizeMongoPermission`, because a job
+doesn't belong to a single company).
 
 - **`GET /api/jobs/stats`** → `{ ok, stats: { pending, processing, done, failed, dead, total } }`.
-  Todos los status listados aunque tengan 0 (no se omiten). Debe montarse **antes** de `/:jobId`
-  en la ruta, si no Express lo captura como un `jobId`.
-- **`GET /api/jobs/:jobId`** → detalle completo para depurar: `type`, `status`, `payload`,
-  `context`, `attempts`, `lastError`, `result`, timestamps. `400` si `jobId` no tiene formato de
-  ObjectId de Mongo (24 hex), `404` si no existe.
+  All statuses listed even if they're 0 (none are omitted). Must be mounted **before** `/:jobId`
+  in the route, otherwise Express would capture it as a `jobId`.
+- **`GET /api/jobs/:jobId`** → full detail for debugging: `type`, `status`, `payload`,
+  `context`, `attempts`, `lastError`, `result`, timestamps. `400` if `jobId` isn't shaped like a
+  Mongo ObjectId (24 hex chars), `404` if it doesn't exist.
 
-Implementación: `controller/jobs.js` (`createGetJobStatus`/`createGetJobStats`, con inyección de
-`findById`/`aggregateByStatus` para testear sin Mongo — mismo patrón DI del resto de la cola) +
-`routes/jobs.js`, montado en `index.js` como `jobs: require("./routes/jobs")` dentro de
+Implementation: `controller/jobs.js` (`createGetJobStatus`/`createGetJobStats`, with
+`findById`/`aggregateByStatus` injection to test without Mongo — same DI pattern as the rest of
+the queue) + `routes/jobs.js`, mounted in `index.js` as `jobs: require("./routes/jobs")` inside
 `mongoRoutes` (→ `/api/jobs`).
 
-### 8.2 Control de acceso: por qué `requireSuperUser` y no `authorizeMongoPermission`
+### 8.2 Access control: why `requireSuperUser` and not `authorizeMongoPermission`
 
-`authorizeMongoPermission` exige un `company_id` de contexto (o `super_user` como bypass) porque
-los recursos que protege son siempre de una compañía. Un job de la cola **no lo es**: un correo,
-un log de staff, etc. puede pertenecer a cualquier compañía, y `/api/jobs/stats` es inherentemente
-una vista de plataforma completa. Se creó `middlewares/requireSuperUser.js` — un gate mínimo
-(activo + `super_user`) — en vez de forzar estos endpoints al esquema de permisos por-compañía.
+`authorizeMongoPermission` requires a context `company_id` (or `super_user` as a bypass) because
+the resources it protects always belong to a company. A queue job **is not one of those**: an
+email, a staff log, etc. can belong to any company, and `/api/jobs/stats` is inherently a
+platform-wide view. `middlewares/requireSuperUser.js` was created — a minimal gate (active +
+`super_user`) — instead of forcing these endpoints into the per-company permission scheme.
 
-### 8.3 Uso operativo
+### 8.3 Operational usage
 
-- **Inspección puntual**: `GET /api/jobs/:jobId` para ver por qué un job específico falló
-  (`lastError`, `attempts`) sin necesidad de acceso directo a Mongo.
-- **Inspección directa en DB**: `db.jobs.find({ status: "dead" })` → tareas que agotaron reintentos.
-- **Inspección por compañía**: `db.jobs.find({ "context.companyId": "C1" }).sort({ createdAt: -1 })`.
-- **Reintento manual**: poner un `dead`/`failed` de vuelta a `pending` con `nextAttemptAt=now`.
-- **Métricas**: `GET /api/jobs/stats` para un dashboard simple o alertas.
-- **Alertas**: si `dead` > umbral, avisar (los correos de alerta NO deben depender de la cola).
-- **Limpieza**: el TTL borra `done` viejos automáticamente; los `dead` se conservan para auditoría.
+- **Point inspection**: `GET /api/jobs/:jobId` to see why a specific job failed (`lastError`,
+  `attempts`) without needing direct Mongo access.
+- **Direct DB inspection**: `db.jobs.find({ status: "dead" })` → tasks that exhausted retries.
+- **Inspection by company**: `db.jobs.find({ "context.companyId": "C1" }).sort({ createdAt: -1 })`.
+- **Manual retry**: put a `dead`/`failed` job back to `pending` with `nextAttemptAt=now`.
+- **Metrics**: `GET /api/jobs/stats` for a simple dashboard or alerts.
+- **Alerts**: if `dead` count > threshold, notify (alert emails must NOT depend on the queue).
+- **Cleanup**: TTL removes old `done` jobs automatically; `dead` ones are kept for auditing.
 
 ---
 
-## 9. Plan de acción por fases (test → code → refactor)
+## 9. Phased action plan (test → code → refactor)
 
-### Fase 0 — Fundamentos de la cola ✅ COMPLETADA
-1. **Tests** (`test/queue.test.js`, 27 casos):
-   - `enqueue`/`buildNewJob` crea job `pending`.
-   - `context`: allowlist estricto, nunca credenciales crudas (ver §4.3).
-   - `extractJobContext`: lee identidad ya verificada del `req`, nunca `x-token`/`s-token-lq`.
-   - claim atómico: filtro/update de `findOneAndUpdate` documentado y testeado.
-   - backoff: al fallar, `attempts++` y `nextAttemptAt` futuro (exponencial con techo).
-   - dead-letter: al agotar `maxAttempts`, pasa a `dead`.
-   - recuperación: `processing` colgado (`isStale`) vuelve a `pending`.
-2. **Code**: `queue/core.js` (núcleo puro), `models/Job.js`, `helpers/queue.js`,
+### Phase 0 — Queue foundations ✅ COMPLETED
+1. **Tests** (`test/queue.test.js`, 27 cases):
+   - `enqueue`/`buildNewJob` creates a `pending` job.
+   - `context`: strict allowlist, never raw credentials (see §4.3).
+   - `extractJobContext`: reads already-verified identity from `req`, never `x-token`/`s-token-lq`.
+   - atomic claim: `findOneAndUpdate` filter/update documented and tested.
+   - backoff: on failure, `attempts++` and a future `nextAttemptAt` (exponential with a cap).
+   - dead-letter: once `maxAttempts` is exhausted, moves to `dead`.
+   - recovery: a hung `processing` job (`isStale`) goes back to `pending`.
+2. **Code**: `queue/core.js` (pure core), `models/Job.js`, `helpers/queue.js`,
    `queue/worker.js`, `queue/handlers/index.js`.
-3. **Refactor**: lógica de decisión aislada en funciones puras testeables sin DB, igual que
-   `scripts/migrate*` e `idempotencyMutationCache`.
-4. Worker arrancado en `index.js` bajo `isNativeMaster || isPM2FirstInstance`.
+3. **Refactor**: decision logic isolated into pure, DB-free testable functions, same as
+   `scripts/migrate*` and `idempotencyMutationCache`.
+4. Worker started in `index.js` under `isNativeMaster || isPM2FirstInstance`.
 
-### Fase 1 — Piloto: correos + logs ✅ COMPLETADA (errorLog pendiente aparte, ver nota)
+### Phase 1 — Pilot: emails + logs ✅ COMPLETED (errorLog handled separately, see note)
 
-**Correos — hecho, 30 de 35 rutas migradas** (piloto inicial de 4 + réplica de 26 más en dos
-batches, clasificadas por perfil de riesgo):
+**Emails — done, 30 of 35 routes migrated** (initial pilot of 4 + replication across 26 more in
+two batches, classified by risk profile):
 
-1. **Piloto (4)**: `singleEmailNotification`, `newUserInvitationNotification`,
+1. **Pilot (4)**: `singleEmailNotification`, `newUserInvitationNotification`,
    `internalNotification`, `eventBeginsReminderNotification`.
-2. **Batch A — 22 rutas simples** (mismo perfil de riesgo que el piloto: un solo mensaje, sin
-   validación, sin dependencia de DB): `assingDeviceNotification`, `returningDeviceNotification`,
+2. **Batch A — 22 simple routes** (same risk profile as the pilot: a single message, no
+   validation, no DB dependency): `assingDeviceNotification`, `returningDeviceNotification`,
    `returningDeviceLeaseMemberNotification`, `deviceReportPerTransaction`,
    `cancelDepositNotification`, `captureDepositNotification`, `earlierReturningNotification`,
    `eventStaffNotification`, `editingDeviceAdminNotification`,
@@ -384,352 +388,355 @@ batches, clasificadas por perfil de riesgo):
    `linkToResetPassword`, `customizedEmailNotification`, `staffInternalNotification`,
    `itemInfoStaffNotification`, `eventLinkEvent`, `chargeInvoice`, `refundInvoice`,
    `completedTask`, `failedTask`, `forcingRevokingActiveSession`, `memberEmailNotification`.
-3. **Batch B — 8 rutas con validación de entrada** (400 si faltan campos): `lostDeviceFeeCollectedNotification`,
-   `liabilityContractMemberNotification`, `liabilityContractConsumerNotification`,
-   `liabilityContractStaffNotification`, `termsAndConditionsAcceptanceNotification`,
-   `documentSigningCompletionNotification`, `consumerDocumentSigningCompletionNotification`,
-   `consumerLeaseEndedDeviceReturnedNotification`.
+3. **Batch B — 8 routes with input validation** (400 if fields are missing):
+   `lostDeviceFeeCollectedNotification`, `liabilityContractMemberNotification`,
+   `liabilityContractConsumerNotification`, `liabilityContractStaffNotification`,
+   `termsAndConditionsAcceptanceNotification`, `documentSigningCompletionNotification`,
+   `consumerDocumentSigningCompletionNotification`, `consumerLeaseEndedDeviceReturnedNotification`.
 
-**Extensión necesaria de la factory (antes de Batch B)**: `createQueuedJobController` ganó dos
-capacidades, con sus propios tests:
-- **`opts.validate(body)`** — corre antes de encolar; si devuelve `{status, body}`, responde eso
-  y NO encola. Sin esto, migrar una ruta con validación (`if (!x) return res.status(400)...`)
-  hubiera convertido esos `400` en `500` al mover la lógica al `catch` genérico — un cambio de
-  contrato real, no cosmético. Se probó con TDD antes de tocar cualquier endpoint de Batch B.
-- **`buildPayload` async** — permite armar mensajes que dependen de composición más elaborada
-  (ver siguiente punto); `await`-eado internamente, compatible con builders sync existentes.
+**Necessary factory extension (before Batch B)**: `createQueuedJobController` gained two
+capabilities, each with its own tests:
+- **`opts.validate(body)`** — runs before enqueueing; if it returns `{status, body}`, that's what
+  gets returned and nothing gets enqueued. Without this, migrating a route with validation
+  (`if (!x) return res.status(400)...`) would have turned those `400`s into `500`s by moving the
+  logic into the generic `catch` — a real contract change, not a cosmetic one. Tested with TDD
+  before touching any Batch B endpoint.
+- **`buildPayload` as async** — allows building messages that depend on more elaborate composition
+  (see next point); `await`-ed internally, compatible with existing sync builders.
 
-**Mensajes múltiples sin handler nuevo**: `documentSigningCompletionNotification` y
-`consumerDocumentSigningCompletionNotification` enviaban 2 correos con
-`Promise.all([sgMail.send(msg1), sgMail.send(msg2)])`. `sgMail.send()` acepta nativamente un
-**array** de mensajes distintos en una sola llamada — equivalente exacto al `Promise.all`
-original. Por eso el `buildPayload` de estos dos devuelve `[msg1, msg2]` y el mismo handler
-genérico `send-email` (que solo reenvía el payload a `sgMail.send(payload)`) los procesa sin
-cambios. Cero handlers nuevos para este caso.
+**Multiple messages without a new handler**: `documentSigningCompletionNotification` and
+`consumerDocumentSigningCompletionNotification` sent 2 emails with
+`Promise.all([sgMail.send(msg1), sgMail.send(msg2)])`. `sgMail.send()` natively accepts an
+**array** of distinct messages in a single call — an exact equivalent of the original
+`Promise.all`. That's why the `buildPayload` for these two returns `[msg1, msg2]` and the same
+generic `send-email` handler (which just forwards the payload to `sgMail.send(payload)`) processes
+them with no changes. Zero new handlers for this case.
 
-**2 bugs preexistentes corregidos de paso** (al extraer un builder correcto, no se podían
-replicar los bugs sin reescribir la lógica rota a propósito):
-- `earlierReturningNotification`: `ReferenceError` — usaba una variable `msg` que nunca se
-  definió (la variable real era `info`), y pasaba `returnReminderMessageHtml` como referencia de
-  función sin invocarla. El endpoint estaba **100% roto** (siempre devolvía 500). Se corrige la
-  invocación; el template en sí (`returnReminderMessageHtml`) sigue siendo un stub que devuelve
-  `""` — no se inventó contenido nuevo, eso es una decisión de producto fuera de alcance.
-- `linkToResetPassword`: si `sgMail.send` fallaba, el `catch` solo logueaba y **nunca respondía**
-  — el cliente quedaba colgado hasta el timeout de 30s. La factory genérica siempre responde.
+**2 pre-existing bugs fixed along the way** (extracting a correct builder made it impossible to
+replicate the broken bugs without deliberately rewriting broken logic):
+- `earlierReturningNotification`: `ReferenceError` — used a `msg` variable that was never defined
+  (the real variable was `info`), and passed `returnReminderMessageHtml` as a function reference
+  without invoking it. The endpoint was **100% broken** (always returned 500). The invocation is
+  fixed; the template itself (`returnReminderMessageHtml`) remains a stub returning `""` — no new
+  content was invented, that's a product decision out of scope.
+- `linkToResetPassword`: if `sgMail.send` failed, the `catch` only logged and **never
+  responded** — the client hung until the 30s timeout. The generic factory always responds.
 
-**Refactor**: sin duplicación pendiente. El patrón (`build*Message` puro + `createQueuedEmailController`,
-con `validate` cuando aplica) es ahora uniforme en las 30 rutas migradas.
+**Refactor**: no pending duplication. The pattern (pure `build*Message` + `createQueuedEmailController`,
+with `validate` where applicable) is now uniform across the 30 migrated routes.
 
-**Frontend**: las 30 rutas migradas responden `202 {ok:true, notification, jobId}` en vez de
-`201 {ok:true, notification:"Email sent"}` (o el saldo variable que tenía cada una). Los `400` de
-validación **no cambiaron** (mismo status, mismo body). Ajustar textos/UX según §7 Fase 1 antes
-de considerar estas rutas "en producción".
+**Frontend**: the 30 migrated routes respond `202 {ok:true, notification, jobId}` instead of
+`201 {ok:true, notification:"Email sent"}` (or whatever variable balance each one had). Validation
+`400`s **did not change** (same status, same body). Adjust copy/UX per §7 Phase 1 before
+considering these routes "in production".
 
-**5 rutas quedan deliberadamente sin migrar** (perfiles que no encajan en el patrón mecánico;
-migrarlas a la fuerza hubiera significado riesgos reales, no solo trabajo extra):
+**5 routes are deliberately left unmigrated** (profiles that don't fit the mechanical pattern;
+forcing the migration would have meant real risk, not just extra work):
 
-| Ruta | Por qué se deja para después |
+| Route | Why it's left for later |
 |---|---|
-| `returnedItemsToRenterNotification` | Adjuntos en base64 (ruta con límite de 100MB en `index.js`) — podrían acercarse o superar el **límite de 16MB por documento de Mongo**, y un job no es un lugar seguro para blobs grandes |
-| `massiveEventCustomerNotification` | Depende de `User.find()` (consulta a DB) para armar la lista de destinatarios, con rama de retorno temprano si no hay resultados, y usa `sgMail.sendMultiple` (fan-out por *personalización*, no intercambiable 1:1 con `.send()` sin cambiar qué ve cada destinatario) |
-| `devitrakFeedbackEmailNotification` | Mismo perfil que la anterior |
-| `errorFeedbackEmailNotification` | Función interna (no HTTP); su único llamador es `createErrorFeed`, que ya está bloqueado por el tema del `errorId` (ver nota de logs) |
-| `loginActivityNotification` | Función interna disparada con `setImmediate` desde `controller/admin.js` (fire-and-forget respecto a la respuesta de login); mismo patrón que `logStaffActivity` pero se deja pendiente por alcance de esta sesión, no por riesgo |
+| `returnedItemsToRenterNotification` | Base64 attachments (route has a 100MB limit in `index.js`) — could get close to or exceed Mongo's **16MB per-document limit**, and a job isn't a safe place for large blobs |
+| `massiveEventCustomerNotification` | Depends on `User.find()` (DB query) to build the recipient list, with an early-return branch if there are no results, and uses `sgMail.sendMultiple` (fan-out by *personalization*, not 1:1 interchangeable with `.send()` without changing what each recipient sees) |
+| `devitrakFeedbackEmailNotification` | Same profile as the previous one |
+| `errorFeedbackEmailNotification` | Internal function (not HTTP); its only caller is `createErrorFeed`, which is already blocked by the `errorId` issue (see logs note) |
+| `loginActivityNotification` | Internal function triggered with `setImmediate` from `controller/admin.js` (fire-and-forget relative to the login response); same pattern as `logStaffActivity` but left pending due to this session's scope, not risk |
 
-**Logs — hecho, con hallazgo relevante:** antes de migrar se auditó el repo buscando cualquier
-dependencia interna sobre el documento síncrono devuelto por estos endpoints (grep de nombres de
-campo, rutas, `API_DOCS.md`/`API_CLIENT_GUIDELINES.md`). Resultado:
+**Logs — done, with a relevant finding:** before migrating, the repo was audited for any internal
+dependency on the synchronous document these endpoints returned (grepping field names, routes,
+`API_DOCS.md`/`API_CLIENT_GUIDELINES.md`). Result:
 
-- **`logStaffActivity`** (`controller/staffActivityLog.js`) — no es un endpoint HTTP, es una
-  función interna invocada como `await logStaffActivity({...})` desde `admin.js`, `event.js` e
-  `inventory.js` (12 call-sites). Nunca devolvía nada y **tragaba el error en un try/catch sin
-  relanzar** — es decir, si el `save()` fallaba, el log de auditoría se perdía para siempre en
-  silencio. Migrado a `enqueue("log:staff-activity", data)`: el contrato para los callers no
-  cambia (sigue sin lanzar, sigue sin devolver nada), pero la falla ahora sobrevive vía reintento
-  + dead-letter en vez de perderse. Sin `context` de auditoría: el propio `data`
-  (`staff_member_id`/`company_id`) ya ES el sujeto del log.
-- **`feedEventLog` / `feedNotificationLog`** — sin consumidor interno de `feedEvent`/
-  `feedNotification` en este repo, sin mención en `API_DOCS.md`/`API_CLIENT_GUIDELINES.md`. El
-  usuario confirmó que el frontend no depende del documento devuelto → migrados con la misma
-  factory genérica (`createQueuedJobController`, extraída de `nodeMailer/queueEmail.js` al
-  aparecer este segundo consumidor real). Responden `202 {ok:true, jobId}`.
-- **`createErrorFeed`** (`/api/error_log`) — migrado. Ver §9.1 "Fase 1 — cierre de pendientes".
+- **`logStaffActivity`** (`controller/staffActivityLog.js`) — not an HTTP endpoint, it's an
+  internal function invoked as `await logStaffActivity({...})` from `admin.js`, `event.js` and
+  `inventory.js` (12 call sites). It never returned anything and **swallowed the error in a
+  try/catch without rethrowing** — meaning if `save()` failed, the audit log was silently lost
+  forever. Migrated to `enqueue("log:staff-activity", data)`: the contract for callers doesn't
+  change (still doesn't throw, still doesn't return anything), but the failure now survives via
+  retry + dead-letter instead of being lost. No audit `context`: `data` itself
+  (`staff_member_id`/`company_id`) already IS the log's subject.
+- **`feedEventLog` / `feedNotificationLog`** — no internal consumer of `feedEvent`/
+  `feedNotification` in this repo, no mention in `API_DOCS.md`/`API_CLIENT_GUIDELINES.md`. The
+  user confirmed the frontend doesn't depend on the returned document → migrated with the same
+  generic factory (`createQueuedJobController`, extracted from `nodeMailer/queueEmail.js` once
+  this second real consumer appeared). Respond `202 {ok:true, jobId}`.
+- **`createErrorFeed`** (`/api/error_log`) — migrated. See §9.1 "Phase 1 — closing pending items".
 
-**Bug preexistente encontrado (ajeno a esta fase, no corregido aquí):**
-[`nodeMailer/returningDeviceMessage.js:2038`](nodeMailer/returningDeviceMessage.js) usa
-`props.eventSelected ?? props.eventSelected.length > 0` — con `??` en vez de `&&`, si
-`eventSelected` es `undefined` igual evalúa `.length` sobre `undefined` y revienta. Afecta a
-`singleEmailMessageHtml` (y posiblemente otras plantillas con el mismo patrón). Documentado
-para corregir aparte.
+**Pre-existing bug found (unrelated to this phase, not fixed here):**
+[`nodeMailer/returningDeviceMessage.js:2038`](nodeMailer/returningDeviceMessage.js) uses
+`props.eventSelected ?? props.eventSelected.length > 0` — with `??` instead of `&&`, if
+`eventSelected` is `undefined` it still evaluates `.length` on `undefined` and throws. Affects
+`singleEmailMessageHtml` (and possibly other templates with the same pattern). Documented to fix
+separately.
 
-### Fase 1 — cierre de pendientes ✅ COMPLETADA (`createErrorFeed` + 5 rutas diferidas)
+### Phase 1 — closing pending items ✅ COMPLETED (`createErrorFeed` + 5 deferred routes)
 
-Las 6 tareas que habían quedado pendientes al terminar el piloto de correos+logs. Todas resueltas
-con TDD, en el orden: extensión de la factory → `loginActivityNotification` → `createErrorFeed` →
+The 6 tasks left pending after finishing the emails+logs pilot. All resolved with TDD, in this
+order: factory extension → `loginActivityNotification` → `createErrorFeed` →
 `massiveEventCustomerNotification`/`devitrakFeedbackEmailNotification` → `returnedItemsToRenterNotification`.
 
-**Extensión de infraestructura compartida** — `createQueuedJobController` (`helpers/queuedController.js`)
-gana soporte de **"payload nulo = no hay nada que encolar"**: si `buildPayload` resuelve a
-`null`/`undefined`, no se llama `enqueue` y se responde con `opts.buildSkippedBody` (default
-`{ok:true}`). Necesario para los dos endpoints que consultan la DB para armar destinatarios y
-pueden legítimamente no tener a quién enviarle nada.
+**Shared infrastructure extension** — `createQueuedJobController` (`helpers/queuedController.js`)
+gains support for **"null payload = nothing to enqueue"**: if `buildPayload` resolves to
+`null`/`undefined`, `enqueue` isn't called and the response uses `opts.buildSkippedBody` (default
+`{ok:true}`). Needed for the two endpoints that query the DB to build recipients and can
+legitimately have no one to send to.
 
-**`loginActivityNotification`** — función interna (dentro de un `setImmediate` en
-`controller/admin.js`, fire-and-forget respecto al login) migrada exactamente con el mismo
-criterio que `logStaffActivity`: se extrae `buildLoginActivityMessage` (sanitiza + compone el
-mensaje) y se encola como `send-email`. El contrato para el caller no cambia (nunca lanza,
-siempre devuelve `{success, message}`).
+**`loginActivityNotification`** — internal function (inside a `setImmediate` in
+`controller/admin.js`, fire-and-forget relative to login) migrated with exactly the same criteria
+as `logStaffActivity`: `buildLoginActivityMessage` is extracted (sanitizes + composes the
+message) and enqueued as `send-email`. The contract for the caller doesn't change (never throws,
+always returns `{success, message}`).
 
-**`createErrorFeed` + `errorFeedbackEmailNotification`** — resueltos juntos (la segunda era una
-función interna cuyo único llamador era la primera).
-- **Pre-generación del `_id`**: Mongoose asigna el `_id` al construir `new ErrorLogs(...)`, antes
-  de `.save()`. Se usa ese id para responder de inmediato al cliente (preserva la promesa de
-  *"Please save the id for future reference"*) y se encola la persistencia pasándole ese mismo
-  `_id` explícito (`ErrorLogs.create({_id: errorId, ...})` respeta el id dado).
-- **Dos jobs independientes**, no uno combinado: `log:error` (persiste el documento, reutiliza
-  `createModelInsertHandler`) y `send-email` (la notificación, con `buildErrorFeedbackMessage`
-  reemplazando a la vieja `errorFeedbackEmailNotification`). Cada uno con `idempotencyKey` basada
-  en el mismo `errorId`. Antes, ambos corrían en el mismo `try/catch` síncrono — si el correo
-  fallaba, la respuesta era `500` **aunque el log ya se hubiera guardado**; con jobs
-  independientes ese acoplamiento desaparece.
-- **Validación agregada a propósito** (cambio de comportamiento deliberado, no cosmético): se
-  agregó `validateErrorFeed` para rechazar con `400` si falta `componentStack`/`error`. Sin esto,
-  el rechazo de Mongoose (`required: true`) ocurriría dentro del worker, invisible para un
-  cliente que ya recibió `200` con un `errorId` que nunca se va a persistir.
+**`createErrorFeed` + `errorFeedbackEmailNotification`** — resolved together (the second was an
+internal function whose only caller was the first).
+- **Pre-generating the `_id`**: Mongoose assigns the `_id` when constructing `new ErrorLogs(...)`,
+  before `.save()`. That id is used to respond to the client immediately (preserving the promise
+  *"Please save the id for future reference"*) and the persistence is enqueued passing that same
+  explicit `_id` (`ErrorLogs.create({_id: errorId, ...})` respects the given id).
+- **Two independent jobs**, not a combined one: `log:error` (persists the document, reuses
+  `createModelInsertHandler`) and `send-email` (the notification, with `buildErrorFeedbackMessage`
+  replacing the old `errorFeedbackEmailNotification`). Each with an `idempotencyKey` based on the
+  same `errorId`. Previously, both ran in the same synchronous `try/catch` — if the email failed,
+  the response was `500` **even though the log had already been saved**; with independent jobs
+  that coupling disappears.
+- **Validation added deliberately** (deliberate behavior change, not cosmetic): `validateErrorFeed`
+  was added to reject with `400` if `componentStack`/`error` is missing. Without this, Mongoose's
+  rejection (`required: true`) would happen inside the worker, invisible to a client that already
+  got a `200` with an `errorId` that will never be persisted.
 
-**`massiveEventCustomerNotification` / `devitrakFeedbackEmailNotification`** — ambas consultan
-`User.find()` para armar destinatarios y usan `sgMail.sendMultiple` (fan-out por
-*personalización*: cada destinatario no ve a los demás — semántica distinta a `.send()` con un
-array, que sí se usa en otras rutas para mensajes *distintos*). Se resuelven con:
-- Un nuevo `type: "send-email-multiple"`, registrado con el mismo `createEmailHandler` genérico
-  apuntando a `sgMail.sendMultiple` en vez de `sgMail.send` — cero código nuevo en el handler.
-- `buildPayload` async (`createBuildMassiveEventCustomerMessage`/`createBuildDevitrakFeedbackMessage`,
-  parametrizadas por la función de búsqueda para poder testear sin Mongo) hace la consulta **una
-  sola vez** y devuelve `null` si no hay destinatarios — usa la extensión de la factory de arriba,
-  en vez de consultar dos veces (una para "validar que hay alguien" y otra para armar el mensaje).
+**`massiveEventCustomerNotification` / `devitrakFeedbackEmailNotification`** — both query
+`User.find()` to build recipients and use `sgMail.sendMultiple` (fan-out by *personalization*:
+each recipient doesn't see the others — different semantics from `.send()` with an array, which
+is used elsewhere for *distinct* messages). Resolved with:
+- A new `type: "send-email-multiple"`, registered with the same generic `createEmailHandler`
+  pointing to `sgMail.sendMultiple` instead of `sgMail.send` — zero new handler code.
+- Async `buildPayload` (`createBuildMassiveEventCustomerMessage`/`createBuildDevitrakFeedbackMessage`,
+  parametrized by the lookup function so it can be tested without Mongo) runs the query **only
+  once** and returns `null` if there are no recipients — uses the factory extension above, instead
+  of querying twice (once to "validate there's someone" and again to build the message).
 
-**`returnedItemsToRenterNotification`** — el más delicado, por el límite de 16MB por documento de
-MongoDB. Resuelto con la **Opción A** (subir a S3 antes de encolar):
-- La validación (`subject`, `staffEmails`, formato de email, forma de cada adjunto, existencia
-  del archivo si viene por `path`) se mantiene **idéntica** a la original — mismos mensajes,
-  mismos `400`. Es puramente síncrona, no toca S3.
-- `createBuildReturnedItemsToRenterMessage(uploadAttachment)`: por cada adjunto, si viene con
-  `path` lee el archivo real de disco (igual que antes); sube el contenido a S3
-  (`helpers/s3Upload.js` → `uploadNotificationAttachment`, nueva) y el payload del job solo
-  guarda `attachmentRefs: [{key, filename, type}]` — **nunca el base64**.
-  `helpers/s3Upload.js` no sigue el patrón DI del resto de la cola (es un módulo preexistente con
-  su propio estilo); la inyección para tests se hace en el builder, no en el helper.
-- Nuevo `type: "send-email-multiple-with-attachments"`
-  (`queue/handlers/emailWithAttachments.js`): el worker resuelve cada `attachmentRef` a base64
-  (`fetchAttachmentAsBase64`, nueva) justo antes de enviar, arma `msg.attachments` en el formato
-  que espera SendGrid, y **si el envío tuvo éxito**, borra los objetos de S3 (reutiliza
-  `deleteDocumentFromS3` ya existente) — best-effort, un fallo de limpieza no rompe el job. Si el
-  envío falla, los adjuntos **no se borran**, para que el reintento los pueda volver a resolver.
+**`returnedItemsToRenterNotification`** — the trickiest one, due to MongoDB's 16MB per-document
+limit. Resolved with **Option A** (upload to S3 before enqueueing):
+- Validation (`subject`, `staffEmails`, email format, each attachment's shape, file existence if
+  provided via `path`) stays **identical** to the original — same messages, same `400`s. It's
+  purely synchronous, doesn't touch S3.
+- `createBuildReturnedItemsToRenterMessage(uploadAttachment)`: for each attachment, if it comes
+  with `path` it reads the real file from disk (same as before); uploads the content to S3
+  (`helpers/s3Upload.js` → `uploadNotificationAttachment`, new) and the job payload only stores
+  `attachmentRefs: [{key, filename, type}]` — **never the base64**. `helpers/s3Upload.js` doesn't
+  follow the DI pattern of the rest of the queue (it's a pre-existing module with its own style);
+  test injection happens in the builder, not the helper.
+- New `type: "send-email-multiple-with-attachments"`
+  (`queue/handlers/emailWithAttachments.js`): the worker resolves each `attachmentRef` to base64
+  (`fetchAttachmentAsBase64`, new) right before sending, builds `msg.attachments` in the format
+  SendGrid expects, and **if the send succeeded**, deletes the S3 objects (reuses the already
+  existing `deleteDocumentFromS3`) — best-effort, a cleanup failure doesn't break the job. If the
+  send fails, the attachments are **not deleted**, so the retry can resolve them again.
 
-### Fase 2 — Go worker + documentos ✅ COMPLETADA
+### Phase 2 — Go worker + documents ✅ COMPLETED
 
-**Hallazgo previo a implementar, igual de importante que el de los correos diferidos:** de las 6
-mutaciones del Go worker candidatas, **5 de 6 usan el resultado de forma síncrona** (conteos,
-filas afectadas, o bifurcan en `status==="error"`) — el cliente los necesita en la misma
-respuesta, no son fire-and-forget. Solo `insert-device-event-container` calificaba de verdad.
+**Finding made before implementing, just as important as the deferred-emails one:** of the 6
+candidate Go worker mutations, **5 of 6 use the result synchronously** (counts, affected rows, or
+branch on `status==="error"`) — the client needs them in the same response, they're not
+fire-and-forget. Only `insert-device-event-container` truly qualified.
 
-| Función | Operación Go worker | ¿Usa el resultado en la respuesta? | Tratamiento |
+| Function | Go worker operation | Uses the result in the response? | Treatment |
 |---|---|---|---|
-| `insertingItemInEvent` | `insert-item-event` | Sí (`inserted_items`, `total_items`) | Síncrono, sin cambios |
-| `insertingDeviceInEventDirectly` | `insert-device-event-directly` | Sí (`inserted_items`) | Síncrono, sin cambios |
-| `insertingDeviceInEventDirectlyFromContainer` | `insert-device-event-container` | **No** | **Encolado** |
-| `itemFinalStatusWhenEventIsFinishedRefactored` | `item-final-status` | Sí (`affectedRows`) | Síncrono, sin cambios |
-| `updateLargeData` | `update-item-warehouse` | Sí (`data`, bifurca en error) | Síncrono, sin cambios |
-| `deleteBulkItems` | `delete-bulk-items` | Sí (`data`, bifurca en error; además es un borrado masivo) | Síncrono, sin cambios |
+| `insertingItemInEvent` | `insert-item-event` | Yes (`inserted_items`, `total_items`) | Synchronous, no changes |
+| `insertingDeviceInEventDirectly` | `insert-device-event-directly` | Yes (`inserted_items`) | Synchronous, no changes |
+| `insertingDeviceInEventDirectlyFromContainer` | `insert-device-event-container` | **No** | **Queued** |
+| `itemFinalStatusWhenEventIsFinishedRefactored` | `item-final-status` | Yes (`affectedRows`) | Synchronous, no changes |
+| `updateLargeData` | `update-item-warehouse` | Yes (`data`, branches on error) | Synchronous, no changes |
+| `deleteBulkItems` | `delete-bulk-items` | Yes (`data`, branches on error; also a bulk delete) | Synchronous, no changes |
 
-**1. Endurecimiento del Go worker (circuit breaker) — centralizado, cero cambios en controllers.**
-`helpers/goWorker.js` ya tenía reintento (3 intentos, backoff exponencial) — protege UNA llamada.
-Faltaba un circuit breaker que proteja ENTRE llamadas: si el Go worker está caído, que las
-siguientes requests fallen rápido en vez de esperar los 3 reintentos completos cada vez.
-- `helpers/circuitBreaker.js` (nuevo): genérico, no específico de Go worker. Estados
-  closed → open (falla rápido sin invocar `fn`) → half-open (prueba un intento tras el cooldown).
-- `helpers/goWorker.js` refactorizado a `createRunGoWorker(fetchImpl, breakerOpts)`, envolviendo
-  la operación COMPLETA (con sus reintentos internos) como una sola unidad del breaker. El export
-  por defecto (`module.exports = runGoWorker`) sigue siendo la función invocable directamente —
-  **cero cambios en los 8+ call-sites existentes** (`items_events.js`, `item.js`, `auth.js`,
-  `transaction.js`). `createRunGoWorker` queda como propiedad de la función exportada, solo para tests.
+**1. Go worker hardening (circuit breaker) — centralized, zero changes in controllers.**
+`helpers/goWorker.js` already had retry (3 attempts, exponential backoff) — protecting ONE call.
+Missing was a circuit breaker to protect BETWEEN calls: if the Go worker is down, subsequent
+requests should fail fast instead of waiting through the full 3 retries every time.
+- `helpers/circuitBreaker.js` (new): generic, not Go-worker-specific. States
+  closed → open (fails fast without invoking `fn`) → half-open (tries one attempt after cooldown).
+- `helpers/goWorker.js` refactored into `createRunGoWorker(fetchImpl, breakerOpts)`, wrapping the
+  ENTIRE operation (with its internal retries) as a single breaker unit. The default export
+  (`module.exports = runGoWorker`) remains the directly-invokable function — **zero changes at the
+  8+ existing call sites** (`items_events.js`, `item.js`, `auth.js`, `transaction.js`).
+  `createRunGoWorker` is attached as a property of the exported function, only for tests.
 
-**2. `insertingDeviceInEventDirectlyFromContainer` — la única mutación fire-and-forget real.**
-Encolada con `type: "go-worker:insert-device-event-container"`, usando un nuevo handler genérico
-`queue/handlers/goWorker.js` (`createGoWorkerHandler(runGoWorkerFn, command)`, reutilizable para
-futuras mutaciones fire-and-forget del Go worker).
+**2. `insertingDeviceInEventDirectlyFromContainer` — the only truly fire-and-forget mutation.**
+Queued as `type: "go-worker:insert-device-event-container"`, using a new generic handler
+`queue/handlers/goWorker.js` (`createGoWorkerHandler(runGoWorkerFn, command)`, reusable for future
+fire-and-forget Go worker mutations).
 
-**3. Webhook de `uploadExcelToS3` — encolado.** Este endpoint sube a S3 y luego dispara un webhook
-HTTP externo (`INVENTORY_IMPORT_WEBHOOK_URL`) para iniciar la importación remota de inventario. La
-respuesta final **nunca dependió del contenido de la respuesta del webhook**, solo de si estaba
-arriba (antes: `502` si el webhook fallaba, aunque el archivo ya estuviera en S3). Se creó un
-handler genérico `queue/handlers/webhook.js` (`createWebhookHandler`, reutilizable para cualquier
-webhook externo futuro). **Cambio de comportamiento deliberado**: ya no existe la rama `502` — si
-el webhook está caído momentáneamente, el reintento de la cola lo resuelve en vez de fallarle la
-respuesta al cliente (el archivo ya estaba subido a S3 de todas formas).
+**3. `uploadExcelToS3` webhook — queued.** This endpoint uploads to S3 and then fires an external
+HTTP webhook (`INVENTORY_IMPORT_WEBHOOK_URL`) to kick off the remote inventory import. The final
+response **never depended on the webhook's response content**, only on whether it was up
+(previously: `502` if the webhook failed, even though the file was already in S3). A generic
+handler was created, `queue/handlers/webhook.js` (`createWebhookHandler`, reusable for any future
+external webhook). **Deliberate behavior change**: the `502` branch no longer exists — if the
+webhook is momentarily down, the queue's retry resolves it instead of failing the client's
+response (the file was already uploaded to S3 regardless).
 
-**4. `uploadDocument` (PDF) — contrato async completo, no el cambio cosmético de Fase 1.** A
-diferencia de correos/logs, el cliente sí necesita la URL final del documento. Confirmado con el
-usuario: se migra con `202 {jobId}` + polling hasta `done`, leyendo `result.document`.
-- **Polling accesible al dueño (no super_user)** — ver §9 "Polling owner-scoped" abajo. El endpoint
-  de observabilidad `GET /api/jobs/:jobId` es super_user-only (para el dashboard); el usuario que
-  sube el documento poll­ea `GET /api/jobs/owned/:jobId` (solo su propio job).
-- Verificación previa importante: Multer usa `diskStorage` en `tmp/uploads/`
-  ([`routes/document.js`](routes/document.js)) — el archivo **no se autoborra** al responder, así
-  que sigue en disco cuando el worker lo procesa más tarde. Esto asume que el worker corre en la
-  **misma máquina** que recibió el upload — cierto en el despliegue actual (1 sola máquina
-  Windows, cluster PM2, ver `DEPLOY.md`); si el despliegue pasara a multi-máquina, esta suposición
-  dejaría de sostenerse y habría que subir a S3 síncrono como se hizo con
-  `returnedItemsToRenterNotification`.
-- **Un solo job** (`type: "document:upload-pdf"`, `queue/handlers/documentUpload.js`), no dos
-  independientes: crear el `Document` depende de la URL que devuelve la subida a S3, así que no
-  se pueden separar como sí se hizo con `createErrorFeed` (log + email independientes).
-- La validación síncrona se mantiene: `req.file` presente (`400`), `Company` existe (`404`) —
-  ambas necesarias antes de que tenga sentido encolar algo.
+**4. `uploadDocument` (PDF) — full async contract, not the cosmetic Phase 1 change.** Unlike
+emails/logs, the client does need the document's final URL. Confirmed with the user: migrated
+with `202 {jobId}` + polling until `done`, reading `result.document`.
+- **Owner-accessible polling (not super_user)** — see §9 "Owner-scoped polling" below. The
+  observability endpoint `GET /api/jobs/:jobId` is super_user-only (for the dashboard); the user
+  uploading the document polls `GET /api/jobs/owned/:jobId` (only their own job).
+- Important prior check: Multer uses `diskStorage` under `tmp/uploads/`
+  ([`routes/document.js`](routes/document.js)) — the file **does not auto-delete** when the
+  response is sent, so it's still on disk when the worker processes it later. This assumes the
+  worker runs on the **same machine** that received the upload — true in the current deployment
+  (a single Windows machine, PM2 cluster, see `DEPLOY.md`); if the deployment moved to
+  multi-machine, this assumption would no longer hold and a synchronous S3 upload would be needed,
+  as was done for `returnedItemsToRenterNotification`.
+- **A single job** (`type: "document:upload-pdf"`, `queue/handlers/documentUpload.js`), not two
+  independent ones: creating the `Document` depends on the URL the S3 upload returns, so they
+  can't be split the way `createErrorFeed` was (independent log + email).
+- Synchronous validation stays: `req.file` present (`400`), `Company` exists (`404`) — both
+  needed before it makes sense to enqueue anything.
 
-### Fase 3 — Endurecer Stripe (sin encolar) ✅ COMPLETADA
+### Phase 3 — Harden Stripe (no queueing) ✅ COMPLETED
 
-Las mutaciones de Stripe **no se encolan** (el dinero no se buffea — un cobro no puede quedar
-"pendiente de reintento" a ciegas). Se endurecen en la capa de cliente, sin cambiar el contrato
-del frontend.
+Stripe mutations **are not queued** (money isn't buffered — a charge can't be left "pending
+retry" blindly). They're hardened at the client layer, without changing the frontend contract.
 
-**1. `isFailure` en el circuit breaker (extensión del genérico de Fase 2).** Un error de negocio
-(tarjeta rechazada, `card_error`) es una respuesta EXITOSA de Stripe — prueba que está sano — y no
-debe abrir el circuito ni bloquear otros cobros. `createCircuitBreaker` ganó un predicado opcional
-`isFailure(error)`: los errores que no son de infraestructura se re-lanzan al caller pero **no**
-cuentan para abrir el circuito, y de hecho resetean el contador como un éxito. Default sin
-`isFailure`: todo cuenta (comportamiento previo de Go worker intacto).
+**1. `isFailure` in the circuit breaker (extension of the Phase 2 generic).** A business error
+(declined card, `card_error`) is a SUCCESSFUL response from Stripe — it proves it's healthy — and
+shouldn't open the circuit or block other charges. `createCircuitBreaker` gained an optional
+`isFailure(error)` predicate: errors that aren't infrastructure-related are re-thrown to the
+caller but **don't** count toward opening the circuit, and in fact reset the counter like a
+success. Default with no `isFailure`: everything counts (previous Go worker behavior intact).
 
-**2. `helpers/stripeClient.js` — cliente endurecido compartido.**
-- **Retry idempotente**: `maxNetworkRetries` del SDK (configurable por env, default 2). Stripe
-  reintenta solo fallos de red / 409 / 5xx y agrega/reutiliza idempotency keys automáticamente en
-  los reintentos → seguro, no duplica cobros.
-- **`isStripeInfraFailure`**: solo `api_connection_error`, `api_error`, `rate_limit_error` cuentan
-  para abrir el circuito. `card_error`/`invalid_request_error`/`idempotency_error` NO (son
-  negocio/cliente). Un error crudo sin `type` (timeout de red no envuelto) se asume infra.
-- **Un solo breaker COMPARTIDO** por todas las mutaciones (si Stripe está caído, todas fallan
-  rápido en vez de colgar el request layer con reintentos).
-- **`runStripeMutation(thunk)`**: envuelve una mutación con ese breaker.
+**2. `helpers/stripeClient.js` — shared hardened client.**
+- **Idempotent retry**: SDK's `maxNetworkRetries` (configurable via env, default 2). Stripe only
+  retries network failures / 409 / 5xx and adds/reuses idempotency keys automatically across
+  retries → safe, doesn't duplicate charges.
+- **`isStripeInfraFailure`**: only `api_connection_error`, `api_error`, `rate_limit_error` count
+  toward opening the circuit. `card_error`/`invalid_request_error`/`idempotency_error` do NOT
+  (they're business/client errors). A raw error with no `type` (an unwrapped network timeout) is
+  assumed to be infra.
+- **A single SHARED breaker** across all mutations (if Stripe is down, all fail fast instead of
+  hanging the request layer with retries).
+- **`runStripeMutation(thunk)`**: wraps a mutation with that breaker.
 
-**3. Cableado de las 4 mutaciones de dinero** en `controller/stripe.js` (`captureStripePaymentIntent`,
+**3. Wiring the 4 money mutations** in `controller/stripe.js` (`captureStripePaymentIntent`,
 `cancelStripePaymentIntent`, `refundStripePaymentIntent`, `partialRefundStripePaymentIntent`):
-- Importan el cliente endurecido (`stripe` mismo nombre → resto de llamadas sin cambios) y
-  envuelven la mutación con `runStripeMutation(() => ...)`.
-- Pasan `request.idempotencyKey` a Stripe cuando está seteado (forward-compatible; no-op en las
-  rutas que hoy no lo setean, se usa donde sí — mismo patrón que el create-payment-intent).
+- Import the hardened client (`stripe`, same name → the rest of the calls stay unchanged) and
+  wrap the mutation with `runStripeMutation(() => ...)`.
+- Pass `request.idempotencyKey` to Stripe when it's set (forward-compatible; a no-op on routes
+  that don't set it today, used where they do — same pattern as create-payment-intent).
 
-**Idempotencia ya existente (no se tocó):** las rutas capture/cancel/refund ya usan
-`idempotencyMutationCache` (replay de la respuesta cacheada ante un request duplicado, a nivel
-HTTP). **No** se les agregó `attachServerIdempotencyKey`: su derivación de clave de fallback
-(customerEmail/device/IP/time-bucket) es para el flujo de *creación* de payment intent, incorrecta
-para payloads de capture/refund (que traen `id`/`paymentIntent`).
+**Idempotency already in place (untouched):** the capture/cancel/refund routes already use
+`idempotencyMutationCache` (replays the cached response on a duplicate request, at the HTTP
+level). `attachServerIdempotencyKey` was **not** added to them: its fallback key derivation
+(customerEmail/device/IP/time-bucket) is for the payment-intent *creation* flow, incorrect for
+capture/refund payloads (which carry `id`/`paymentIntent`).
 
-**Observación (no corregida, fuera de alcance):** `controller/transaction.js` instancia un cliente
-Stripe (líneas 6-7) que **nunca usa** — su único trabajo Stripe es vía Go worker
-(`check-stripe-payment-intents`, ya endurecido por el breaker del Go worker). Código muerto, sin
-impacto funcional; candidato a limpieza aparte.
+**Observation (not fixed, out of scope):** `controller/transaction.js` instantiates a Stripe
+client (lines 6-7) that it **never uses** — its only Stripe work goes through the Go worker
+(`check-stripe-payment-intents`, already hardened by the Go worker's breaker). Dead code, no
+functional impact; a candidate for separate cleanup.
 
-### Polling owner-scoped — `GET /api/jobs/owned/:jobId` ✅ (habilita el flujo async de §Fase 2 uploadDocument)
+### Owner-scoped polling — `GET /api/jobs/owned/:jobId` ✅ (enables the async `uploadDocument` flow from §Phase 2)
 
-El endpoint de observabilidad `GET /api/jobs/:jobId` es **super_user-only** (diseñado para el
-dashboard de soporte, cruza todas las compañías). Pero el usuario que sube un documento —posiblemente
-no super_user— necesita poll­ear el resultado de **su propia** subida. En vez de tocar esa capa de
-seguridad (lo que cambiaría cómo el dashboard llama/muestra los datos), se agregó un endpoint
-**aditivo**:
+The observability endpoint `GET /api/jobs/:jobId` is **super_user-only** (designed for the support
+dashboard, spans all companies). But the user uploading a document — possibly not a super_user —
+needs to poll the result of **their own** upload. Instead of touching that security layer (which
+would change how the dashboard calls/displays the data), an **additive** endpoint was added:
 
-- **`GET /api/jobs/owned/:jobId`** (`routes/jobs.js`) — solo `validateJWT` (primitiva ya integrada
-  app-wide), sin `requireSuperUser`. Controller `createGetOwnedJobStatus` (`controller/jobs.js`):
-  devuelve el job solo si `job.context.uid === req.uid`; si no existe, no tiene dueño, o es de otro
-  usuario → `404` (no `403`, para no filtrar la existencia de jobs ajenos). Respuesta **SLIM**
-  (`buildOwnedJobResponse`): `{ok, id, type, status, attempts, lastError, result}` — NO expone
-  `payload`/`context`/`lockedBy` (el payload de un upload tiene rutas internas de archivo).
-- **El dueño se fija al encolar**: como la ruta `POST /api/document/upload` no corre `validateJWT`
-  (`req.uid` es null), el controller toma el uid del dueño de `req.body.created_by` (el uid Mongo que
-  el frontend ya envía) y lo pone en `context.uid`. El frontend luego poll­ea con su token; el
-  `req.uid` del token debe coincidir con ese `created_by`.
-- No se modificó `requireSuperUser` ni los endpoints existentes `/api/jobs/:jobId` y `/stats` — la
-  capa de seguridad del dashboard queda intacta.
+- **`GET /api/jobs/owned/:jobId`** (`routes/jobs.js`) — only `validateJWT` (already integrated
+  app-wide), no `requireSuperUser`. Controller `createGetOwnedJobStatus` (`controller/jobs.js`):
+  returns the job only if `job.context.uid === req.uid`; if it doesn't exist, has no owner, or
+  belongs to another user → `404` (not `403`, so as not to leak the existence of others' jobs).
+  **SLIM** response (`buildOwnedJobResponse`): `{ok, id, type, status, attempts, lastError,
+  result}` — does NOT expose `payload`/`context`/`lockedBy` (an upload's payload has internal file
+  paths).
+- **The owner is set at enqueue time**: since the `POST /api/document/upload` route doesn't run
+  `validateJWT` (`req.uid` is null), the controller takes the owner's uid from
+  `req.body.created_by` (the Mongo uid the frontend already sends) and puts it in `context.uid`.
+  The frontend then polls with its token; the token's `req.uid` must match that `created_by`.
+- `requireSuperUser` and the existing `/api/jobs/:jobId` and `/stats` endpoints were not modified —
+  the dashboard's security layer stays intact.
 
 ---
 
-## 10. Riesgos y mitigaciones
+## 10. Risks and mitigations
 
-| Riesgo | Mitigación |
+| Risk | Mitigation |
 |---|---|
-| Doble procesamiento (cluster) | 1 solo worker (`isPM2FirstInstance`) + claim atómico `findOneAndUpdate` |
-| Job colgado si el server muere a mitad | Barrido de `processing` con `lockedAt` viejo → vuelve a `pending` |
-| Doble envío en reintento | `idempotencyKey` única por acción |
-| Mongo caído al encolar | El endpoint ya devuelve 500 hoy en ese caso; evaluar buffer local en disco si se requiere 100% |
-| Latencia por polling | 3–5 s es invisible para correos/logs; Change Streams si se necesita menos |
-| Crecimiento de la colección | TTL borra `done`; índices en `status`/`nextAttemptAt` |
-| Fuga de credenciales vía jobs persistidos | `context` es un allowlist estricto (§4.3); nunca se guarda `x-token`/`s-token-lq` crudos |
-| Encolar logs rompe el contrato de respuesta síncrona (`{ok, feedEvent}` → `{ok, jobId}`) | Auditado: sin consumidor interno; usuario confirmó que el frontend tampoco depende del doc → migrado (§9 Fase 1) |
-| `createErrorFeed` promete un `errorId` "para referencia futura" — un `jobId` rompería esa promesa | NO migrado; requiere pre-generar el `_id` de Mongoose antes de encolar (§9 Fase 1) |
-| Encolar una mutación del Go worker cuyo resultado el cliente usa en la respuesta | Auditado: 5 de 6 lo usan (conteos/filas afectadas); solo se encoló la única fire-and-forget real (§9 Fase 2) |
-| `uploadExcelToS3`/`uploadDocument` dependen de un archivo temporal en disco local | Verificado: Multer usa `diskStorage` (no se autoborra); asume worker en la misma máquina — cierto hoy, revisar si el despliegue pasa a multi-máquina (§9 Fase 2) |
-| Go worker caído → cada request espera los 3 reintentos completos igual | Circuit breaker en `helpers/goWorker.js` (falla rápido tras `failureThreshold` fallos consecutivos) (§9 Fase 2) |
-| Una tarjeta rechazada (o cualquier error de negocio) abriría el circuito de Stripe y bloquearía cobros sanos | `isFailure`/`isStripeInfraFailure`: solo fallos de infra cuentan; los de negocio se re-lanzan sin abrir el circuito (§9 Fase 3) |
-| Stripe caído → el request layer cuelga esperando reintentos condenados | Circuit breaker compartido `runStripeMutation` + `maxNetworkRetries` del SDK (§9 Fase 3) |
+| Double processing (cluster) | Single worker (`isPM2FirstInstance`) + atomic `findOneAndUpdate` claim |
+| Job hangs if the server dies mid-way | Sweep of `processing` jobs with a stale `lockedAt` → back to `pending` |
+| Double send on retry | Unique `idempotencyKey` per action |
+| Mongo down while enqueueing | The endpoint already returns 500 today in that case; evaluate a local on-disk buffer if 100% durability is required |
+| Polling latency | 3–5s is invisible for emails/logs; Change Streams if less is needed |
+| Collection growth | TTL removes `done`; indexes on `status`/`nextAttemptAt` |
+| Credential leak via persisted jobs | `context` is a strict allowlist (§4.3); raw `x-token`/`s-token-lq` are never stored |
+| Queueing logs breaks the synchronous response contract (`{ok, feedEvent}` → `{ok, jobId}`) | Audited: no internal consumer; user confirmed the frontend doesn't depend on the doc either → migrated (§9 Phase 1) |
+| `createErrorFeed` promises an `errorId` "for future reference" — a `jobId` would break that promise | NOT migrated; requires pre-generating Mongoose's `_id` before enqueueing (§9 Phase 1) |
+| Queueing a Go worker mutation whose result the client uses in the response | Audited: 5 of 6 use it (counts/affected rows); only the single truly fire-and-forget one was queued (§9 Phase 2) |
+| `uploadExcelToS3`/`uploadDocument` depend on a temp file on local disk | Verified: Multer uses `diskStorage` (no auto-delete); assumes the worker runs on the same machine — true today, revisit if the deployment moves to multi-machine (§9 Phase 2) |
+| Go worker down → every request still waits through all 3 retries | Circuit breaker in `helpers/goWorker.js` (fails fast after `failureThreshold` consecutive failures) (§9 Phase 2) |
+| A declined card (or any business error) would open the Stripe circuit and block healthy charges | `isFailure`/`isStripeInfraFailure`: only infra failures count; business ones are re-thrown without opening the circuit (§9 Phase 3) |
+| Stripe down → the request layer hangs waiting on doomed retries | Shared `runStripeMutation` circuit breaker + SDK's `maxNetworkRetries` (§9 Phase 3) |
 
 ---
 
-## 11. Checklist de entrega
+## 11. Delivery checklist
 
-- [x] `models/Job.js` con índices (claim + TTL + companyId) y `idempotencyKey` única/sparse
-- [x] `helpers/queue.js` (`enqueue`, `extractJobContext`) con manejo de choque de idempotencia
-- [x] `queue/worker.js` (claim atómico, backoff, dead-letter, recuperación de colgados)
-- [x] `queue/handlers/` con el registro `type -> handler` (vacío, listo para Fase 1)
-- [x] Arranque del worker en `index.js` bajo `isPM2FirstInstance`
-- [x] `context` de auditoría (identidad, no credenciales) — §4
-- [x] Suite de tests de la Fase 0 en verde (27/27 en `test/queue.test.js`)
-- [x] Handler genérico `send-email` (`queue/handlers/email.js`) + factory de controller
-      (`nodeMailer/queueEmail.js`), ambos con tests DI (sin tocar SendGrid/Mongo reales)
-- [x] **30 de 35 rutas** `/api/nodemailer/*` migradas y probadas (piloto 4 + Batch A 22 + Batch B 8)
-- [x] Factory genérica `createQueuedJobController` (`helpers/queuedController.js`), extraída de
-      `nodeMailer/queueEmail.js` al aparecer un segundo consumidor real (logs); correos y logs
-      la comparten. Extendida con `opts.validate` (preserva 400s) y `buildPayload` async
-      (soporta mensajes múltiples como array)
-- [x] Handler genérico de escritura a Mongo (`queue/handlers/dbWrite.js`,
-      `createModelInsertHandler`), registrado para `log:event`, `log:notification` y
-      `log:staff-activity` en `queue/handlers/index.js`
-- [x] `feedEventLog` y `feedNotificationLog` migrados (auditado sin dependencia interna;
-      confirmado con el usuario que el frontend tampoco depende del documento síncrono)
-- [x] `logStaffActivity` migrado (función interna, 12 call-sites en `admin.js`/`event.js`/
-      `inventory.js`) — corrige además un bug preexistente de pérdida silenciosa de logs si
-      Mongo fallaba en el `save()`
-- [x] 2 bugs preexistentes corregidos de paso al migrar: `earlierReturningNotification`
-      (`ReferenceError`, endpoint 100% roto) y `linkToResetPassword` (nunca respondía en error)
-- [x] `GET /api/jobs/:jobId` y `GET /api/jobs/stats`, protegidos con `requireSuperUser`
-      (nuevo middleware — un job no pertenece a una sola compañía, no encaja en
+- [x] `models/Job.js` with indexes (claim + TTL + companyId) and a unique/sparse `idempotencyKey`
+- [x] `helpers/queue.js` (`enqueue`, `extractJobContext`) with idempotency-collision handling
+- [x] `queue/worker.js` (atomic claim, backoff, dead-letter, hung-job recovery)
+- [x] `queue/handlers/` with the `type -> handler` registry (empty, ready for Phase 1)
+- [x] Worker startup in `index.js` under `isPM2FirstInstance`
+- [x] Audit `context` (identity, not credentials) — §4
+- [x] Phase 0 test suite green (27/27 in `test/queue.test.js`)
+- [x] Generic `send-email` handler (`queue/handlers/email.js`) + controller factory
+      (`nodeMailer/queueEmail.js`), both with DI tests (no real SendGrid/Mongo touched)
+- [x] **30 of 35** `/api/nodemailer/*` routes migrated and tested (4 pilot + 22 Batch A + 8 Batch B)
+- [x] Generic `createQueuedJobController` factory (`helpers/queuedController.js`), extracted from
+      `nodeMailer/queueEmail.js` once a second real consumer appeared (logs); emails and logs
+      share it. Extended with `opts.validate` (preserves 400s) and async `buildPayload`
+      (supports multiple messages as an array)
+- [x] Generic Mongo-write handler (`queue/handlers/dbWrite.js`, `createModelInsertHandler`),
+      registered for `log:event`, `log:notification` and `log:staff-activity` in
+      `queue/handlers/index.js`
+- [x] `feedEventLog` and `feedNotificationLog` migrated (audited with no internal dependency;
+      confirmed with the user that the frontend doesn't depend on the synchronous document
+      either)
+- [x] `logStaffActivity` migrated (internal function, 12 call sites in `admin.js`/`event.js`/
+      `inventory.js`) — also fixes a pre-existing bug of silently losing logs if Mongo's `save()`
+      failed
+- [x] 2 pre-existing bugs fixed along the way during migration: `earlierReturningNotification`
+      (`ReferenceError`, endpoint 100% broken) and `linkToResetPassword` (never responded on
+      error)
+- [x] `GET /api/jobs/:jobId` and `GET /api/jobs/stats`, protected with `requireSuperUser`
+      (new middleware — a job doesn't belong to a single company, doesn't fit
       `authorizeMongoPermission`)
-- [x] **Las 6 tareas de cierre completadas** (§9 Fase 1 — cierre de pendientes):
-      `createQueuedJobController` con soporte de payload nulo (skip);
-      `loginActivityNotification` (mismo patrón que `logStaffActivity`);
-      `createErrorFeed` + `errorFeedbackEmailNotification` con `_id` pre-generado y 2 jobs
-      independientes; `massiveEventCustomerNotification` / `devitrakFeedbackEmailNotification`
-      con nuevo type `send-email-multiple`; `returnedItemsToRenterNotification` con adjuntos
-      subidos a S3 antes de encolar (`send-email-multiple-with-attachments`,
-      `queue/handlers/emailWithAttachments.js`, nuevas funciones en `helpers/s3Upload.js`)
-- [x] **35 de 35 rutas** `/api/nodemailer/*` migradas — Fase 1 de correos 100% completa
-- [x] **Fase 2 completa** (§9 Fase 2): `helpers/circuitBreaker.js` (genérico) +
-      `helpers/goWorker.js` endurecido (cero cambios en los 8+ call-sites existentes);
-      `insertingDeviceInEventDirectlyFromContainer` encolada (única mutación fire-and-forget de
-      6 candidatas — las otras 5 devuelven datos que el cliente usa en la respuesta, se
-      auditaron y se dejaron síncronas); webhook de `uploadExcelToS3` encolado
-      (`queue/handlers/webhook.js`, genérico); `uploadDocument` migrado a contrato async completo
-      (`202 {jobId}` + polling a `GET /api/jobs/:jobId`, `queue/handlers/documentUpload.js`)
-- [x] **Fase 3 completa** (§9 Fase 3): `createCircuitBreaker` extendido con `isFailure`;
-      `helpers/stripeClient.js` (cliente endurecido con `maxNetworkRetries` + breaker compartido +
-      `isStripeInfraFailure` + `runStripeMutation`); 4 mutaciones de dinero
-      (capture/cancel/refund/partialRefund) cableadas en `controller/stripe.js`. Stripe NO se
-      encola (dinero no se buffea). Frontend intacto.
-- [x] `GET /api/jobs/owned/:jobId` — polling owner-scoped (solo `validateJWT`, no super_user);
-      desbloquea el flujo async de `uploadDocument` sin tocar la capa de seguridad del dashboard
-      (§9 "Polling owner-scoped"). Reporte de frontend en `FRONTEND_task_queue_changes.md`.
-- [x] Suite completa en verde: 449/450 (el único fallo es preexistente y ajeno a la cola,
-      ver `routeSecurityHardening.test.js`)
-- [ ] Frontend: aplicar `FRONTEND_task_queue_changes.md` (aceptar 202; textos de correo; polling de
-      `GET /api/jobs/owned/:jobId` para `uploadDocument`; quitar manejo del 502 en upload/xlsx)
-- [x] Corregir bug preexistente en `returningDeviceMessage.js:2038` (`??` en vez de `&&`) —
-      único caso del patrón en `nodeMailer/`, confirmado por grep; test de regresión en
+- [x] **All 6 closing tasks completed** (§9 Phase 1 — closing pending items):
+      `createQueuedJobController` with null-payload support (skip);
+      `loginActivityNotification` (same pattern as `logStaffActivity`);
+      `createErrorFeed` + `errorFeedbackEmailNotification` with a pre-generated `_id` and 2
+      independent jobs; `massiveEventCustomerNotification` / `devitrakFeedbackEmailNotification`
+      with the new `send-email-multiple` type; `returnedItemsToRenterNotification` with
+      attachments uploaded to S3 before enqueueing (`send-email-multiple-with-attachments`,
+      `queue/handlers/emailWithAttachments.js`, new functions in `helpers/s3Upload.js`)
+- [x] **35 of 35** `/api/nodemailer/*` routes migrated — email Phase 1 100% complete
+- [x] **Phase 2 complete** (§9 Phase 2): `helpers/circuitBreaker.js` (generic) +
+      `helpers/goWorker.js` hardened (zero changes at the 8+ existing call sites);
+      `insertingDeviceInEventDirectlyFromContainer` queued (the only truly fire-and-forget
+      mutation out of 6 candidates — the other 5 return data the client uses in the response,
+      audited and kept synchronous); `uploadExcelToS3` webhook queued
+      (`queue/handlers/webhook.js`, generic); `uploadDocument` migrated to a full async contract
+      (`202 {jobId}` + polling on `GET /api/jobs/:jobId`, `queue/handlers/documentUpload.js`)
+- [x] **Phase 3 complete** (§9 Phase 3): `createCircuitBreaker` extended with `isFailure`;
+      `helpers/stripeClient.js` (hardened client with `maxNetworkRetries` + shared breaker +
+      `isStripeInfraFailure` + `runStripeMutation`); 4 money mutations
+      (capture/cancel/refund/partialRefund) wired in `controller/stripe.js`. Stripe is NOT
+      queued (money isn't buffered). Frontend untouched.
+- [x] `GET /api/jobs/owned/:jobId` — owner-scoped polling (only `validateJWT`, no super_user);
+      unblocks `uploadDocument`'s async flow without touching the dashboard's security layer
+      (§9 "Owner-scoped polling"). Frontend report in `FRONTEND_task_queue_changes.md`.
+- [x] Full suite green: 449/450 (the only failure is pre-existing and unrelated to the queue,
+      see `routeSecurityHardening.test.js`)
+- [ ] Frontend: apply `FRONTEND_task_queue_changes.md` (accept 202; email copy; poll
+      `GET /api/jobs/owned/:jobId` for `uploadDocument`; remove the 502 handling in upload/xlsx)
+- [x] Fixed a pre-existing bug in `returningDeviceMessage.js:2038` (`??` instead of `&&`) —
+      the only occurrence of this pattern in `nodeMailer/`, confirmed by grep; regression test in
       `test/nodeMailerQueue.test.js`
