@@ -779,6 +779,38 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
       });
     }
 
+    // Representative accountability: a minor cannot receive a device without
+    // a complete guardian on file — the guardian is the responsible party
+    // who signs the liability contract.
+    const memberIds = [...new Set(normalized.map((r) => Number(r.member_id)))];
+    const [memberRows] = await connection.query(
+      `SELECT member_id, first_name, last_name, minor,
+              parent_guardian_first_name, parent_guardian_last_name,
+              parent_guardian_email
+       FROM members_info WHERE member_id IN (${memberIds.map(() => "?").join(",")})`,
+      memberIds
+    );
+    const blockedMinors = (memberRows || []).filter(
+      (m) =>
+        Number(m.minor) === 1 &&
+        (!m.parent_guardian_email ||
+          !String(m.parent_guardian_email).trim() ||
+          !m.parent_guardian_first_name ||
+          !String(m.parent_guardian_first_name).trim())
+    );
+    if (blockedMinors.length > 0) {
+      return response.status(422).json({
+        ok: false,
+        code: "GUARDIAN_REQUIRED",
+        msg: `Cannot assign devices: ${blockedMinors
+          .map((m) => `${m.first_name} ${m.last_name}`)
+          .join(", ")} ${
+          blockedMinors.length === 1 ? "is a minor" : "are minors"
+        } without a complete parent/guardian (representative) on file. Add the representative's name and email first.`,
+        members: blockedMinors.map((m) => m.member_id),
+      });
+    }
+
     // Determine column set to use: union of present keys intersected with schema
     const present = new Set();
     for (const r of normalized) {
