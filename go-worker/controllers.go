@@ -1022,8 +1022,9 @@ func cleanHierarchyNode(node *HierarchyNode) {
 
 // UpdateItemWarehouseRequest matches the request for UpdateItemWarehouse
 type UpdateItemWarehouseRequest struct {
-	ItemIDs []int                  `json:"item_ids"`
-	Updates map[string]interface{} `json:"updates"`
+	ItemIDs   []int                  `json:"item_ids"`
+	Updates   map[string]interface{} `json:"updates"`
+	CompanyID interface{}            `json:"company_id"`
 }
 
 // UpdateItemWarehouse handles bulk update of item properties
@@ -1033,6 +1034,26 @@ func UpdateItemWarehouse(db *sql.DB, req UpdateItemWarehouseRequest) (int64, err
 	}
 	if len(req.Updates) == 0 {
 		return 0, fmt.Errorf("no update fields provided")
+	}
+
+	// Security fix: without a company_id filter, any caller could bulk-update
+	// another company's inventory rows just by knowing/guessing their item_ids
+	// (item_id is a globally sequential int, not scoped per company).
+	var companyID string
+	switch v := req.CompanyID.(type) {
+	case string:
+		companyID = v
+	case float64:
+		companyID = fmt.Sprintf("%.0f", v)
+	case int:
+		companyID = strconv.Itoa(v)
+	case nil:
+		return 0, fmt.Errorf("company_id is required")
+	default:
+		return 0, fmt.Errorf("invalid type for company_id: %T", v)
+	}
+	if companyID == "" {
+		return 0, fmt.Errorf("company_id is required")
 	}
 
 	// Whitelist of allowed columns to prevent SQL injection
@@ -1069,15 +1090,16 @@ func UpdateItemWarehouse(db *sql.DB, req UpdateItemWarehouseRequest) (int64, err
 
 	// Build query with placeholders
 	placeholders := make([]string, len(req.ItemIDs))
-	args := make([]interface{}, 0, len(updateValues)+len(req.ItemIDs))
+	args := make([]interface{}, 0, len(updateValues)+len(req.ItemIDs)+1)
 	args = append(args, updateValues...)
 
 	for i, id := range req.ItemIDs {
 		placeholders[i] = "?"
 		args = append(args, id)
 	}
+	args = append(args, companyID)
 
-	query := fmt.Sprintf("UPDATE item_inv SET %s WHERE item_id IN (%s)", strings.Join(setClauses, ", "), strings.Join(placeholders, ","))
+	query := fmt.Sprintf("UPDATE item_inv SET %s WHERE item_id IN (%s) AND company_id = ?", strings.Join(setClauses, ", "), strings.Join(placeholders, ","))
 
 	result, err := db.Exec(query, args...)
 	if err != nil {

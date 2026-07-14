@@ -2959,68 +2959,103 @@ const updateContainerItems = async (request, response) => {
   }
 };
 
-const checkLargeData = async (request, response) => {
-  try {
-    const connection = getConnection();
-    const { item_ids } = request.body;
-    const query = `SELECT * FROM item_inv WHERE item_id IN (${item_ids
-      .map((item_id) => item_id)
-      .join(",")});`;
-    const [results] = await connection.execute(query);
-    response.status(200).json({
-      ok: true,
-      result: results,
-    });
-  } catch (error) {
-    logger.error("Error:", error.message);
-    response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
-  }
-};
+// Security fix: item_ids used to be string-interpolated directly into the SQL
+// (no parametrization, no type check) and the route had no auth/company
+// scoping — any caller could read any company's inventory by item_id, and a
+// non-numeric item_ids element would be injected raw into the query.
+function createCheckLargeData({ connectionFn = getConnection } = {}) {
+  return async function checkLargeData(request, response) {
+    try {
+      const { item_ids, company_id } = request.body;
 
-const updateLargeData = async (request, response) => {
-  try {
-    const { item_ids, updates } = request.body;
+      if (!company_id) {
+        return response.status(400).json({
+          msg: "company_id is required",
+          ok: false,
+        });
+      }
+      if (!Array.isArray(item_ids) || item_ids.length === 0) {
+        return response.status(400).json({
+          msg: "item_ids must be a non-empty array",
+          ok: false,
+        });
+      }
 
-    // Ensure item_ids is an array and not empty
-    if (!Array.isArray(item_ids) || item_ids.length === 0) {
-      return response.status(400).json({
-        msg: "item_ids must be a non-empty array",
+      const connection = connectionFn();
+      const placeholders = item_ids.map(() => "?").join(",");
+      const query = `SELECT * FROM item_inv WHERE company_id = ? AND item_id IN (${placeholders})`;
+      const [results] = await connection.execute(query, [company_id, ...item_ids]);
+
+      return response.status(200).json({
+        ok: true,
+        result: results,
+      });
+    } catch (error) {
+      logger.error("Error:", error.message);
+      return response.status(500).json({
+        msg: error.message,
         ok: false,
       });
     }
+  };
+}
+const checkLargeData = createCheckLargeData();
 
-    // Ensure updates is a non-empty object
-    if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
-      return response.status(400).json({
-        msg: "'updates' must be a non-empty object",
+// Security fix: the route had no auth/company scoping, and the SQL built by
+// the Go worker had no company_id filter — any caller could bulk-update any
+// company's inventory by item_id (item_id is a globally sequential,
+// enumerable int, not scoped per company). company_id is now required here
+// and forwarded to the Go worker, which adds `AND company_id = ?` to the
+// UPDATE (see go-worker/controllers.go UpdateItemWarehouse).
+function createUpdateLargeData({ runGoWorkerFn = runGoWorker } = {}) {
+  return async function updateLargeData(request, response) {
+    console.log("updateLargeData", request.body)
+    try {
+      const { item_ids, updates, company_id } = request.body;
+
+      if (!company_id) {
+        return response.status(400).json({
+          msg: "company_id is required",
+          ok: false,
+        });
+      }
+
+      // Ensure item_ids is an array and not empty
+      if (!Array.isArray(item_ids) || item_ids.length === 0) {
+        return response.status(400).json({
+          msg: "item_ids must be a non-empty array",
+          ok: false,
+        });
+      }
+
+      // Ensure updates is a non-empty object
+      if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
+        return response.status(400).json({
+          msg: "'updates' must be a non-empty object",
+          ok: false,
+        });
+      }
+
+      const workerResponse = await runGoWorkerFn("update-item-warehouse", {
+        item_ids,
+        updates,
+        company_id,
+      });
+
+      return response.status(200).json({
+        ok: true,
+        result: workerResponse,
+      });
+    } catch (error) {
+      logger.error("Error:", error.message);
+      return response.status(500).json({
+        msg: error.message,
         ok: false,
       });
     }
-
-    const workerResponse = await runGoWorker("update-item-warehouse", {
-      item_ids: item_ids,
-      updates: updates,
-    });
-
-    if (workerResponse.status === "error") {
-      throw new Error(workerResponse.message);
-    }
-
-    return response.status(200).json({
-      ok: true,
-      result: workerResponse.data,
-    });
-  } catch (error) {
-    logger.error("Error:", error.message);
-    response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
-  }
-};
+  };
+}
+const updateLargeData = createUpdateLargeData();
 
 const updateSubLocation = async (req, res) => {
   try {
@@ -3829,6 +3864,8 @@ module.exports = {
   checkingItem,
   checkInventoryCompanyExists,
   checkLargeData,
+  createCheckLargeData,
+  createUpdateLargeData,
   confirmItemsReturnedToStock,
   containerItemsDetails,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
