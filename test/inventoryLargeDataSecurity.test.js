@@ -21,7 +21,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createCheckLargeData, createUpdateLargeData } = require('../mysql/controllers/item');
+const { createCheckLargeData, createUpdateLargeData, performUpdateLargeData } = require('../mysql/controllers/item');
 
 function mockRes() {
   return {
@@ -173,4 +173,71 @@ test('updateLargeData: 500 si el Go worker falla', async () => {
   await controller({ body: baseUpdateBody() }, res);
 
   assert.equal(res.statusCode, 500);
+});
+
+// ─── performUpdateLargeData (pure service, callable without req/res) ────────
+//
+// allocateDeviceToEvent (items_events.js) used to call updateLargeData(fakeReq,
+// response) directly, reusing the SAME `response` object also used later for
+// insertingItemInEvent(request, response) and its own final res.json() — three
+// handlers trying to send a response on the same object. Only the FIRST one
+// (updateLargeData) actually reached the client; the rest failed silently
+// ("headers already sent"), so the composed "insert + update" result never
+// arrived, and any error in the later steps was invisible. performUpdateLargeData
+// is the pure "do the work, throw on failure" piece both the HTTP handler and
+// internal callers use, so callers compose results/errors themselves instead of
+// hijacking a shared `response`.
+
+test('performUpdateLargeData: lanza 400 si falta company_id (no llama al Go worker)', async () => {
+  let workerCalls = 0;
+  await assert.rejects(
+    () => performUpdateLargeData(
+      { item_ids: [1, 2], updates: { warehouse: 0 } },
+      { runGoWorkerFn: async () => { workerCalls++; return {}; } }
+    ),
+    /company_id is required/
+  );
+  assert.equal(workerCalls, 0);
+});
+
+test('performUpdateLargeData: lanza 400 si item_ids no es un array no vacío', async () => {
+  await assert.rejects(
+    () => performUpdateLargeData({ company_id: 5, item_ids: [], updates: { warehouse: 0 } }, {}),
+    /item_ids must be a non-empty array/
+  );
+});
+
+test('performUpdateLargeData: filtra valores undefined de updates ANTES de validar que no esté vacío', async () => {
+  // Caso real que rompía allocateDeviceToEvent: construye `updates:
+  // {logistic_status, warehouse}` desde variables desestructuradas que
+  // resultaron undefined -> Object.keys sigue teniendo 2 claves (la validación
+  // vieja pasaba), pero JSON.stringify las habría descartado camino al Go
+  // worker, y este respondía con un 500 confuso ("no update fields provided")
+  // en vez de un 400 claro acá.
+  await assert.rejects(
+    () => performUpdateLargeData(
+      { company_id: 5, item_ids: [1], updates: { logistic_status: undefined, warehouse: undefined } },
+      {}
+    ),
+    /'updates' must be a non-empty object/
+  );
+});
+
+test('performUpdateLargeData: mezcla de valores definidos/undefined -> solo reenvía los definidos', async () => {
+  const calls = [];
+  await performUpdateLargeData(
+    { company_id: 5, item_ids: [1, 2], updates: { logistic_status: 'in-transit', warehouse: undefined } },
+    { runGoWorkerFn: async (command, payload) => { calls.push({ command, payload }); return { affectedRows: 2 }; } }
+  );
+
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].payload.updates, { logistic_status: 'in-transit' });
+});
+
+test('performUpdateLargeData: éxito -> devuelve el resultado del Go worker', async () => {
+  const result = await performUpdateLargeData(
+    { company_id: 5, item_ids: [1, 2, 3], updates: { warehouse: 0 } },
+    { runGoWorkerFn: async () => ({ affectedRows: 3 }) }
+  );
+  assert.deepEqual(result, { affectedRows: 3 });
 });

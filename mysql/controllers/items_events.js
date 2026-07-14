@@ -7,51 +7,57 @@ const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staf
 
 const runGoWorker = require("../../helpers/goWorker");
 const { createQueuedJobController } = require("../../helpers/queuedController");
-const { updateLargeData } = require("./item");
+const { performUpdateLargeData } = require("./item");
 const {
   poolReceiversBulk: poolReceiversBulkWorker,
 } = require("../../controller/receiverWorker");
-const insertingItemInEvent = async (request, response) => {
-  try {
-    const { event_id, item_group, category_name, company_id, data } =
-      request.body;
-    if (
-      !event_id ||
-      !item_group ||
-      !category_name ||
-      !company_id ||
-      !Array.isArray(data) ||
-      data.length === 0
-    ) {
-      return response.status(400).json({
-        msg: "Missing required fields or invalid data format",
-        ok: false,
-      });
-    }
-
-    // Convert data to string array as Go worker expects
-    const serialNumbers = data.map((item) => item.toString());
-
-    // Offload to Go Worker
-    const result = await runGoWorker("insert-item-event", {
-      category_name,
-      company_id: String(company_id),
-      data: serialNumbers,
-      event_id: String(event_id),
-      item_group,
-    });
-
-    response.status(201).json({
-      inserted_items: result.inserted_items,
-      msg: "Items inserted successfully into event",
-      ok: true,
-      total_items: result.total_items,
-    });
-  } catch (error) {
-    logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+// Pure "do the work" function — no req/res — so internal callers (ex.
+// allocateDeviceToEvent below) can call it directly instead of invoking the
+// Express handler with a borrowed `response` object.
+async function performInsertingItemInEvent({ event_id, item_group, category_name, company_id, data } = {}, { runGoWorkerFn = runGoWorker } = {}) {
+  if (
+    !event_id ||
+    !item_group ||
+    !category_name ||
+    !company_id ||
+    !Array.isArray(data) ||
+    data.length === 0
+  ) {
+    const err = new Error("Missing required fields or invalid data format");
+    err.statusCode = 400;
+    throw err;
   }
-};
+
+  // Convert data to string array as Go worker expects
+  const serialNumbers = data.map((item) => item.toString());
+
+  // Offload to Go Worker
+  return runGoWorkerFn("insert-item-event", {
+    category_name,
+    company_id: String(company_id),
+    data: serialNumbers,
+    event_id: String(event_id),
+    item_group,
+  });
+}
+
+function createInsertingItemInEvent({ runGoWorkerFn = runGoWorker } = {}) {
+  return async function insertingItemInEvent(request, response) {
+    try {
+      const result = await performInsertingItemInEvent(request.body, { runGoWorkerFn });
+      response.status(201).json({
+        inserted_items: result.inserted_items,
+        msg: "Items inserted successfully into event",
+        ok: true,
+        total_items: result.total_items,
+      });
+    } catch (error) {
+      logger.error("Error:", error.message);
+      response.status(error.statusCode || 500).json({ msg: error.message, ok: false });
+    }
+  };
+}
+const insertingItemInEvent = createInsertingItemInEvent();
 
 const bulkUpdateEventItemShipping = async (request, response) => {
   let connection;
@@ -83,15 +89,15 @@ const bulkUpdateEventItemShipping = async (request, response) => {
 
     if (fieldsToUpdate.length === 0) {
       return response.status(400).json({
-            message: `No valid fields to update. Allowed fields are: ${allowedFields.join(", ")}`,
-            ok: false,
-        });
+        message: `No valid fields to update. Allowed fields are: ${allowedFields.join(", ")}`,
+        ok: false,
+      });
     }
-     if (filterKeys.length === 0) {
+    if (filterKeys.length === 0) {
       return response.status(400).json({
-            message: `No valid filter fields provided. Allowed fields are: ${allowedFields.join(", ")}`,
-            ok: false,
-        });
+        message: `No valid filter fields provided. Allowed fields are: ${allowedFields.join(", ")}`,
+        ok: false,
+      });
     }
 
     connection = await getConnection().getConnection();
@@ -102,7 +108,7 @@ const bulkUpdateEventItemShipping = async (request, response) => {
 
     const whereConditions = filterKeys.map(key => `${key} = ?`);
     const filterValues = filterKeys.map(key => filters[key]);
-    
+
     const query = `
       UPDATE event_item_shipping
       SET ${setClause}
@@ -111,7 +117,7 @@ const bulkUpdateEventItemShipping = async (request, response) => {
 
     const queryParams = [...updateValues, event_id, company_id, ...filterValues];
     const [result] = await connection.query(query, queryParams);
-    
+
     await connection.commit();
 
     return response.status(200).json({
@@ -157,7 +163,7 @@ const removeEventItemShipping = async (request, response) => {
     `;
 
     const [result] = await connection.query(query, [event_id, items]);
-    
+
     await connection.commit();
 
     if (result.affectedRows === 0) {
@@ -272,10 +278,10 @@ const updateEventItemShipping = async (request, response) => {
     }
 
     if (!updates || Object.keys(updates).length === 0) {
-        return response.status(400).json({
-            message: "At least one update field must be provided.",
-            ok: false,
-        });
+      return response.status(400).json({
+        message: "At least one update field must be provided.",
+        ok: false,
+      });
     }
 
     const allowedUpdates = ["shipping_status", "active", "notes"];
@@ -283,10 +289,10 @@ const updateEventItemShipping = async (request, response) => {
     const invalidFields = fieldsToUpdate.filter(field => !allowedUpdates.includes(field));
 
     if (invalidFields.length > 0) {
-        return response.status(400).json({
-            message: `Invalid fields for update: ${invalidFields.join(", ")}`,
-            ok: false,
-        });
+      return response.status(400).json({
+        message: `Invalid fields for update: ${invalidFields.join(", ")}`,
+        ok: false,
+      });
     }
 
     connection = await getConnection().getConnection();
@@ -298,7 +304,7 @@ const updateEventItemShipping = async (request, response) => {
     let totalAffectedRows = 0;
     for (let i = 0; i < items.length; i += CHUNK_SIZE) {
       const chunk = items.slice(i, i + CHUNK_SIZE);
-      
+
       const query = `
         UPDATE event_item_shipping
         SET ${setClause}
@@ -571,58 +577,80 @@ const consultingLeaseInformationConsumer = async (request, response) => {
   }
 };
 
-const allocateDeviceToEvent = async (request, response) => {
-  try {
-    const { item_group, company_id, category_name, data, warehouse, logistic_status } =
-      request.body;
-    if (!data || data.length === 0) {
-      return response.status(400).json({
-        message: "No items were provided to be allocated to the event.",
-        ok: false,
-      });
-    }
-    const connection = getConnection();
-    const placeholders = data.map(() => "?").join(",");
-    const query = `SELECT item_id from item_inv 
-                   where company_id = ? AND item_group = ? 
-                   AND category_name = ? 
-                   AND serial_number IN (${placeholders})`;
-    const values = [company_id, item_group, category_name, ...data];
-    const [result] = await connection.execute(query, values);
-    logger.info("result", result)
-    if (result.length > 0) {
-      //call controller to insert item into event inventory sql
-      const itemIdsForUpdateLargeData = {
-        body: {
-          item_ids: [...result.map((item) => item.item_id)],
-          updates:{
-            logistic_status: logistic_status,
-            warehouse: warehouse,
-          }
-        },
-      };
-      const update = await updateLargeData(itemIdsForUpdateLargeData, response);
-      const insertedItemInEvent = await insertingItemInEvent(request, response);
-      response.status(200).json({
-        bodyForUpdate: itemIdsForUpdateLargeData,
+// Was calling updateLargeData(fakeReq, response) and
+// insertingItemInEvent(request, response) directly, reusing the SAME
+// `response` object those Express handlers use to send their own HTTP
+// response — plus this function's own final response.json() call. Three
+// attempts to terminate the same response: only the first one
+// (updateLargeData) actually reached the client; Express fails the rest
+// ("Cannot set headers after they are sent"), so the composed result
+// ({inserted, result, updateResult}) never arrived, and this made it look
+// like the `updates` sent to update-large-data were never applied — in
+// reality the request after it (insertingItemInEvent) and the final response
+// were silently failing to send.
+//
+// Fix: call the pure performUpdateLargeData/performInsertingItemInEvent
+// (no req/res) and send exactly ONE response built from both results.
+function createAllocateDeviceToEvent({
+  connectionFn = getConnection,
+  performUpdateLargeDataFn = performUpdateLargeData,
+  performInsertingItemInEventFn = performInsertingItemInEvent,
+} = {}) {
+  return async function allocateDeviceToEvent(request, response) {
+    try {
+      const { event_id, item_group, company_id, category_name, data, warehouse, logistic_status } =
+        request.body;
+
+      if (!data || data.length === 0) {
+        return response.status(400).json({
+          message: "No items were provided to be allocated to the event.",
+          ok: false,
+        });
+      }
+
+      const connection = connectionFn();
+      const placeholders = data.map(() => "?").join(",");
+      const query = `SELECT item_id from item_inv
+                     where company_id = ? AND item_group = ?
+                     AND category_name = ?
+                     AND serial_number IN (${placeholders})`;
+      const values = [company_id, item_group, category_name, ...data];
+      const [result] = await connection.execute(query, values);
+
+      if (result.length === 0) {
+        return response.status(500).json({
+          msg: "No items to allocate",
+          ok: false,
+        });
+      }
+
+      const itemIds = result.map((item) => item.item_id);
+
+      const updateResult = await performUpdateLargeDataFn(
+        { item_ids: itemIds, company_id, updates: { logistic_status, warehouse } },
+        {}
+      );
+      const insertedItemInEvent = await performInsertingItemInEventFn(
+        { event_id, item_group, category_name, company_id, data },
+        {}
+      );
+
+      return response.status(200).json({
         inserted: insertedItemInEvent,
         ok: true,
         result,
-        updateResult: update,
+        updateResult,
       });
-    } else {
-      response.status(500).json({
-        msg: "No items to allocate",
-        ok: false
-      })
+    } catch (error) {
+      logger.error("Error allocating device to event:", error.message);
+      return response.status(error.statusCode || 500).json({
+        error: error.message,
+        ok: false,
+      });
     }
-  } catch (error) {
-    response.status(500).json({
-      error: error.message,
-      ok: false,
-    });
-  }
-};
+  };
+}
+const allocateDeviceToEvent = createAllocateDeviceToEvent();
 
 const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
   let connection;
@@ -876,39 +904,42 @@ const reserveItemsInInventoryForEvent = async (request, response) => {
   }
 };
 
-const removeReservedItemsInInventoryForEvent = async (request, response) => { 
-try {
-  const { event_id, company_id, item_id } = request.body;
-  const queryToRemoveReservedItems = `
+const removeReservedItemsInInventoryForEvent = async (request, response) => {
+  try {
+    const { event_id, company_id, item_id } = request.body;
+    const queryToRemoveReservedItems = `
     DELETE FROM event_item_shipping
     WHERE event_id = ?
       AND company_id = ?
       AND item_id IN (${item_id.map(() => "?").join(",")});
   `;
-  const [result] = await connection.execute(queryToRemoveReservedItems, [
-    event_id,
-    company_id,
-    ...item_id,
-  ]);
-  if (result.affectedRows === 0) {
-    return response.status(404).json({
-      message: "No items found in the event item shipping table to remove.",
-      ok: false,
+    const [result] = await connection.execute(queryToRemoveReservedItems, [
+      event_id,
+      company_id,
+      ...item_id,
+    ]);
+    if (result.affectedRows === 0) {
+      return response.status(404).json({
+        message: "No items found in the event item shipping table to remove.",
+        ok: false,
+      });
+    }
+    return response.status(200).json({
+      message: `${result.affectedRows} item(s) have been removed from the event item shipping table.`,
+      ok: true,
+      total_removed: result.affectedRows,
     });
+  } catch (error) {
+
   }
-  return response.status(200).json({
-    message: `${result.affectedRows} item(s) have been removed from the event item shipping table.`,
-    ok: true,
-    total_removed: result.affectedRows,
-  });
-} catch (error) {
-  
-}
 }
 
 module.exports = {
   allocateDeviceMarkedAsContainerInEvent,
   allocateDeviceToEvent,
+  createAllocateDeviceToEvent,
+  createInsertingItemInEvent,
+  performInsertingItemInEvent,
   buildInsertDeviceEventContainerPayload,
   bulkUpdateEventItemShipping,
   checkingInventoryCurrentState,

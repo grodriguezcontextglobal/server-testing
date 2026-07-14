@@ -152,7 +152,7 @@ router.post(
 );
 
 //allocate
-router.post("/allocate-device-event", allocateDeviceToEvent);
+router.post("/allocate-device-event", validateJWT, checkTokenVersion, authorizePermission("event", "update"), allocateDeviceToEvent);
 
 router.post(
   "/allocate-device-container-event",

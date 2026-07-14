@@ -3007,48 +3007,62 @@ const checkLargeData = createCheckLargeData();
 // enumerable int, not scoped per company). company_id is now required here
 // and forwarded to the Go worker, which adds `AND company_id = ?` to the
 // UPDATE (see go-worker/controllers.go UpdateItemWarehouse).
+//
+// Pure "do the work" function — no req/res — so internal callers (ex.
+// allocateDeviceToEvent in items_events.js) can call it directly instead of
+// invoking the Express handler with a borrowed `response` object (that used
+// to send multiple conflicting HTTP responses on the same connection).
+// Throws an Error with `.statusCode` set for validation failures; the HTTP
+// handler below maps that to the right response.
+async function performUpdateLargeData({ item_ids, updates, company_id } = {}, { runGoWorkerFn = runGoWorker } = {}) {
+  if (!company_id) {
+    const err = new Error("company_id is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Ensure item_ids is an array and not empty
+  if (!Array.isArray(item_ids) || item_ids.length === 0) {
+    const err = new Error("item_ids must be a non-empty array");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Drop undefined values before checking "non-empty": a caller building
+  // `updates: { logistic_status, warehouse }` from destructured fields that
+  // turned out undefined would otherwise pass a technically non-empty object
+  // (Object.keys still counts a key whose value is undefined) that then
+  // serializes to `{}` over the wire to the Go worker (JSON.stringify drops
+  // undefined-valued keys) — surfacing as a confusing "no update fields
+  // provided" 500 from the Go worker instead of a clear 400 here.
+  const definedUpdates = updates && typeof updates === "object"
+    ? Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined))
+    : {};
+
+  if (Object.keys(definedUpdates).length === 0) {
+    const err = new Error("'updates' must be a non-empty object");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  return runGoWorkerFn("update-item-warehouse", {
+    item_ids,
+    updates: definedUpdates,
+    company_id,
+  });
+}
+
 function createUpdateLargeData({ runGoWorkerFn = runGoWorker } = {}) {
   return async function updateLargeData(request, response) {
-    console.log("updateLargeData", request.body)
     try {
-      const { item_ids, updates, company_id } = request.body;
-
-      if (!company_id) {
-        return response.status(400).json({
-          msg: "company_id is required",
-          ok: false,
-        });
-      }
-
-      // Ensure item_ids is an array and not empty
-      if (!Array.isArray(item_ids) || item_ids.length === 0) {
-        return response.status(400).json({
-          msg: "item_ids must be a non-empty array",
-          ok: false,
-        });
-      }
-
-      // Ensure updates is a non-empty object
-      if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
-        return response.status(400).json({
-          msg: "'updates' must be a non-empty object",
-          ok: false,
-        });
-      }
-
-      const workerResponse = await runGoWorkerFn("update-item-warehouse", {
-        item_ids,
-        updates,
-        company_id,
-      });
-
+      const result = await performUpdateLargeData(request.body, { runGoWorkerFn });
       return response.status(200).json({
         ok: true,
-        result: workerResponse,
+        result,
       });
     } catch (error) {
       logger.error("Error:", error.message);
-      return response.status(500).json({
+      return response.status(error.statusCode || 500).json({
         msg: error.message,
         ok: false,
       });
@@ -3866,6 +3880,7 @@ module.exports = {
   checkLargeData,
   createCheckLargeData,
   createUpdateLargeData,
+  performUpdateLargeData,
   confirmItemsReturnedToStock,
   containerItemsDetails,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
