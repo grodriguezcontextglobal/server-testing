@@ -119,7 +119,7 @@ const sqlDate = (d) => d.toISOString().slice(0, 19).replace("T", " ");
   }
 
   // ── staff ────────────────────────────────────────────────────────────────
-  const companyDoc = await db.collection("companies").findOne({ _id: DISTRICT_MONGO_ID });
+  const companyDoc = await db.collection("companies").findOne({ _id: new ObjectId(DISTRICT_MONGO_ID) });
   const newEmployees = [];
   for (const s of NEW_STAFF) {
     if (await db.collection("adminusers").findOne({ email: s.email })) continue;
@@ -159,7 +159,7 @@ const sqlDate = (d) => d.toISOString().slice(0, 19).replace("T", " ");
   }
   if (newEmployees.length) {
     await db.collection("companies").updateOne(
-      { _id: DISTRICT_MONGO_ID }, { $push: { employees: { $each: newEmployees } } });
+      { _id: new ObjectId(DISTRICT_MONGO_ID) }, { $push: { employees: { $each: newEmployees } } });
   }
 
   // ── students ─────────────────────────────────────────────────────────────
@@ -343,6 +343,39 @@ const sqlDate = (d) => d.toISOString().slice(0, 19).replace("T", " ");
       console.log(`✓ event: ${ev.name}`);
     }
   } else console.log(`• events already present (${existingEvents})`);
+
+  // ── posts (device-program communications for students/representatives) ──
+  const POSTS = [
+    { title: "Your 1:1 Chromebook — Program Guide", subtitle: "1:1 Device Program",
+      description: "Every Lincoln and Roosevelt student receives a district Chromebook for the school year. Keep it charged, bring it every day, and store it in its case. Your login is your student email. Devices are due back the last week of school — seniors return them before graduation rehearsal." },
+    { title: "Device Care & Damage Fees", subtitle: "Take care of your device",
+      description: "Accidents happen — report damage within 48 hours to your school media center (Lincoln Library or Roosevelt Media Center). First accidental damage repair is covered; repeat damage may carry a fee: cracked screen $49, lost charger $25, lost device replacement $320. Never attempt repairs yourself." },
+    { title: "Check the Devices Assigned to You", subtitle: "For students & families",
+      description: "Students and parents/guardians can look up assigned devices at any time on the district's My Devices page — see serial numbers, due dates, and return status. Adult students manage their own equipment; for minors, the parent/guardian on file is the responsible party and signs all device agreements." },
+    { title: "Take-Home Internet: MiFi Hotspot Lending", subtitle: "Connectivity support",
+      description: "Families without reliable home internet can borrow a MiFi hotspot from the District IT Office at no cost. Ask your school office or email it.director@summitunified.edu. Hotspots are filtered under district policy and are due back with your Chromebook." },
+    { title: "Fall Theater: Into the Woods — Tickets & Crew Sign-ups", subtitle: "Roosevelt Theater",
+      description: "Roosevelt Theater presents Into the Woods this fall! Tickets at the door. Students interested in stage crew — lights, sound, and mics run through the district equipment program — sign up with Ms. Brooks in the theater office." },
+  ];
+  const existingPosts = await db.collection("posts").countDocuments({ company_id: DISTRICT_MONGO_ID });
+  if (existingPosts === 0) {
+    const districtEventIds = (await db.collection("events")
+      .find({ company: DISTRICT }, { projection: { _id: 1 } }).toArray()).map((e) => String(e._id));
+    const now = new Date();
+    for (const post of POSTS) {
+      await db.collection("posts").insertOne({
+        _id: new ObjectId(),
+        title: post.title, subtitle: post.subtitle, description: post.description,
+        displayed_in: districtEventIds,
+        media: { cover: "", content: [] },
+        company_id: DISTRICT_MONGO_ID,
+        published: true,
+        published_at: now.toISOString(), created_at: now.toISOString(), updated_at: now.toISOString(),
+        __v: 0,
+      });
+      console.log(`✓ post: ${post.title}`);
+    }
+  } else console.log(`• posts already present (${existingPosts})`);
 
   const [[{ n: sc }]] = await conn.query("SELECT COUNT(*) AS n FROM members_info WHERE company_id=?", [CIDs]);
   const [[{ n: ic }]] = await conn.query("SELECT COUNT(*) AS n FROM item_inv WHERE company_id=?", [CIDs]);

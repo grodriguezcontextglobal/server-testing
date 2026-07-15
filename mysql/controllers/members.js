@@ -1269,6 +1269,81 @@ const bulkReturnMemberLeases = async (request, response) => {
   }
 };
 
+// PUBLIC self-service lookup for the family portal ("My Devices").
+// Verification is knowledge-based: the student ID (external_id) plus the
+// matching email on file. For minors the parent/guardian (responsible party)
+// email is required; adult students use their own email. Returns only
+// device-lease data — no addresses or phone numbers.
+const retrieveMyDevices = async (request, response) => {
+  try {
+    const { email, external_id } = request.body || {};
+    if (!email || !external_id) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "email and external_id are required" });
+    }
+    const cleanEmail = String(email).trim().toLowerCase();
+    const [rows] = await connection.query(
+      `SELECT member_id, first_name, last_name, email, grade, homeroom, minor,
+              parent_guardian_first_name, parent_guardian_last_name, parent_guardian_email
+       FROM members_info WHERE external_id = ? LIMIT 1`,
+      [String(external_id).trim()]
+    );
+    const member = rows?.[0];
+    const guardianEmail = member?.parent_guardian_email
+      ? String(member.parent_guardian_email).trim().toLowerCase()
+      : null;
+    const studentEmail = member?.email ? String(member.email).trim().toLowerCase() : null;
+    const isMinor = member ? Number(member.minor) === 1 : false;
+
+    // minors: the representative's email is the credential; adults: their own
+    const authorized = member
+      ? isMinor
+        ? guardianEmail && cleanEmail === guardianEmail
+        : studentEmail && cleanEmail === studentEmail
+      : false;
+    if (!authorized) {
+      // uniform response — do not reveal whether the student ID exists
+      return response.status(404).json({
+        ok: false,
+        msg: isMinor && member
+          ? "No record found. For students under 18, use the parent/guardian email on file."
+          : "No record found for that student ID and email.",
+      });
+    }
+
+    const [leases] = await connection.query(
+      `SELECT madl.lease_id, madl.assigned_date, madl.expected_return_date,
+              madl.returned, madl.return_status, madl.condition_note, madl.returned_date,
+              ii.serial_number, ii.item_group, ii.category_name, ii.brand
+       FROM member_assigned_device_lease madl
+       LEFT JOIN item_inv ii ON ii.item_id = madl.device_id
+       WHERE madl.member_id = ?
+       ORDER BY madl.returned ASC, madl.expected_return_date ASC`,
+      [member.member_id]
+    );
+    return response.status(200).json({
+      ok: true,
+      member: {
+        first_name: member.first_name,
+        last_name: member.last_name,
+        grade: member.grade,
+        homeroom: member.homeroom,
+        minor: Number(member.minor),
+        responsible_party: isMinor
+          ? `${member.parent_guardian_first_name ?? ""} ${member.parent_guardian_last_name ?? ""}`.trim()
+          : `${member.first_name} ${member.last_name}`,
+        viewer: isMinor ? "representative" : "student",
+      },
+      leases,
+    });
+  } catch (error) {
+    return response
+      .status(500)
+      .json({ ok: false, msg: "Internal server error" });
+  }
+};
+
 module.exports = {
   insertNewMember,
   insertBulkMembers,
@@ -1282,4 +1357,5 @@ module.exports = {
   removeRowAssignedDeviceLeaseMember,
   retrieveOverdueLeases,
   bulkReturnMemberLeases,
+  retrieveMyDevices,
 };

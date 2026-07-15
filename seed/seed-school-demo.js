@@ -189,10 +189,10 @@ const daysFromNow = (d) => {
   }
 
   // ── 4. Mongo company doc ─────────────────────────────────────────────────
-  const existingCompany = await db.collection("companies").findOne({ _id: SCHOOL.mongoId });
+  const existingCompany = await db.collection("companies").findOne({ _id: new ObjectId(SCHOOL.mongoId) });
   if (!existingCompany) {
     await db.collection("companies").insertOne({
-      _id: SCHOOL.mongoId,
+      _id: new ObjectId(SCHOOL.mongoId),
       company_name: SCHOOL.name,
       address: SCHOOL.address,
       location: SCHOOL.locations,

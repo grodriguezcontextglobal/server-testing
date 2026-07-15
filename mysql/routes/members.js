@@ -22,6 +22,7 @@ const {
   removeRowAssignedDeviceLeaseMember,
   retrieveOverdueLeases,
   bulkReturnMemberLeases,
+  retrieveMyDevices,
 } = require("../controllers/members");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
@@ -85,5 +86,9 @@ router.post("/overdue-leases", canRead, retrieveOverdueLeases);
 
 //end-of-term bulk return (all outstanding / by grade / by member_ids)
 router.post("/bulk-return", canUpdate, bulkReturnMemberLeases);
+
+// PUBLIC family portal lookup — intentionally unauthenticated; verified by
+// student ID + the responsible party's email (guardian for minors).
+router.post("/my-devices", retrieveMyDevices);
 
 module.exports = router;
