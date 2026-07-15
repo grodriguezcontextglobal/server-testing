@@ -11,7 +11,7 @@ const getConnection = require("../mysql/database/config");
  */
 const authorizePermission = (resource, action) => async (req, res, next) => {
   try {
-    const staffId   = req.sqlStaffId;
+    const staffId = req.sqlStaffId;
     const companyId = req.params?.company_id || req.body?.company_id || req.query?.company_id;
 
     if (!staffId || !companyId) {
@@ -33,7 +33,6 @@ const authorizePermission = (resource, action) => async (req, res, next) => {
     if (!rows.length) {
       return res.status(403).json({ ok: false, msg: "Forbidden: insufficient permissions" });
     }
-
     next();
   } catch (error) {
     return res.status(500).json({ ok: false, msg: "Authorization check failed" });

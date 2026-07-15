@@ -49,7 +49,7 @@ const router = express.Router();
 router.put("/event-items", updateEventItemShipping);
 router.post("/event-items/search", getEventItemShipping);
 router.delete("/event-items", removeEventItemShipping);
-router.put("/event-items/bulk-update", bulkUpdateEventItemShipping);
+router.put("/event-items/bulk-update", validateJWT, checkTokenVersion, bulkUpdateEventItemShipping);
 
 //delete items in bulk way based on criteria
 router.post("/delete-bulk-items-criteria", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteBulkItemBasedOnCriteria);
@@ -79,7 +79,7 @@ router.post("/tracking_item/:id", consultingInventoryTracking);
 router.post("/new_item", insertingItem);
 
 //insert bulk item
-router.post("/bulk-item", insertBulkItem);
+router.post("/bulk-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), insertBulkItem);
 
 //insert bulk item alpha numeric format
 router.post("/bulk-item-alphanumeric", validateJWT, insertBulkItemAlhpanumericFormat);
