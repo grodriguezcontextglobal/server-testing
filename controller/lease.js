@@ -19,7 +19,7 @@ const createLease = async (request, response = express.response) => {
   }
 };
 
-const editLease = async (request, response = response) => {
+const editLease = async (request, response) => {
   const leaseId = request.params.id;
   try {
     const leaseToFind = await Lease.findById(leaseId);
@@ -33,7 +33,7 @@ const editLease = async (request, response = response) => {
       ...request.body,
     };
 
-    const editedLeaseInfo = await Event.findByIdAndUpdate(
+    const editedLeaseInfo = await Lease.findByIdAndUpdate(
       leaseId,
       LeaseInfoToEdit,
       {
@@ -42,7 +42,7 @@ const editLease = async (request, response = response) => {
     );
     return response.json({
       ok: true,
-      event: editedLeaseInfo,
+      lease: editedLeaseInfo,
     });
   } catch (error) {
     logger.error(error);
@@ -66,7 +66,6 @@ const deleteLease = async (request, response) => {
 
     response.status(201).json({
       ok: true,
-      adminUser,
       msg: "Lease deleted",
     });
   } catch (error) {

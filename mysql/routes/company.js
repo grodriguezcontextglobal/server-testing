@@ -141,6 +141,8 @@ router.post("/update-all-items-in-inventory", updateAllItemsInInventory);
 //update all items in inventory company based on submitted parameters
 router.post(
   "/update-items-based-on-alphanumeric-serial-number",
+  validateJWT,
+  checkTokenVersion,
   updateItemsBasedOnAlphanumericSerialNumber
 );
 

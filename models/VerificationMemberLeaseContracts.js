@@ -1,6 +1,6 @@
 const { Schema, model } = require("mongoose");
 
-const VerificationConsumerContractLeaseSchema = new Schema({
+const VerificationMemberContractLeaseSchema = new Schema({
   member_id: {
     type: Number,
     required: true,
@@ -38,4 +38,4 @@ const VerificationConsumerContractLeaseSchema = new Schema({
   },
 });
 
-module.exports = model("VerificationMemberContractLease", VerificationConsumerContractLeaseSchema);
+module.exports = model("VerificationMemberContractLease", VerificationMemberContractLeaseSchema);

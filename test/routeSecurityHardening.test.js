@@ -294,3 +294,35 @@ test('routes/staff.js: POST /admin-users tiene authorizeMongoPermission', () => 
     'authorizeMongoPermission debe estar en POST /admin-users',
   );
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE I — endpoints bulk de inventario sin auth (insertBulkItem/container)
+// RED: las tres eran públicas -- sin validateJWT, sin scoping por company_id.
+// insertBulkItem valida company_id en el body -> puede llevar authorizePermission.
+// Los endpoints de container operan por container_item_id sin company_id
+// disponible en body/params -- solo requieren login (validateJWT) por ahora;
+// el scoping real necesita un join a item_inv para derivar el company_id
+// dueño del container (ver nota en mysql/routes/inventory.js).
+// ════════════════════════════════════════════════════════════════════════════
+
+test('mysql/routes/item.js: POST /bulk-item tiene authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/item');
+  const handlers = getRouteHandlers(router, 'POST', '/bulk-item');
+  assert.ok(handlers !== null, 'La ruta POST /bulk-item debe existir');
+  assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en POST /bulk-item');
+  assert.ok(hasAuthzPermission(handlers), 'authorizePermission debe estar en POST /bulk-item');
+});
+
+test('mysql/routes/inventory.js: POST /container-items tiene validateJWT', () => {
+  const router = loadRouter('../mysql/routes/inventory');
+  const handlers = getRouteHandlers(router, 'POST', '/container-items');
+  assert.ok(handlers !== null, 'La ruta POST /container-items debe existir');
+  assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en POST /container-items');
+});
+
+test('mysql/routes/inventory.js: PUT /container/:container_item_id tiene validateJWT', () => {
+  const router = loadRouter('../mysql/routes/inventory');
+  const handlers = getRouteHandlers(router, 'PUT', '/container/:container_item_id');
+  assert.ok(handlers !== null, 'La ruta PUT /container/:container_item_id debe existir');
+  assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en PUT /container/:container_item_id');
+});

@@ -77,11 +77,12 @@ const configureMiddleware = (app) => {
   // Security headers
   app.use(helmet());
 
-  // Rate limiting
+  // Rate limiting (RATE_LIMIT_MAX env override for local dev/e2e runs,
+  // where Cypress + hot-reload easily exceed the production budget)
   const { rateLimit } = require("express-rate-limit");
   const limiter = rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 300,
+    max: Number(process.env.RATE_LIMIT_MAX) || 300,
     standardHeaders: true,
     legacyHeaders: false,
     keyGenerator: (req) => {

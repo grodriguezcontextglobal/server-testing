@@ -11,6 +11,8 @@ const {
 const ReceiversPool = require("../../models/ReceiversPool");
 const { groupBy } = require("lodash");
 const { enqueue, extractJobContext } = require("../../helpers/queue");
+const { createQueuedJobController } = require("../../helpers/queuedController");
+const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
 require("dotenv").config();
 
 const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
@@ -2456,204 +2458,24 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
   }
 };
 
-const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => {
-  let connection;
-
-  const ALLOWED_REFERENCE_KEYS = ["item_group", "category_name", "brand"];
-  const CONTROL_FIELDS = ["reference", "updateAll", "list", "company_id", "update_at"];
-
-  // Parses the wrapped extra_serial_number format into a per-item Map.
-  //
-  // Input format (JSON string or array):
-  //   [{ "5001": [{ keyObject: "Serial Number", valueObject: "5001" },
-  //               { keyObject: "item_id",        valueObject: 57105  }] }]
-  //
-  // Output: Map { "5001" → '[{"keyObject":"Serial Number","valueObject":"5001"}]' }
-  //   — item_id entries are stripped because they are not stored in the column.
-  const buildExtraSerialNumberMap = (raw) => {
-    if (raw === undefined || raw === null) return new Map();
-    let parsed;
-    try {
-      parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-    } catch (e) {
-      throw new Error(`extra_serial_number contains invalid JSON: ${e.message}`);
-    }
-    if (!Array.isArray(parsed)) {
-      throw new Error("extra_serial_number must be a JSON array");
-    }
-    const map = new Map();
-    for (const entry of parsed) {
-      for (const [serial, data] of Object.entries(entry)) {
-        if (Array.isArray(data)) {
-          const filtered = data.filter((item) => item?.keyObject !== "item_id");
-          map.set(String(serial), JSON.stringify(filtered));
-        }
-      }
-    }
-    return map;
-  };
-
-  try {
-    connection = await getConnection().getConnection();
-    await connection.beginTransaction();
-
-    const {
-      company_id,
-      updateAll = false,
-      list = [],
-      reference = {},
-      extra_serial_number,
-      ...rawUpdateData
-    } = request.body;
-
-    if (!company_id) {
-      return response.status(400).json({ msg: "company_id is required.", ok: false });
-    }
-
-    // Build the common update payload, stripping control keys and undefineds
-    const validUpdateData = {};
-    for (const [key, value] of Object.entries(rawUpdateData)) {
-      if (!CONTROL_FIELDS.includes(key) && value !== undefined) {
-        validUpdateData[key] = value;
-      }
-    }
-
-    if (updateAll) {
-      // ── updateAll: update every item that matches the reference criteria ───────
-      // extra_serial_number is intentionally excluded here — we cannot assign
-      // per-item values when the target set is determined at runtime by a WHERE.
-      const referenceEntries = Object.entries(reference).filter(
-        ([key, value]) =>
-          ALLOWED_REFERENCE_KEYS.includes(key) &&
-          value !== undefined &&
-          value !== null &&
-          String(value).trim() !== "",
-      );
-
-      if (referenceEntries.length === 0) {
-        return response.status(400).json({
-          msg: "reference must include at least one of: item_group, category_name, brand.",
-          ok: false,
-        });
-      }
-
-      const baseEntries = Object.entries(validUpdateData);
-      if (baseEntries.length === 0) {
-        return response.status(400).json({
-          msg: "At least one field is required to update.",
-          ok: false,
-        });
-      }
-
-      const updateEntries = [...baseEntries, ["update_at", new Date()]];
-      const setClause = updateEntries.map(([key]) => `${key} = ?`).join(", ");
-      const setValues = updateEntries.map(([, val]) => val);
-
-      const whereClause = [
-        "company_id = ?",
-        ...referenceEntries.map(([key]) => `${key} = ?`),
-      ].join(" AND ");
-      const whereValues = [company_id, ...referenceEntries.map(([, val]) => val)];
-
-      const [result] = await connection.execute(
-        `UPDATE item_inv SET ${setClause} WHERE ${whereClause}`,
-        [...setValues, ...whereValues],
-      );
-
-      await connection.commit();
-      return response.status(200).json({
-        msg: `${result.affectedRows} item(s) updated successfully.`,
-        ok: true,
-        updated_count: result.affectedRows,
-      });
-    }
-
-    // ── list: update only the items whose serial numbers are in list ─────────────
-
-    // Build the map first so we can fall back to its keys when list is omitted.
-    let extraSerialMap;
-    try {
-      extraSerialMap = buildExtraSerialNumberMap(extra_serial_number);
-    } catch (e) {
-      return response.status(400).json({ ok: false, msg: e.message });
-    }
-
-    // If list is not provided, derive it from the serial number keys embedded
-    // in extra_serial_number so callers don't need to send it twice.
-    const effectiveList = Array.isArray(list) && list.length > 0
-      ? list
-      : [...extraSerialMap.keys()];
-
-    if (effectiveList.length === 0) {
-      return response.status(400).json({
-        msg: "Provide list or extra_serial_number with serial number keys.",
-        ok: false,
-      });
-    }
-
-    const baseEntries = Object.entries(validUpdateData);
-
-    if (baseEntries.length === 0 && extraSerialMap.size === 0) {
-      return response.status(400).json({
-        msg: "At least one field is required to update.",
-        ok: false,
-      });
-    }
-
-    const updateEntries = [...baseEntries, ["update_at", new Date()]];
-    const setClauses = updateEntries.map(([key]) => `${key} = ?`);
-    const setValues = updateEntries.map(([, val]) => val);
-
-    // Build a CASE WHEN expression so each serial number gets its own
-    // extra_serial_number value. Items not present in the map keep their
-    // current value (ELSE extra_serial_number).
-    if (extraSerialMap.size > 0) {
-      const whenClauses = [];
-      for (const serial of effectiveList) {
-        const stored = extraSerialMap.get(String(serial));
-        if (stored !== undefined) {
-          whenClauses.push("WHEN ? THEN ?");
-          setValues.push(String(serial), stored);
-        }
-      }
-      if (whenClauses.length > 0) {
-        setClauses.push(
-          `extra_serial_number = CASE serial_number ${whenClauses.join(" ")} ELSE extra_serial_number END`,
-        );
-      }
-    }
-
-    const placeholders = effectiveList.map(() => "?").join(", ");
-    const query = `
-      UPDATE item_inv
-      SET ${setClauses.join(", ")}
-      WHERE company_id = ? AND serial_number IN (${placeholders})
-    `;
-
-    const [result] = await connection.execute(query, [
-      ...setValues,
-      company_id,
-      ...effectiveList,
-    ]);
-
-    await connection.commit();
-    return response.status(200).json({
-      msg: `${result.affectedRows} item(s) updated successfully.`,
-      ok: true,
-      updated_count: result.affectedRows,
-    });
-  } catch (error) {
-    if (connection) await connection.rollback();
-    logger.error("Error in bulk item update:", error);
-    return response.status(500).json({
-      msg: `Internal server error: ${error.message}`,
-      ok: false,
-      err: error,
-    });
-  } finally {
-    if (connection) connection.release();
-  }
-};
+// Migrado al contrato async (202 + jobId, ver DESIGN_task_queue.md § Fase 4b):
+// el UPDATE corría síncrono dentro del ciclo request/response sosteniendo la
+// conexión HTTP mientras tocaba potencialmente miles de filas (updateAll por
+// criterio de category_name/item_group/brand, o listas grandes de seriales).
+// Ahora el controller solo valida (rápido, sin DB) y encola; el UPDATE real
+// vive en queue/handlers/inventoryBulkUpdateAlphanumeric.js dentro de una
+// única transacción con conexión dedicada del pool.
+const updateItemsBasedOnAlphanumericSerialNumber = createQueuedJobController(
+  "inventory:bulk-update-alphanumeric",
+  (body) => body,
+  {
+    validate: (body) => {
+      const plan = resolveUpdatePlan(body);
+      return plan.error ? { status: plan.error.status, body: { msg: plan.error.msg, ok: false } } : null;
+    },
+    buildSuccessBody: (job) => ({ msg: "Bulk item update queued", ok: true, jobId: job.id }),
+  },
+);
 
 const insertContainerItems = async (request, response) => {
   const connection = getConnection();

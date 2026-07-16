@@ -25,6 +25,12 @@
    (`POST /api/db_item/bulk-item-alphanumeric`)**: same async-polling contract as document upload,
    **plus** this route now requires the `x-token` auth header (it was public before). See §5.
 5. **Stripe (payments): NOTHING changes on the frontend.** See §7.
+6. **NEW (this update) — two bulk *edit* endpoints move from `200 { updated_count }` /
+   `200 { total_updated }` to the same async-polling contract, `x-token` now required on both**:
+   - `POST /api/db_company/update-items-based-on-alphanumeric-serial-number`
+   - `PUT /api/db_item/event-items/bulk-update`
+
+   See §10.
 
 ---
 
@@ -309,10 +315,80 @@ Possible job states (`status`): `pending` → `processing` → `done` | `failed`
       showing the success toast / navigating (see §5).
 - [ ] **Stripe:** nothing.
 - [ ] (Optional) Admin panel using `GET /api/jobs/stats` and `GET /api/jobs/:jobId` (super_user).
+- [ ] **`update-items-based-on-alphanumeric-serial-number`:** add `x-token`; replace
+      `response.updated_count` with polling of `GET /api/jobs/owned/:jobId` → `result.updated_count`
+      (see §10.1).
+- [ ] **`event-items/bulk-update`:** add `x-token`; replace `response.total_updated` with polling of
+      `GET /api/jobs/owned/:jobId` → `result.updated_count` — note the field rename (see §10.2).
 
 ---
 
-## 10. Open questions / to coordinate with backend
+## 10. ⚠️ NEW (this update) — Bulk *edit* endpoints migrated to the queue · impact: HIGH (new auth + async contract)
+
+Two mass-**update** endpoints (not insert) had the same problem as §5: a single UPDATE running
+synchronously inside the request/response cycle, potentially touching thousands of rows, with the
+HTTP connection held open the whole time and no idempotency. Both are now enqueued, same pattern as
+§4/§5.
+
+### 10.1 `POST /api/db_company/update-items-based-on-alphanumeric-serial-number`
+
+Bulk-edits `item_inv` rows, either by a list of serial numbers or by a `reference` criteria
+(`updateAll: true` with `category_name`/`item_group`/`brand`).
+
+**Before:** `200 { ok: true, msg: "<N> item(s) updated successfully.", updated_count: <N> }`
+**Now:** `202 { ok: true, msg: "Bulk item update queued", jobId: "<id>" }`
+
+- **Auth change:** this route **did not have `validateJWT`** before (public). It now requires
+  `x-token` (same `validateJWT` + `checkTokenVersion` as the rest of the authenticated routes) —
+  without it, the request now returns `401`. No new field needs to be added to the body; `uid`
+  comes from the JWT and becomes the job owner.
+- **`400` validation is unchanged** — same messages, same triggers, still synchronous (not
+  enqueued): `company_id is required.` / `reference must include at least one of: item_group,
+  category_name, brand.` / `At least one field is required to update.` / `Provide list or
+  extra_serial_number with serial number keys.` / invalid `extra_serial_number` JSON.
+- **`updated_count` is no longer in the immediate response.** Get it via polling
+  **`GET /api/jobs/owned/:jobId`** (same endpoint/mechanics as §4/§5) → `result.updated_count`
+  once `status: "done"`.
+- **Frontend action:** accept `202`; add `x-token` to this mutation's request if it isn't already
+  authenticated; replace any code reading `response.updated_count` with a poll of
+  `GET /api/jobs/owned/:jobId` → `result.updated_count`; update any "updated" toast to fire only on
+  `status: "done"` (same UX pattern as §5.2 — queued toast first, success toast after polling
+  resolves).
+
+### 10.2 `PUT /api/db_item/event-items/bulk-update`
+
+Bulk-edits `event_item_shipping` rows (`shipping_status`, `active`, `notes`) filtered by the same
+allowed fields.
+
+**Before:** `200 { ok: true, message: "<N> item(s) have been updated for event <event_id>.",
+total_updated: <N> }`
+**Now:** `202 { ok: true, message: "Event item shipping bulk update queued", jobId: "<id>" }`
+
+- **Auth change:** also previously public, now requires `x-token` (`validateJWT` +
+  `checkTokenVersion`). Same `401` note as above.
+- **`400` validation unchanged** (same `message` field, not `msg` — this controller has always used
+  `message`, unlike most others): `company_id and event_id are required.` / `At least one update
+  field must be provided.` / `At least one filter condition must be provided.` / `No valid fields
+  to update. Allowed fields are: ...` / `No valid filter fields provided. Allowed fields are: ...`.
+- ⚠️ **Field rename in the polled result:** the old synchronous response used `total_updated`. The
+  job's `result` object uses **`updated_count`** instead (same key as §11.1, for consistency) — poll
+  `GET /api/jobs/owned/:jobId` → `result.updated_count`, **not** `result.total_updated`.
+- **Frontend action:** accept `202`; add `x-token`; replace `response.total_updated` with a poll of
+  `GET /api/jobs/owned/:jobId` → `result.updated_count`.
+
+### 10.3 Validation checklist for both
+
+- [ ] Small edit (a handful of serials / a narrow event filter) end-to-end: queued → polling →
+      success toast with the real row count from `result.updated_count`.
+- [ ] Existing `400` cases (missing `company_id`, empty `updates`/`filters`, disallowed field names,
+      etc.) still surface immediately, without a `jobId` and without polling.
+- [ ] Request without `x-token` on either endpoint → confirm `401` (previously worked without one).
+- [ ] Navigate away right after the `202` → confirm the final toast still arrives (global polling,
+      not a local `setInterval` tied to the form/table component — same requirement as §5.2).
+
+---
+
+## 11. Open questions / to coordinate with backend
 
 1. Recommended polling interval (the worker runs every ~4s by default; a 1–2s frontend polling
    interval is reasonable).
@@ -321,3 +397,6 @@ Possible job states (`status`): `pending` → `processing` → `done` | `failed`
    owner).
 3. Recommended polling interval for the bulk inventory upload job (§5.2) — same ~3s guidance as
    document upload, or does a 15,000-serial job warrant a longer interval to reduce load?
+4. Same polling-interval question for the two new bulk-edit jobs (§10) — both are single UPDATE
+   statements (DB-bound, not batched Node-side), so they likely finish faster than the bulk insert;
+   a 1–2s interval is probably fine, but confirm before locking it in.

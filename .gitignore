@@ -20,3 +20,7 @@ go-worker/*.exe
 go-worker/*.exe~
 mysql/env.txt
 payload.json
+
+# never commit real secrets
+.env
+.env.backup

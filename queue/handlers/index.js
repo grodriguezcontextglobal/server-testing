@@ -101,4 +101,22 @@ register(
   createInventoryBulkInsertHandler({ getConnection: getSqlConnection })
 );
 
+const { createInventoryBulkUpdateAlphanumericHandler } = require("./inventoryBulkUpdateAlphanumeric");
+
+// UPDATE masivo de item_inv por lista de seriales o por criterio (updateAll)
+// — ver mysql/controllers/item.js § updateItemsBasedOnAlphanumericSerialNumber.
+register(
+  "inventory:bulk-update-alphanumeric",
+  createInventoryBulkUpdateAlphanumericHandler({ getConnection: getSqlConnection })
+);
+
+const { createEventItemShippingBulkUpdateHandler } = require("./eventItemShippingBulkUpdate");
+
+// UPDATE masivo de event_item_shipping — ver
+// mysql/controllers/items_events.js § bulkUpdateEventItemShipping.
+register(
+  "event:bulk-update-item-shipping",
+  createEventItemShippingBulkUpdateHandler({ getConnection: getSqlConnection })
+);
+
 module.exports = { register, getHandler, handlers };

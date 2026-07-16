@@ -7,6 +7,7 @@ const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staf
 
 const runGoWorker = require("../../helpers/goWorker");
 const { createQueuedJobController } = require("../../helpers/queuedController");
+const { resolveEventItemShippingUpdatePlan } = require("../../queue/handlers/eventItemShippingBulkUpdate");
 const { performUpdateLargeData } = require("./item");
 const {
   poolReceiversBulk: poolReceiversBulkWorker,
@@ -59,88 +60,25 @@ function createInsertingItemInEvent({ runGoWorkerFn = runGoWorker } = {}) {
 }
 const insertingItemInEvent = createInsertingItemInEvent();
 
-const bulkUpdateEventItemShipping = async (request, response) => {
-  let connection;
-  try {
-    const { company_id, event_id, updates, filters } = request.body;
-
-    if (!company_id || !event_id) {
-      return response.status(400).json({
-        message: "company_id and event_id are required.",
-        ok: false,
-      });
-    }
-    if (!updates || Object.keys(updates).length === 0) {
-      return response.status(400).json({
-        message: "At least one update field must be provided.",
-        ok: false,
-      });
-    }
-    if (!filters || Object.keys(filters).length === 0) {
-      return response.status(400).json({
-        message: "At least one filter condition must be provided.",
-        ok: false,
-      });
-    }
-
-    const allowedFields = ["shipping_status", "active", "notes"];
-    const fieldsToUpdate = Object.keys(updates).filter(field => allowedFields.includes(field));
-    const filterKeys = Object.keys(filters).filter(field => allowedFields.includes(field));
-
-    if (fieldsToUpdate.length === 0) {
-      return response.status(400).json({
-        message: `No valid fields to update. Allowed fields are: ${allowedFields.join(", ")}`,
-        ok: false,
-      });
-    }
-    if (filterKeys.length === 0) {
-      return response.status(400).json({
-        message: `No valid filter fields provided. Allowed fields are: ${allowedFields.join(", ")}`,
-        ok: false,
-      });
-    }
-
-    connection = await getConnection().getConnection();
-    await connection.beginTransaction();
-
-    const setClause = fieldsToUpdate.map(field => `${field} = ?`).join(", ");
-    const updateValues = fieldsToUpdate.map(field => updates[field]);
-
-    const whereConditions = filterKeys.map(key => `${key} = ?`);
-    const filterValues = filterKeys.map(key => filters[key]);
-
-    const query = `
-      UPDATE event_item_shipping
-      SET ${setClause}
-      WHERE event_id = ? AND company_id = ? AND ${whereConditions.join(" AND ")};
-    `;
-
-    const queryParams = [...updateValues, event_id, company_id, ...filterValues];
-    const [result] = await connection.query(query, queryParams);
-
-    await connection.commit();
-
-    return response.status(200).json({
-      message: `${result.affectedRows} item(s) have been updated for event ${event_id}.`,
+// Migrado al contrato async (202 + jobId, ver DESIGN_task_queue.md § Fase 4b):
+// el UPDATE corría síncrono sosteniendo la conexión HTTP. El controller solo
+// valida (sin DB) y encola; el UPDATE real vive en
+// queue/handlers/eventItemShippingBulkUpdate.js.
+const bulkUpdateEventItemShipping = createQueuedJobController(
+  "event:bulk-update-item-shipping",
+  (body) => body,
+  {
+    validate: (body) => {
+      const plan = resolveEventItemShippingUpdatePlan(body);
+      return plan.error ? { status: plan.error.status, body: { message: plan.error.msg, ok: false } } : null;
+    },
+    buildSuccessBody: (job) => ({
+      message: "Event item shipping bulk update queued",
       ok: true,
-      total_updated: result.affectedRows,
-    });
-
-  } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
-    logger.error("Error during bulk update of event items:", error.message);
-    return response.status(500).json({
-      error: error.message || "An internal error occurred while updating items.",
-      ok: false,
-    });
-  } finally {
-    if (connection) {
-      connection.release();
-    }
-  }
-};
+      jobId: job.id,
+    }),
+  },
+);
 
 const removeEventItemShipping = async (request, response) => {
   let connection;
@@ -870,6 +808,7 @@ const reserveItemsInInventoryForEvent = async (request, response) => {
     connection = await getConnection().getConnection();
     await connection.beginTransaction();
     const { company_id, items } = request.body;
+    console.log("Reserving items for company_id:", company_id, "Items:", items);
     const queryToReserveItems = `
       UPDATE item_inv
       SET logistic_status = "in-reserved"
@@ -886,6 +825,7 @@ const reserveItemsInInventoryForEvent = async (request, response) => {
         ok: false,
       });
     }
+    console.log(result, "items reserved successfully for company_id:", company_id);
     return response.status(200).json({
       message: `${result.affectedRows} item(s) have been reserved in the inventory.`,
       ok: true,
