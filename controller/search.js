@@ -47,8 +47,8 @@ const searchingConsumer = async (variable, company, lastId = null) => {
     query._id = { $gt: new mongoose.Types.ObjectId(lastId) };
   }
   const limit = 11;
-  const results = await User.find(query).sort({ _id: 1 }) //.limit(limit);
-  const hasMore = false //results.length === limit;
+  const results = await User.find(query).sort({ _id: 1 }).limit(limit);
+  const hasMore = results.length === limit;
   if (hasMore) {
     results.pop();
   }
@@ -98,8 +98,8 @@ const searchingDeviceTransaction = async (variable, company, lastId = null) => {
     query._id = { $gt: new mongoose.Types.ObjectId(lastId) };
   }
   const limit = 11;
-  const results = await Receivers.find(query).sort({ _id: 1 }) //.limit(limit);
-  const hasMore = false //results.length === limit;
+  const results = await Receivers.find(query).sort({ _id: 1 }).limit(limit);
+  const hasMore = results.length === limit;
   if (hasMore) {
     results.pop();
   }
@@ -123,8 +123,8 @@ const searchingDevicePool = async (variable, company, lastId = null) => {
 
   const devicesFoundInPool = await ReceiversPool.find(query)
     .sort({ _id: 1 })
-    // .limit(limit);
-  const hasMore = false //devicesFoundInPool.length === limit;
+    .limit(limit);
+  const hasMore = devicesFoundInPool.length === limit;
   if (hasMore) {
     devicesFoundInPool.pop();
   }
@@ -160,7 +160,7 @@ const searchingEvents = async (props) => {
     ],
   };
   const limit = 11;
-  const results = await Event.find(query).sort({ _id: 1 }) //.limit(limit);
+  const results = await Event.find(query).sort({ _id: 1 }).limit(limit);
   let hasMore = results.length === limit;
   if (results.length === limit) {
     results.pop();
@@ -173,7 +173,8 @@ const searchingStaff = async (props) => {
   let result = [];
   for (let employee of employees) {
     const ref = JSON.stringify(employee);
-    if (String(ref).includes(variable)) {
+    // case-insensitive: consumers/devices/events all match with $options "i"
+    if (String(ref).toLowerCase().includes(String(variable).toLowerCase())) {
       const query = {
         email: JSON.parse(ref).user,
       };
@@ -268,8 +269,8 @@ const previousConsumer = async (req, res) => {
       query._id = { $gt: new mongoose.Types.ObjectId(lastId) };
     }
     const limit = 11;
-    const results = await User.find(query).sort({ _id: -1 }) //.limit(limit);
-    const hasMore = false //results.length === limit;
+    const results = await User.find(query).sort({ _id: -1 }).limit(limit);
+    const hasMore = results.length === limit;
     if (hasMore) {
       results.pop();
     }

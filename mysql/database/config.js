@@ -26,10 +26,33 @@ const getConnection = () => {
 
     connection = mysql.createPool({
       ...poolConfig,
-      connectionLimit: parseInt(process.env.PLANETSCALE_DATABASE_LIMIT, 10) || 10,
+      connectionLimit: parseInt(process.env.PLANETSCALE_DATABASE_LIMIT, 10) || 100,
       connectTimeout: 10000,
-      ssl: { rejectUnauthorized: true },
+      // SSL is required for PlanetScale, but a local MySQL uses plaintext.
+      // Set PLANETSCALE_DATABASE_SSL=false for local dev to skip it.
+      ...(process.env.PLANETSCALE_DATABASE_SSL === "false"
+        ? {}
+        : { ssl: { rejectUnauthorized: true } }),
     }).promise();
+
+    connection.on('error', (err) => {
+      console.error('Error in connection:', err.message);
+    });
+    connection.on('end', () => {
+      console.log('Connection ended.');
+    });
+    connection.on('close', () => {
+      console.log('Connection closed.');
+    });
+    connection.on('timeout', () => {
+      console.log('Connection timeout.');
+    });
+    connection.on('drain', () => {
+      console.log('Connection drain.');
+    });
+    connection.on('connect', () => {
+      console.log('Connection created.');
+    });
   }
   return connection;
 };
@@ -39,4 +62,5 @@ const getConnection = () => {
 //   .then(() => console.log('✅ Connection OK'))
 //   .catch(err => console.error('❌ Connection failed:', err.message));
 
+  
 module.exports = getConnection;

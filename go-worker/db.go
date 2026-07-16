@@ -28,7 +28,13 @@ func ConnectDB() (*sql.DB, error) {
 	dbName := os.Getenv("PLANETSCALE_DATABASE_NAME")
 
 	// DSN format: user:password@tcp(host:3306)/dbname?tls=true
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?tls=true&parseTime=true", user, password, host, dbName)
+	// PlanetScale requires TLS, but a local MySQL uses plaintext — set
+	// PLANETSCALE_DATABASE_SSL=false for local dev to disable it.
+	tlsMode := "true"
+	if os.Getenv("PLANETSCALE_DATABASE_SSL") == "false" {
+		tlsMode = "false"
+	}
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?tls=%s&parseTime=true", user, password, host, dbName, tlsMode)
 
 	db, err := sql.Open("mysql", dsn)
 	if err != nil {
