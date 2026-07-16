@@ -189,7 +189,8 @@ const PLACEMENT = [
     const [locName, subPath] = key.split("||");
     const subKey = `${locName}>${subPath.replace(">", ">")}`;
     const subId = subIds[subKey] ?? null;
-    const subDisplay = subPath.split(">").join(" › ");
+    // JSON path array — the location tree and sub-location filters parse this
+    const subDisplay = JSON.stringify(subPath.split(">"));
     for (let i = 0; i < ids.length; i += 300) {
       const chunk = ids.slice(i, i + 300);
       await conn.query(
@@ -209,7 +210,7 @@ const PLACEMENT = [
     await conn.query(
       `UPDATE item_inv SET location=?, current_location=?, location_id=?, sub_location=?, sub_location_id=?
        WHERE company_id=? AND serial_number=?`,
-      [locName, locName, locIds[locName], sub, subIds[`${locName}>${sub}`] ?? null, CIDs, serial]);
+      [locName, locName, locIds[locName], JSON.stringify(sub.split(">")), subIds[`${locName}>${sub}`] ?? null, CIDs, serial]);
   }
 
   // ── 5. fill the containers ────────────────────────────────────────────────
