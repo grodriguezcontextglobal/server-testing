@@ -218,7 +218,36 @@ const getCompanyLocations = async (req, res) => {
     ]);
     items = itemRows;
 
-    // 5. Initialize Data Structure
+    // 5. Registered sub-locations are the source of truth for the tree —
+    //    empty rooms/shelves must appear (zero counts) even with no items.
+    const [subLocations] = await connection.execute(
+      `SELECT sub_location_id, location_id, name, parent_id
+       FROM sub_locations
+       WHERE location_id IN (${itemPlaceholders}) AND active = 1
+       ORDER BY parent_id, name`,
+      locationIds
+    );
+    const subLocById = {};
+    subLocations.forEach((sl) => {
+      subLocById[sl.sub_location_id] = {
+        total: 0,
+        available: 0,
+        types: new Set(),
+        children: {},
+      };
+    });
+    const rootsByLocation = {};
+    subLocations.forEach((sl) => {
+      if (!rootsByLocation[sl.location_id]) rootsByLocation[sl.location_id] = {};
+      const node = subLocById[sl.sub_location_id];
+      if (!sl.parent_id) {
+        rootsByLocation[sl.location_id][sl.name] = node;
+      } else if (subLocById[sl.parent_id]) {
+        subLocById[sl.parent_id].children[sl.name] = node;
+      }
+    });
+
+    // Initialize Data Structure
     const data = {};
     const locationMap = {};
 
@@ -229,7 +258,7 @@ const getCompanyLocations = async (req, res) => {
         total: 0,
         available: 0,
         types: new Set(),
-        children: {},
+        children: rootsByLocation[loc.location_id] ?? {},
       };
     });
 

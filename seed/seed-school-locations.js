@@ -27,30 +27,39 @@ const SQL = {
 const DISTRICT = "Summit Unified School District";
 
 // location -> sub-locations (nested children indented via parent)
+// children entries may be strings (leaf) or {name, children} (deeper nesting)
 const GEOGRAPHY = {
   "Lincoln Middle School": {
     subs: [
       { name: "Library" },
       { name: "Room 101 — Rivera" },
       { name: "Room 102 — Okafor" },
-      { name: "Room 103 — Bennett" },
-      { name: "AV Storage", children: ["Shelf 1", "Shelf 2"] },
-      { name: "Front Office" },
+      { name: "Room 103 — Bennett" },       // intentionally empty
+      { name: "AV Storage", children: ["Shelf 1", "Shelf 2", "Shelf 3", "Cabinet A"] }, // Shelf 3 + Cabinet A empty
+      { name: "Front Office" },              // intentionally empty
     ],
   },
   "Roosevelt High School": {
     subs: [
       { name: "Media Center" },
-      { name: "Theater", children: ["Sound Booth", "Backstage Storage"] },
+      { name: "Theater", children: ["Sound Booth", "Backstage Storage", "Prop Room", "Lighting Grid"] }, // Prop Room + Lighting Grid empty
       { name: "Gym — Equipment Room" },
-      { name: "Science Wing — Room 210" },
+      { name: "Science Wing — Room 210", children: ["Lab Storage"] },
       { name: "IT Closet" },
     ],
   },
   "District Office": {
     subs: [
       { name: "IT Office" },
-      { name: "Warehouse", children: ["Rack A", "Rack B"] },
+      {
+        name: "Warehouse",
+        children: [
+          { name: "Rack A", children: ["Bin 1", "Bin 2"] }, // 3-level nesting
+          "Rack B",
+          "Rack C", // empty
+          "Rack D", // empty
+        ],
+      },
     ],
   },
 };
@@ -66,7 +75,8 @@ const PLACEMENT = [
   [/^IPD-/, "Lincoln Middle School", "Room 101 — Rivera"],
   // Roosevelt
   [/^RHS-CB-/, "Roosevelt High School", "Media Center"],
-  [/^RHS-IPD-/, "Roosevelt High School", "Science Wing — Room 210"],
+  [/^RHS-IPD-200[1-9]$|^RHS-IPD-201[0-9]$/, "Roosevelt High School", "Science Wing — Room 210"],
+  [/^RHS-IPD-/, "Roosevelt High School", "Science Wing — Room 210>Lab Storage"],
   [/^RHS-CAL-/, "Roosevelt High School", "Media Center"],
   [/^CAL-/, "Roosevelt High School", "Media Center"],
   [/^RHS-PRJ-/, "Roosevelt High School", "IT Closet"],
@@ -77,7 +87,8 @@ const PLACEMENT = [
   [/^RHS-CASE-/, "Roosevelt High School", "Theater>Backstage Storage"],
   // District
   [/^SUSD-HSP-/, "District Office", "IT Office"],
-  [/^SUSD-PA-/, "District Office", "Warehouse>Rack A"],
+  [/^SUSD-PA-600[1-4]$/, "District Office", "Warehouse>Rack A>Bin 1"],
+  [/^SUSD-PA-/, "District Office", "Warehouse>Rack A>Bin 2"],
   [/^SUSD-CAM-/, "District Office", "IT Office"],
   [/^HSP-/, "District Office", "IT Office"],
   [/^CRT-/, "District Office", "Warehouse>Rack B"],
@@ -130,27 +141,28 @@ const PLACEMENT = [
     }
     return row.sub_location_id;
   };
+  const registerPath = async (locId, path) => {
+    await conn.query(
+      `INSERT INTO company_sub_location_paths (company_id, location_id, path_json, path_key, created_by)
+       SELECT ?,?,?,?,'school-locations-seed' FROM DUAL
+       WHERE NOT EXISTS (SELECT 1 FROM company_sub_location_paths WHERE company_id=? AND location_id=? AND path_key=?)`,
+      [CID, locId, JSON.stringify(path), path.join(">"), CID, locId, path.join(">")]);
+  };
+  // recursive: children may be strings (leaf) or {name, children}
+  const buildSubTree = async (locName, locId, entry, parentId, prefix) => {
+    const name = typeof entry === "string" ? entry : entry.name;
+    const id = await ensureSub(locId, name, parentId);
+    const path = [...prefix, name];
+    subIds[`${locName}>${path.join(">")}`] = id;
+    await registerPath(locId, path);
+    const children = typeof entry === "string" ? [] : entry.children ?? [];
+    for (const child of children) {
+      await buildSubTree(locName, locId, child, id, path);
+    }
+  };
   for (const [locName, def] of Object.entries(GEOGRAPHY)) {
-    const locId = locIds[locName];
     for (const sub of def.subs) {
-      const subId = await ensureSub(locId, sub.name, null);
-      subIds[`${locName}>${sub.name}`] = subId;
-      const path = [sub.name];
-      await conn.query(
-        `INSERT INTO company_sub_location_paths (company_id, location_id, path_json, path_key, created_by)
-         SELECT ?,?,?,?,'school-locations-seed' FROM DUAL
-         WHERE NOT EXISTS (SELECT 1 FROM company_sub_location_paths WHERE company_id=? AND location_id=? AND path_key=?)`,
-        [CID, locId, JSON.stringify(path), path.join(">"), CID, locId, path.join(">")]);
-      for (const child of sub.children ?? []) {
-        const childId = await ensureSub(locId, child, subId);
-        subIds[`${locName}>${sub.name}>${child}`] = childId;
-        const childPath = [sub.name, child];
-        await conn.query(
-          `INSERT INTO company_sub_location_paths (company_id, location_id, path_json, path_key, created_by)
-           SELECT ?,?,?,?,'school-locations-seed' FROM DUAL
-           WHERE NOT EXISTS (SELECT 1 FROM company_sub_location_paths WHERE company_id=? AND location_id=? AND path_key=?)`,
-          [CID, locId, JSON.stringify(childPath), childPath.join(">"), CID, locId, childPath.join(">")]);
-      }
+      await buildSubTree(locName, locIds[locName], sub, null, []);
     }
   }
   console.log(`✓ ${Object.keys(subIds).length} sub-locations (incl. nested shelves/booths/racks)`);
