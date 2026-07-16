@@ -2171,6 +2171,48 @@ const advanceSearchingQuery = async (request, response) => {
     });
   }
 };
+/**
+ * Construye un filtro MongoDB con $expr para eventos que se solapan con
+ * el rango [startDate, endDate], con tolerancia de ±1 día usando
+ * operadores de agregación ($dateSubtract / $dateAdd).
+ *
+ * @param {Date} startDate
+ * @param {Date} endDate
+ * @returns {object} filtro MongoDB compatible con Collection.find()
+ */
+function buildDateRangeQuery(startDate, endDate) {
+  return {
+    $expr: {
+      $and: [
+        {
+          $lte: [
+            {
+              $dateSubtract: {
+                startDate: '$eventInfoDetail.dateBegin',
+                unit: 'day',
+                amount: 1,
+              },
+            },
+            endDate,
+          ],
+        },
+        {
+          $gte: [
+            {
+              $dateAdd: {
+                startDate: '$eventInfoDetail.dateEnd',
+                unit: 'day',
+                amount: 1,
+              },
+            },
+            startDate,
+          ],
+        },
+      ],
+    },
+  };
+}
+
 module.exports = {
   searching,
   moreConsumer,
@@ -2179,4 +2221,5 @@ module.exports = {
   moreDeviceTransaction,
   previousConsumer,
   advanceSearchingQuery,
+  buildDateRangeQuery,
 };
