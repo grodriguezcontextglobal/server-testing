@@ -206,7 +206,7 @@ const getCompanyLocations = async (req, res) => {
     // Filter items by the allowed location IDs we just retrieved
     const itemPlaceholders = locationIds.map(() => "?").join(",");
     const itemQuery = `
-      SELECT location_id, sub_location, item_group, status 
+      SELECT location_id, sub_location, item_group, status, warehouse 
       FROM item_inv 
       WHERE company_id = ? 
       AND location_id IN (${itemPlaceholders})
@@ -238,7 +238,9 @@ const getCompanyLocations = async (req, res) => {
       const locName = locationMap[item.location_id];
       if (!locName || !data[locName]) return;
 
-      const isAvailable = item.status === "Operational";
+      // "available" = physically on hand at this location (in stock), i.e. not
+// currently checked out to a student/staff. warehouse: 1 = in stock, 0 = out.
+      const isAvailable = Number(item.warehouse) === 1;
       const type = item.item_group;
 
       let parsedSub = [];
@@ -344,7 +346,7 @@ const getCompanyLocationTree = async (req, res) => {
 
     // 3. Fetch item inventory to compute counts
     const [items] = await connection.execute(
-      `SELECT location_id, sub_location, item_group, status
+      `SELECT location_id, sub_location, item_group, status, warehouse
        FROM item_inv
        WHERE company_id = ? AND location_id IN (${placeholders})`,
       [company_id, ...locationIds]
@@ -400,7 +402,9 @@ const getCompanyLocationTree = async (req, res) => {
       const locName = locationMap[item.location_id];
       if (!locName || !data[locName]) return;
 
-      const isAvailable = item.status === "Operational";
+      // "available" = physically on hand at this location (in stock), i.e. not
+// currently checked out to a student/staff. warehouse: 1 = in stock, 0 = out.
+      const isAvailable = Number(item.warehouse) === 1;
       const type = item.item_group;
 
       let parsedSub = [];
