@@ -257,3 +257,84 @@ test('getStaffCompanyAccess: inventory_manager (level 4) sigue siendo full-acces
   assert.equal(result.role_type, 'inventory_manager');
   assert.deepEqual(result.locations, [], 'full-access debe ignorar location_ids aunque la query los traiga');
 });
+
+// ════════════════════════════════════════════════════════════════════════════════
+// BLOQUE D — Roles category-scoped (nivel 8/9) y el flag `scoped`
+// staffAccess resuelve rol + locations + category_ids en UNA query (LEFT JOIN doble
+// con GROUP_CONCAT DISTINCT). item_inv se filtra por category_name (no tiene
+// category_id), así que los ids asignados se resuelven a nombres en una SEGUNDA
+// query — pero SÓLO cuando el rol tiene categorías asignadas.
+// ════════════════════════════════════════════════════════════════════════════════
+
+const { SCOPED_ROLES } = require('../mysql/helpers/staffAccess');
+
+test('staffAccess: SCOPED_ROLES contiene los 4 roles location/category-scoped (6,7,8,9)', () => {
+  assert.ok(SCOPED_ROLES.has(6) && SCOPED_ROLES.has(7), 'location-scoped');
+  assert.ok(SCOPED_ROLES.has(8) && SCOPED_ROLES.has(9), 'category-scoped');
+  assert.ok(!SCOPED_ROLES.has(3) && !SCOPED_ROLES.has(5),
+    'sale/event_manager y assistant NO son scoped (verían su inventario habitual)');
+  assert.ok(!SCOPED_ROLES.has(0) && !SCOPED_ROLES.has(4), 'full-access no es scoped');
+});
+
+test('getStaffCompanyAccess: category_manager (level 8) resuelve category_ids y sus nombres', async () => {
+  const calls = [];
+  const { getStaffCompanyAccess } = loadStaffAccess(async (sql) => {
+    calls.push(sql);
+    if (/company_item_categories/.test(sql)) {
+      return [[{ category_name: 'Audio' }, { category_name: 'Video' }]];
+    }
+    return [[{ company_staff_id: 'cs-8', role_type: 'category_manager', role_level: 8, location_ids: null, category_ids: '11,12' }]];
+  });
+
+  const result = await getStaffCompanyAccess(60, 5);
+
+  assert.equal(calls.length, 2, 'una query principal + una para resolver nombres de categoría');
+  assert.equal(result.role_type, 'category_manager');
+  assert.equal(result.role_level, 8);
+  assert.equal(result.scoped, true, 'category_manager es scoped');
+  assert.deepEqual(result.categories, [11, 12]);
+  assert.deepEqual(result.categoryNames.slice().sort(), ['Audio', 'Video']);
+  assert.deepEqual(result.locations, [], 'rol de categoría no tiene locations');
+});
+
+test('getStaffCompanyAccess: category_assistant (level 9) es scoped e igual resuelve nombres', async () => {
+  const { getStaffCompanyAccess } = loadStaffAccess(async (sql) => {
+    if (/company_item_categories/.test(sql)) return [[{ category_name: 'Cables' }]];
+    return [[{ company_staff_id: 'cs-9', role_type: 'category_assistant', role_level: 9, location_ids: null, category_ids: '20' }]];
+  });
+
+  const result = await getStaffCompanyAccess(61, 5);
+
+  assert.equal(result.role_level, 9);
+  assert.equal(result.scoped, true);
+  assert.deepEqual(result.categories, [20]);
+  assert.deepEqual(result.categoryNames, ['Cables']);
+});
+
+test('getStaffCompanyAccess: category-scoped sin asignaciones → 1 query, arrays vacíos, scoped=true (fail-closed)', async () => {
+  const calls = [];
+  const { getStaffCompanyAccess } = loadStaffAccess(async (sql) => {
+    calls.push(sql);
+    return [[{ company_staff_id: 'cs-8b', role_type: 'category_manager', role_level: 8, location_ids: null, category_ids: null }]];
+  });
+
+  const result = await getStaffCompanyAccess(62, 5);
+
+  assert.equal(calls.length, 1, 'sin categorías asignadas NO dispara la segunda query');
+  assert.equal(result.scoped, true, 'sigue siendo scoped aunque no tenga asignaciones');
+  assert.deepEqual(result.categories, []);
+  assert.deepEqual(result.categoryNames, []);
+});
+
+test('getStaffCompanyAccess: el flag `scoped` distingue full-access de location-scoped', async () => {
+  const { getStaffCompanyAccess: getFull } = loadStaffAccess(async () =>
+    [[{ company_staff_id: 'cs-1', role_type: 'admin', role_level: 1, location_ids: null, category_ids: null }]]);
+  const full = await getFull(1, 5);
+  assert.equal(full.scoped, false, 'admin (full-access) scoped=false');
+
+  const { getStaffCompanyAccess: getLoc } = loadStaffAccess(async () =>
+    [[{ company_staff_id: 'cs-6', role_type: 'inventory_location_manager', role_level: 6, location_ids: '3', category_ids: null }]]);
+  const loc = await getLoc(6, 5);
+  assert.equal(loc.scoped, true, 'inventory_location_manager scoped=true');
+  assert.deepEqual(loc.categories, [], 'rol de locación no trae categorías');
+});
