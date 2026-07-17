@@ -176,14 +176,14 @@ router.post("/check-item", validateJWT, checkTokenVersion, checkingItem);
 router.post("/retrieve-company-items-with-locations", retrieveCompanyInventory);
 
 // ─── Categories ──────────────────────────────────────────────────────────────
-router.post("/categories", validateJWT, checkTokenVersion, listCompanyCategories);
-router.post("/categories/upsert", validateJWT, checkTokenVersion, upsertCategory);
-router.delete("/categories/:category_id", validateJWT, checkTokenVersion, deleteCategory);
+router.post("/categories", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), listCompanyCategories);
+router.post("/categories/upsert", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), upsertCategory);
+router.delete("/categories/:category_id", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteCategory);
 
 // ─── Groups ──────────────────────────────────────────────────────────────────
-router.post("/groups", validateJWT, checkTokenVersion, listCompanyGroups);
-router.post("/groups/upsert", validateJWT, checkTokenVersion, upsertGroup);
-router.delete("/groups/:group_id", validateJWT, checkTokenVersion, deleteGroup);
+router.post("/groups", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), listCompanyGroups);
+router.post("/groups/upsert", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), upsertGroup);
+router.delete("/groups/:group_id", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteGroup);
 
 // ─── Inventory grouped with sub-levels (new — does not affect existing endpoints)
 router.post(

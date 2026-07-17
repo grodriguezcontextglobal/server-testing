@@ -3,7 +3,7 @@ const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
 const { groupBy } = require("lodash");
 const connection = getConnection();
-const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
+const { getStaffCompanyAccess, buildInventoryScopeFilter } = require("../helpers/staffAccess");
 
 const runGoWorker = require("../../helpers/goWorker");
 const { createQueuedJobController } = require("../../helpers/queuedController");
@@ -376,14 +376,17 @@ const checkingInventoryCurrentState = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
     let formatting = filters.join(" AND ");
 
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      const locPlaceholders = locations.map(() => "?").join(",");
-      formatting += ` AND ii.location IN (${locPlaceholders})`;
-      values.push(...locations);
+    // Full-access: unrestricted. Scoped roles: constrained to their locations/
+    // categories (columns prefixed ii.); no assignments → matches nothing (1=0).
+    const scope = buildInventoryScopeFilter(userAccess, {
+      locationColumn: "ii.location",
+      categoryColumn: "ii.category_name",
+    });
+    if (scope.sql) {
+      formatting = formatting ? `${formatting} AND ${scope.sql}` : scope.sql;
+      values.push(...scope.params);
     }
 
     const query = `

@@ -412,8 +412,9 @@ func InsertBulkItemAlpha(db *sql.DB, req BulkItemAlphaRequest) error {
 
 // RetrieveItemDataRequest matches the input for retrieving item data
 type RetrieveItemDataRequest struct {
-	CompanyID interface{} `json:"company_id"`
-	Locations []string    `json:"locations"`
+	CompanyID  interface{} `json:"company_id"`
+	Locations  []string    `json:"locations"`
+	Categories []string    `json:"categories"`
 }
 
 type GroupStats struct {
@@ -459,6 +460,14 @@ func RetrieveItemData(db *sql.DB, req RetrieveItemDataRequest) (int, int, Groupe
 			args = append(args, loc)
 		}
 		query += fmt.Sprintf(" AND location IN (%s)", strings.Join(placeholders, ","))
+	}
+	if len(req.Categories) > 0 {
+		placeholders := make([]string, len(req.Categories))
+		for i, cat := range req.Categories {
+			placeholders[i] = "?"
+			args = append(args, cat)
+		}
+		query += fmt.Sprintf(" AND category_name IN (%s)", strings.Join(placeholders, ","))
 	}
 	fmt.Println("query:", query)
 	fmt.Println("args:", args)
@@ -676,8 +685,9 @@ func ItemFinalStatusWhenEventIsFinished(db *sql.DB, req ItemFinalStatusRequest) 
 
 // CheckItemRequest matches the Node.js request body for checking items
 type CheckItemRequest struct {
-	Filters   map[string]interface{} `json:"filters"`
-	Locations []string               `json:"locations"`
+	Filters    map[string]interface{} `json:"filters"`
+	Locations  []string               `json:"locations"`
+	Categories []string               `json:"categories"`
 }
 
 // CheckItem handles dynamic filtering of items
@@ -724,6 +734,15 @@ func CheckItem(db *sql.DB, req CheckItemRequest) ([]map[string]interface{}, erro
 		conditions = append(conditions, fmt.Sprintf("location IN (%s)", strings.Join(placeholders, ",")))
 	}
 
+	if len(req.Categories) > 0 {
+		placeholders := make([]string, len(req.Categories))
+		for i, cat := range req.Categories {
+			placeholders[i] = "?"
+			args = append(args, cat)
+		}
+		conditions = append(conditions, fmt.Sprintf("category_name IN (%s)", strings.Join(placeholders, ",")))
+	}
+
 	if len(conditions) > 0 {
 		query += " AND " + strings.Join(conditions, " AND ")
 	}
@@ -744,8 +763,9 @@ func CheckItem(db *sql.DB, req CheckItemRequest) ([]map[string]interface{}, erro
 
 // InventoryCurrentStateRequest matches request for checking inventory current state
 type InventoryCurrentStateRequest struct {
-	CompanyID interface{} `json:"company_id"`
-	Locations []string    `json:"locations"`
+	CompanyID  interface{} `json:"company_id"`
+	Locations  []string    `json:"locations"`
+	Categories []string    `json:"categories"`
 }
 
 // CheckingInventoryCurrentState handles the complex join query for inventory state
@@ -785,6 +805,14 @@ func CheckingInventoryCurrentState(db *sql.DB, req InventoryCurrentStateRequest)
 			args = append(args, loc)
 		}
 		query += fmt.Sprintf(" AND ii.location IN (%s)", strings.Join(placeholders, ","))
+	}
+	if len(req.Categories) > 0 {
+		placeholders := make([]string, len(req.Categories))
+		for i, cat := range req.Categories {
+			placeholders[i] = "?"
+			args = append(args, cat)
+		}
+		query += fmt.Sprintf(" AND ii.category_name IN (%s)", strings.Join(placeholders, ","))
 	}
 
 	query += " ORDER by iiae.event_id DESC"

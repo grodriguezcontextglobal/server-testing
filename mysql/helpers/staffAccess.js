@@ -88,10 +88,64 @@ const getStaffCompanyAccess = async (sqlStaffId, companyId) => {
   };
 };
 
+/**
+ * Builds the inventory-scope SQL fragment for a resolved access object.
+ * Returns { sql, params }:
+ *   - non-scoped role (full-access, or sale/event_manager/assistant): { sql:'', params:[] }
+ *     — no restriction, current behavior preserved.
+ *   - location-scoped role WITH locations: { sql:`${locationColumn} IN (?,..)`, params:[ids] }
+ *   - category-scoped role WITH categories: { sql:`${categoryColumn} IN (?,..)`, params:[names] }
+ *   - scoped role with NO assignments: { sql:'1=0', params:[] } — FAIL-CLOSED (matches nothing).
+ *
+ * The caller appends `sql` to its WHERE (joined with AND) and spreads `params`.
+ */
+const buildInventoryScopeFilter = (access, opts = {}) => {
+  const locationColumn = opts.locationColumn || "location";
+  const categoryColumn = opts.categoryColumn || "category_name";
+  if (!access || !access.scoped) return { sql: "", params: [] };
+
+  if (LOCATION_SCOPED_ROLES.has(access.role_level)) {
+    if (access.locations.length === 0) return { sql: "1=0", params: [] };
+    const ph = access.locations.map(() => "?").join(",");
+    return { sql: `${locationColumn} IN (${ph})`, params: [...access.locations] };
+  }
+  if (CATEGORY_SCOPED_ROLES.has(access.role_level)) {
+    if (access.categoryNames.length === 0) return { sql: "1=0", params: [] };
+    const ph = access.categoryNames.map(() => "?").join(",");
+    return { sql: `${categoryColumn} IN (${ph})`, params: [...access.categoryNames] };
+  }
+  return { sql: "", params: [] };
+};
+
+/**
+ * Applies scope to a Go-worker payload. Returns { payload, denyAll }:
+ *   - non-scoped role: { payload (unchanged), denyAll:false }.
+ *   - location-scoped WITH locations: payload.locations = [ids].
+ *   - category-scoped WITH categories: payload.categories = [names].
+ *   - scoped role with NO assignments: { payload, denyAll:true } — the caller MUST
+ *     return an empty result WITHOUT invoking the worker (fail-closed). Node owns
+ *     fail-closed here (avoids a type-ambiguous "match nothing" value in the payload);
+ *     the worker only ever applies the positive filter.
+ */
+const applyWorkerScope = (access, payload) => {
+  if (!access || !access.scoped) return { payload, denyAll: false };
+  if (LOCATION_SCOPED_ROLES.has(access.role_level)) {
+    if (access.locations.length === 0) return { payload, denyAll: true };
+    return { payload: { ...payload, locations: access.locations }, denyAll: false };
+  }
+  if (CATEGORY_SCOPED_ROLES.has(access.role_level)) {
+    if (access.categoryNames.length === 0) return { payload, denyAll: true };
+    return { payload: { ...payload, categories: access.categoryNames }, denyAll: false };
+  }
+  return { payload, denyAll: false };
+};
+
 module.exports = {
   getStaffCompanyAccess,
   FULL_INVENTORY_ROLES,
   SCOPED_ROLES,
   LOCATION_SCOPED_ROLES,
   CATEGORY_SCOPED_ROLES,
+  buildInventoryScopeFilter,
+  applyWorkerScope,
 };

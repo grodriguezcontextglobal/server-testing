@@ -15,7 +15,11 @@ const { createQueuedJobController } = require("../../helpers/queuedController");
 const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
 require("dotenv").config();
 
-const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
+const {
+  getStaffCompanyAccess,
+  buildInventoryScopeFilter,
+  applyWorkerScope,
+} = require("../helpers/staffAccess");
 
 const ITEM_INV_COLUMNS = new Set([
   "item_id",
@@ -689,21 +693,16 @@ const consultingItemInWarehouseTable = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
     // Base query construction
     let formatting = Object.keys(filters).map((item) => `${item}=?`).join(" AND ");
     const values = Object.values(filters);
 
-    // Roles 0 (root_admin), 1 (admin), 4 (inventory_manager) see all inventory; others are location-scoped
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      const locationPlaceholders = locations.map(() => "?").join(",");
-      if (formatting) {
-        formatting += ` AND location IN (${locationPlaceholders})`;
-      } else {
-        formatting = `location IN (${locationPlaceholders})`;
-      }
-      values.push(...locations);
+    // Full-access roles: no restriction. Location/category-scoped roles: restricted
+    // to their assignments; a scoped role with no assignments matches nothing (1=0).
+    const scope = buildInventoryScopeFilter(userAccess);
+    if (scope.sql) {
+      formatting = formatting ? `${formatting} AND ${scope.sql}` : scope.sql;
+      values.push(...scope.params);
     }
 
     const query = `SELECT * FROM item_inv WHERE ${formatting};`;
@@ -1201,14 +1200,14 @@ const checkingInventoryCurrentState = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
-    const workerPayload = { company_id };
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
+    // Scoped roles constrain the worker query to their locations/categories; a
+    // scoped role with no assignments is denied (empty result, worker not called).
+    const { payload, denyAll } = applyWorkerScope(userAccess, { company_id });
+    if (denyAll) {
+      return response.status(201).json({ ok: true, result: [] });
     }
 
-    const workerResponse = await runGoWorker("checking-inventory-current-state", workerPayload);
+    const workerResponse = await runGoWorker("checking-inventory-current-state", payload);
     if (workerResponse.status === "error") {
       throw new Error(workerResponse.message);
     }
@@ -1241,19 +1240,18 @@ const checkingItem = async (request, response) => {
       }
     }
 
-    const workerPayload = { filters: cleanFilters };
-
     const userAccess = await getStaffCompanyAccess(request.sqlStaffId, bodyFilters.company_id);
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
 
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
+    // Scoped roles constrain to their locations/categories; no assignments → denied.
+    const { payload, denyAll } = applyWorkerScope(userAccess, { filters: cleanFilters });
+    if (denyAll) {
+      return response.status(201).json({ cached: false, items: [], ok: true });
     }
 
-    const result = await runGoWorker("check-item", workerPayload);
+    const result = await runGoWorker("check-item", payload);
 
     return response.status(201).json({
       cached: false,
@@ -2146,14 +2144,21 @@ const retrieveItemData = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
-    const workerPayload = { company_id };
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
+    // Scoped roles constrain to their locations/categories; no assignments → denied
+    // (empty aggregation, worker not called).
+    const { payload, denyAll } = applyWorkerScope(userAccess, { company_id });
+    if (denyAll) {
+      return response.status(200).json({
+        args: [],
+        groupedData: { category_name: {}, item_group: {}, brand: {}, ownership: {} },
+        ok: true,
+        query: "",
+        total: 0,
+        totalAvailable: 0,
+      });
     }
 
-    const result = await runGoWorker("retrieve-item-data", workerPayload);
+    const result = await runGoWorker("retrieve-item-data", payload);
     return response.status(200).json({
       args: result.args,
       groupedData: result.groupedData,
@@ -3067,8 +3072,6 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
     let query = `
       SELECT
         item_id, item_group, warehouse, location, sub_location
@@ -3078,10 +3081,12 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
 
     const values = [company_id];
 
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      const placeholders = locations.map(() => "?").join(",");
-      query += ` AND location IN (${placeholders})`;
-      values.push(...locations);
+    // Full-access: unrestricted. Scoped roles: constrained to their locations/
+    // categories; no assignments → matches nothing (1=0).
+    const scope = buildInventoryScopeFilter(userAccess);
+    if (scope.sql) {
+      query += ` AND ${scope.sql}`;
+      values.push(...scope.params);
     }
 
     const [items] = await connection.execute(query, values);
