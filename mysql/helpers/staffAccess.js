@@ -7,7 +7,9 @@ const FULL_INVENTORY_ROLES = new Set([0, 1, 4]); // root_admin, admin, inventory
 // other non-full roles (sale_manager, event_manager, assistant), these are
 // fail-closed: a scoped role with zero assignments sees NO inventory (enforced by
 // the controllers in Phase 4). Levels 6/7 are location-scoped; 8/9 category-scoped.
-const SCOPED_ROLES = new Set([6, 7, 8, 9]);
+const LOCATION_SCOPED_ROLES = new Set([6, 7]);
+const CATEGORY_SCOPED_ROLES = new Set([8, 9]);
+const SCOPED_ROLES = new Set([...LOCATION_SCOPED_ROLES, ...CATEGORY_SCOPED_ROLES]);
 
 /**
  * Looks up a staff member's role and location/category access for a given company
@@ -86,4 +88,10 @@ const getStaffCompanyAccess = async (sqlStaffId, companyId) => {
   };
 };
 
-module.exports = { getStaffCompanyAccess, FULL_INVENTORY_ROLES, SCOPED_ROLES };
+module.exports = {
+  getStaffCompanyAccess,
+  FULL_INVENTORY_ROLES,
+  SCOPED_ROLES,
+  LOCATION_SCOPED_ROLES,
+  CATEGORY_SCOPED_ROLES,
+};

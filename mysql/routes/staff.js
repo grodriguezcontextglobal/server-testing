@@ -13,9 +13,11 @@ const {
   updateCompanyStaff,
   getStaffPermissions,
   getStaffCompanies,
+  setCompanyStaffScope,
 } = require("../controllers/staff");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
+const { authorizePermission } = require("../../middlewares/authorizePermission");
 const router = Router();
 
 // Basic staff_member table
@@ -27,6 +29,10 @@ router.post("/company-staff",             validateJWT, checkTokenVersion, addCom
 router.patch("/company-staff",            validateJWT, checkTokenVersion, updateCompanyStaff);
 router.patch("/company-staff/role",       validateJWT, checkTokenVersion, updateCompanyStaffRole);
 router.post("/company-staff/permissions", validateJWT, checkTokenVersion, getStaffPermissions);
+
+// location/category scope assignment (full-replace). Managing who sees what is a
+// privileged action → requires the caller to hold staff:update for the company.
+router.put("/company-staff/scope", validateJWT, checkTokenVersion, authorizePermission("staff", "update"), setCompanyStaffScope);
 
 // login: lista de empresas del staff con roleType y locations (reemplaza /company/search-company)
 router.get("/companies", validateJWT, checkTokenVersion, getStaffCompanies);

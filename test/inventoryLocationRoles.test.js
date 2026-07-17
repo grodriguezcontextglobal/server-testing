@@ -10,11 +10,13 @@ const path   = require('node:path');
 const { VALID_ROLE_TYPES: ROLES_SET, VALID_ROLE_TYPES_LIST: ROLES_LIST } =
   require('../mysql/constants/roles');
 
-test('roles/constants: exporta Set y Array con los 8 role_types canónicos', () => {
-  assert.equal(ROLES_SET.size, 8, 'Set debe tener exactamente 8 roles');
-  assert.equal(ROLES_LIST.length, 8, 'Array debe tener exactamente 8 roles');
+test('roles/constants: exporta Set y Array con los 10 role_types canónicos', () => {
+  assert.equal(ROLES_SET.size, 10, 'Set debe tener exactamente 10 roles');
+  assert.equal(ROLES_LIST.length, 10, 'Array debe tener exactamente 10 roles');
   assert.ok(ROLES_SET.has('inventory_location_manager'),   'debe incluir inventory_location_manager');
   assert.ok(ROLES_SET.has('inventory_location_assistant'), 'debe incluir inventory_location_assistant');
+  assert.ok(ROLES_SET.has('category_manager'),             'debe incluir category_manager');
+  assert.ok(ROLES_SET.has('category_assistant'),           'debe incluir category_assistant');
   assert.ok(ROLES_SET.has('inventory_manager'),            'inventory_manager no debe eliminarse');
   // Set y Array deben ser consistentes
   assert.deepEqual(new Set(ROLES_LIST), ROLES_SET, 'Set y Array deben contener los mismos valores');
