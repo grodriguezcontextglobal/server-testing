@@ -50,6 +50,13 @@ INSERT IGNORE INTO role_permissions
     AND p.resource = 'inventory'
     AND p.action IN ('read','update');
 
+-- staff:update_contact is an ALL_ROLES baseline (self-service) per
+-- seed_roles_permissions.sql — grant it to the two new roles too.
+INSERT IGNORE INTO role_permissions
+  SELECT r.id, p.id FROM roles r, permissions p
+  WHERE r.role_type IN ('category_manager','category_assistant')
+    AND p.resource = 'staff' AND p.action = 'update_contact';
+
 -- ─── item_inv(category_name) index ─────────────────────────────────────────────
 -- The scope filter is `category_name IN (...)` on item_inv (no category_id FK on
 -- that table). Add a supporting index only if it does not already exist.
