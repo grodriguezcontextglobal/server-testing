@@ -53,6 +53,7 @@ const getStaffCompanyAccess = async (sqlStaffId, companyId) => {
   // Full-access roles bypass location/category assignments entirely.
   if (FULL_INVENTORY_ROLES.has(roleLevel)) {
     return {
+      company_staff_id: row.company_staff_id,
       role_type: row.role_type,
       role_level: roleLevel,
       scoped: false,
@@ -79,6 +80,7 @@ const getStaffCompanyAccess = async (sqlStaffId, companyId) => {
   }
 
   return {
+    company_staff_id: row.company_staff_id,
     role_type: row.role_type,
     role_level: roleLevel,
     scoped: SCOPED_ROLES.has(roleLevel),
@@ -144,6 +146,55 @@ const applyWorkerScope = (access, payload) => {
   return { payload, denyAll: false };
 };
 
+const WRITE_FLAG_COLUMN = { create: "can_create", update: "can_update", delete: "can_delete" };
+
+/**
+ * Per-assignment WRITE gate for scoped roles. `authorizePermission` already checked
+ * that the ROLE holds inventory:<action>; this refines it to the can_<action> flag
+ * on the staff member's assignment for the item's own location/category.
+ *
+ *   - non-scoped / full-access role → always true (role gate is sufficient).
+ *   - scoped role: the target location/category must be within the staff's scope
+ *     AND the matching assignment row must have the can_<action> flag set.
+ *
+ * @param {object} access - result of getStaffCompanyAccess (must include company_staff_id)
+ * @param {'create'|'update'|'delete'} action
+ * @param {{ locationId?: number, categoryName?: string }} target - the item's own scope
+ * @returns {Promise<boolean>}
+ */
+const canWriteInScope = async (access, action, target = {}) => {
+  if (!access || !access.scoped) return true;
+  const col = WRITE_FLAG_COLUMN[action];
+  if (!col) return false;
+  const connection = getConnection();
+
+  if (LOCATION_SCOPED_ROLES.has(access.role_level)) {
+    const locationId = target.locationId;
+    if (locationId == null || !access.locations.includes(Number(locationId))) return false;
+    const [[flagRow]] = await connection.execute(
+      `SELECT ${col} AS flag FROM staff_location_access
+       WHERE company_staff_id = ? AND location_id = ? LIMIT 1`,
+      [access.company_staff_id, locationId]
+    );
+    return Boolean(flagRow && flagRow.flag);
+  }
+
+  if (CATEGORY_SCOPED_ROLES.has(access.role_level)) {
+    const categoryName = target.categoryName;
+    if (categoryName == null || !access.categoryNames.includes(categoryName)) return false;
+    const [[flagRow]] = await connection.execute(
+      `SELECT sca.${col} AS flag
+       FROM staff_category_access sca
+       JOIN company_item_categories cic ON cic.category_id = sca.category_id
+       WHERE sca.company_staff_id = ? AND cic.category_name = ? LIMIT 1`,
+      [access.company_staff_id, categoryName]
+    );
+    return Boolean(flagRow && flagRow.flag);
+  }
+
+  return true;
+};
+
 module.exports = {
   getStaffCompanyAccess,
   FULL_INVENTORY_ROLES,
@@ -152,4 +203,5 @@ module.exports = {
   CATEGORY_SCOPED_ROLES,
   buildInventoryScopeFilter,
   applyWorkerScope,
+  canWriteInScope,
 };

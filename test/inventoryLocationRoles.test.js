@@ -340,3 +340,65 @@ test('getStaffCompanyAccess: el flag `scoped` distingue full-access de location-
   assert.equal(loc.scoped, true, 'inventory_location_manager scoped=true');
   assert.deepEqual(loc.categories, [], 'rol de locación no trae categorías');
 });
+
+// ════════════════════════════════════════════════════════════════════════════════
+// BLOQUE E — canWriteInScope: flags can_create/can_update/can_delete por asignación
+// ════════════════════════════════════════════════════════════════════════════════
+
+const locAccess = (locations, cs = 'cs-6') => ({ company_staff_id: cs, role_level: 6, scoped: true, locations, categoryNames: [] });
+const catAccess = (categoryNames, cs = 'cs-8') => ({ company_staff_id: cs, role_level: 8, scoped: true, locations: [], categoryNames });
+
+test('canWriteInScope: rol full-access/no-scoped → siempre true, sin consultar DB', async () => {
+  let called = false;
+  const { canWriteInScope } = loadStaffAccess(async () => { called = true; return [[]]; });
+  const r = await canWriteInScope({ scoped: false, role_level: 1 }, 'delete', { locationId: 3 });
+  assert.equal(r, true);
+  assert.equal(called, false, 'no debe tocar la DB para full-access');
+});
+
+test('canWriteInScope: acción inválida → false', async () => {
+  const { canWriteInScope } = loadStaffAccess(async () => [[{ flag: 1 }]]);
+  assert.equal(await canWriteInScope(locAccess([3]), 'frobnicate', { locationId: 3 }), false);
+});
+
+test('canWriteInScope: locación fuera del scope → false sin consultar el flag', async () => {
+  let called = false;
+  const { canWriteInScope } = loadStaffAccess(async () => { called = true; return [[{ flag: 1 }]]; });
+  const r = await canWriteInScope(locAccess([3, 7]), 'update', { locationId: 99 });
+  assert.equal(r, false);
+  assert.equal(called, false, 'no consulta el flag si la locación no está en el scope');
+});
+
+test('canWriteInScope: locación en scope + flag can_update=1 → true', async () => {
+  const { canWriteInScope } = loadStaffAccess(async (sql) => {
+    assert.match(sql, /can_update/);
+    assert.match(sql, /staff_location_access/);
+    return [[{ flag: 1 }]];
+  });
+  assert.equal(await canWriteInScope(locAccess([3]), 'update', { locationId: 3 }), true);
+});
+
+test('canWriteInScope: locación en scope pero flag can_delete=0 → false', async () => {
+  const { canWriteInScope } = loadStaffAccess(async () => [[{ flag: 0 }]]);
+  assert.equal(await canWriteInScope(locAccess([3]), 'delete', { locationId: 3 }), false);
+});
+
+test('canWriteInScope: categoría en scope + can_create=1 → true (join por category_name)', async () => {
+  const { canWriteInScope } = loadStaffAccess(async (sql) => {
+    assert.match(sql, /can_create/);
+    assert.match(sql, /staff_category_access/);
+    assert.match(sql, /company_item_categories/);
+    return [[{ flag: 1 }]];
+  });
+  assert.equal(await canWriteInScope(catAccess(['Audio']), 'create', { categoryName: 'Audio' }), true);
+});
+
+test('canWriteInScope: categoría fuera del scope → false', async () => {
+  const { canWriteInScope } = loadStaffAccess(async () => [[{ flag: 1 }]]);
+  assert.equal(await canWriteInScope(catAccess(['Audio']), 'update', { categoryName: 'Video' }), false);
+});
+
+test('canWriteInScope: categoría en scope pero flag ausente → false', async () => {
+  const { canWriteInScope } = loadStaffAccess(async () => [[]]); // no row
+  assert.equal(await canWriteInScope(catAccess(['Audio']), 'delete', { categoryName: 'Audio' }), false);
+});
