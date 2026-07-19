@@ -76,16 +76,16 @@ router.post("/inventory_event/:id", consultingInventoryInEvent);
 router.post("/tracking_item/:id", consultingInventoryTracking);
 
 //insert new item
-router.post("/new_item", insertingItem);
+router.post("/new_item", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), insertingItem);
 
 //insert bulk item
 router.post("/bulk-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), insertBulkItem);
 
 //insert bulk item alpha numeric format
-router.post("/bulk-item-alphanumeric", validateJWT, insertBulkItemAlhpanumericFormat);
+router.post("/bulk-item-alphanumeric", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), insertBulkItemAlhpanumericFormat);
 
 //update new item
-router.post("/edit-item", updateItemInTable);
+router.post("/edit-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "update"), updateItemInTable);
 
 //updating item in inv after being added to event set up
 router.post("/item-out-warehouse", updateItemInWarehouseAfterBeingAddedToEvent);

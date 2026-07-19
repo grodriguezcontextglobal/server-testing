@@ -354,6 +354,19 @@ const insertingItem = async (request, response) => {
       supplier_info || null,
     ];
 
+    // Scope write gate (create): a location/category-scoped role may only create
+    // items within its assigned scope (with can_create). Full-access roles pass.
+    // rollback + return is safe here — the `finally` still releases the connection.
+    const creatorAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!creatorAccess) {
+      await connection.rollback();
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    if (!(await canWriteInScope(creatorAccess, "create", { locationId, categoryName: category_name }))) {
+      await connection.rollback();
+      return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
+    }
+
     console.log(values);
     const [result] = await connection.execute(query, values);
 
@@ -804,6 +817,32 @@ const updateItemInTable = async (request, response) => {
         msg: "Provide at least one identifying field to target the item (e.g., item_id or serial_number with company_id).",
         ok: false,
       });
+    }
+
+    // Scope write gate (update): a location/category-scoped role may only edit
+    // items within its CURRENT scope (with can_update). Checked against each
+    // targeted item's own location/category. Full-access roles skip this.
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, body.company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    if (userAccess.scoped) {
+      const [targetRows] = await connection.execute(
+        `SELECT location_id, category_name FROM item_inv WHERE ${whereParts.join(" AND ")}`,
+        whereValues
+      );
+      if (!targetRows.length) {
+        return response.status(404).json({ ok: false, msg: "Item not found for this company" });
+      }
+      for (const target of targetRows) {
+        const allowed = await canWriteInScope(userAccess, "update", {
+          locationId: target.location_id,
+          categoryName: target.category_name,
+        });
+        if (!allowed) {
+          return response.status(403).json({ ok: false, msg: "Not allowed to update items in this location/category" });
+        }
+      }
     }
 
     // Build SET clause from provided updatable fields (excluding identifiers)
