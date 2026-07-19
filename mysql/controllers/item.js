@@ -19,6 +19,7 @@ const {
   getStaffCompanyAccess,
   buildInventoryScopeFilter,
   applyWorkerScope,
+  canWriteInScope,
 } = require("../helpers/staffAccess");
 
 const ITEM_INV_COLUMNS = new Set([
@@ -648,9 +649,38 @@ const consultingItem = async (request, response) => {
 const deleteItem = async (request, response) => {
   try {
     const connection = getConnection();
-    const query = "DELETE FROM item_inv WHERE item_id=?";
-    const values = [request.body.item_id];
-    const [result] = await connection.execute(query, values);
+    const { item_id, company_id } = request.body;
+    if (!item_id || !company_id) {
+      return response.status(400).json({ ok: false, msg: "item_id and company_id are required" });
+    }
+
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+
+    // Load the item's own scope (and enforce multi-tenant: it must belong to company_id).
+    const [[item]] = await connection.execute(
+      "SELECT location_id, category_name FROM item_inv WHERE item_id = ? AND company_id = ? LIMIT 1",
+      [item_id, company_id]
+    );
+    if (!item) {
+      return response.status(404).json({ ok: false, msg: "Item not found for this company" });
+    }
+
+    // Per-assignment write gate: scoped roles need can_delete on the item's location/category.
+    const allowed = await canWriteInScope(userAccess, "delete", {
+      locationId: item.location_id,
+      categoryName: item.category_name,
+    });
+    if (!allowed) {
+      return response.status(403).json({ ok: false, msg: "Not allowed to delete items in this location/category" });
+    }
+
+    const [result] = await connection.execute(
+      "DELETE FROM item_inv WHERE item_id = ? AND company_id = ?",
+      [item_id, company_id]
+    );
     return response.status(201).json({
       item_deleted: result,
       ok: true,

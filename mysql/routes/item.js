@@ -91,8 +91,8 @@ router.post("/edit-item", updateItemInTable);
 router.post("/item-out-warehouse", updateItemInWarehouseAfterBeingAddedToEvent);
 
 //updateItemInWarehouseAfterBeingAddedToEvent
-//delete item
-router.post("/:id", deleteItem);
+//delete item (catch-all POST /:id — must stay authenticated; scope enforced in the controller)
+router.post("/:id", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
 
 //delete item in inventory
 router.post("/delete-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
