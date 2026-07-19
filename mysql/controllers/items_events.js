@@ -381,7 +381,7 @@ const checkingInventoryCurrentState = async (request, response) => {
     // Full-access: unrestricted. Scoped roles: constrained to their locations/
     // categories (columns prefixed ii.); no assignments → matches nothing (1=0).
     const scope = buildInventoryScopeFilter(userAccess, {
-      locationColumn: "ii.location",
+      locationColumn: "ii.location_id",
       categoryColumn: "ii.category_name",
     });
     if (scope.sql) {

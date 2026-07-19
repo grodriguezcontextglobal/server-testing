@@ -97,10 +97,14 @@ const getStaffCompanyAccess = async (sqlStaffId, companyId) => {
  *   - category-scoped role WITH categories: { sql:`${categoryColumn} IN (?,..)`, params:[names] }
  *   - scoped role with NO assignments: { sql:'1=0', params:[] } — FAIL-CLOSED (matches nothing).
  *
+ * Location filtering is by location_id (the numeric column staff_location_access
+ * stores), NOT the location NAME — item_inv.location is a display name that is not
+ * unique per company (duplicate names exist), so filtering by name would over-match.
+ *
  * The caller appends `sql` to its WHERE (joined with AND) and spreads `params`.
  */
 const buildInventoryScopeFilter = (access, opts = {}) => {
-  const locationColumn = opts.locationColumn || "location";
+  const locationColumn = opts.locationColumn || "location_id";
   const categoryColumn = opts.categoryColumn || "category_name";
   if (!access || !access.scoped) return { sql: "", params: [] };
 

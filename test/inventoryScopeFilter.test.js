@@ -18,9 +18,9 @@ test('buildInventoryScopeFilter: full-access → sin restricción', () => {
   assert.deepEqual(buildInventoryScopeFilter(full()), { sql: '', params: [] });
 });
 
-test('buildInventoryScopeFilter: rol de locación con locaciones → location IN', () => {
+test('buildInventoryScopeFilter: rol de locación filtra por location_id (no por nombre)', () => {
   const r = buildInventoryScopeFilter(loc([3, 7]));
-  assert.equal(r.sql, 'location IN (?,?)');
+  assert.equal(r.sql, 'location_id IN (?,?)');
   assert.deepEqual(r.params, [3, 7]);
 });
 
@@ -38,8 +38,8 @@ test('buildInventoryScopeFilter: rol scoped SIN asignaciones → 1=0 (fail-close
 test('buildInventoryScopeFilter: respeta columnas custom (prefijo ii.)', () => {
   const r = buildInventoryScopeFilter(cat(['Cables']), { locationColumn: 'ii.location', categoryColumn: 'ii.category_name' });
   assert.equal(r.sql, 'ii.category_name IN (?)');
-  const rl = buildInventoryScopeFilter(loc([5]), { locationColumn: 'ii.location', categoryColumn: 'ii.category_name' });
-  assert.equal(rl.sql, 'ii.location IN (?)');
+  const rl = buildInventoryScopeFilter(loc([5]), { locationColumn: 'ii.location_id', categoryColumn: 'ii.category_name' });
+  assert.equal(rl.sql, 'ii.location_id IN (?)');
 });
 
 test('buildInventoryScopeFilter: null/undefined access → sin restricción', () => {

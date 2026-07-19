@@ -413,7 +413,7 @@ func InsertBulkItemAlpha(db *sql.DB, req BulkItemAlphaRequest) error {
 // RetrieveItemDataRequest matches the input for retrieving item data
 type RetrieveItemDataRequest struct {
 	CompanyID  interface{} `json:"company_id"`
-	Locations  []string    `json:"locations"`
+	Locations  []int       `json:"locations"`
 	Categories []string    `json:"categories"`
 }
 
@@ -459,7 +459,7 @@ func RetrieveItemData(db *sql.DB, req RetrieveItemDataRequest) (int, int, Groupe
 			placeholders[i] = "?"
 			args = append(args, loc)
 		}
-		query += fmt.Sprintf(" AND location IN (%s)", strings.Join(placeholders, ","))
+		query += fmt.Sprintf(" AND location_id IN (%s)", strings.Join(placeholders, ","))
 	}
 	if len(req.Categories) > 0 {
 		placeholders := make([]string, len(req.Categories))
@@ -686,7 +686,7 @@ func ItemFinalStatusWhenEventIsFinished(db *sql.DB, req ItemFinalStatusRequest) 
 // CheckItemRequest matches the Node.js request body for checking items
 type CheckItemRequest struct {
 	Filters    map[string]interface{} `json:"filters"`
-	Locations  []string               `json:"locations"`
+	Locations  []int                  `json:"locations"`
 	Categories []string               `json:"categories"`
 }
 
@@ -731,7 +731,7 @@ func CheckItem(db *sql.DB, req CheckItemRequest) ([]map[string]interface{}, erro
 			placeholders[i] = "?"
 			args = append(args, loc)
 		}
-		conditions = append(conditions, fmt.Sprintf("location IN (%s)", strings.Join(placeholders, ",")))
+		conditions = append(conditions, fmt.Sprintf("location_id IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	if len(req.Categories) > 0 {
@@ -764,7 +764,7 @@ func CheckItem(db *sql.DB, req CheckItemRequest) ([]map[string]interface{}, erro
 // InventoryCurrentStateRequest matches request for checking inventory current state
 type InventoryCurrentStateRequest struct {
 	CompanyID  interface{} `json:"company_id"`
-	Locations  []string    `json:"locations"`
+	Locations  []int       `json:"locations"`
 	Categories []string    `json:"categories"`
 }
 
@@ -804,7 +804,7 @@ func CheckingInventoryCurrentState(db *sql.DB, req InventoryCurrentStateRequest)
 			placeholders[i] = "?"
 			args = append(args, loc)
 		}
-		query += fmt.Sprintf(" AND ii.location IN (%s)", strings.Join(placeholders, ","))
+		query += fmt.Sprintf(" AND ii.location_id IN (%s)", strings.Join(placeholders, ","))
 	}
 	if len(req.Categories) > 0 {
 		placeholders := make([]string, len(req.Categories))
