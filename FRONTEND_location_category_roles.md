@@ -239,3 +239,28 @@ permissions there.
    `category_name` only (not `sub_category_name`).
 4. **Mixed scope:** a role is either location- or category-scoped by design (not both). Confirm the
    UI never needs to show both selectors at once.
+
+---
+
+## 9. Phase C shipped — write enforcement + newly-gated endpoint (ACTION REQUIRED)
+
+The granular `can_create/can_update/can_delete` flags (open question §8.1) are now **enforced**.
+Each inventory write is gated by the flag on the acting staff's assignment for the item's own
+location/category. Full-access roles (root_admin/admin/inventory_manager) are unaffected.
+
+**Breaking — new auth on a previously-open endpoint:**
+- `POST /api/db_item/item-out-warehouse` (item move-out during event assignment) **now requires the
+  JWT** (`x-token` header) **and** `inventory:update`. It was previously unauthenticated.
+  The event-assignment roles (`sale_manager`, `event_manager`) already hold `inventory:update`, so
+  they keep working **as long as the frontend sends `x-token` on this call**. Verify the event flow
+  attaches the token here — otherwise the call returns **401** (missing identity) or **403**.
+
+**New behavior on bulk/move endpoints — partial success:**
+- `POST /delete-bulk-items`, `POST /item-out-warehouse`: for a scoped role, items outside the
+  staff's permitted scope are **silently skipped** (not an error). The response now includes
+  `skipped_count` when any rows were skipped. A request where *nothing* is permitted returns
+  `deleted_count: 0` (bulk delete) / `403` (item-out-warehouse).
+- `POST /delete-bulk-items-criteria`: the criteria are intersected with the staff's scope. A
+  category outside scope returns `200 { deleted_count: 0 }` (no-op), not an error.
+- `POST /bulk-item`, `POST /bulk-item-alphanumeric`, `POST /new_item`, `POST /edit-item`: a scoped
+  role without the relevant `can_*` flag on the target location/category gets **403**.

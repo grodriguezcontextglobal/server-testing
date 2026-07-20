@@ -88,7 +88,11 @@ router.post("/bulk-item-alphanumeric", validateJWT, checkTokenVersion, authorize
 router.post("/edit-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "update"), updateItemInTable);
 
 //updating item in inv after being added to event set up
-router.post("/item-out-warehouse", updateItemInWarehouseAfterBeingAddedToEvent);
+// Previously ungated. Gated to match the other inventory writes: the event-
+// assignment roles (sale_manager L2, event_manager L3) already hold
+// inventory:update, so this does not lock them out; scope is enforced in the
+// controller. Clients must now send the JWT to this endpoint (frontend coordination).
+router.post("/item-out-warehouse", validateJWT, checkTokenVersion, authorizePermission("inventory", "update"), updateItemInWarehouseAfterBeingAddedToEvent);
 
 //updateItemInWarehouseAfterBeingAddedToEvent
 //delete item (catch-all POST /:id — must stay authenticated; scope enforced in the controller)

@@ -313,6 +313,14 @@ test('mysql/routes/item.js: POST /bulk-item tiene authorizePermission', () => {
   assert.ok(hasAuthzPermission(handlers), 'authorizePermission debe estar en POST /bulk-item');
 });
 
+test('mysql/routes/item.js: POST /item-out-warehouse tiene validateJWT + authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/item');
+  const handlers = getRouteHandlers(router, 'POST', '/item-out-warehouse');
+  assert.ok(handlers !== null, 'La ruta POST /item-out-warehouse debe existir');
+  assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en POST /item-out-warehouse');
+  assert.ok(hasAuthzPermission(handlers), 'authorizePermission debe estar en POST /item-out-warehouse');
+});
+
 test('mysql/routes/inventory.js: POST /container-items tiene validateJWT', () => {
   const router = loadRouter('../mysql/routes/inventory');
   const handlers = getRouteHandlers(router, 'POST', '/container-items');

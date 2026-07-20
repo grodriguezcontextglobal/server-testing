@@ -972,6 +972,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
   request,
   response,
 ) => {
+  let connection = null;
   try {
     const { warehouse, company_id, item_group, category_name, data, logistic_status } =
       request.body;
@@ -989,15 +990,20 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
         ok: false,
       });
     }
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+
     const pool = getConnection();
-    const connection = await pool.getConnection(); // Get dedicated connection for transaction
+    connection = await pool.getConnection(); // Get dedicated connection for transaction
     // Prepare the serial numbers for the IN clause
     const serialNumbers = data.map((item) => item.toString());
     const placeholders = serialNumbers.map(() => "?").join(",");
 
     // Find items query with proper parameterization
     const findIndexQuery = `
-      SELECT item_id, serial_number
+      SELECT item_id, serial_number, location_id, category_name
       FROM item_inv
       WHERE item_group = ?
         AND category_name = ?
@@ -1020,8 +1026,29 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
       });
     }
 
+    // Process-only-permitted: this moves inventory in/out of the warehouse, so
+    // scoped roles may only touch items within their can_update scope. Non-
+    // permitted items are skipped (reported via skipped_count). Full-access passes.
+    let scopedResults = results;
+    let skippedCount = 0;
+    if (userAccess.scoped) {
+      const writable = await getWritableScope(userAccess, "update");
+      const permitted = new Set((writable.values || []).map(String));
+      scopedResults = results.filter((r) =>
+        permitted.has(String(writable.dimension === "location" ? r.location_id : r.category_name))
+      );
+      skippedCount = results.length - scopedResults.length;
+      if (scopedResults.length === 0) {
+        return response.status(403).json({
+          ok: false,
+          msg: "Not allowed to update items in this location/category",
+          skipped_count: skippedCount,
+        });
+      }
+    }
+
     // Fix: Keep item_ids as numbers instead of converting to strings
-    const itemIds = results.map((item) => item.item_id);
+    const itemIds = scopedResults.map((item) => item.item_id);
 
     const idPlaceholders = itemIds.map(() => "?").join(",");
 
@@ -1038,6 +1065,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     return response.status(201).json({
       msg: "Items updated successfully",
       ok: true,
+      ...(skippedCount > 0 ? { skipped_count: skippedCount } : {}),
     });
   } catch (error) {
     logger.error(
@@ -1049,6 +1077,9 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
       msg: `Server error: ${error.message}`,
       ok: false,
     });
+  } finally {
+    // The dedicated connection was leaked on every path before; release it now.
+    if (connection) connection.release();
   }
 };
 
