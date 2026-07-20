@@ -152,10 +152,12 @@ event-assignment flow now** — if it currently calls this without the token, it
 
 ---
 
-## 6. Categories source (for the multi-select)
+## 6. Scope sources (for the multi-selects)
 
-### `POST /api/db_company/categories`
-Body: `{ "company_id": 62 }`
+Both return `{ ok, result: [...] }` and take body `{ "company_id": 62 }`. Pick the one matching the
+role's dimension (§4). Both are gated `inventory:read`.
+
+### Categories → `POST /api/db_company/categories`
 ```jsonc
 // 200
 { "ok": true, "result": [
@@ -164,6 +166,19 @@ Body: `{ "company_id": 62 }`
 ```
 Send **`category_id`** to §4; display **`category_name`**. If a `category_name` repeats across
 `sub_category_name` rows, dedupe by `category_name` (scope is by name server-side).
+
+### Locations → `POST /api/db_company/locations`
+```jsonc
+// 200
+{ "ok": true, "result": [
+  { "location_id": 41, "location_name": "plantation, florida" }
+]}
+```
+Send **`location_id`** to §4; display **`location_name`**. Returns **all active** company
+locations (not filtered by the caller's own scope) — this is the correct source for building the
+assignment multi-select. `location_name` is not unique per company; the `location_id` is the key.
+> Do **not** use `/api/db_location/companies/:id/locations` for this: that endpoint filters by the
+> caller's own inventory scope and returns a nested tree — wrong shape/semantics for assignment.
 
 ---
 

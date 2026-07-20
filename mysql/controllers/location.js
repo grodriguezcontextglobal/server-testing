@@ -535,11 +535,42 @@ const deleteLocation = async (req, res) => {
   }
 };
 
+/**
+ * Flat list of ALL active locations for a company — the location-dimension
+ * counterpart of listCompanyCategories (POST /api/db_company/categories).
+ * Intended for admin UIs such as scope assignment: unlike getCompanyLocations,
+ * it is NOT filtered by the caller's own inventory scope, so it always returns
+ * the full company set. Returns { ok, result: [{ location_id, location_name }] }.
+ */
+const listCompanyLocations = async (request, response) => {
+  try {
+    const { company_id } = request.body;
+    if (!company_id) {
+      return response.status(400).json({ ok: false, msg: "company_id is required" });
+    }
+
+    const connection = getConnection();
+    const [rows] = await connection.execute(
+      `SELECT location_id, location_name
+       FROM locations
+       WHERE company_id = ? AND status = 'active'
+       ORDER BY location_name ASC`,
+      [company_id],
+    );
+
+    return response.status(200).json({ ok: true, result: rows });
+  } catch (error) {
+    logger.error("listCompanyLocations error:", error);
+    return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 module.exports = {
   createLocation,
   bulkAssignInventory,
   getCompanyLocations,
   getCompanyLocationTree,
+  listCompanyLocations,
   processLocation,
   deleteLocation,
 };
