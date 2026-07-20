@@ -66,6 +66,19 @@ can hold `inventory:update` at the role level yet have `can_update:false` on a g
 Body includes `role_type`. Both now accept `category_manager` / `category_assistant`.
 On success the staff member exists but has **no scope yet** — immediately call §4.
 
+**`role_type` is a STRING, never a numeric level.** Send the literal role name
+(`"category_manager"`, `"category_assistant"`, `"inventory_location_manager"`,
+`"inventory_location_assistant"`, …). The server validates it and resolves `role_type → role_id`
+internally; sending a number returns `400 "Invalid role_type"`. `role_level` (8/9/…) is
+**read-only, response-side** (§2) — use it for UI logic, never send it. Note the body's `staff_id`
+is the **target** being assigned; the acting user's identity comes from the JWT.
+```jsonc
+// POST /api/db_staff/company-staff
+{ "company_id": 62, "staff_id": 158, "role_type": "category_manager", "assigned_by": "<uid>", "company_name": "Acme" }
+// PATCH /api/db_staff/company-staff/role
+{ "company_id": 62, "staff_id": 158, "role_type": "category_assistant" }
+```
+
 ---
 
 ## 4. Assign the scope  (the core call)
