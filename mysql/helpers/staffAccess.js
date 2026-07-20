@@ -195,6 +195,53 @@ const canWriteInScope = async (access, action, target = {}) => {
   return true;
 };
 
+/**
+ * Batch counterpart to canWriteInScope, for bulk / criteria writes
+ * (process-only-permitted). Resolves — in a single query — which of the staff's
+ * scope values carry the can_<action> flag, so a caller can filter many rows
+ * without one per-row gate call.
+ *
+ * Returns one of:
+ *   - non-scoped / full-access role → { full: true }
+ *   - location-scoped role → { full:false, dimension:'location', values:number[] }
+ *       (location_ids the staff may write with can_<action>)
+ *   - category-scoped role → { full:false, dimension:'category', values:string[] }
+ *       (category_names the staff may write with can_<action>)
+ * `values` may be empty → fail-closed (the caller permits nothing).
+ *
+ * @param {object} access - result of getStaffCompanyAccess (must include company_staff_id)
+ * @param {'create'|'update'|'delete'} action
+ * @returns {Promise<{full:boolean, dimension?:'location'|'category', values?:Array}>}
+ */
+const getWritableScope = async (access, action) => {
+  if (!access || !access.scoped) return { full: true };
+  const col = WRITE_FLAG_COLUMN[action];
+  if (!col) return { full: false, dimension: null, values: [] };
+  const connection = getConnection();
+
+  if (LOCATION_SCOPED_ROLES.has(access.role_level)) {
+    const [rows] = await connection.execute(
+      `SELECT location_id FROM staff_location_access
+       WHERE company_staff_id = ? AND ${col} = 1`,
+      [access.company_staff_id]
+    );
+    return { full: false, dimension: "location", values: rows.map((r) => Number(r.location_id)) };
+  }
+
+  if (CATEGORY_SCOPED_ROLES.has(access.role_level)) {
+    const [rows] = await connection.execute(
+      `SELECT DISTINCT cic.category_name
+       FROM staff_category_access sca
+       JOIN company_item_categories cic ON cic.category_id = sca.category_id
+       WHERE sca.company_staff_id = ? AND sca.${col} = 1`,
+      [access.company_staff_id]
+    );
+    return { full: false, dimension: "category", values: rows.map((r) => r.category_name) };
+  }
+
+  return { full: false, dimension: null, values: [] };
+};
+
 module.exports = {
   getStaffCompanyAccess,
   FULL_INVENTORY_ROLES,
@@ -204,4 +251,5 @@ module.exports = {
   buildInventoryScopeFilter,
   applyWorkerScope,
   canWriteInScope,
+  getWritableScope,
 };

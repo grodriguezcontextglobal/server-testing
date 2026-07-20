@@ -20,6 +20,7 @@ const {
   buildInventoryScopeFilter,
   applyWorkerScope,
   canWriteInScope,
+  getWritableScope,
 } = require("../helpers/staffAccess");
 
 const ITEM_INV_COLUMNS = new Set([
@@ -448,6 +449,17 @@ const insertBulkItem = async (request, response) => {
       });
     }
 
+    // Scope write gate (create): a location/category-scoped role may only bulk-create
+    // items within its assigned scope (with can_create). Every row shares this single
+    // location + category, so an all-or-nothing check is correct here. Full-access passes.
+    const creatorAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!creatorAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    if (!(await canWriteInScope(creatorAccess, "create", { locationId, categoryName: category_name }))) {
+      return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
+    }
+
     if (!min_serial_number || !max_serial_number) {
       return response.status(400).json({
         msg: "Minimum and maximum serial numbers are required.",
@@ -577,10 +589,12 @@ function createInsertBulkItemAlphanumeric({
   enqueueFn = enqueue,
   extractContextFn = extractJobContext,
   connectionFn = getConnection,
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  canWriteInScopeFn = canWriteInScope,
 } = {}) {
   return async function insertBulkItemAlhpanumericFormat(request, response) {
     try {
-      const { location, company_id } = request.body;
+      const { location, company_id, category_name } = request.body;
 
       const locName = typeof location === "string" ? location : location?.name;
       if (!locName || !company_id) {
@@ -597,6 +611,17 @@ function createInsertBulkItemAlphanumeric({
           msg: `Location '${locName}' not found.`,
           ok: false,
         });
+      }
+
+      // Scope write gate (create): scoped roles may only enqueue bulk inserts within
+      // their assigned scope (with can_create). Single location + category per request,
+      // so an all-or-nothing check is correct. Full-access roles pass.
+      const access = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
+      if (!access) {
+        return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+      }
+      if (!(await canWriteInScopeFn(access, "create", { locationId, categoryName: category_name }))) {
+        return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
       }
 
       const payload = { ...request.body, location_id: locationId };
@@ -3460,9 +3485,46 @@ const deleteBulkItems = async (request, response) => {
       });
     }
 
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+
+    // Process-only-permitted: for a scoped role, narrow item_ids to those whose own
+    // location/category is within the staff's can_delete scope. Non-permitted ids are
+    // silently skipped (reported via skipped_count). Full-access roles delete all.
+    let targetIds = item_ids;
+    let skippedCount = 0;
+    if (userAccess.scoped) {
+      const writable = await getWritableScope(userAccess, "delete");
+      const permitted = new Set((writable.values || []).map(String));
+      const connection = getConnection();
+      const placeholders = item_ids.map(() => "?").join(",");
+      const [rows] = await connection.execute(
+        `SELECT item_id, location_id, category_name FROM item_inv
+         WHERE company_id = ? AND item_id IN (${placeholders})`,
+        [company_id, ...item_ids]
+      );
+      targetIds = rows
+        .filter((r) =>
+          permitted.has(String(writable.dimension === "location" ? r.location_id : r.category_name))
+        )
+        .map((r) => r.item_id);
+      skippedCount = item_ids.length - targetIds.length;
+
+      if (targetIds.length === 0) {
+        return response.status(200).json({
+          ok: true,
+          result: { deleted_count: 0 },
+          skipped_count: skippedCount,
+          msg: "No items within your permitted scope",
+        });
+      }
+    }
+
     const workerResponse = await runGoWorker("delete-bulk-items", {
       company_id: company_id,
-      item_ids: item_ids,
+      item_ids: targetIds,
     });
 
     if (workerResponse.status === "error") {
@@ -3472,6 +3534,7 @@ const deleteBulkItems = async (request, response) => {
     return response.status(200).json({
       ok: true,
       result: workerResponse.data,
+      ...(skippedCount > 0 ? { skipped_count: skippedCount } : {}),
     });
   } catch (error) {
     logger.error("Error:", error.message);
@@ -3676,8 +3739,44 @@ const deleteBulkItemBasedOnCriteria = async (request, response) => {
       });
     }
 
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      await connection.rollback();
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+
     let whereClauses = ["company_id = ?", "category_name = ?"];
     let values = [company_id, category_name];
+
+    // Intersect the delete criteria with the staff's can_delete scope. Category-scoped
+    // roles: the fixed category_name must itself be permitted (all-or-nothing). Location-
+    // scoped roles: the criteria carry no location, so restrict the DELETE to permitted
+    // location_ids. Full-access roles are unrestricted.
+    if (userAccess.scoped) {
+      const writable = await getWritableScope(userAccess, "delete");
+      if (writable.dimension === "category") {
+        if (!(writable.values || []).includes(category_name)) {
+          await connection.rollback();
+          return response.status(200).json({
+            deleted_count: 0,
+            msg: "Category not within your permitted scope. No changes were made.",
+            ok: true,
+          });
+        }
+      } else if (writable.dimension === "location") {
+        if (!writable.values || writable.values.length === 0) {
+          await connection.rollback();
+          return response.status(200).json({
+            deleted_count: 0,
+            msg: "No locations within your permitted scope. No changes were made.",
+            ok: true,
+          });
+        }
+        const locPlaceholders = writable.values.map(() => "?").join(",");
+        whereClauses.push(`location_id IN (${locPlaceholders})`);
+        values.push(...writable.values);
+      }
+    }
 
     if (item_group) {
       whereClauses.push("item_group = ?");

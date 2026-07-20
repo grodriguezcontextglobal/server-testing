@@ -402,3 +402,54 @@ test('canWriteInScope: categoría en scope pero flag ausente → false', async (
   const { canWriteInScope } = loadStaffAccess(async () => [[]]); // no row
   assert.equal(await canWriteInScope(catAccess(['Audio']), 'delete', { categoryName: 'Audio' }), false);
 });
+
+// ════════════════════════════════════════════════════════════════════════════════
+// BLOQUE F — getWritableScope: resolución batch de valores con can_<action> (Fase C)
+// Usado por los deletes bulk/criteria para filtrar muchas filas con una sola query.
+// ════════════════════════════════════════════════════════════════════════════════
+
+test('getWritableScope: rol full-access/no-scoped → { full:true } sin tocar la DB', async () => {
+  let called = false;
+  const { getWritableScope } = loadStaffAccess(async () => { called = true; return [[]]; });
+  const r = await getWritableScope({ scoped: false, role_level: 1 }, 'delete');
+  assert.deepEqual(r, { full: true });
+  assert.equal(called, false);
+});
+
+test('getWritableScope: acción inválida → full:false sin valores', async () => {
+  const { getWritableScope } = loadStaffAccess(async () => [[{ location_id: 3 }]]);
+  const r = await getWritableScope(locAccess([3]), 'frobnicate');
+  assert.equal(r.full, false);
+  assert.deepEqual(r.values, []);
+});
+
+test('getWritableScope: location-scoped → location_ids con can_delete=1 (numéricos)', async () => {
+  const { getWritableScope } = loadStaffAccess(async (sql, params) => {
+    assert.match(sql, /can_delete = 1/);
+    assert.match(sql, /staff_location_access/);
+    assert.deepEqual(params, ['cs-6']);
+    return [[{ location_id: 3 }, { location_id: 7 }]];
+  });
+  const r = await getWritableScope(locAccess([3, 7]), 'delete');
+  assert.equal(r.full, false);
+  assert.equal(r.dimension, 'location');
+  assert.deepEqual(r.values, [3, 7]);
+});
+
+test('getWritableScope: category-scoped → category_names con can_create=1 (join por nombre)', async () => {
+  const { getWritableScope } = loadStaffAccess(async (sql) => {
+    assert.match(sql, /can_create = 1/);
+    assert.match(sql, /staff_category_access/);
+    assert.match(sql, /company_item_categories/);
+    return [[{ category_name: 'Audio' }, { category_name: 'Video' }]];
+  });
+  const r = await getWritableScope(catAccess(['Audio', 'Video']), 'create');
+  assert.equal(r.dimension, 'category');
+  assert.deepEqual(r.values, ['Audio', 'Video']);
+});
+
+test('getWritableScope: scoped sin asignaciones con el flag → values vacío (fail-closed)', async () => {
+  const { getWritableScope } = loadStaffAccess(async () => [[]]);
+  const r = await getWritableScope(locAccess([3]), 'delete');
+  assert.deepEqual(r.values, []);
+});
