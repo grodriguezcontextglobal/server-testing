@@ -10,11 +10,13 @@ const path   = require('node:path');
 const { VALID_ROLE_TYPES: ROLES_SET, VALID_ROLE_TYPES_LIST: ROLES_LIST } =
   require('../mysql/constants/roles');
 
-test('roles/constants: exporta Set y Array con los 8 role_types canónicos', () => {
-  assert.equal(ROLES_SET.size, 8, 'Set debe tener exactamente 8 roles');
-  assert.equal(ROLES_LIST.length, 8, 'Array debe tener exactamente 8 roles');
+test('roles/constants: exporta Set y Array con los 10 role_types canónicos', () => {
+  assert.equal(ROLES_SET.size, 10, 'Set debe tener exactamente 10 roles');
+  assert.equal(ROLES_LIST.length, 10, 'Array debe tener exactamente 10 roles');
   assert.ok(ROLES_SET.has('inventory_location_manager'),   'debe incluir inventory_location_manager');
   assert.ok(ROLES_SET.has('inventory_location_assistant'), 'debe incluir inventory_location_assistant');
+  assert.ok(ROLES_SET.has('category_manager'),             'debe incluir category_manager');
+  assert.ok(ROLES_SET.has('category_assistant'),           'debe incluir category_assistant');
   assert.ok(ROLES_SET.has('inventory_manager'),            'inventory_manager no debe eliminarse');
   // Set y Array deben ser consistentes
   assert.deepEqual(new Set(ROLES_LIST), ROLES_SET, 'Set y Array deben contener los mismos valores');
@@ -256,4 +258,198 @@ test('getStaffCompanyAccess: inventory_manager (level 4) sigue siendo full-acces
   assert.equal(calls.length, 1, 'inventory_manager hace solo 1 query');
   assert.equal(result.role_type, 'inventory_manager');
   assert.deepEqual(result.locations, [], 'full-access debe ignorar location_ids aunque la query los traiga');
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// BLOQUE D — Roles category-scoped (nivel 8/9) y el flag `scoped`
+// staffAccess resuelve rol + locations + category_ids en UNA query (LEFT JOIN doble
+// con GROUP_CONCAT DISTINCT). item_inv se filtra por category_name (no tiene
+// category_id), así que los ids asignados se resuelven a nombres en una SEGUNDA
+// query — pero SÓLO cuando el rol tiene categorías asignadas.
+// ════════════════════════════════════════════════════════════════════════════════
+
+const { SCOPED_ROLES } = require('../mysql/helpers/staffAccess');
+
+test('staffAccess: SCOPED_ROLES contiene los 4 roles location/category-scoped (6,7,8,9)', () => {
+  assert.ok(SCOPED_ROLES.has(6) && SCOPED_ROLES.has(7), 'location-scoped');
+  assert.ok(SCOPED_ROLES.has(8) && SCOPED_ROLES.has(9), 'category-scoped');
+  assert.ok(!SCOPED_ROLES.has(3) && !SCOPED_ROLES.has(5),
+    'sale/event_manager y assistant NO son scoped (verían su inventario habitual)');
+  assert.ok(!SCOPED_ROLES.has(0) && !SCOPED_ROLES.has(4), 'full-access no es scoped');
+});
+
+test('getStaffCompanyAccess: category_manager (level 8) resuelve category_ids y sus nombres', async () => {
+  const calls = [];
+  const { getStaffCompanyAccess } = loadStaffAccess(async (sql) => {
+    calls.push(sql);
+    if (/company_item_categories/.test(sql)) {
+      return [[{ category_name: 'Audio' }, { category_name: 'Video' }]];
+    }
+    return [[{ company_staff_id: 'cs-8', role_type: 'category_manager', role_level: 8, location_ids: null, category_ids: '11,12' }]];
+  });
+
+  const result = await getStaffCompanyAccess(60, 5);
+
+  assert.equal(calls.length, 2, 'una query principal + una para resolver nombres de categoría');
+  assert.equal(result.role_type, 'category_manager');
+  assert.equal(result.role_level, 8);
+  assert.equal(result.scoped, true, 'category_manager es scoped');
+  assert.deepEqual(result.categories, [11, 12]);
+  assert.deepEqual(result.categoryNames.slice().sort(), ['Audio', 'Video']);
+  assert.deepEqual(result.locations, [], 'rol de categoría no tiene locations');
+});
+
+test('getStaffCompanyAccess: category_assistant (level 9) es scoped e igual resuelve nombres', async () => {
+  const { getStaffCompanyAccess } = loadStaffAccess(async (sql) => {
+    if (/company_item_categories/.test(sql)) return [[{ category_name: 'Cables' }]];
+    return [[{ company_staff_id: 'cs-9', role_type: 'category_assistant', role_level: 9, location_ids: null, category_ids: '20' }]];
+  });
+
+  const result = await getStaffCompanyAccess(61, 5);
+
+  assert.equal(result.role_level, 9);
+  assert.equal(result.scoped, true);
+  assert.deepEqual(result.categories, [20]);
+  assert.deepEqual(result.categoryNames, ['Cables']);
+});
+
+test('getStaffCompanyAccess: category-scoped sin asignaciones → 1 query, arrays vacíos, scoped=true (fail-closed)', async () => {
+  const calls = [];
+  const { getStaffCompanyAccess } = loadStaffAccess(async (sql) => {
+    calls.push(sql);
+    return [[{ company_staff_id: 'cs-8b', role_type: 'category_manager', role_level: 8, location_ids: null, category_ids: null }]];
+  });
+
+  const result = await getStaffCompanyAccess(62, 5);
+
+  assert.equal(calls.length, 1, 'sin categorías asignadas NO dispara la segunda query');
+  assert.equal(result.scoped, true, 'sigue siendo scoped aunque no tenga asignaciones');
+  assert.deepEqual(result.categories, []);
+  assert.deepEqual(result.categoryNames, []);
+});
+
+test('getStaffCompanyAccess: el flag `scoped` distingue full-access de location-scoped', async () => {
+  const { getStaffCompanyAccess: getFull } = loadStaffAccess(async () =>
+    [[{ company_staff_id: 'cs-1', role_type: 'admin', role_level: 1, location_ids: null, category_ids: null }]]);
+  const full = await getFull(1, 5);
+  assert.equal(full.scoped, false, 'admin (full-access) scoped=false');
+
+  const { getStaffCompanyAccess: getLoc } = loadStaffAccess(async () =>
+    [[{ company_staff_id: 'cs-6', role_type: 'inventory_location_manager', role_level: 6, location_ids: '3', category_ids: null }]]);
+  const loc = await getLoc(6, 5);
+  assert.equal(loc.scoped, true, 'inventory_location_manager scoped=true');
+  assert.deepEqual(loc.categories, [], 'rol de locación no trae categorías');
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// BLOQUE E — canWriteInScope: flags can_create/can_update/can_delete por asignación
+// ════════════════════════════════════════════════════════════════════════════════
+
+const locAccess = (locations, cs = 'cs-6') => ({ company_staff_id: cs, role_level: 6, scoped: true, locations, categoryNames: [] });
+const catAccess = (categoryNames, cs = 'cs-8') => ({ company_staff_id: cs, role_level: 8, scoped: true, locations: [], categoryNames });
+
+test('canWriteInScope: rol full-access/no-scoped → siempre true, sin consultar DB', async () => {
+  let called = false;
+  const { canWriteInScope } = loadStaffAccess(async () => { called = true; return [[]]; });
+  const r = await canWriteInScope({ scoped: false, role_level: 1 }, 'delete', { locationId: 3 });
+  assert.equal(r, true);
+  assert.equal(called, false, 'no debe tocar la DB para full-access');
+});
+
+test('canWriteInScope: acción inválida → false', async () => {
+  const { canWriteInScope } = loadStaffAccess(async () => [[{ flag: 1 }]]);
+  assert.equal(await canWriteInScope(locAccess([3]), 'frobnicate', { locationId: 3 }), false);
+});
+
+test('canWriteInScope: locación fuera del scope → false sin consultar el flag', async () => {
+  let called = false;
+  const { canWriteInScope } = loadStaffAccess(async () => { called = true; return [[{ flag: 1 }]]; });
+  const r = await canWriteInScope(locAccess([3, 7]), 'update', { locationId: 99 });
+  assert.equal(r, false);
+  assert.equal(called, false, 'no consulta el flag si la locación no está en el scope');
+});
+
+test('canWriteInScope: locación en scope + flag can_update=1 → true', async () => {
+  const { canWriteInScope } = loadStaffAccess(async (sql) => {
+    assert.match(sql, /can_update/);
+    assert.match(sql, /staff_location_access/);
+    return [[{ flag: 1 }]];
+  });
+  assert.equal(await canWriteInScope(locAccess([3]), 'update', { locationId: 3 }), true);
+});
+
+test('canWriteInScope: locación en scope pero flag can_delete=0 → false', async () => {
+  const { canWriteInScope } = loadStaffAccess(async () => [[{ flag: 0 }]]);
+  assert.equal(await canWriteInScope(locAccess([3]), 'delete', { locationId: 3 }), false);
+});
+
+test('canWriteInScope: categoría en scope + can_create=1 → true (join por category_name)', async () => {
+  const { canWriteInScope } = loadStaffAccess(async (sql) => {
+    assert.match(sql, /can_create/);
+    assert.match(sql, /staff_category_access/);
+    assert.match(sql, /company_item_categories/);
+    return [[{ flag: 1 }]];
+  });
+  assert.equal(await canWriteInScope(catAccess(['Audio']), 'create', { categoryName: 'Audio' }), true);
+});
+
+test('canWriteInScope: categoría fuera del scope → false', async () => {
+  const { canWriteInScope } = loadStaffAccess(async () => [[{ flag: 1 }]]);
+  assert.equal(await canWriteInScope(catAccess(['Audio']), 'update', { categoryName: 'Video' }), false);
+});
+
+test('canWriteInScope: categoría en scope pero flag ausente → false', async () => {
+  const { canWriteInScope } = loadStaffAccess(async () => [[]]); // no row
+  assert.equal(await canWriteInScope(catAccess(['Audio']), 'delete', { categoryName: 'Audio' }), false);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// BLOQUE F — getWritableScope: resolución batch de valores con can_<action> (Fase C)
+// Usado por los deletes bulk/criteria para filtrar muchas filas con una sola query.
+// ════════════════════════════════════════════════════════════════════════════════
+
+test('getWritableScope: rol full-access/no-scoped → { full:true } sin tocar la DB', async () => {
+  let called = false;
+  const { getWritableScope } = loadStaffAccess(async () => { called = true; return [[]]; });
+  const r = await getWritableScope({ scoped: false, role_level: 1 }, 'delete');
+  assert.deepEqual(r, { full: true });
+  assert.equal(called, false);
+});
+
+test('getWritableScope: acción inválida → full:false sin valores', async () => {
+  const { getWritableScope } = loadStaffAccess(async () => [[{ location_id: 3 }]]);
+  const r = await getWritableScope(locAccess([3]), 'frobnicate');
+  assert.equal(r.full, false);
+  assert.deepEqual(r.values, []);
+});
+
+test('getWritableScope: location-scoped → location_ids con can_delete=1 (numéricos)', async () => {
+  const { getWritableScope } = loadStaffAccess(async (sql, params) => {
+    assert.match(sql, /can_delete = 1/);
+    assert.match(sql, /staff_location_access/);
+    assert.deepEqual(params, ['cs-6']);
+    return [[{ location_id: 3 }, { location_id: 7 }]];
+  });
+  const r = await getWritableScope(locAccess([3, 7]), 'delete');
+  assert.equal(r.full, false);
+  assert.equal(r.dimension, 'location');
+  assert.deepEqual(r.values, [3, 7]);
+});
+
+test('getWritableScope: category-scoped → category_names con can_create=1 (join por nombre)', async () => {
+  const { getWritableScope } = loadStaffAccess(async (sql) => {
+    assert.match(sql, /can_create = 1/);
+    assert.match(sql, /staff_category_access/);
+    assert.match(sql, /company_item_categories/);
+    return [[{ category_name: 'Audio' }, { category_name: 'Video' }]];
+  });
+  const r = await getWritableScope(catAccess(['Audio', 'Video']), 'create');
+  assert.equal(r.dimension, 'category');
+  assert.deepEqual(r.values, ['Audio', 'Video']);
+});
+
+test('getWritableScope: scoped sin asignaciones con el flag → values vacío (fail-closed)', async () => {
+  const { getWritableScope } = loadStaffAccess(async () => [[]]);
+  const r = await getWritableScope(locAccess([3]), 'delete');
+  assert.deepEqual(r.values, []);
 });

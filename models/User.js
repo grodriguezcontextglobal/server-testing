@@ -18,8 +18,9 @@ const UserSchema = Schema({
   },
   phoneNumber: {
     type: Number,
-    required: true,
+    required: false,
     unique: false,
+    default:"000-000-0000"
   },
   privacyPolicy: {
     type: Boolean,

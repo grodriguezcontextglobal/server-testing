@@ -181,6 +181,7 @@ test('createInsertBulkItemAlphanumeric: 202+jobId y encola con location_id resue
     getLocationIdFn: async (_conn, companyId, locName) => { assert.equal(companyId, 5); assert.equal(locName, 'Warehouse A'); return 77; },
     enqueueFn: async (type, payload, opts) => { calls.push({ type, payload, opts }); return { id: 'JOB1' }; },
     extractContextFn: () => ({ uid: 'U1', companyId: '5', sqlStaffId: null }),
+    getStaffCompanyAccessFn: async () => ({ scoped: false }),
   });
   const res = mockRes();
 
@@ -201,6 +202,7 @@ test('createInsertBulkItemAlphanumeric: usa el header Idempotency-Key (namespace
     getLocationIdFn: async () => 77,
     enqueueFn: async (type, payload, opts) => { capturedOpts = opts; return { id: 'JOB1' }; },
     extractContextFn: () => ({ uid: 'U1', companyId: '5', sqlStaffId: null }),
+    getStaffCompanyAccessFn: async () => ({ scoped: false }),
   });
   const res = mockRes();
 
@@ -215,6 +217,7 @@ test('createInsertBulkItemAlphanumeric: sin header Idempotency-Key, no manda ide
     getLocationIdFn: async () => 77,
     enqueueFn: async (type, payload, opts) => { capturedOpts = opts; return { id: 'JOB1' }; },
     extractContextFn: () => ({ uid: 'U1', companyId: '5', sqlStaffId: null }),
+    getStaffCompanyAccessFn: async () => ({ scoped: false }),
   });
   const res = mockRes();
 
@@ -228,9 +231,61 @@ test('createInsertBulkItemAlphanumeric: 500 si enqueue falla', async () => {
     getLocationIdFn: async () => 77,
     enqueueFn: async () => { throw new Error('Mongo down'); },
     extractContextFn: () => ({ uid: 'U1', companyId: '5', sqlStaffId: null }),
+    getStaffCompanyAccessFn: async () => ({ scoped: false }),
   });
   const res = mockRes();
 
   await controller({ body: baseBody(), get: () => undefined }, res);
   assert.equal(res.statusCode, 500);
+});
+
+// ─── Scope write gate (can_create) — Fase C ───────────────────────────────────
+
+test('createInsertBulkItemAlphanumeric: 403 si no hay staff record para la company (no encola)', async () => {
+  let enqueueCalls = 0;
+  const controller = createInsertBulkItemAlphanumeric({
+    getLocationIdFn: async () => 77,
+    enqueueFn: async () => { enqueueCalls++; return { id: 'J' }; },
+    extractContextFn: () => ({ uid: 'U1', companyId: '5', sqlStaffId: 99 }),
+    getStaffCompanyAccessFn: async () => null,
+  });
+  const res = mockRes();
+
+  await controller({ body: baseBody(), get: () => undefined }, res);
+  assert.equal(res.statusCode, 403);
+  assert.equal(enqueueCalls, 0);
+});
+
+test('createInsertBulkItemAlphanumeric: 403 si el rol scoped no tiene can_create en la categoría (no encola)', async () => {
+  let enqueueCalls = 0;
+  const controller = createInsertBulkItemAlphanumeric({
+    getLocationIdFn: async () => 77,
+    enqueueFn: async () => { enqueueCalls++; return { id: 'J' }; },
+    extractContextFn: () => ({ uid: 'U1', companyId: '5', sqlStaffId: 99 }),
+    getStaffCompanyAccessFn: async () => ({ scoped: true, role_level: 8 }),
+    canWriteInScopeFn: async () => false,
+  });
+  const res = mockRes();
+
+  await controller({ body: baseBody({ category_name: 'Cameras' }), get: () => undefined }, res);
+  assert.equal(res.statusCode, 403);
+  assert.equal(enqueueCalls, 0);
+});
+
+test('createInsertBulkItemAlphanumeric: 202 si el rol scoped SÍ tiene can_create (encola con la categoría)', async () => {
+  let capturedTarget;
+  const controller = createInsertBulkItemAlphanumeric({
+    getLocationIdFn: async () => 77,
+    enqueueFn: async () => ({ id: 'JOB1' }),
+    extractContextFn: () => ({ uid: 'U1', companyId: '5', sqlStaffId: 99 }),
+    getStaffCompanyAccessFn: async () => ({ scoped: true, role_level: 8 }),
+    canWriteInScopeFn: async (_access, action, target) => { capturedTarget = { action, target }; return true; },
+  });
+  const res = mockRes();
+
+  await controller({ body: baseBody({ category_name: 'Cameras' }), get: () => undefined }, res);
+  assert.equal(res.statusCode, 202);
+  assert.equal(capturedTarget.action, 'create');
+  assert.equal(capturedTarget.target.locationId, 77);
+  assert.equal(capturedTarget.target.categoryName, 'Cameras');
 });

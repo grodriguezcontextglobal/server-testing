@@ -15,7 +15,13 @@ const { createQueuedJobController } = require("../../helpers/queuedController");
 const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
 require("dotenv").config();
 
-const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
+const {
+  getStaffCompanyAccess,
+  buildInventoryScopeFilter,
+  applyWorkerScope,
+  canWriteInScope,
+  getWritableScope,
+} = require("../helpers/staffAccess");
 
 const ITEM_INV_COLUMNS = new Set([
   "item_id",
@@ -349,6 +355,19 @@ const insertingItem = async (request, response) => {
       supplier_info || null,
     ];
 
+    // Scope write gate (create): a location/category-scoped role may only create
+    // items within its assigned scope (with can_create). Full-access roles pass.
+    // rollback + return is safe here — the `finally` still releases the connection.
+    const creatorAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!creatorAccess) {
+      await connection.rollback();
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    if (!(await canWriteInScope(creatorAccess, "create", { locationId, categoryName: category_name }))) {
+      await connection.rollback();
+      return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
+    }
+
     console.log(values);
     const [result] = await connection.execute(query, values);
 
@@ -428,6 +447,17 @@ const insertBulkItem = async (request, response) => {
         msg: `Location '${locName}' not found.`,
         ok: false,
       });
+    }
+
+    // Scope write gate (create): a location/category-scoped role may only bulk-create
+    // items within its assigned scope (with can_create). Every row shares this single
+    // location + category, so an all-or-nothing check is correct here. Full-access passes.
+    const creatorAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!creatorAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    if (!(await canWriteInScope(creatorAccess, "create", { locationId, categoryName: category_name }))) {
+      return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
     }
 
     if (!min_serial_number || !max_serial_number) {
@@ -559,10 +589,12 @@ function createInsertBulkItemAlphanumeric({
   enqueueFn = enqueue,
   extractContextFn = extractJobContext,
   connectionFn = getConnection,
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  canWriteInScopeFn = canWriteInScope,
 } = {}) {
   return async function insertBulkItemAlhpanumericFormat(request, response) {
     try {
-      const { location, company_id } = request.body;
+      const { location, company_id, category_name } = request.body;
 
       const locName = typeof location === "string" ? location : location?.name;
       if (!locName || !company_id) {
@@ -579,6 +611,17 @@ function createInsertBulkItemAlphanumeric({
           msg: `Location '${locName}' not found.`,
           ok: false,
         });
+      }
+
+      // Scope write gate (create): scoped roles may only enqueue bulk inserts within
+      // their assigned scope (with can_create). Single location + category per request,
+      // so an all-or-nothing check is correct. Full-access roles pass.
+      const access = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
+      if (!access) {
+        return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+      }
+      if (!(await canWriteInScopeFn(access, "create", { locationId, categoryName: category_name }))) {
+        return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
       }
 
       const payload = { ...request.body, location_id: locationId };
@@ -644,9 +687,38 @@ const consultingItem = async (request, response) => {
 const deleteItem = async (request, response) => {
   try {
     const connection = getConnection();
-    const query = "DELETE FROM item_inv WHERE item_id=?";
-    const values = [request.body.item_id];
-    const [result] = await connection.execute(query, values);
+    const { item_id, company_id } = request.body;
+    if (!item_id || !company_id) {
+      return response.status(400).json({ ok: false, msg: "item_id and company_id are required" });
+    }
+
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+
+    // Load the item's own scope (and enforce multi-tenant: it must belong to company_id).
+    const [[item]] = await connection.execute(
+      "SELECT location_id, category_name FROM item_inv WHERE item_id = ? AND company_id = ? LIMIT 1",
+      [item_id, company_id]
+    );
+    if (!item) {
+      return response.status(404).json({ ok: false, msg: "Item not found for this company" });
+    }
+
+    // Per-assignment write gate: scoped roles need can_delete on the item's location/category.
+    const allowed = await canWriteInScope(userAccess, "delete", {
+      locationId: item.location_id,
+      categoryName: item.category_name,
+    });
+    if (!allowed) {
+      return response.status(403).json({ ok: false, msg: "Not allowed to delete items in this location/category" });
+    }
+
+    const [result] = await connection.execute(
+      "DELETE FROM item_inv WHERE item_id = ? AND company_id = ?",
+      [item_id, company_id]
+    );
     return response.status(201).json({
       item_deleted: result,
       ok: true,
@@ -689,21 +761,16 @@ const consultingItemInWarehouseTable = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
     // Base query construction
     let formatting = Object.keys(filters).map((item) => `${item}=?`).join(" AND ");
     const values = Object.values(filters);
 
-    // Roles 0 (root_admin), 1 (admin), 4 (inventory_manager) see all inventory; others are location-scoped
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      const locationPlaceholders = locations.map(() => "?").join(",");
-      if (formatting) {
-        formatting += ` AND location IN (${locationPlaceholders})`;
-      } else {
-        formatting = `location IN (${locationPlaceholders})`;
-      }
-      values.push(...locations);
+    // Full-access roles: no restriction. Location/category-scoped roles: restricted
+    // to their assignments; a scoped role with no assignments matches nothing (1=0).
+    const scope = buildInventoryScopeFilter(userAccess);
+    if (scope.sql) {
+      formatting = formatting ? `${formatting} AND ${scope.sql}` : scope.sql;
+      values.push(...scope.params);
     }
 
     const query = `SELECT * FROM item_inv WHERE ${formatting};`;
@@ -775,6 +842,32 @@ const updateItemInTable = async (request, response) => {
         msg: "Provide at least one identifying field to target the item (e.g., item_id or serial_number with company_id).",
         ok: false,
       });
+    }
+
+    // Scope write gate (update): a location/category-scoped role may only edit
+    // items within its CURRENT scope (with can_update). Checked against each
+    // targeted item's own location/category. Full-access roles skip this.
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, body.company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    if (userAccess.scoped) {
+      const [targetRows] = await connection.execute(
+        `SELECT location_id, category_name FROM item_inv WHERE ${whereParts.join(" AND ")}`,
+        whereValues
+      );
+      if (!targetRows.length) {
+        return response.status(404).json({ ok: false, msg: "Item not found for this company" });
+      }
+      for (const target of targetRows) {
+        const allowed = await canWriteInScope(userAccess, "update", {
+          locationId: target.location_id,
+          categoryName: target.category_name,
+        });
+        if (!allowed) {
+          return response.status(403).json({ ok: false, msg: "Not allowed to update items in this location/category" });
+        }
+      }
     }
 
     // Build SET clause from provided updatable fields (excluding identifiers)
@@ -879,6 +972,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
   request,
   response,
 ) => {
+  let connection = null;
   try {
     const { warehouse, company_id, item_group, category_name, data, logistic_status } =
       request.body;
@@ -896,15 +990,20 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
         ok: false,
       });
     }
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+
     const pool = getConnection();
-    const connection = await pool.getConnection(); // Get dedicated connection for transaction
+    connection = await pool.getConnection(); // Get dedicated connection for transaction
     // Prepare the serial numbers for the IN clause
     const serialNumbers = data.map((item) => item.toString());
     const placeholders = serialNumbers.map(() => "?").join(",");
 
     // Find items query with proper parameterization
     const findIndexQuery = `
-      SELECT item_id, serial_number
+      SELECT item_id, serial_number, location_id, category_name
       FROM item_inv
       WHERE item_group = ?
         AND category_name = ?
@@ -927,8 +1026,29 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
       });
     }
 
+    // Process-only-permitted: this moves inventory in/out of the warehouse, so
+    // scoped roles may only touch items within their can_update scope. Non-
+    // permitted items are skipped (reported via skipped_count). Full-access passes.
+    let scopedResults = results;
+    let skippedCount = 0;
+    if (userAccess.scoped) {
+      const writable = await getWritableScope(userAccess, "update");
+      const permitted = new Set((writable.values || []).map(String));
+      scopedResults = results.filter((r) =>
+        permitted.has(String(writable.dimension === "location" ? r.location_id : r.category_name))
+      );
+      skippedCount = results.length - scopedResults.length;
+      if (scopedResults.length === 0) {
+        return response.status(403).json({
+          ok: false,
+          msg: "Not allowed to update items in this location/category",
+          skipped_count: skippedCount,
+        });
+      }
+    }
+
     // Fix: Keep item_ids as numbers instead of converting to strings
-    const itemIds = results.map((item) => item.item_id);
+    const itemIds = scopedResults.map((item) => item.item_id);
 
     const idPlaceholders = itemIds.map(() => "?").join(",");
 
@@ -945,6 +1065,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     return response.status(201).json({
       msg: "Items updated successfully",
       ok: true,
+      ...(skippedCount > 0 ? { skipped_count: skippedCount } : {}),
     });
   } catch (error) {
     logger.error(
@@ -956,6 +1077,9 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
       msg: `Server error: ${error.message}`,
       ok: false,
     });
+  } finally {
+    // The dedicated connection was leaked on every path before; release it now.
+    if (connection) connection.release();
   }
 };
 
@@ -1201,14 +1325,14 @@ const checkingInventoryCurrentState = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
-    const workerPayload = { company_id };
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
+    // Scoped roles constrain the worker query to their locations/categories; a
+    // scoped role with no assignments is denied (empty result, worker not called).
+    const { payload, denyAll } = applyWorkerScope(userAccess, { company_id });
+    if (denyAll) {
+      return response.status(201).json({ ok: true, result: [] });
     }
 
-    const workerResponse = await runGoWorker("checking-inventory-current-state", workerPayload);
+    const workerResponse = await runGoWorker("checking-inventory-current-state", payload);
     if (workerResponse.status === "error") {
       throw new Error(workerResponse.message);
     }
@@ -1241,19 +1365,18 @@ const checkingItem = async (request, response) => {
       }
     }
 
-    const workerPayload = { filters: cleanFilters };
-
     const userAccess = await getStaffCompanyAccess(request.sqlStaffId, bodyFilters.company_id);
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
 
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
+    // Scoped roles constrain to their locations/categories; no assignments → denied.
+    const { payload, denyAll } = applyWorkerScope(userAccess, { filters: cleanFilters });
+    if (denyAll) {
+      return response.status(201).json({ cached: false, items: [], ok: true });
     }
 
-    const result = await runGoWorker("check-item", workerPayload);
+    const result = await runGoWorker("check-item", payload);
 
     return response.status(201).json({
       cached: false,
@@ -2146,14 +2269,21 @@ const retrieveItemData = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
-    const workerPayload = { company_id };
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
+    // Scoped roles constrain to their locations/categories; no assignments → denied
+    // (empty aggregation, worker not called).
+    const { payload, denyAll } = applyWorkerScope(userAccess, { company_id });
+    if (denyAll) {
+      return response.status(200).json({
+        args: [],
+        groupedData: { category_name: {}, item_group: {}, brand: {}, ownership: {} },
+        ok: true,
+        query: "",
+        total: 0,
+        totalAvailable: 0,
+      });
     }
 
-    const result = await runGoWorker("retrieve-item-data", workerPayload);
+    const result = await runGoWorker("retrieve-item-data", payload);
     return response.status(200).json({
       args: result.args,
       groupedData: result.groupedData,
@@ -3067,8 +3197,6 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
     let query = `
       SELECT
         item_id, item_group, warehouse, location, sub_location
@@ -3078,10 +3206,12 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
 
     const values = [company_id];
 
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      const placeholders = locations.map(() => "?").join(",");
-      query += ` AND location IN (${placeholders})`;
-      values.push(...locations);
+    // Full-access: unrestricted. Scoped roles: constrained to their locations/
+    // categories; no assignments → matches nothing (1=0).
+    const scope = buildInventoryScopeFilter(userAccess);
+    if (scope.sql) {
+      query += ` AND ${scope.sql}`;
+      values.push(...scope.params);
     }
 
     const [items] = await connection.execute(query, values);
@@ -3386,9 +3516,46 @@ const deleteBulkItems = async (request, response) => {
       });
     }
 
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+
+    // Process-only-permitted: for a scoped role, narrow item_ids to those whose own
+    // location/category is within the staff's can_delete scope. Non-permitted ids are
+    // silently skipped (reported via skipped_count). Full-access roles delete all.
+    let targetIds = item_ids;
+    let skippedCount = 0;
+    if (userAccess.scoped) {
+      const writable = await getWritableScope(userAccess, "delete");
+      const permitted = new Set((writable.values || []).map(String));
+      const connection = getConnection();
+      const placeholders = item_ids.map(() => "?").join(",");
+      const [rows] = await connection.execute(
+        `SELECT item_id, location_id, category_name FROM item_inv
+         WHERE company_id = ? AND item_id IN (${placeholders})`,
+        [company_id, ...item_ids]
+      );
+      targetIds = rows
+        .filter((r) =>
+          permitted.has(String(writable.dimension === "location" ? r.location_id : r.category_name))
+        )
+        .map((r) => r.item_id);
+      skippedCount = item_ids.length - targetIds.length;
+
+      if (targetIds.length === 0) {
+        return response.status(200).json({
+          ok: true,
+          result: { deleted_count: 0 },
+          skipped_count: skippedCount,
+          msg: "No items within your permitted scope",
+        });
+      }
+    }
+
     const workerResponse = await runGoWorker("delete-bulk-items", {
       company_id: company_id,
-      item_ids: item_ids,
+      item_ids: targetIds,
     });
 
     if (workerResponse.status === "error") {
@@ -3398,6 +3565,7 @@ const deleteBulkItems = async (request, response) => {
     return response.status(200).json({
       ok: true,
       result: workerResponse.data,
+      ...(skippedCount > 0 ? { skipped_count: skippedCount } : {}),
     });
   } catch (error) {
     logger.error("Error:", error.message);
@@ -3602,8 +3770,44 @@ const deleteBulkItemBasedOnCriteria = async (request, response) => {
       });
     }
 
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      await connection.rollback();
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+
     let whereClauses = ["company_id = ?", "category_name = ?"];
     let values = [company_id, category_name];
+
+    // Intersect the delete criteria with the staff's can_delete scope. Category-scoped
+    // roles: the fixed category_name must itself be permitted (all-or-nothing). Location-
+    // scoped roles: the criteria carry no location, so restrict the DELETE to permitted
+    // location_ids. Full-access roles are unrestricted.
+    if (userAccess.scoped) {
+      const writable = await getWritableScope(userAccess, "delete");
+      if (writable.dimension === "category") {
+        if (!(writable.values || []).includes(category_name)) {
+          await connection.rollback();
+          return response.status(200).json({
+            deleted_count: 0,
+            msg: "Category not within your permitted scope. No changes were made.",
+            ok: true,
+          });
+        }
+      } else if (writable.dimension === "location") {
+        if (!writable.values || writable.values.length === 0) {
+          await connection.rollback();
+          return response.status(200).json({
+            deleted_count: 0,
+            msg: "No locations within your permitted scope. No changes were made.",
+            ok: true,
+          });
+        }
+        const locPlaceholders = writable.values.map(() => "?").join(",");
+        whereClauses.push(`location_id IN (${locPlaceholders})`);
+        values.push(...writable.values);
+      }
+    }
 
     if (item_group) {
       whereClauses.push("item_group = ?");
