@@ -410,8 +410,36 @@ const setCompanyStaffScope = async (request, response) => {
     const dimension = isLocationRole ? "location" : "category";
     const requested = isLocationRole ? locations : categories;
 
-    // De-dup and coerce to positive integers.
-    const ids = [...new Set((requested || []).map(Number))].filter((n) => Number.isInteger(n) && n > 0);
+    // Role-based default write flags. Managers (6/8) get full CRUD within scope;
+    // assistants (7/9) get update only (read is implicit). Phase C enforces these
+    // can_* flags on every write, so an assignment with all-zero flags is read-only.
+    // `roleMax` is also the per-assignment CEILING: an override can only turn a flag
+    // OFF, never grant a capability the role itself lacks.
+    const isManager = role_level === 6 || role_level === 8;
+    const roleMax = isManager
+      ? { can_create: 1, can_update: 1, can_delete: 1 }
+      : { can_create: 0, can_update: 1, can_delete: 0 };
+    const clampFlag = (override, max) =>
+      max === 0 ? 0 : override === undefined ? max : override ? 1 : 0;
+
+    // Normalize each entry: a bare id -> role defaults; an object
+    // ({ id | location_id | category_id, can_* }) -> per-assignment overrides
+    // clamped to roleMax. De-dup by id, coerce to positive integers.
+    const seen = new Set();
+    const entries = [];
+    for (const raw of requested || []) {
+      const isObj = raw !== null && typeof raw === "object";
+      const id = Number(isObj ? raw.id ?? raw[`${dimension}_id`] : raw);
+      if (!Number.isInteger(id) || id <= 0 || seen.has(id)) continue;
+      seen.add(id);
+      entries.push({
+        id,
+        can_create: isObj ? clampFlag(raw.can_create, roleMax.can_create) : roleMax.can_create,
+        can_update: isObj ? clampFlag(raw.can_update, roleMax.can_update) : roleMax.can_update,
+        can_delete: isObj ? clampFlag(raw.can_delete, roleMax.can_delete) : roleMax.can_delete,
+      });
+    }
+    const ids = entries.map((e) => e.id);
 
     // Validate the ids belong to this company before touching anything.
     if (ids.length) {
@@ -439,18 +467,18 @@ const setCompanyStaffScope = async (request, response) => {
     try {
       if (isLocationRole) {
         await conn.query("DELETE FROM staff_location_access WHERE company_staff_id = ?", [company_staff_id]);
-        for (const locationId of ids) {
+        for (const e of entries) {
           await conn.query(
-            "INSERT INTO staff_location_access (id, company_staff_id, location_id) VALUES (?,?,?)",
-            [uuid(), company_staff_id, locationId]
+            "INSERT INTO staff_location_access (id, company_staff_id, location_id, can_create, can_update, can_delete) VALUES (?,?,?,?,?,?)",
+            [uuid(), company_staff_id, e.id, e.can_create, e.can_update, e.can_delete]
           );
         }
       } else {
         await conn.query("DELETE FROM staff_category_access WHERE company_staff_id = ?", [company_staff_id]);
-        for (const categoryId of ids) {
+        for (const e of entries) {
           await conn.query(
-            "INSERT INTO staff_category_access (id, company_staff_id, category_id) VALUES (?,?,?)",
-            [uuid(), company_staff_id, categoryId]
+            "INSERT INTO staff_category_access (id, company_staff_id, category_id, can_create, can_update, can_delete) VALUES (?,?,?,?,?,?)",
+            [uuid(), company_staff_id, e.id, e.can_create, e.can_update, e.can_delete]
           );
         }
       }
@@ -466,6 +494,12 @@ const setCompanyStaffScope = async (request, response) => {
       assigned: ids.length,
       locations_set: isLocationRole ? ids.length : 0,
       categories_set: isCategoryRole ? ids.length : 0,
+      // Write flags applied to bare-id entries (managers CRUD, assistants R/U).
+      // Per-assignment overrides, when sent, are clamped to these.
+      default_flags: roleMax,
+      assignments: entries.map(({ id, can_create, can_update, can_delete }) => ({
+        id, can_create: Boolean(can_create), can_update: Boolean(can_update), can_delete: Boolean(can_delete),
+      })),
     });
   } catch (error) {
     console.error("Error:", error.message);

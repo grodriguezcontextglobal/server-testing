@@ -145,3 +145,44 @@ test('setCompanyStaffScope: 200 array vacío limpia el scope (DELETE, 0 INSERT)'
   assert.equal(countMatching(/INSERT INTO staff_category_access/), 0);
   assert.equal(countMatching(/^COMMIT$/), 1);
 });
+
+// ─── write flags (can_*) — role defaults + clamped overrides ────────────────────
+// INSERT params order: [uuid, company_staff_id, id, can_create, can_update, can_delete]
+
+const insertFlags = () =>
+  recorded
+    .filter((r) => /INSERT INTO staff_(location|category)_access/.test(r.sql))
+    .map((r) => ({ id: r.params[2], c: r.params[3], u: r.params[4], d: r.params[5] }));
+
+test('setCompanyStaffScope: manager (role 8) por ids → default CRUD (can_create/update/delete=1)', async () => {
+  pushResults([[{ company_staff_id: 'cs-8', role_level: 8 }]], [[{ id: 11 }]]);
+  const res = mockRes();
+  await setCompanyStaffScope({ body: { company_id: 5, staff_id: 9, categories: [11] } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(insertFlags(), [{ id: 11, c: 1, u: 1, d: 1 }]);
+  assert.deepEqual(res.body.default_flags, { can_create: 1, can_update: 1, can_delete: 1 });
+});
+
+test('setCompanyStaffScope: assistant (role 9) por ids → sólo update (create=0, delete=0)', async () => {
+  pushResults([[{ company_staff_id: 'cs-9', role_level: 9 }]], [[{ id: 20 }]]);
+  const res = mockRes();
+  await setCompanyStaffScope({ body: { company_id: 5, staff_id: 9, categories: [20] } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(insertFlags(), [{ id: 20, c: 0, u: 1, d: 0 }]);
+});
+
+test('setCompanyStaffScope: override baja permisos de un manager (can_delete:false)', async () => {
+  pushResults([[{ company_staff_id: 'cs-6', role_level: 6 }]], [[{ id: 3 }]]);
+  const res = mockRes();
+  await setCompanyStaffScope({ body: { company_id: 5, staff_id: 9, locations: [{ id: 3, can_delete: false }] } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(insertFlags(), [{ id: 3, c: 1, u: 1, d: 0 }], 'manager con can_delete override a 0, resto default');
+});
+
+test('setCompanyStaffScope: override NO puede exceder el rol (assistant + can_delete:true → clamp a 0)', async () => {
+  pushResults([[{ company_staff_id: 'cs-9', role_level: 9 }]], [[{ id: 20 }]]);
+  const res = mockRes();
+  await setCompanyStaffScope({ body: { company_id: 5, staff_id: 9, categories: [{ category_id: 20, can_create: true, can_delete: true }] } }, res);
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(insertFlags(), [{ id: 20, c: 0, u: 1, d: 0 }], 'assistant no puede ganar create/delete vía override');
+});
