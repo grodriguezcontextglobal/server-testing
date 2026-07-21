@@ -130,8 +130,8 @@ all assignments for that `(company_id, staff_id)`; an empty array clears the dim
 guard must prevent for scoped roles). Send **only the dimension that matches the role** — sending
 the wrong one is a 400 (§5.4).
 
-**Data sources:**
-- Locations → reuse the existing company-locations fetch already used elsewhere.
+**Data sources (both return `{ ok, result: [...] }`, body `{ company_id }`, gated `inventory:read`):**
+- Locations → `POST /api/db_company/locations` → `[{ location_id, location_name }]` (§5.5).
 - Categories → `POST /api/db_company/categories` (§5.5).
 
 ---
@@ -223,17 +223,29 @@ back to the role default, and any flag is clamped to the role's max:
 > Ids are de-duped and validated against the company before any write. `can_*` flags are set by
 > role (or by clamped override) at assignment time — see §0.1 and the flag notes above.
 
-### 5.5 Company categories list
-`POST /api/db_company/categories` · headers `x-token` · body `{ company_id }`
+### 5.5 Scope source lists (categories & locations)
+Both: headers `x-token` · body `{ company_id }` · gated `inventory:read` · shape `{ ok, result: [...] }`.
 
+**Categories** — `POST /api/db_company/categories`
 ```jsonc
 { "ok": true, "result": [
   { "category_id": 11, "category_name": "Audio", "sub_category_name": null, "active": 1, "created_at": "..." }
 ]}
 ```
 > Scope is by **`category_name`** server-side, but the assignment endpoint takes **`category_id`**.
-> Send `category_id` in §5.4; show `category_name` in the UI. If a `category_name` appears with
-> multiple `sub_category_name` rows, present it once (dedupe by `category_name`).
+> Send `category_id` in §5.4; show `category_name`. If a `category_name` appears with multiple
+> `sub_category_name` rows, present it once (dedupe by `category_name`).
+
+**Locations** — `POST /api/db_company/locations`
+```jsonc
+{ "ok": true, "result": [
+  { "location_id": 41, "location_name": "plantation, florida" }
+]}
+```
+> Returns **all active** company locations (not filtered by the caller's scope) — the correct
+> source for the assignment multi-select. Send `location_id` in §5.4; show `location_name`
+> (names are **not** unique per company, so key by `location_id`). Do **not** use
+> `/api/db_location/companies/:id/locations` here (it is caller-scope-filtered and tree-shaped).
 
 ### 5.6 Inventory write behavior under scope (error/partial-success handling)
 - **Single writes** — `POST /new_item`, `POST /edit-item`, `POST /delete-item` (and `POST /:id`):

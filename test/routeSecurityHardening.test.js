@@ -78,6 +78,14 @@ test('mysql/routes/company.js: POST /update_company tiene authorizePermission', 
   );
 });
 
+test('mysql/routes/company.js: POST /locations tiene validateJWT + authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/company');
+  const handlers = getRouteHandlers(router, 'POST', '/locations');
+  assert.ok(handlers !== null, 'La ruta POST /locations debe existir');
+  assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en POST /locations');
+  assert.ok(hasAuthzPermission(handlers), 'authorizePermission debe estar en POST /locations');
+});
+
 test('mysql/routes/company.js: DELETE /:id tiene authorizePermission o mapeo de company_id', () => {
   const router = loadRouter('../mysql/routes/company');
   const handlers = getRouteHandlers(router, 'DELETE', '/:id');
