@@ -4,8 +4,19 @@
  */
 
 const { Router } = require("express");
-const { insertingNewLease, consultingLease, updateLeaseInfo, insertingNewLeaseConsumer, consultingConsumerLease, updateConsumerLeaseInfo, deleteConsumerLeaseInfo, deleteLeaseInfo } = require("../controllers/lease");
+const { insertingNewLease, consultingLease, updateLeaseInfo, insertingNewLeaseConsumer, consultingConsumerLease, updateConsumerLeaseInfo, deleteConsumerLeaseInfo, deleteLeaseInfo, retrieveLeaseStatus } = require("../controllers/lease");
+const { validateJWT } = require("../../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
+const { authorizePermission } = require("../../middlewares/authorizePermission");
 const router = Router();
+
+// Unified device-lease status spans devices (inventory), so it is gated by
+// inventory:read + an authenticated staff session. NOTE: the legacy lease
+// routes below predate auth and remain unguarded — out of scope to change here.
+const canReadInventory = [validateJWT, checkTokenVersion, authorizePermission("inventory", "read")];
+
+// unified device-lease status across staff/consumer/member (authenticated)
+router.post("/status", canReadInventory, retrieveLeaseStatus)
 
 //check event info
 router.post("/consulting-lease", consultingLease)
