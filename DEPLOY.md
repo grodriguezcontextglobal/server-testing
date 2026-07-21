@@ -71,8 +71,9 @@ Invoke-WebRequest http://localhost:34001 -UseBasicParsing | Select-Object Status
 
 > **⚠️ If the pull changed `go-worker/worker.exe`** (or any `go-worker/*.go`), the Node
 > restart is **not enough** — the Go worker is a **separate persistent process** and does not
-> hot-reload. You must also **manually restart the Go worker** (see next section), or Node will
-> keep talking to the old binary and the new logic (e.g. RBAC scope enforcement) won't take effect.
+> hot-reload. You must also **restart the Go worker** (`nssm restart DevitrakGoWorker`, or rebuild
+> then restart — see the Go worker section), or Node will keep talking to the old binary and the
+> new logic (e.g. RBAC scope enforcement) won't take effect.
 
 ---
 
@@ -96,29 +97,74 @@ Production **must** set `GO_WORKER_PORT` to the **same value** for both the Node
 worker process, or Node will POST to `7453` while the worker listens on `8081` and every call fails
 with *"Go Worker Connection Failed … Ensure the Go worker is running."*
 
-### Updating the worker after a deploy (manual)
+### Where the worker gets its config
 
-`worker.exe` is committed to the repo and arrives with `git pull`, but the **running** process keeps
-the old binary in memory until it is restarted **by hand on this server**:
+`main.go` / `db.go` call `godotenv.Load("../.env")` on startup, so the worker reads the **repo-root
+`.env`** (the same file Node uses) for its MySQL (`PLANETSCALE_DATABASE_*`) and Mongo (`DB_CNN`)
+credentials — **as long as its working directory is the `go-worker` folder** so `../.env` resolves.
+`godotenv` does **not** override variables already present in the process environment, so a
+`GO_WORKER_PORT` set by the service (below) wins, while the DB creds still come from `.env`.
+
+`GO_WORKER_PORT` is **not** in `.env`, so it must be provided by whatever launches the worker.
+
+### Run the worker as a Windows service (recommended)
+
+Like `DevitrakServer`, register the worker under **nssm** so it auto-starts on boot and restarts on
+crash — otherwise it dies on the next Windows-Update reboot and inventory breaks until someone
+relaunches it by hand. Run **as Administrator**:
 
 ```powershell
-# 1. Stop the currently-running worker (it holds the old worker.exe)
+# 0. Stop any manually-launched worker so the service can bind the port
 Get-Process worker -ErrorAction SilentlyContinue | Stop-Process -Force
 
-# 2. Start the new binary from the go-worker folder.
-#    GO_WORKER_PORT MUST match the value the Node service uses (see table above).
-cd "C:\Users\CGAdmin\Documents\Github\server-testing\go-worker"
-$env:GO_WORKER_PORT = "7453"
-Start-Process .\worker.exe
+# 1. Install, pointing at the compiled binary
+nssm install DevitrakGoWorker "C:\Users\CGAdmin\Documents\Github\server-testing\go-worker\worker.exe"
 
-# 3. Verify it answers on the expected port
-Test-NetConnection -ComputerName localhost -Port 7453 | Select-Object TcpTestSucceeded
+# 2. Working dir MUST be the go-worker folder (so the worker's godotenv.Load("../.env")
+#    resolves to the repo-root .env with the DB/Mongo creds)
+nssm set DevitrakGoWorker AppDirectory "C:\Users\CGAdmin\Documents\Github\server-testing\go-worker"
+nssm set DevitrakGoWorker DisplayName "Devitrak Go Worker"
+nssm set DevitrakGoWorker Description "Go inventory worker (HTTP server on GO_WORKER_PORT), called by the Node backend over localhost."
+nssm set DevitrakGoWorker Start SERVICE_AUTO_START
+
+# 3. The port — not in .env, so set it here or the worker defaults to 8081 and Node (7453) can't reach it
+nssm set DevitrakGoWorker AppEnvironmentExtra GO_WORKER_PORT=7453
+
+# 4. Logs
+New-Item -ItemType Directory -Force "C:\Users\CGAdmin\Documents\Github\server-testing\logs" | Out-Null
+nssm set DevitrakGoWorker AppStdout "C:\Users\CGAdmin\Documents\Github\server-testing\logs\go-worker-out.log"
+nssm set DevitrakGoWorker AppStderr "C:\Users\CGAdmin\Documents\Github\server-testing\logs\go-worker-err.log"
+
+# 5. Restart on crash
+nssm set DevitrakGoWorker AppExit Default Restart
+nssm set DevitrakGoWorker AppRestartDelay 3000
+
+# 6. Start + verify
+nssm start DevitrakGoWorker
+nssm status DevitrakGoWorker      # SERVICE_RUNNING
+Test-NetConnection -ComputerName localhost -Port 7453 | Select-Object -ExpandProperty TcpTestSucceeded   # True
 ```
 
-> Match step 2 to however the worker is actually launched on this box (the operator starts it
-> manually here — there is no nssm service supervising it, unlike `DevitrakServer`). The invariant
-> that matters: **after any change to `worker.exe`, stop the old process and start the new one**,
-> with `GO_WORKER_PORT` equal to the Node side's.
+To remove it entirely: `nssm remove DevitrakGoWorker confirm`.
+
+### Updating the worker after a deploy
+
+Once the service exists, a worker update is: rebuild the binary, then restart the service.
+
+```powershell
+cd "C:\Users\CGAdmin\Documents\Github\server-testing\go-worker"
+go build -o .\worker.exe          # rebuild from the freshly-pulled Go source
+nssm restart DevitrakGoWorker     # load the new binary
+nssm status DevitrakGoWorker      # SERVICE_RUNNING
+```
+
+> The invariant: **after any change to `worker.exe` or `go-worker/*.go`, restart the worker** — the
+> committed binary that arrives via `git pull` (or a local `go build`) does nothing until the
+> process is restarted.
+
+**Manual fallback** (no service): run it detached with the port set explicitly —
+`$env:GO_WORKER_PORT = "7453"; Start-Process .\worker.exe -WorkingDirectory "...\go-worker"`. This
+does **not** survive a reboot; prefer the service above.
 
 ---
 
