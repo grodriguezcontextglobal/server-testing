@@ -49,6 +49,7 @@ const {
   deleteGroup,
   getInventoryGroupedFull,
 } = require("../controllers/categories_groups");
+const { listCompanyLocations } = require("../controllers/location");
 const router = Router();
 router.use(require('express').json());
 
@@ -177,6 +178,7 @@ router.post("/retrieve-company-items-with-locations", retrieveCompanyInventory);
 
 // ─── Categories ──────────────────────────────────────────────────────────────
 router.post("/categories", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), listCompanyCategories);
+router.post("/locations", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), listCompanyLocations);
 router.post("/categories/upsert", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), upsertCategory);
 router.delete("/categories/:category_id", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteCategory);
 
