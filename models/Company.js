@@ -112,7 +112,7 @@ const Company = new Schema({
       employee_id: {
         type: String,
         required: false,
-        default:""
+        default: ""
       },
       status: {
         type: String,
@@ -210,6 +210,13 @@ const Company = new Schema({
       ownership: "Ownership",
     },
   },
+  roleLabels: {
+    type: Object,
+    required: false,
+    default: {
+      "root_admin": "Root Administrator", "admin": "Administrator", "sale_manager": "Sale Manager", "event_manager": "Event Manager", "inventory_manager": "Warehouse Manager", "assistant": "Assistant", "inventory_location_manager": "Inventory Location Manager", "inventory_location_assistant": "Inventory Location Assistant", "category_manager": "Category Manager", "category_assistant": "Category Assistant"
+    }
+  }
 });
 
 Company.method("toJSON", function () {
