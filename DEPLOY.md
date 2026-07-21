@@ -69,6 +69,57 @@ nssm status DevitrakServer      # SERVICE_RUNNING
 Invoke-WebRequest http://localhost:34001 -UseBasicParsing | Select-Object StatusCode   # 200
 ```
 
+> **⚠️ If the pull changed `go-worker/worker.exe`** (or any `go-worker/*.go`), the Node
+> restart is **not enough** — the Go worker is a **separate persistent process** and does not
+> hot-reload. You must also **manually restart the Go worker** (see next section), or Node will
+> keep talking to the old binary and the new logic (e.g. RBAC scope enforcement) won't take effect.
+
+---
+
+## Go worker (separate background process)
+
+The Go worker (`go-worker/worker.exe`) is a **long-running HTTP server**, not a one-shot CLI.
+Node calls it over `http://localhost:<GO_WORKER_PORT>/<command>` (see
+[`helpers/goWorker.js`](helpers/goWorker.js)); the worker's `main.go` starts an HTTP server
+(`startServer`) unless it's invoked with ≥3 CLI args (legacy/testing path).
+
+### ⚠️ Port must be set explicitly — defaults disagree
+
+The two sides have **different built-in defaults**, so an unset `GO_WORKER_PORT` breaks the link:
+
+| Side | Env var | Built-in default |
+|------|---------|------------------|
+| Node caller (`helpers/goWorker.js`) | `GO_WORKER_PORT` | `7453` |
+| Go worker (`go-worker/main.go`)     | `GO_WORKER_PORT` | `8081` |
+
+Production **must** set `GO_WORKER_PORT` to the **same value** for both the Node service and the
+worker process, or Node will POST to `7453` while the worker listens on `8081` and every call fails
+with *"Go Worker Connection Failed … Ensure the Go worker is running."*
+
+### Updating the worker after a deploy (manual)
+
+`worker.exe` is committed to the repo and arrives with `git pull`, but the **running** process keeps
+the old binary in memory until it is restarted **by hand on this server**:
+
+```powershell
+# 1. Stop the currently-running worker (it holds the old worker.exe)
+Get-Process worker -ErrorAction SilentlyContinue | Stop-Process -Force
+
+# 2. Start the new binary from the go-worker folder.
+#    GO_WORKER_PORT MUST match the value the Node service uses (see table above).
+cd "C:\Users\CGAdmin\Documents\Github\server-testing\go-worker"
+$env:GO_WORKER_PORT = "7453"
+Start-Process .\worker.exe
+
+# 3. Verify it answers on the expected port
+Test-NetConnection -ComputerName localhost -Port 7453 | Select-Object TcpTestSucceeded
+```
+
+> Match step 2 to however the worker is actually launched on this box (the operator starts it
+> manually here — there is no nssm service supervising it, unlike `DevitrakServer`). The invariant
+> that matters: **after any change to `worker.exe`, stop the old process and start the new one**,
+> with `GO_WORKER_PORT` equal to the Node side's.
+
 ---
 
 ## Day-to-day operations
