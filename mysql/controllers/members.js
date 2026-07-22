@@ -1,6 +1,7 @@
 require("dotenv").config();
 // const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
+const { minorsMissingConsent } = require("../helpers/consentGate");
 const connection = getConnection();
 
 const insertNewMember = async (request, response) => {
@@ -809,6 +810,51 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
         } without a complete parent/guardian (representative) on file. Add the representative's name and email first.`,
         members: blockedMinors.map((m) => m.member_id),
       });
+    }
+
+    // Consent enforcement — OPT-IN per company via company_school_settings. A
+    // MISSING row or any read failure => OFF (fallback), so this NEVER breaks
+    // assignment for companies that haven't enabled it. When ON, a minor also
+    // needs a RECORDED consent (school_consent), not just a guardian on file.
+    const companyIds = [...new Set(normalized.map((r) => Number(r.company_id)))];
+    let enforceConsent = false;
+    try {
+      const cph = companyIds.map(() => "?").join(",");
+      const [cfg] = await connection.query(
+        `SELECT company_id FROM company_school_settings
+          WHERE enforce_member_consent = 1 AND company_id IN (${cph})`,
+        companyIds
+      );
+      enforceConsent = (cfg || []).length > 0;
+    } catch (_) {
+      enforceConsent = false; // fallback: never block on a settings read failure
+    }
+    if (enforceConsent) {
+      const minorIds = (memberRows || [])
+        .filter((m) => Number(m.minor) === 1)
+        .map((m) => m.member_id);
+      let consentedSet = new Set();
+      if (minorIds.length > 0) {
+        const mph = minorIds.map(() => "?").join(",");
+        const [consented] = await connection.query(
+          `SELECT DISTINCT member_id FROM school_consent WHERE member_id IN (${mph})`,
+          minorIds
+        );
+        consentedSet = new Set((consented || []).map((c) => c.member_id));
+      }
+      const missing = minorsMissingConsent(memberRows || [], consentedSet);
+      if (missing.length > 0) {
+        return response.status(422).json({
+          ok: false,
+          code: "CONSENT_REQUIRED",
+          msg: `Cannot assign devices: ${missing
+            .map((m) => `${m.first_name} ${m.last_name}`)
+            .join(", ")} ${
+            missing.length === 1 ? "is a minor" : "are minors"
+          } without a recorded guardian consent (AUP). Record consent first (POST /api/school/consent/record).`,
+          members: missing.map((m) => m.member_id),
+        });
+      }
     }
 
     // Determine column set to use: union of present keys intersected with schema
