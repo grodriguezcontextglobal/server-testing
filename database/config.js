@@ -13,7 +13,7 @@ const dbConnection = async () => {
     }
 
     if (isConnected) {
-      logger.log("Database is already connected.");
+      logger.info("Database is already connected.");
       return mongoose.connection;
     }
 
@@ -81,7 +81,7 @@ const dbConnection = async () => {
 
     mongoose.connection.on("connected", () => {
       isConnected = true;
-      logger.log("Connected to DB");
+      logger.info("Connected to DB");
     });
 
     mongoose.connection.on("error", (err) => {
