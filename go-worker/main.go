@@ -72,6 +72,13 @@ func main() {
 }
 
 func startServer() {
+	// Lightweight liveness endpoint for container/service health checks
+	// (compose healthcheck, nssm/monitoring, load balancer). GET, no auth.
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
 	// Wrap handler with panic recovery
 	http.HandleFunc("/", recoverMiddleware(handleRequest))
 	port := os.Getenv("GO_WORKER_PORT")

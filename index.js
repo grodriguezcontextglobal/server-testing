@@ -280,16 +280,22 @@ const startServer = () => {
 
   // Start Go Worker if we are the Native Master OR the first PM2 instance
   if (isNativeMaster || isPM2FirstInstance) {
-    logger.info(`Starting Go worker...`);
-
     // Determine executable name based on platform
     const isWindows = process.platform === "win32";
     const execName = isWindows ? "worker.exe" : "worker";
     const workerPath = path.resolve(__dirname, "go-worker", execName);
-
-    // Check if file exists
     const fs = require("fs");
-    if (fs.existsSync(workerPath)) {
+
+    // GO_WORKER_EXTERNAL=true: the Go worker runs as its own service/host (see
+    // helpers/goWorker.js GO_WORKER_HOST) — Node must NOT spawn a local copy.
+    // This switch enables the split-services topology; default (unset) preserves
+    // today's behavior of spawning a co-located worker.
+    if (process.env.GO_WORKER_EXTERNAL === "true") {
+      logger.info(
+        `GO_WORKER_EXTERNAL=true — not spawning a local Go worker; calling ${process.env.GO_WORKER_HOST || "localhost"}:${process.env.GO_WORKER_PORT || 7453}.`
+      );
+    } else if (fs.existsSync(workerPath)) {
+      logger.info(`Starting Go worker...`);
       const goWorker = spawn(workerPath, [], {
         cwd: path.resolve(__dirname, "go-worker"),
         stdio: "inherit",

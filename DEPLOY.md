@@ -168,6 +168,62 @@ does **not** survive a reboot; prefer the service above.
 
 ---
 
+## Split services (native nssm) — Node · Go worker · email worker
+
+Production runs as **separate native nssm services** (no containers; Windows Server
+2019). They share the external MySQL (PlanetScale) + Mongo and talk over localhost.
+
+| Service | Runs | Owns |
+|---------|------|------|
+| `DevitrakServer` | Node (`index.js`, pm2-runtime) | HTTP API + in-process queue worker for **all job types except email** |
+| `DevitrakGoWorker` | `go-worker\worker.exe` | inventory Go operations (see the Go worker section) |
+| `DevitrakEmailWorker` | `node queue\standalone.js` | **email** jobs only |
+
+The split is driven entirely by env — the code is identical across services:
+- **`DevitrakServer`**: `GO_WORKER_EXTERNAL=true` (don't spawn a co-located Go worker —
+  call the service) and `QUEUE_EXCLUDE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments`
+  (let the email worker own those). Optionally `GO_WORKER_HOST` if the Go worker is on
+  another box (default `localhost`).
+- **`DevitrakEmailWorker`**: `QUEUE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments`.
+
+The atomic claim + type filter (`queue/core.js` `buildClaimFilter`) guarantee no job is
+processed twice across the two workers.
+
+### Create the email worker service
+
+Run **as Administrator**:
+
+```powershell
+nssm install DevitrakEmailWorker "C:\Program Files\nodejs\node.exe"
+nssm set DevitrakEmailWorker AppParameters "queue\standalone.js"
+nssm set DevitrakEmailWorker AppDirectory "C:\Users\CGAdmin\Documents\Github\server-testing"
+nssm set DevitrakEmailWorker DisplayName "Devitrak Email Worker"
+nssm set DevitrakEmailWorker Description "Dedicated task-queue worker for email jobs (queue/standalone.js)."
+nssm set DevitrakEmailWorker Start SERVICE_AUTO_START
+nssm set DevitrakEmailWorker AppEnvironmentExtra QUEUE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments
+nssm set DevitrakEmailWorker AppStdout "C:\Users\CGAdmin\Documents\Github\server-testing\logs\email-worker-out.log"
+nssm set DevitrakEmailWorker AppStderr "C:\Users\CGAdmin\Documents\Github\server-testing\logs\email-worker-err.log"
+nssm set DevitrakEmailWorker AppExit Default Restart
+nssm set DevitrakEmailWorker AppRestartDelay 3000
+nssm start DevitrakEmailWorker
+nssm status DevitrakEmailWorker   # SERVICE_RUNNING
+```
+
+Then point the main server away from email + the co-located Go worker, and restart it
+(one line — `AppEnvironmentExtra` **replaces** the whole extra-env block, so re-list
+`PM2_HOME`, which is mandatory — see the gotcha above):
+
+```powershell
+nssm set DevitrakServer AppEnvironmentExtra PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2 GO_WORKER_EXTERNAL=true QUEUE_EXCLUDE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments
+nssm restart DevitrakServer
+```
+
+> **Enable incrementally.** Start `DevitrakEmailWorker` FIRST and confirm it drains email
+> jobs; only then set `QUEUE_EXCLUDE_TYPES` on the main server. Otherwise email jobs would
+> sit unclaimed in the gap. To remove: `nssm remove DevitrakEmailWorker confirm`.
+
+---
+
 ## Day-to-day operations
 
 ```powershell
