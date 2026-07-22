@@ -7,8 +7,9 @@ const { createCircuitBreaker } = require("./circuitBreaker");
  */
 function createRunGoWorker(fetchImpl = fetch, breakerOpts = {}) {
   const callGoWorker = async (command, args, retries = 3) => {
+    const host = process.env.GO_WORKER_HOST || "localhost";
     const port = process.env.GO_WORKER_PORT || 7453;
-    const url = `http://localhost:${port}/${command}`;
+    const url = `http://${host}:${port}/${command}`;
 
     for (let i = 0; i < retries; i++) {
       try {
