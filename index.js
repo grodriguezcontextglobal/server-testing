@@ -211,6 +211,9 @@ const configureRoutes = (app) => {
   // Mount consumer public namespace (attendees app; no token required)
   app.use("/api/consumer", require("./routes/consumer"));
 
+  // Mount school (education) namespace — gated per-route by company.industry='Education'
+  app.use("/api/school", require("./mysql/routes/school"));
+
   app.use("/api", require("./routes/status"));
 };
 
