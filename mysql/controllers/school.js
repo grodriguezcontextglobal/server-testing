@@ -385,6 +385,58 @@ const consentStatus = async (req, res) => {
   }
 };
 
+// POST /api/school/settings  { company_id }  -> current school settings
+// (consent enforcement etc.). Missing row => defaults (enforcement OFF).
+const getSchoolSettings = async (req, res) => {
+  const connection = getConnection();
+  const { company_id } = req.body || {};
+  if (!company_id) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  try {
+    const [rows] = await connection.query(
+      "SELECT enforce_member_consent FROM company_school_settings WHERE company_id = ? LIMIT 1",
+      [company_id]
+    );
+    const enforce_member_consent = rows.length ? Number(rows[0].enforce_member_consent) === 1 : false;
+    return res.status(200).json({ ok: true, settings: { enforce_member_consent } });
+  } catch (error) {
+    logger.error("getSchoolSettings error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/settings/consent-enforcement  { company_id, enforce }
+// Opt-in toggle. Upsert into the separate company_school_settings table (never
+// touches company_info). Turn ON only AFTER backfilling consents, or existing
+// minors without a recorded consent will be blocked from device assignment.
+const setConsentEnforcement = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, enforce } = req.body || {};
+  if (!company_id) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  const val =
+    enforce === true ||
+    enforce === 1 ||
+    String(enforce).toLowerCase() === "true" ||
+    String(enforce) === "1"
+      ? 1
+      : 0;
+  try {
+    await connection.execute(
+      `INSERT INTO company_school_settings (company_id, enforce_member_consent)
+       VALUES (?, ?)
+       ON DUPLICATE KEY UPDATE enforce_member_consent = VALUES(enforce_member_consent)`,
+      [company_id, val]
+    );
+    return res.status(200).json({ ok: true, settings: { enforce_member_consent: val === 1 } });
+  } catch (error) {
+    logger.error("setConsentEnforcement error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 module.exports = {
   schoolDashboard,
   schoolRoster,
@@ -393,6 +445,8 @@ module.exports = {
   recordConsent,
   listMemberConsents,
   consentStatus,
+  getSchoolSettings,
+  setConsentEnforcement,
   buildSchoolDashboard,
   classifyMemberLease,
   mergeGuardians,

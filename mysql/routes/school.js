@@ -14,6 +14,8 @@ const {
   recordConsent,
   listMemberConsents,
   consentStatus,
+  getSchoolSettings,
+  setConsentEnforcement,
 } = require("../controllers/school");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
@@ -45,5 +47,9 @@ router.post("/guardians/add", educationOnly, addStudentGuardian);
 router.post("/consent/record", educationOnly, recordConsent);
 router.post("/consent", educationOnly, listMemberConsents);
 router.post("/consent/status", educationOnly, consentStatus);
+
+// School settings — read + opt-in toggle for consent enforcement (per company).
+router.post("/settings", educationOnly, getSchoolSettings);
+router.post("/settings/consent-enforcement", educationOnly, setConsentEnforcement);
 
 module.exports = router;
