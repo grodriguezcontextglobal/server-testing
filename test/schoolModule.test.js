@@ -5,7 +5,7 @@ const path = require('node:path');
 
 // Both requires are lazy re: DB (getConnection connects on first call), so no stub needed.
 const { industryMatches } = require(path.resolve(__dirname, '../middlewares/requireIndustry.js'));
-const { buildSchoolDashboard } = require(path.resolve(__dirname, '../mysql/controllers/school.js'));
+const { buildSchoolDashboard, mergeGuardians } = require(path.resolve(__dirname, '../mysql/controllers/school.js'));
 
 const NOW = new Date('2026-07-22T12:00:00Z').getTime();
 
@@ -55,4 +55,43 @@ test('empty input => zeroed summary, empty grades', () => {
   assert.equal(summary.total_leases, 0);
   assert.equal(summary.students_with_devices, 0);
   assert.deepEqual(by_grade, {});
+});
+
+// ── mergeGuardians ───────────────────────────────────────────────────────────
+const norm = [
+  { id: 'g1', first_name: 'Bob', last_name: 'Smith', email: 'bob@x.com', phone_number: '111', relationship: 'father', is_primary: 0 },
+];
+const embedded = {
+  parent_guardian_first_name: 'Anne',
+  parent_guardian_last_name: 'Smith',
+  parent_guardian_email: 'anne@x.com',
+  parent_guardian_phone_number: '222',
+};
+
+test('mergeGuardians prepends the embedded primary guardian', () => {
+  const list = mergeGuardians(norm, embedded);
+  assert.equal(list.length, 2);
+  assert.equal(list[0].source, 'embedded');
+  assert.equal(list[0].email, 'anne@x.com');
+  assert.equal(list[0].is_primary, true);
+  assert.equal(list[1].source, 'normalized');
+  assert.equal(list[1].email, 'bob@x.com');
+});
+
+test('mergeGuardians dedupes the embedded guardian by email (case-insensitive)', () => {
+  const list = mergeGuardians(
+    [{ id: 'g2', first_name: 'Anne', last_name: 'Smith', email: 'ANNE@x.com', phone_number: '222', relationship: null, is_primary: 1 }],
+    embedded
+  );
+  assert.equal(list.length, 1); // embedded not added, already present normalized
+  assert.equal(list[0].source, 'normalized');
+});
+
+test('mergeGuardians with no embedded guardian returns only normalized', () => {
+  assert.equal(mergeGuardians(norm, null).length, 1);
+  assert.equal(mergeGuardians(norm, {}).length, 1);
+});
+
+test('mergeGuardians with nothing => empty list', () => {
+  assert.deepEqual(mergeGuardians([], null), []);
 });
