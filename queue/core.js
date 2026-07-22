@@ -122,9 +122,27 @@ function isStale(job, now, lockTimeoutMs = DEFAULTS.lockTimeoutMs) {
   return now - new Date(job.lockedAt).getTime() > lockTimeoutMs;
 }
 
-/** Filtro del claim: pending cuyo nextAttemptAt ya venció. */
-function buildClaimFilter(now) {
-  return { status: 'pending', nextAttemptAt: { $lte: new Date(now) } };
+/**
+ * Filtro del claim: pending cuyo nextAttemptAt ya venció.
+ *
+ * opts.includeTypes → solo esos type ($in). opts.excludeTypes → todos menos
+ * esos ($nin). Sin opts (o arrays vacíos), no filtra por tipo: un solo worker
+ * toma todo (comportamiento por defecto). Esto habilita workers dedicados sin
+ * cambiar el código: p.ej. un email-worker corre con includeTypes=['send-email',
+ * ...] y el worker principal con excludeTypes=[esos mismos].
+ */
+function buildClaimFilter(now, opts = {}) {
+  const filter = { status: 'pending', nextAttemptAt: { $lte: new Date(now) } };
+  const include = Array.isArray(opts.includeTypes) ? opts.includeTypes.filter(Boolean) : [];
+  const exclude = Array.isArray(opts.excludeTypes) ? opts.excludeTypes.filter(Boolean) : [];
+  if (include.length && exclude.length) {
+    filter.type = { $in: include, $nin: exclude };
+  } else if (include.length) {
+    filter.type = { $in: include };
+  } else if (exclude.length) {
+    filter.type = { $nin: exclude };
+  }
+  return filter;
 }
 
 /** Update del claim: sella el job como processing para este worker. */

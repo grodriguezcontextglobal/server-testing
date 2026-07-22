@@ -19,6 +19,14 @@ const WORKER_ID = `${process.pid}`;
 const POLL_MS = Number(process.env.QUEUE_POLL_MS) || 4000;
 const BATCH = Number(process.env.QUEUE_BATCH) || 20; // máx jobs por ciclo
 
+// Filtro de tipos para correr workers dedicados (p.ej. un email-worker separado).
+// QUEUE_TYPES=a,b → este worker SOLO toma esos tipos.
+// QUEUE_EXCLUDE_TYPES=a,b → toma todo MENOS esos (para el worker principal).
+// Sin ninguno, toma todo (comportamiento por defecto: un worker único).
+const parseTypes = (v) => (v ? String(v).split(",").map((s) => s.trim()).filter(Boolean) : []);
+const INCLUDE_TYPES = parseTypes(process.env.QUEUE_TYPES);
+const EXCLUDE_TYPES = parseTypes(process.env.QUEUE_EXCLUDE_TYPES);
+
 let timer = null;
 let running = false; // evita solapamiento de ticks
 
@@ -31,7 +39,7 @@ function jobOpts(job) {
 async function claimOne() {
   const now = Date.now();
   return Job.findOneAndUpdate(
-    core.buildClaimFilter(now),
+    core.buildClaimFilter(now, { includeTypes: INCLUDE_TYPES, excludeTypes: EXCLUDE_TYPES }),
     core.buildClaimUpdate(WORKER_ID, now),
     { sort: { nextAttemptAt: 1 }, new: true }
   );
@@ -93,7 +101,12 @@ async function tick() {
 
 function start() {
   if (timer) return; // ya arrancado
-  logger.info(`Task queue worker starting (id=${WORKER_ID}, poll=${POLL_MS}ms, batch=${BATCH})`);
+  const scope = INCLUDE_TYPES.length
+    ? `types=[${INCLUDE_TYPES.join(",")}]`
+    : EXCLUDE_TYPES.length
+      ? `types=all-except[${EXCLUDE_TYPES.join(",")}]`
+      : "types=all";
+  logger.info(`Task queue worker starting (id=${WORKER_ID}, poll=${POLL_MS}ms, batch=${BATCH}, ${scope})`);
   // Al arrancar, recuperar cualquier colgado de una caída previa.
   recoverStale().catch((err) => logger.error("queue: recoverStale falló", { error: err.message }));
   timer = setInterval(tick, POLL_MS);
