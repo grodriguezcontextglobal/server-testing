@@ -11,6 +11,9 @@ const {
   schoolRoster,
   listStudentGuardians,
   addStudentGuardian,
+  recordConsent,
+  listMemberConsents,
+  consentStatus,
 } = require("../controllers/school");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
@@ -31,5 +34,11 @@ router.post("/guardians", educationOnly, listStudentGuardians);
 
 // Attach a new guardian to a student.
 router.post("/guardians/add", educationOnly, addStudentGuardian);
+
+// Consent / AUP: record a signed policy, list a student's consents, and the
+// company-wide compliance status (who has / hasn't signed).
+router.post("/consent/record", educationOnly, recordConsent);
+router.post("/consent", educationOnly, listMemberConsents);
+router.post("/consent/status", educationOnly, consentStatus);
 
 module.exports = router;

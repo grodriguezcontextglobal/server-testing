@@ -5,7 +5,7 @@ const path = require('node:path');
 
 // Both requires are lazy re: DB (getConnection connects on first call), so no stub needed.
 const { industryMatches } = require(path.resolve(__dirname, '../middlewares/requireIndustry.js'));
-const { buildSchoolDashboard, mergeGuardians } = require(path.resolve(__dirname, '../mysql/controllers/school.js'));
+const { buildSchoolDashboard, mergeGuardians, summarizeConsentStatus } = require(path.resolve(__dirname, '../mysql/controllers/school.js'));
 
 const NOW = new Date('2026-07-22T12:00:00Z').getTime();
 
@@ -94,4 +94,26 @@ test('mergeGuardians with no embedded guardian returns only normalized', () => {
 
 test('mergeGuardians with nothing => empty list', () => {
   assert.deepEqual(mergeGuardians([], null), []);
+});
+
+// ── summarizeConsentStatus ───────────────────────────────────────────────────
+const consentRows = [
+  { member_id: 1, first_name: 'A', last_name: 'One', grade: '5', consented: 1 },
+  { member_id: 2, first_name: 'B', last_name: 'Two', grade: '5', consented: 0 },
+  { member_id: 3, first_name: 'C', last_name: 'Three', grade: '6', consented: true },
+  { member_id: 4, first_name: 'D', last_name: 'Four', grade: null, consented: 0 },
+];
+
+test('summarizeConsentStatus counts consented vs missing', () => {
+  const s = summarizeConsentStatus(consentRows);
+  assert.equal(s.total, 4);
+  assert.equal(s.consented, 2);
+  assert.equal(s.missing_count, 2);
+  assert.deepEqual(s.missing.map((m) => m.member_id), [2, 4]);
+  assert.equal(s.missing[1].grade, null);
+});
+
+test('summarizeConsentStatus on empty roster => all zeros', () => {
+  const s = summarizeConsentStatus([]);
+  assert.deepEqual(s, { total: 0, consented: 0, missing_count: 0, missing: [] });
 });

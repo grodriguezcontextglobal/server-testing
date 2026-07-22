@@ -255,12 +255,146 @@ const addStudentGuardian = async (req, res) => {
   }
 };
 
+// PURE + exported: roster rows carrying a `consented` flag -> compliance summary
+// (who has / hasn't signed). Deterministic, no I/O.
+const summarizeConsentStatus = (rows = []) => {
+  let consented = 0;
+  const missing = [];
+  for (const r of rows) {
+    if (Number(r.consented) === 1 || r.consented === true) {
+      consented++;
+    } else {
+      missing.push({
+        member_id: r.member_id,
+        first_name: r.first_name,
+        last_name: r.last_name,
+        grade: r.grade || null,
+      });
+    }
+  }
+  return { total: rows.length, consented, missing_count: missing.length, missing };
+};
+
+// POST /api/school/consent/record
+// { company_id, member_id, signer_name, policy_type?='AUP', policy_version?='1',
+//   guardian_id?, signer_email?, method?='e-signature' }
+const recordConsent = async (req, res) => {
+  const pool = getConnection();
+  const {
+    company_id, member_id, policy_type, policy_version,
+    guardian_id, signer_name, signer_email, method,
+  } = req.body || {};
+  if (!company_id || member_id === undefined || member_id === null || String(member_id).trim() === "") {
+    return res.status(400).json({ ok: false, msg: "company_id and member_id are required" });
+  }
+  if (!signer_name || !String(signer_name).trim()) {
+    return res.status(400).json({ ok: false, msg: "signer_name is required" });
+  }
+  try {
+    const [m] = await pool.execute(
+      "SELECT 1 FROM members_info WHERE member_id = ? AND company_id = ? LIMIT 1",
+      [member_id, company_id]
+    );
+    if (!m.length) {
+      return res.status(404).json({ ok: false, msg: "member not found in this company" });
+    }
+    const pType = policy_type && String(policy_type).trim() ? String(policy_type).trim() : "AUP";
+    const pVer = policy_version && String(policy_version).trim() ? String(policy_version).trim() : "1";
+    const id = randomUUID();
+    try {
+      await pool.execute(
+        `INSERT INTO school_consent
+           (id, company_id, member_id, guardian_id, policy_type, policy_version, signer_name, signer_email, method, consented_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+        [id, company_id, member_id, guardian_id || null, pType, pVer, String(signer_name).trim(), signer_email || null, method || "e-signature"]
+      );
+      return res.status(201).json({ ok: true, consent_id: id });
+    } catch (e) {
+      if (e.code === "ER_DUP_ENTRY") {
+        return res.status(200).json({ ok: true, msg: "consent already recorded for this member/policy/version" });
+      }
+      throw e;
+    }
+  } catch (error) {
+    logger.error("recordConsent error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/consent  { company_id, member_id }  -> consents for a student
+const listMemberConsents = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, member_id } = req.body || {};
+  if (!company_id || member_id === undefined || member_id === null || String(member_id).trim() === "") {
+    return res.status(400).json({ ok: false, msg: "company_id and member_id are required" });
+  }
+  try {
+    const [rows] = await connection.query(
+      `SELECT id, guardian_id, policy_type, policy_version, signer_name, signer_email, method, consented_at
+         FROM school_consent WHERE company_id = ? AND member_id = ?
+        ORDER BY consented_at DESC`,
+      [company_id, member_id]
+    );
+    return res.status(200).json({ ok: true, count: rows.length, consents: rows });
+  } catch (error) {
+    logger.error("listMemberConsents error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/consent/status  { company_id, policy_type?='AUP', policy_version? }
+// Compliance view: which students have / have NOT signed the policy.
+const consentStatus = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, policy_type, policy_version } = req.body || {};
+  if (!company_id) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  const pType = policy_type && String(policy_type).trim() ? String(policy_type).trim() : "AUP";
+  const values = [pType];
+  let versionClause = "";
+  if (policy_version && String(policy_version).trim() !== "") {
+    versionClause = "AND sc.policy_version = ?";
+    values.push(String(policy_version).trim());
+  }
+  values.push(company_id);
+  try {
+    const [rows] = await connection.query(
+      `SELECT mi.member_id, mi.first_name, mi.last_name, mi.grade,
+              (sc.id IS NOT NULL) AS consented
+         FROM members_info mi
+         LEFT JOIN school_consent sc
+           ON sc.member_id = mi.member_id AND sc.company_id = mi.company_id
+          AND sc.policy_type = ? ${versionClause}
+        WHERE mi.company_id = ?`,
+      values
+    );
+    // A member may match multiple consent rows (versions); collapse to consented-if-any.
+    const byMember = new Map();
+    for (const r of rows) {
+      const consented = Number(r.consented) === 1;
+      const prev = byMember.get(r.member_id);
+      if (!prev) byMember.set(r.member_id, { ...r, consented });
+      else if (consented) prev.consented = true;
+    }
+    const summary = summarizeConsentStatus([...byMember.values()]);
+    return res.status(200).json({ ok: true, policy_type: pType, ...summary });
+  } catch (error) {
+    logger.error("consentStatus error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 module.exports = {
   schoolDashboard,
   schoolRoster,
   listStudentGuardians,
   addStudentGuardian,
+  recordConsent,
+  listMemberConsents,
+  consentStatus,
   buildSchoolDashboard,
   classifyMemberLease,
   mergeGuardians,
+  summarizeConsentStatus,
 };
