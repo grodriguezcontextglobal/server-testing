@@ -158,9 +158,13 @@ nssm restart DevitrakGoWorker     # load the new binary
 nssm status DevitrakGoWorker      # SERVICE_RUNNING
 ```
 
-> The invariant: **after any change to `worker.exe` or `go-worker/*.go`, restart the worker** — the
-> committed binary that arrives via `git pull` (or a local `go build`) does nothing until the
-> process is restarted.
+> The invariant: **after any change to `worker.exe` or `go-worker/*.go`, restart the worker** — a
+> freshly built binary does nothing until the process is restarted.
+>
+> **`worker.exe` is NOT committed to git** (gitignored via `go-worker/*.exe`); each host builds its
+> own with `go build` (Windows here; the Docker image builds the Linux `worker`). On the first pull
+> after it was untracked, if git reports a modify/delete conflict on `go-worker/worker.exe`, resolve
+> with `git rm --cached go-worker/worker.exe` — the running service's local binary is untouched.
 
 **Manual fallback** (no service): run it detached with the port set explicitly —
 `$env:GO_WORKER_PORT = "7453"; Start-Process .\worker.exe -WorkingDirectory "...\go-worker"`. This
