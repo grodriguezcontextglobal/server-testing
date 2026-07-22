@@ -9,7 +9,11 @@ const {
   getCompanyLocationTree,
   deleteLocation,
 } = require("../controllers/location");
-const { createSubLocationPath, getLocationPathsTree } = require("../controllers/sub_location_paths");
+const {
+  createSubLocationPath,
+  getLocationPathsTree,
+  deleteSubLocationPath,
+} = require("../controllers/sub_location_paths");
 
 const router = Router();
 
@@ -50,6 +54,17 @@ router.post(
     validateFields,
   ],
   createSubLocationPath
+);
+
+router.post(
+  "/sub-location-path/delete",
+  [
+    check("company_id", "company_id is required").not().isEmpty(),
+    check("location_id", "location_id is required").not().isEmpty(),
+    check("sub_location_path", "sub_location_path must be a non-empty array").isArray({ min: 1 }),
+    validateFields,
+  ],
+  deleteSubLocationPath
 );
 
 router.get("/companies/:id/location-paths-tree", getLocationPathsTree);
