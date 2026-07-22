@@ -333,13 +333,13 @@ const startServer = () => {
       logger.error("Failed to start task queue worker:", { error: error.message });
     }
 
-    // // Initialize Scheduled Jobs
-    // try {
-    //   const { initScheduledJobs } = require("./scheduler");
-    //   initScheduledJobs();
-    // } catch (error) {
-    //   logger.error("Failed to initialize scheduled jobs:", error);
-    // }
+    // Initialize scheduled jobs (overdue reminders, etc.) — single instance only.
+    try {
+      const { initScheduledJobs } = require("./scheduler");
+      initScheduledJobs();
+    } catch (error) {
+      logger.error("Failed to initialize scheduled jobs:", { error: error.message });
+    }
   }
 
   // Disable native cluster mode to prevent infinite loops and simplify debugging
