@@ -18,8 +18,13 @@ const {
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
 const { requireIndustry } = require("../../middlewares/requireIndustry");
+const { auditPiiAccess } = require("../../middlewares/auditPiiAccess");
 
 const router = Router();
+
+// FERPA/COPPA: record every access to student PII on this namespace (additive —
+// logs on response finish via the durable staff-activity log, never blocks).
+router.use(auditPiiAccess("SchoolPII"));
 
 const educationOnly = [validateJWT, checkTokenVersion, requireIndustry("Education")];
 
