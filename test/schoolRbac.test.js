@@ -107,6 +107,7 @@ test('mysql/routes/school.js: read routes require JWT, Education industry, and m
     '/consent/status',
     '/settings',
     '/student/export',
+    '/student/access-log',
   ];
 
   for (const route of readRoutes) {
@@ -116,7 +117,7 @@ test('mysql/routes/school.js: read routes require JWT, Education industry, and m
 
 test('mysql/routes/school.js: create routes require JWT, Education industry, and member:create', () => {
   const markers = loadSchoolRouterWithMiddlewareMarkers();
-  const createRoutes = ['/guardians/add', '/consent/record'];
+  const createRoutes = ['/guardians/add', '/consent/record', '/consent/request'];
 
   for (const route of createRoutes) {
     assertSchoolRbacChain(getRouteHandlers(markers.router, 'POST', route), 'create', markers);
@@ -129,5 +130,19 @@ test('mysql/routes/school.js: update routes require JWT, Education industry, and
 
   for (const route of updateRoutes) {
     assertSchoolRbacChain(getRouteHandlers(markers.router, 'POST', route), 'update', markers);
+  }
+});
+
+test('mysql/routes/school.js: public consent routes do not require auth or RBAC middleware', () => {
+  const markers = loadSchoolRouterWithMiddlewareMarkers();
+  const publicRoutes = ['/consent/public/retrieve', '/consent/public/respond'];
+
+  for (const route of publicRoutes) {
+    const handlers = getRouteHandlers(markers.router, 'POST', route);
+    assert.ok(handlers, 'route must exist');
+    assert.equal(handlers.length, 1, `${route} must only mount its controller`);
+    assert.notEqual(handlers[0], markers.validateJWT, `${route} must not require JWT`);
+    assert.notEqual(handlers[0], markers.checkTokenVersion, `${route} must not check token version`);
+    assert.equal(handlers[0]?.permission, undefined, `${route} must not require RBAC permission`);
   }
 });

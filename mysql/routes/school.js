@@ -12,12 +12,16 @@ const {
   listStudentGuardians,
   addStudentGuardian,
   recordConsent,
+  requestConsent,
+  publicRetrieveConsent,
+  publicRespondConsent,
   listMemberConsents,
   consentStatus,
   getSchoolSettings,
   setConsentEnforcement,
   studentExport,
   studentErase,
+  studentAccessLog,
 } = require("../controllers/school");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
@@ -65,6 +69,9 @@ router.post("/guardians/add", canCreate, addStudentGuardian);
 // Consent / AUP: record a signed policy, list a student's consents, and the
 // company-wide compliance status (who has / hasn't signed).
 router.post("/consent/record", canCreate, recordConsent);
+router.post("/consent/request", canCreate, requestConsent);
+router.post("/consent/public/retrieve", publicRetrieveConsent);
+router.post("/consent/public/respond", publicRespondConsent);
 router.post("/consent", canRead, listMemberConsents);
 router.post("/consent/status", canRead, consentStatus);
 
@@ -75,5 +82,6 @@ router.post("/settings/consent-enforcement", canUpdate, setConsentEnforcement);
 // FERPA/COPPA data-subject rights: staff-mediated export and erase/anonymize.
 router.post("/student/export", canRead, studentExport);
 router.post("/student/erase", canUpdate, studentErase);
+router.post("/student/access-log", canRead, studentAccessLog);
 
 module.exports = router;
