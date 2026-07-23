@@ -2,6 +2,16 @@ require("dotenv").config();
 const { randomUUID } = require("crypto");
 const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
+const StaffActivityLog = require("../../models/StaffActivityLog");
+
+const hasBlankRequiredId = (value) =>
+  value === undefined || value === null || String(value).trim() === "";
+
+const validateStudentRequest = ({ company_id, member_id }) => {
+  if (hasBlankRequiredId(company_id)) return "company_id is required";
+  if (hasBlankRequiredId(member_id)) return "member_id is required";
+  return null;
+};
 
 // PURE: classify one member device lease from its raw columns.
 const classifyMemberLease = (row, now = Date.now()) => {
@@ -162,6 +172,190 @@ const mergeGuardians = (normalized = [], embedded = null) => {
     }
   }
   return list;
+};
+
+// POST /api/school/student/export  { company_id, member_id }
+// Portable FERPA/COPPA student data export: identity, guardians, leases,
+// consents, and the audited access log for this student.
+const studentExport = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, member_id } = req.body || {};
+  const validationError = validateStudentRequest({ company_id, member_id });
+  if (validationError) return res.status(400).json({ ok: false, msg: validationError });
+
+  try {
+    const [studentRows] = await connection.query(
+      "SELECT * FROM members_info WHERE member_id = ? AND company_id = ? LIMIT 1",
+      [member_id, company_id]
+    );
+    const student = studentRows[0];
+    if (!student) {
+      return res.status(404).json({ ok: false, msg: "member not found in this company" });
+    }
+
+    const [normalizedGuardians] = await connection.query(
+      `SELECT g.id, g.first_name, g.last_name, g.email, g.phone_number,
+              sg.relationship, sg.is_primary
+         FROM student_guardian sg
+         JOIN guardians g ON g.id = sg.guardian_id
+        WHERE sg.company_id = ? AND sg.member_id = ?`,
+      [company_id, member_id]
+    );
+    const guardians = mergeGuardians(normalizedGuardians, student);
+
+    const [leases] = await connection.query(
+      `SELECT * FROM member_assigned_device_lease
+        WHERE member_id = ? AND company_id = ?
+        ORDER BY assigned_date DESC`,
+      [member_id, company_id]
+    );
+    const [consents] = await connection.query(
+      `SELECT * FROM school_consent
+        WHERE member_id = ? AND company_id = ?
+        ORDER BY consented_at DESC`,
+      [member_id, company_id]
+    );
+    const access_log = await StaffActivityLog.find({
+      company_id: String(company_id),
+      target_id: String(member_id),
+    })
+      .sort({ timestamp: -1 })
+      .limit(100)
+      .lean();
+
+    return res.status(200).json({ ok: true, student, guardians, leases, consents, access_log });
+  } catch (error) {
+    logger.error("studentExport error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+const ANONYMIZE_MEMBER_SQL = `UPDATE members_info
+   SET first_name = 'REDACTED',
+       last_name = 'REDACTED',
+       email = NULL,
+       phone_number = NULL,
+       address = NULL,
+       address_street = NULL,
+       address_city = NULL,
+       address_state = NULL,
+       address_zip = NULL,
+       parent_guardian_first_name = NULL,
+       parent_guardian_last_name = NULL,
+       parent_guardian_email = NULL,
+       parent_guardian_phone_number = NULL,
+       external_id = NULL,
+       image_url = NULL
+ WHERE member_id = ? AND company_id = ?`;
+
+const anonymizeStudent = async (conn, company_id, member_id) => {
+  const [memberResult] = await conn.execute(ANONYMIZE_MEMBER_SQL, [member_id, company_id]);
+  const [guardianResult] = await conn.execute(
+    `UPDATE guardians g
+      JOIN student_guardian sg ON sg.guardian_id = g.id AND sg.company_id = g.company_id
+       SET g.first_name = 'REDACTED',
+           g.last_name = 'REDACTED',
+           g.email = NULL,
+           g.phone_number = NULL
+     WHERE sg.member_id = ? AND sg.company_id = ?`,
+    [member_id, company_id]
+  );
+  const [consentResult] = await conn.execute(
+    `UPDATE school_consent
+        SET signer_name = 'REDACTED', signer_email = NULL
+      WHERE member_id = ? AND company_id = ?`,
+    [member_id, company_id]
+  );
+
+  return {
+    members_info_updated: Number(memberResult.affectedRows || 0) > 0,
+    guardians_anonymized: Number(guardianResult.affectedRows || 0),
+    consents_anonymized: Number(consentResult.affectedRows || 0),
+  };
+};
+
+const deleteStudent = async (conn, company_id, member_id) => {
+  const [guardianRows] = await conn.execute(
+    "SELECT guardian_id FROM student_guardian WHERE member_id = ? AND company_id = ?",
+    [member_id, company_id]
+  );
+  const guardianIds = guardianRows.map((row) => row.guardian_id).filter(Boolean);
+  let guardiansDeleted = 0;
+  if (guardianIds.length) {
+    const placeholders = guardianIds.map(() => "?").join(", ");
+    const [guardianResult] = await conn.execute(
+      `DELETE FROM guardians WHERE company_id = ? AND id IN (${placeholders})`,
+      [company_id, ...guardianIds]
+    );
+    guardiansDeleted = Number(guardianResult.affectedRows || 0);
+  }
+  const [linkResult] = await conn.execute(
+    "DELETE FROM student_guardian WHERE member_id = ? AND company_id = ?",
+    [member_id, company_id]
+  );
+  const [consentResult] = await conn.execute(
+    "DELETE FROM school_consent WHERE member_id = ? AND company_id = ?",
+    [member_id, company_id]
+  );
+  const [memberResult] = await conn.execute(
+    "DELETE FROM members_info WHERE member_id = ? AND company_id = ?",
+    [member_id, company_id]
+  );
+
+  return {
+    members_info_deleted: Number(memberResult.affectedRows || 0) > 0,
+    guardians_deleted: guardiansDeleted,
+    student_guardian_links_deleted: Number(linkResult.affectedRows || 0),
+    consents_deleted: Number(consentResult.affectedRows || 0),
+  };
+};
+
+// POST /api/school/student/erase  { company_id, member_id, mode? }
+// Strip student PII while preserving asset history by default; hard-delete only
+// the student/guardian/consent records when explicitly requested.
+const studentErase = async (req, res) => {
+  const pool = getConnection();
+  const { company_id, member_id } = req.body || {};
+  const mode = req.body?.mode || "anonymize";
+  const validationError = validateStudentRequest({ company_id, member_id });
+  if (validationError) return res.status(400).json({ ok: false, msg: validationError });
+  if (!["anonymize", "delete"].includes(mode)) {
+    return res.status(400).json({ ok: false, msg: "mode must be anonymize or delete" });
+  }
+
+  try {
+    const [studentRows] = await pool.execute(
+      "SELECT 1 FROM members_info WHERE member_id = ? AND company_id = ? LIMIT 1",
+      [member_id, company_id]
+    );
+    if (!studentRows.length) {
+      return res.status(404).json({ ok: false, msg: "member not found in this company" });
+    }
+
+    const [[leaseCount]] = await pool.execute(
+      "SELECT COUNT(*) AS total FROM member_assigned_device_lease WHERE member_id = ? AND company_id = ?",
+      [member_id, company_id]
+    );
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const receipt =
+        mode === "delete"
+          ? await deleteStudent(conn, company_id, member_id)
+          : await anonymizeStudent(conn, company_id, member_id);
+      receipt.leases_preserved = Number(leaseCount.total || 0);
+      await conn.commit();
+      return res.status(200).json({ ok: true, mode, member_id, receipt });
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    logger.error("studentErase error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
 };
 
 // POST /api/school/guardians  { company_id, member_id }
@@ -447,8 +641,13 @@ module.exports = {
   consentStatus,
   getSchoolSettings,
   setConsentEnforcement,
+  studentExport,
+  studentErase,
   buildSchoolDashboard,
   classifyMemberLease,
   mergeGuardians,
   summarizeConsentStatus,
+  validateStudentRequest,
+  anonymizeStudent,
+  deleteStudent,
 };

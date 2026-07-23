@@ -16,6 +16,8 @@ const {
   consentStatus,
   getSchoolSettings,
   setConsentEnforcement,
+  studentExport,
+  studentErase,
 } = require("../controllers/school");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
@@ -69,5 +71,9 @@ router.post("/consent/status", canRead, consentStatus);
 // School settings — read + opt-in toggle for consent enforcement (per company).
 router.post("/settings", canRead, getSchoolSettings);
 router.post("/settings/consent-enforcement", canUpdate, setConsentEnforcement);
+
+// FERPA/COPPA data-subject rights: staff-mediated export and erase/anonymize.
+router.post("/student/export", canRead, studentExport);
+router.post("/student/erase", canUpdate, studentErase);
 
 module.exports = router;

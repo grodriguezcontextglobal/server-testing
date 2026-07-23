@@ -99,7 +99,15 @@ test('mysql/routes/school.js: auditPiiAccess("SchoolPII") remains first router m
 
 test('mysql/routes/school.js: read routes require JWT, Education industry, and member:read', () => {
   const markers = loadSchoolRouterWithMiddlewareMarkers();
-  const readRoutes = ['/dashboard', '/roster', '/guardians', '/consent', '/consent/status', '/settings'];
+  const readRoutes = [
+    '/dashboard',
+    '/roster',
+    '/guardians',
+    '/consent',
+    '/consent/status',
+    '/settings',
+    '/student/export',
+  ];
 
   for (const route of readRoutes) {
     assertSchoolRbacChain(getRouteHandlers(markers.router, 'POST', route), 'read', markers);
@@ -115,11 +123,11 @@ test('mysql/routes/school.js: create routes require JWT, Education industry, and
   }
 });
 
-test('mysql/routes/school.js: consent-enforcement requires JWT, Education industry, and member:update', () => {
+test('mysql/routes/school.js: update routes require JWT, Education industry, and member:update', () => {
   const markers = loadSchoolRouterWithMiddlewareMarkers();
-  assertSchoolRbacChain(
-    getRouteHandlers(markers.router, 'POST', '/settings/consent-enforcement'),
-    'update',
-    markers
-  );
+  const updateRoutes = ['/settings/consent-enforcement', '/student/erase'];
+
+  for (const route of updateRoutes) {
+    assertSchoolRbacChain(getRouteHandlers(markers.router, 'POST', route), 'update', markers);
+  }
 });
