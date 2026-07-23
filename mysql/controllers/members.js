@@ -1210,9 +1210,9 @@ const retrieveOverdueLeases = async (request, response) => {
     }
     const query = `
       SELECT
-        madl.lease_id, madl.member_id, madl.device_id, madl.company_id,
+        madl.member_id, madl.device_id, madl.company_id,
         madl.assigned_date, madl.expected_return_date, madl.location,
-        DATEDIFF(NOW(), madl.expected_return_date) AS days_overdue,
+        DATEDIFF(NOW(), CAST(madl.expected_return_date AS DATETIME)) AS days_overdue,
         mi.first_name, mi.last_name, mi.email, mi.grade, mi.homeroom,
         mi.minor, mi.parent_guardian_first_name, mi.parent_guardian_email,
         ii.serial_number AS device_serial_number, ii.item_group AS device_item_group,
@@ -1222,7 +1222,8 @@ const retrieveOverdueLeases = async (request, response) => {
       LEFT JOIN item_inv ii ON ii.item_id = madl.device_id
       WHERE madl.company_id = ? AND madl.returned = 0
         AND madl.expected_return_date IS NOT NULL
-        AND madl.expected_return_date < NOW()${gradeClause}
+        AND madl.expected_return_date <> ''
+        AND CAST(madl.expected_return_date AS DATETIME) < NOW()${gradeClause}
       ORDER BY madl.expected_return_date ASC`;
     const [rows] = await connection.query(query, values);
     return response.status(200).json({ ok: true, count: rows.length, rows });
@@ -1268,7 +1269,7 @@ const bulkReturnMemberLeases = async (request, response) => {
       scopeValues.push(String(grade).trim());
     }
     const [leases] = await connection.query(
-      `SELECT madl.lease_id, madl.device_id
+      `SELECT madl.company_id, madl.member_id, madl.device_id
        FROM member_assigned_device_lease madl
        JOIN members_info mi ON mi.member_id = madl.member_id
        WHERE madl.company_id = ? AND madl.returned = 0${scopeClause}`,
@@ -1280,12 +1281,19 @@ const bulkReturnMemberLeases = async (request, response) => {
         .json({ ok: true, returned: 0, msg: "No outstanding leases in scope." });
     }
 
-    const leaseIds = leases.map((l) => l.lease_id);
+    const leaseKeyClause = leases
+      .map(() => "(company_id = ? AND member_id = ? AND device_id = ? AND returned = 0)")
+      .join(" OR ");
+    const leaseKeyValues = leases.flatMap((l) => [
+      String(l.company_id),
+      l.member_id,
+      l.device_id,
+    ]);
     await connection.query(
       `UPDATE member_assigned_device_lease
        SET returned = 1, return_status = ?, condition_note = ?, returned_date = NOW()
-       WHERE lease_id IN (${leaseIds.map(() => "?").join(",")})`,
-      [return_status, condition_note, ...leaseIds]
+       WHERE ${leaseKeyClause}`,
+      [return_status, condition_note, ...leaseKeyValues]
     );
 
     // Physical devices come back for 'returned'/'damaged'; 'lost' stays out.
@@ -1304,7 +1312,7 @@ const bulkReturnMemberLeases = async (request, response) => {
 
     return response.status(200).json({
       ok: true,
-      returned: leaseIds.length,
+      returned: leases.length,
       devicesRestocked,
       return_status,
     });
@@ -1359,7 +1367,7 @@ const retrieveMyDevices = async (request, response) => {
     }
 
     const [leases] = await connection.query(
-      `SELECT madl.lease_id, madl.assigned_date, madl.expected_return_date,
+      `SELECT madl.assigned_date, madl.expected_return_date,
               madl.returned, madl.return_status, madl.condition_note, madl.returned_date,
               ii.serial_number, ii.item_group, ii.category_name, ii.brand
        FROM member_assigned_device_lease madl
