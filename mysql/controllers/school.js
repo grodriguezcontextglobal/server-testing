@@ -274,17 +274,33 @@ const ANONYMIZE_MEMBER_SQL = `UPDATE members_info
  WHERE member_id = ? AND company_id = ?`;
 
 const anonymizeStudent = async (conn, company_id, member_id) => {
+  // Anonymize the student record (embedded guardian fields are student-owned)
   const [memberResult] = await conn.execute(ANONYMIZE_MEMBER_SQL, [member_id, company_id]);
-  const [guardianResult] = await conn.execute(
-    `UPDATE guardians g
-      JOIN student_guardian sg ON sg.guardian_id = g.id AND sg.company_id = g.company_id
-       SET g.first_name = 'REDACTED',
-           g.last_name = 'REDACTED',
-           g.email = NULL,
-           g.phone_number = NULL
-     WHERE sg.member_id = ? AND sg.company_id = ?`,
+
+  // For normalized guardians: only anonymize if exclusively linked to this student.
+  // Shared guardians are preserved to protect other students' data.
+  const [guardianRows] = await conn.execute(
+    "SELECT guardian_id FROM student_guardian WHERE member_id = ? AND company_id = ?",
     [member_id, company_id]
   );
+  const guardianIds = guardianRows.map((row) => row.guardian_id).filter(Boolean);
+  let guardiansAnonymized = 0;
+
+  for (const gid of guardianIds) {
+    const [otherLinks] = await conn.execute(
+      "SELECT 1 FROM student_guardian WHERE guardian_id = ? AND company_id = ? AND member_id != ? LIMIT 1",
+      [gid, company_id, member_id]
+    );
+    if (otherLinks.length === 0) {
+      await conn.execute(
+        `UPDATE guardians SET first_name = 'REDACTED', last_name = 'REDACTED', email = NULL, phone_number = NULL
+         WHERE company_id = ? AND id = ?`,
+        [company_id, gid]
+      );
+      guardiansAnonymized++;
+    }
+  }
+
   const [consentResult] = await conn.execute(
     `UPDATE school_consent
         SET signer_name = 'REDACTED', signer_email = NULL
@@ -294,7 +310,7 @@ const anonymizeStudent = async (conn, company_id, member_id) => {
 
   return {
     members_info_updated: Number(memberResult.affectedRows || 0) > 0,
-    guardians_anonymized: Number(guardianResult.affectedRows || 0),
+    guardians_anonymized: guardiansAnonymized,
     consents_anonymized: Number(consentResult.affectedRows || 0),
   };
 };
@@ -306,13 +322,25 @@ const deleteStudent = async (conn, company_id, member_id) => {
   );
   const guardianIds = guardianRows.map((row) => row.guardian_id).filter(Boolean);
   let guardiansDeleted = 0;
+  let guardiansPreservedShared = 0;
+
+  // Only delete guardians that are NOT linked to any other student in this company.
   if (guardianIds.length) {
-    const placeholders = guardianIds.map(() => "?").join(", ");
-    const [guardianResult] = await conn.execute(
-      `DELETE FROM guardians WHERE company_id = ? AND id IN (${placeholders})`,
-      [company_id, ...guardianIds]
-    );
-    guardiansDeleted = Number(guardianResult.affectedRows || 0);
+    for (const gid of guardianIds) {
+      const [otherLinks] = await conn.execute(
+        "SELECT 1 FROM student_guardian WHERE guardian_id = ? AND company_id = ? AND member_id != ? LIMIT 1",
+        [gid, company_id, member_id]
+      );
+      if (otherLinks.length === 0) {
+        await conn.execute(
+          "DELETE FROM guardians WHERE company_id = ? AND id = ?",
+          [company_id, gid]
+        );
+        guardiansDeleted++;
+      } else {
+        guardiansPreservedShared++;
+      }
+    }
   }
   const [linkResult] = await conn.execute(
     "DELETE FROM student_guardian WHERE member_id = ? AND company_id = ?",
@@ -330,6 +358,7 @@ const deleteStudent = async (conn, company_id, member_id) => {
   return {
     members_info_deleted: Number(memberResult.affectedRows || 0) > 0,
     guardians_deleted: guardiansDeleted,
+    guardians_preserved_shared: guardiansPreservedShared,
     student_guardian_links_deleted: Number(linkResult.affectedRows || 0),
     consents_deleted: Number(consentResult.affectedRows || 0),
   };
@@ -519,6 +548,84 @@ const addStudentGuardian = async (req, res) => {
     }
   } catch (error) {
     logger.error("addStudentGuardian error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/guardians/search
+// { company_id, member_id?, email?, guardian_id? }
+// Search guardians by flexible factors within a company.
+const searchGuardians = async (req, res) => {
+  const pool = getConnection();
+  const { company_id, member_id, email, guardian_id } = req.body || {};
+
+  if (!company_id) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  if (!member_id && !email && !guardian_id) {
+    return res
+      .status(400)
+      .json({ ok: false, msg: "provide at least one of: member_id, email, or guardian_id" });
+  }
+
+  try {
+    let whereClauses = ["g.company_id = ?"];
+    let params = [company_id];
+
+    if (guardian_id) {
+      whereClauses.push("g.id = ?");
+      params.push(guardian_id);
+    }
+    if (email) {
+      whereClauses.push("LOWER(g.email) = LOWER(?)");
+      params.push(email);
+    }
+    if (member_id) {
+      whereClauses.push("sg.member_id = ?");
+      params.push(member_id);
+    }
+
+    const whereStr = whereClauses.join(" AND ");
+
+    const [rows] = await pool.execute(
+      `SELECT g.id, g.first_name, g.last_name, g.email, g.phone_number,
+              sg.member_id, sg.relationship, sg.is_primary,
+              mi.first_name AS student_first_name, mi.last_name AS student_last_name
+       FROM guardians g
+       JOIN student_guardian sg ON sg.guardian_id = g.id AND sg.company_id = g.company_id
+       LEFT JOIN members_info mi ON mi.member_id = sg.member_id AND mi.company_id = sg.company_id
+       WHERE ${whereStr}`,
+      params
+    );
+
+    // Group by guardian_id to deduplicate shared guardians
+    const guardianMap = new Map();
+    for (const row of rows) {
+      if (!guardianMap.has(row.id)) {
+        guardianMap.set(row.id, {
+          id: row.id,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          email: row.email,
+          phone_number: row.phone_number,
+          students: [],
+        });
+      }
+      if (row.member_id) {
+        guardianMap.get(row.id).students.push({
+          member_id: row.member_id,
+          first_name: row.student_first_name,
+          last_name: row.student_last_name,
+          relationship: row.relationship,
+          is_primary: row.is_primary,
+        });
+      }
+    }
+
+    const guardians = Array.from(guardianMap.values());
+    return res.status(200).json({ ok: true, count: guardians.length, guardians });
+  } catch (error) {
+    logger.error("searchGuardians error:", error.message);
     return res.status(500).json({ ok: false, msg: error.message });
   }
 };
@@ -1011,6 +1118,7 @@ module.exports = {
   schoolRoster,
   listStudentGuardians,
   addStudentGuardian,
+  searchGuardians,
   recordConsent,
   requestConsent,
   publicRetrieveConsent,
