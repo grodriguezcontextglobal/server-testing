@@ -875,71 +875,167 @@ const requestConsent = async (req, res) => {
 };
 
 // POST /api/school/consent/public/retrieve
-// Public: guardian reads consent record via OTC.
+// Public: guardian retrieves consent details using the OTC.
 const publicRetrieveConsent = async (req, res) => {
   const pool = getConnection();
-  const { otc } = req.body || {};
-  const token = otc ? String(otc).trim() : "";
+  const token = String(req.body?.otc || "").trim();
 
   if (!token) {
-    return res.status(400).json({ ok: false, msg: "otc is required" });
+    return res.status(400).json({
+      ok: false,
+      msg: "otc is required",
+    });
   }
 
   try {
     const [rows] = await pool.execute(
-      `SELECT id, company_id, member_id, status, policy_type, policy_version,
-              signer_name, signer_email, otc_expires_at, consented_at, refused_at, responded_at
-         FROM school_consent WHERE otc = ?`,
+      `
+        SELECT
+          sc.id AS consent_id,
+          sc.company_id,
+          sc.member_id,
+          sc.guardian_id,
+          sc.policy_type,
+          sc.policy_version,
+          sc.signer_name,
+          sc.signer_email,
+          sc.method,
+          sc.consented_at,
+          sc.created_at,
+          sc.status,
+          sc.otc_expires_at,
+          sc.requested_at,
+          sc.responded_at,
+          sc.refused_at,
+
+          COALESCE(
+            sc.otc_expires_at,
+            DATE_ADD(sc.requested_at, INTERVAL 7 DAY)
+          ) AS effective_otc_expires_at,
+
+          ci.company_name,
+          ci.industry,
+
+          mi.first_name AS student_first_name,
+          mi.last_name AS student_last_name,
+          mi.email AS student_email,
+          mi.grade AS student_grade,
+          mi.homeroom AS student_homeroom,
+          mi.date_of_birth AS student_date_of_birth,
+
+          g.first_name AS guardian_first_name,
+          g.last_name AS guardian_last_name,
+          g.email AS guardian_email,
+          g.phone_number AS guardian_phone_number
+
+        FROM school_consent AS sc
+
+        INNER JOIN company_info AS ci
+          ON ci.company_id = sc.company_id
+
+        INNER JOIN members_info AS mi
+          ON mi.member_id = sc.member_id
+         AND mi.company_id = sc.company_id
+
+        INNER JOIN guardians AS g
+          ON g.id = sc.guardian_id
+         AND g.company_id = sc.company_id
+
+        WHERE sc.otc = ?
+        LIMIT 1
+      `,
       [token]
     );
 
     if (!rows.length) {
-      return res.status(404).json({ ok: false, msg: "Invalid consent link." });
-    }
-
-    const consent = rows[0];
-    if (isOtcExpired(consent.otc_expires_at)) {
-      return res.status(410).json({ ok: false, code: "CONSENT_LINK_EXPIRED", msg: "This consent link has expired." });
-    }
-
-    if (!isConsentMutable(consent.status)) {
-      return res.status(200).json({
-        ok: true,
-        consent: {
-          id: consent.id,
-          status: consent.status,
-          policy_type: consent.policy_type,
-          policy_version: consent.policy_version,
-          consented_at: consent.consented_at,
-          refused_at: consent.refused_at,
-          responded_at: consent.responded_at,
-        },
+      return res.status(404).json({
+        ok: false,
+        msg: "Invalid consent link.",
       });
     }
 
-    const [student] = await pool.execute(
-      "SELECT first_name, last_name FROM members_info WHERE member_id = ? AND company_id = ? LIMIT 1",
-      [consent.member_id, consent.company_id]
-    );
+    const record = rows[0];
+    const expiresAt = record.effective_otc_expires_at;
 
-    return res.status(200).json({
+    if (isOtcExpired(expiresAt)) {
+      return res.status(410).json({
+        ok: false,
+        code: "CONSENT_LINK_EXPIRED",
+        msg: "This consent link has expired.",
+      });
+    }
+
+    const guardianFullName =
+      [record.guardian_first_name, record.guardian_last_name]
+        .filter(Boolean)
+        .join(" ") ||
+      record.signer_name ||
+      null;
+
+    const studentFullName =
+      [record.student_first_name, record.student_last_name]
+        .filter(Boolean)
+        .join(" ") || "Student";
+
+    const response = {
       ok: true,
+
       consent: {
-        id: consent.id,
-        status: consent.status,
-        policy_type: consent.policy_type,
-        policy_version: consent.policy_version,
-        signer_name: consent.signer_name,
-        student_name: student.length ? `${student[0].first_name} ${student[0].last_name}` : "Student",
-        expires_at: consent.otc_expires_at,
+        id: record.consent_id,
+        status: record.status,
+        policy_type: record.policy_type,
+        policy_version: record.policy_version,
+        method: record.method,
+        signer_name: record.signer_name,
+        signer_email: record.signer_email,
+        requested_at: record.requested_at,
+        expires_at: expiresAt,
+        consented_at: record.consented_at,
+        refused_at: record.refused_at,
+        responded_at: record.responded_at,
+        mutable: isConsentMutable(record.status),
       },
-    });
+
+      company: {
+        id: record.company_id,
+        name: record.company_name,
+        industry: record.industry,
+      },
+
+      guardian: {
+        id: record.guardian_id,
+        first_name: record.guardian_first_name,
+        last_name: record.guardian_last_name,
+        full_name: guardianFullName,
+        email: record.guardian_email || record.signer_email || null,
+        phone_number: record.guardian_phone_number || null,
+      },
+
+      student: {
+        id: record.member_id,
+        first_name: record.student_first_name,
+        last_name: record.student_last_name,
+        full_name: studentFullName,
+        email: record.student_email || null,
+        grade: record.student_grade || null,
+        homeroom: record.student_homeroom || null,
+        date_of_birth: record.student_date_of_birth || null,
+      },
+    };
+
+    return res.status(200).json(response);
   } catch (error) {
-    logger.error("publicRetrieveConsent error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    logger.error("publicRetrieveConsent error:", {
+      message: error.message,
+      stack: error.stack,
+    });
+
+    return res.status(500).json({
+      ok: false,
+      msg: "Unable to retrieve consent information.",
+    });
   }
 };
-
 // POST /api/school/consent/public/respond
 // Public: guardian agrees or refuses consent via OTC.
 const publicRespondConsent = async (req, res) => {
