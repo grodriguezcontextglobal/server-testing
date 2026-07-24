@@ -12,15 +12,22 @@ const {
   listStudentGuardians,
   addStudentGuardian,
   recordConsent,
+  requestConsent,
+  publicRetrieveConsent,
+  publicRespondConsent,
   listMemberConsents,
   consentStatus,
   getSchoolSettings,
   setConsentEnforcement,
+  studentExport,
+  studentErase,
+  studentAccessLog,
 } = require("../controllers/school");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
 const { requireIndustry } = require("../../middlewares/requireIndustry");
 const { auditPiiAccess } = require("../../middlewares/auditPiiAccess");
+const { authorizePermission } = require("../../middlewares/authorizePermission");
 
 const router = Router();
 
@@ -28,28 +35,53 @@ const router = Router();
 // logs on response finish via the durable staff-activity log, never blocks).
 router.use(auditPiiAccess("SchoolPII"));
 
-const educationOnly = [validateJWT, checkTokenVersion, requireIndustry("Education")];
+const canRead = [
+  validateJWT,
+  checkTokenVersion,
+  requireIndustry("Education"),
+  authorizePermission("member", "read"),
+];
+const canCreate = [
+  validateJWT,
+  checkTokenVersion,
+  requireIndustry("Education"),
+  authorizePermission("member", "create"),
+];
+const canUpdate = [
+  validateJWT,
+  checkTokenVersion,
+  requireIndustry("Education"),
+  authorizePermission("member", "update"),
+];
 
 // 1:1 device-program dashboard: status counts + per-grade breakdown for the company.
-router.post("/dashboard", educationOnly, schoolDashboard);
+router.post("/dashboard", canRead, schoolDashboard);
 
 // Student roster (optionally by grade/homeroom) with devices-out per student.
-router.post("/roster", educationOnly, schoolRoster);
+router.post("/roster", canRead, schoolRoster);
 
 // Guardians for a student (normalized + the embedded primary).
-router.post("/guardians", educationOnly, listStudentGuardians);
+router.post("/guardians", canRead, listStudentGuardians);
 
 // Attach a new guardian to a student.
-router.post("/guardians/add", educationOnly, addStudentGuardian);
+router.post("/guardians/add", canCreate, addStudentGuardian);
 
 // Consent / AUP: record a signed policy, list a student's consents, and the
 // company-wide compliance status (who has / hasn't signed).
-router.post("/consent/record", educationOnly, recordConsent);
-router.post("/consent", educationOnly, listMemberConsents);
-router.post("/consent/status", educationOnly, consentStatus);
+router.post("/consent/record", canCreate, recordConsent);
+router.post("/consent/request", canCreate, requestConsent);
+router.post("/consent/public/retrieve", publicRetrieveConsent);
+router.post("/consent/public/respond", publicRespondConsent);
+router.post("/consent", canRead, listMemberConsents);
+router.post("/consent/status", canRead, consentStatus);
 
 // School settings — read + opt-in toggle for consent enforcement (per company).
-router.post("/settings", educationOnly, getSchoolSettings);
-router.post("/settings/consent-enforcement", educationOnly, setConsentEnforcement);
+router.post("/settings", canRead, getSchoolSettings);
+router.post("/settings/consent-enforcement", canUpdate, setConsentEnforcement);
+
+// FERPA/COPPA data-subject rights: staff-mediated export and erase/anonymize.
+router.post("/student/export", canRead, studentExport);
+router.post("/student/erase", canUpdate, studentErase);
+router.post("/student/access-log", canRead, studentAccessLog);
 
 module.exports = router;

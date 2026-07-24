@@ -103,6 +103,10 @@ const runOverdueReminders = async ({
   for (const job of jobs) {
     try {
       await enq(job.type, job.payload, { idempotencyKey: job.idempotencyKey });
+      // FERPA disclosure audit follow-up: reminder emails disclose education-record
+      // data externally, but StaffActivityLog.staff_member_id currently requires a
+      // valid AdminUser ObjectId. Add a system actor or schema-supported nullable
+      // service account before logging these scheduler-originated disclosures.
       queued++;
     } catch (e) {
       logger.error(`overdue reminder enqueue failed (${job.idempotencyKey}): ${e.message}`);

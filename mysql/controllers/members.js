@@ -1,8 +1,21 @@
 require("dotenv").config();
 // const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
-const { minorsMissingConsent } = require("../helpers/consentGate");
+const { minorsMissingConsent, isConsentStale } = require("../helpers/consentGate");
+const { isUnder13 } = require("../helpers/ageCalc");
 const connection = getConnection();
+
+const normalizeDateOfBirth = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    const parsed = new Date(`${value.trim()}T00:00:00Z`);
+    return isNaN(parsed.getTime()) ? null : value.trim();
+  }
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (isNaN(parsed.getTime())) return null;
+  return parsed.toISOString().slice(0, 10);
+};
 
 const insertNewMember = async (request, response) => {
   try {
@@ -102,6 +115,7 @@ const insertNewMember = async (request, response) => {
       external_id: body.external_id ? String(body.external_id).trim() : undefined,
       grade: body.grade ? String(body.grade).trim() : undefined,
       homeroom: body.homeroom ? String(body.homeroom).trim() : undefined,
+      date_of_birth: normalizeDateOfBirth(body.date_of_birth ?? body.dateOfBirth ?? body.dob),
       // School track: minor + guardian info must be settable at creation,
       // not only via update (guardian consent flows depend on it).
       minor:
@@ -287,6 +301,8 @@ const insertBulkMembers = async (request, response) => {
           ? String(body.image_url).trim()
           : undefined;
 
+      const date_of_birth = normalizeDateOfBirth(r.date_of_birth ?? r.dateOfBirth ?? r.dob);
+
       return {
         first_name,
         last_name,
@@ -300,6 +316,26 @@ const insertBulkMembers = async (request, response) => {
         address_zip,
         company_id,
         image_url,
+        grade: r.grade !== undefined && r.grade !== null ? String(r.grade).trim() : undefined,
+        homeroom: r.homeroom !== undefined && r.homeroom !== null ? String(r.homeroom).trim() : undefined,
+        date_of_birth,
+        minor: r.minor,
+        parent_guardian_first_name:
+          r.parent_guardian_first_name !== undefined && r.parent_guardian_first_name !== null
+            ? String(r.parent_guardian_first_name).trim()
+            : undefined,
+        parent_guardian_last_name:
+          r.parent_guardian_last_name !== undefined && r.parent_guardian_last_name !== null
+            ? String(r.parent_guardian_last_name).trim()
+            : undefined,
+        parent_guardian_email:
+          r.parent_guardian_email !== undefined && r.parent_guardian_email !== null
+            ? String(r.parent_guardian_email).trim()
+            : undefined,
+        parent_guardian_phone_number:
+          r.parent_guardian_phone_number !== undefined && r.parent_guardian_phone_number !== null
+            ? String(r.parent_guardian_phone_number).trim()
+            : undefined,
       };
     };
 
@@ -329,6 +365,7 @@ const insertBulkMembers = async (request, response) => {
       "company_id",
       "grade",
       "homeroom",
+      "date_of_birth",
       "minor",
       "parent_guardian_first_name",
       "parent_guardian_last_name",
@@ -523,7 +560,7 @@ const updateMemberInfo = async (request, response) => {
         'address', 'address_street', 'address_city', 'address_state', 'address_zip',
         'company_id', 'image_url', 'minor', 'parent_guardian_first_name',
         'parent_guardian_last_name', 'parent_guardian_email', 'parent_guardian_phone_number',
-        'grade', 'homeroom', 'external_id'
+        'grade', 'homeroom', 'external_id', 'date_of_birth'
     ];
 
     const updateData = {};
@@ -540,6 +577,11 @@ const updateMemberInfo = async (request, response) => {
 
     if (body.phone || body.phoneNumber) {
         updateData.phone_number = String(body.phone || body.phoneNumber).trim();
+    }
+    if (body.dateOfBirth !== undefined || body.dob !== undefined) {
+        updateData.date_of_birth = normalizeDateOfBirth(body.dateOfBirth ?? body.dob);
+    } else if (body.date_of_birth !== undefined) {
+        updateData.date_of_birth = normalizeDateOfBirth(body.date_of_birth);
     }
 
     const columnsToUpdate = Object.keys(updateData);
@@ -785,7 +827,7 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
     // who signs the liability contract.
     const memberIds = [...new Set(normalized.map((r) => Number(r.member_id)))];
     const [memberRows] = await connection.query(
-      `SELECT member_id, first_name, last_name, minor,
+      `SELECT member_id, first_name, last_name, minor, date_of_birth,
               parent_guardian_first_name, parent_guardian_last_name,
               parent_guardian_email
        FROM members_info WHERE member_id IN (${memberIds.map(() => "?").join(",")})`,
@@ -837,7 +879,7 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
       if (minorIds.length > 0) {
         const mph = minorIds.map(() => "?").join(",");
         const [consented] = await connection.query(
-          `SELECT DISTINCT member_id FROM school_consent WHERE member_id IN (${mph})`,
+          `SELECT DISTINCT member_id FROM school_consent WHERE member_id IN (${mph}) AND status = 'agreed'`,
           minorIds
         );
         consentedSet = new Set((consented || []).map((c) => c.member_id));
@@ -855,6 +897,90 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
           members: missing.map((m) => m.member_id),
         });
       }
+    }
+
+    // Under-13 COPPA enforcement — opt-in per company via
+    // company_school_settings.enforce_under_13_consent. This only blocks device
+    // assignment; student creation/import remains allowed so schools can build
+    // rosters before consent collection.
+    try {
+      const cph2 = companyIds.map(() => "?").join(",");
+      const [coppaSettings] = await connection.query(
+        `SELECT company_id, enforce_under_13_consent, required_consent_policy_version
+           FROM company_school_settings
+          WHERE enforce_under_13_consent = 1 AND company_id IN (${cph2})`,
+        companyIds
+      );
+
+      if ((coppaSettings || []).length > 0) {
+        const enforcingCompanies = new Set(coppaSettings.map((r) => Number(r.company_id)));
+        const versionByCompany = new Map();
+        for (const r of coppaSettings) {
+          if (r.required_consent_policy_version) {
+            versionByCompany.set(Number(r.company_id), r.required_consent_policy_version);
+          }
+        }
+
+        const consentedByMemberCompany = new Map();
+        const memberCompanyPairs = normalized
+          .filter((r) => enforcingCompanies.has(Number(r.company_id)))
+          .map((r) => [Number(r.member_id), Number(r.company_id)]);
+        if (memberCompanyPairs.length > 0) {
+          const mph2 = [...new Set(memberCompanyPairs.map(([mid]) => mid))].map(() => "?").join(",");
+          const [consentRows] = await connection.query(
+            `SELECT member_id, company_id, policy_version
+               FROM school_consent
+              WHERE member_id IN (${mph2}) AND status = 'agreed'`,
+            [...new Set(memberCompanyPairs.map(([mid]) => mid))]
+          );
+          for (const c of consentRows || []) {
+            const key = `${Number(c.member_id)}:${Number(c.company_id)}`;
+            if (!consentedByMemberCompany.has(key)) {
+              consentedByMemberCompany.set(key, []);
+            }
+            consentedByMemberCompany.get(key).push(c.policy_version);
+          }
+        }
+
+        const memberById = new Map((memberRows || []).map((m) => [Number(m.member_id), m]));
+        const under13Blocked = [];
+        for (const r of normalized) {
+          const cid = Number(r.company_id);
+          const mid = Number(r.member_id);
+          if (!enforcingCompanies.has(cid)) continue;
+
+          const member = memberById.get(mid);
+          if (isUnder13(member?.date_of_birth, new Date()) !== true) continue;
+
+          const key = `${mid}:${cid}`;
+          const versions = consentedByMemberCompany.get(key) || [];
+          if (versions.length === 0) {
+            under13Blocked.push(mid);
+            continue;
+          }
+
+          const requiredVersion = versionByCompany.get(cid);
+          if (requiredVersion && versions.every((version) => isConsentStale(version, requiredVersion))) {
+            under13Blocked.push(mid);
+          }
+        }
+
+        if (under13Blocked.length > 0) {
+          const blockedNames = (memberRows || [])
+            .filter((m) => under13Blocked.includes(Number(m.member_id)))
+            .map((m) => `${m.first_name} ${m.last_name}`);
+          return response.status(422).json({
+            ok: false,
+            code: "UNDER_13_CONSENT_REQUIRED",
+            msg: `Cannot assign devices: ${blockedNames.join(", ")} ${
+              blockedNames.length === 1 ? "is" : "are"
+            } under 13 and require guardian consent (COPPA). Record consent first (POST /api/school/consent/record).`,
+            members: under13Blocked,
+          });
+        }
+      }
+    } catch (_) {
+      // fallback: never block on settings/consent read failure
     }
 
     // Determine column set to use: union of present keys intersected with schema
@@ -1210,9 +1336,9 @@ const retrieveOverdueLeases = async (request, response) => {
     }
     const query = `
       SELECT
-        madl.lease_id, madl.member_id, madl.device_id, madl.company_id,
+        madl.member_id, madl.device_id, madl.company_id,
         madl.assigned_date, madl.expected_return_date, madl.location,
-        DATEDIFF(NOW(), madl.expected_return_date) AS days_overdue,
+        DATEDIFF(NOW(), CAST(madl.expected_return_date AS DATETIME)) AS days_overdue,
         mi.first_name, mi.last_name, mi.email, mi.grade, mi.homeroom,
         mi.minor, mi.parent_guardian_first_name, mi.parent_guardian_email,
         ii.serial_number AS device_serial_number, ii.item_group AS device_item_group,
@@ -1222,7 +1348,8 @@ const retrieveOverdueLeases = async (request, response) => {
       LEFT JOIN item_inv ii ON ii.item_id = madl.device_id
       WHERE madl.company_id = ? AND madl.returned = 0
         AND madl.expected_return_date IS NOT NULL
-        AND madl.expected_return_date < NOW()${gradeClause}
+        AND madl.expected_return_date <> ''
+        AND CAST(madl.expected_return_date AS DATETIME) < NOW()${gradeClause}
       ORDER BY madl.expected_return_date ASC`;
     const [rows] = await connection.query(query, values);
     return response.status(200).json({ ok: true, count: rows.length, rows });
@@ -1268,7 +1395,7 @@ const bulkReturnMemberLeases = async (request, response) => {
       scopeValues.push(String(grade).trim());
     }
     const [leases] = await connection.query(
-      `SELECT madl.lease_id, madl.device_id
+      `SELECT madl.company_id, madl.member_id, madl.device_id
        FROM member_assigned_device_lease madl
        JOIN members_info mi ON mi.member_id = madl.member_id
        WHERE madl.company_id = ? AND madl.returned = 0${scopeClause}`,
@@ -1280,12 +1407,19 @@ const bulkReturnMemberLeases = async (request, response) => {
         .json({ ok: true, returned: 0, msg: "No outstanding leases in scope." });
     }
 
-    const leaseIds = leases.map((l) => l.lease_id);
+    const leaseKeyClause = leases
+      .map(() => "(company_id = ? AND member_id = ? AND device_id = ? AND returned = 0)")
+      .join(" OR ");
+    const leaseKeyValues = leases.flatMap((l) => [
+      String(l.company_id),
+      l.member_id,
+      l.device_id,
+    ]);
     await connection.query(
       `UPDATE member_assigned_device_lease
        SET returned = 1, return_status = ?, condition_note = ?, returned_date = NOW()
-       WHERE lease_id IN (${leaseIds.map(() => "?").join(",")})`,
-      [return_status, condition_note, ...leaseIds]
+       WHERE ${leaseKeyClause}`,
+      [return_status, condition_note, ...leaseKeyValues]
     );
 
     // Physical devices come back for 'returned'/'damaged'; 'lost' stays out.
@@ -1304,7 +1438,7 @@ const bulkReturnMemberLeases = async (request, response) => {
 
     return response.status(200).json({
       ok: true,
-      returned: leaseIds.length,
+      returned: leases.length,
       devicesRestocked,
       return_status,
     });
@@ -1359,7 +1493,7 @@ const retrieveMyDevices = async (request, response) => {
     }
 
     const [leases] = await connection.query(
-      `SELECT madl.lease_id, madl.assigned_date, madl.expected_return_date,
+      `SELECT madl.assigned_date, madl.expected_return_date,
               madl.returned, madl.return_status, madl.condition_note, madl.returned_date,
               ii.serial_number, ii.item_group, ii.category_name, ii.brand
        FROM member_assigned_device_lease madl
