@@ -492,12 +492,15 @@ const listStudentGuardians = async (req, res) => {
 };
 
 // POST /api/school/guardians/add
-// { company_id, member_id, first_name?, last_name?, email?, phone_number?, relationship?, is_primary? }
+// { company_id, member_id, guardian_id?, first_name?, last_name?, email?, phone_number?, relationship?, is_primary? }
+// Reuses an existing guardian when guardian_id is provided; creates a new one otherwise.
+// Idempotent: returns existing link with 200 if the student is already linked to this guardian.
 const addStudentGuardian = async (req, res) => {
   const pool = getConnection();
   const {
     company_id,
     member_id,
+    guardian_id,
     first_name,
     last_name,
     email,
@@ -508,10 +511,11 @@ const addStudentGuardian = async (req, res) => {
   if (!company_id || member_id === undefined || member_id === null || String(member_id).trim() === "") {
     return res.status(400).json({ ok: false, msg: "company_id and member_id are required" });
   }
-  if (!first_name && !last_name && !email) {
+  // When no guardian_id is provided, we need guardian identity fields to create a new one.
+  if (!guardian_id && !first_name && !last_name && !email) {
     return res
       .status(400)
-      .json({ ok: false, msg: "provide at least a name or email for the guardian" });
+      .json({ ok: false, msg: "provide guardian_id or at least a name or email for the guardian" });
   }
   try {
     // multi-tenant guard: the student must belong to this company
@@ -526,12 +530,47 @@ const addStudentGuardian = async (req, res) => {
     const conn = await pool.getConnection();
     try {
       await conn.beginTransaction();
-      const guardianId = randomUUID();
-      await conn.execute(
-        `INSERT INTO guardians (id, company_id, first_name, last_name, email, phone_number)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [guardianId, company_id, first_name || null, last_name || null, email || null, phone_number || null]
+
+      let guardianId = guardian_id || null;
+      let createdGuardian = false;
+
+      if (guardianId) {
+        // Verify guardian exists in this company
+        const [g] = await conn.execute(
+          "SELECT id FROM guardians WHERE id = ? AND company_id = ? LIMIT 1",
+          [guardianId, company_id]
+        );
+        if (!g.length) {
+          await conn.rollback();
+          return res.status(404).json({ ok: false, msg: "guardian not found in this company" });
+        }
+      } else {
+        // Create a new guardian
+        guardianId = randomUUID();
+        await conn.execute(
+          `INSERT INTO guardians (id, company_id, first_name, last_name, email, phone_number)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [guardianId, company_id, first_name || null, last_name || null, email || null, phone_number || null]
+        );
+        createdGuardian = true;
+      }
+
+      // Check if link already exists (idempotent)
+      const [existingLink] = await conn.execute(
+        "SELECT id FROM student_guardian WHERE company_id = ? AND member_id = ? AND guardian_id = ? LIMIT 1",
+        [company_id, member_id, guardianId]
       );
+      if (existingLink.length) {
+        await conn.commit();
+        return res.status(200).json({
+          ok: true,
+          guardian_id: guardianId,
+          linked: false,
+          existing_link: true,
+          created_guardian: false,
+        });
+      }
+
       const linkId = randomUUID();
       await conn.execute(
         `INSERT INTO student_guardian (id, company_id, member_id, guardian_id, relationship, is_primary)
@@ -539,7 +578,13 @@ const addStudentGuardian = async (req, res) => {
         [linkId, company_id, member_id, guardianId, relationship || null, is_primary ? 1 : 0]
       );
       await conn.commit();
-      return res.status(201).json({ ok: true, guardian_id: guardianId });
+      return res.status(201).json({
+        ok: true,
+        guardian_id: guardianId,
+        linked: true,
+        existing_link: false,
+        created_guardian: createdGuardian,
+      });
     } catch (error) {
       await conn.rollback();
       throw error;
