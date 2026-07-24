@@ -129,12 +129,19 @@ test('studentExport returns student identity, guardians, leases, consents, and a
 
 test('studentErase anonymize mode redacts PII and preserves leases', async () => {
   const executed = [];
+  let guardianCheckCount = 0;
   const conn = {
     beginTransaction: async () => executed.push(['beginTransaction']),
     execute: async (sql, params) => {
       executed.push([sql, params]);
       if (sql.includes('UPDATE members_info')) return [{ affectedRows: 1 }];
-      if (sql.includes('UPDATE guardians')) return [{ affectedRows: 2 }];
+      if (sql.includes('SELECT guardian_id FROM student_guardian')) {
+        return [[{ guardian_id: 'g1' }, { guardian_id: 'g2' }]];
+      }
+      if (sql.includes('SELECT 1 FROM student_guardian WHERE guardian_id')) {
+        return [[]]; // no other links => exclusive
+      }
+      if (sql.includes('UPDATE guardians')) return [{ affectedRows: 1 }];
       if (sql.includes('UPDATE school_consent')) return [{ affectedRows: 3 }];
       throw new Error(`unexpected transaction statement: ${sql}`);
     },
@@ -156,17 +163,13 @@ test('studentErase anonymize mode redacts PII and preserves leases', async () =>
     await loaded.controller.studentErase({ body: { company_id: 77, member_id: 123 } }, res);
 
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(res.body, {
-      ok: true,
-      mode: 'anonymize',
-      member_id: 123,
-      receipt: {
-        members_info_updated: true,
-        guardians_anonymized: 2,
-        consents_anonymized: 3,
-        leases_preserved: 5,
-      },
-    });
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.mode, 'anonymize');
+    assert.equal(res.body.member_id, 123);
+    assert.equal(res.body.receipt.members_info_updated, true);
+    assert.equal(res.body.receipt.guardians_anonymized, 2);
+    assert.equal(res.body.receipt.consents_anonymized, 3);
+    assert.equal(res.body.receipt.leases_preserved, 5);
     const sqlText = executed.map(([sql]) => String(sql)).join('\n');
     assert.match(sqlText, /first_name = 'REDACTED'/);
     assert.match(sqlText, /email = NULL/);
@@ -176,16 +179,21 @@ test('studentErase anonymize mode redacts PII and preserves leases', async () =>
   }
 });
 
-test('studentErase delete mode removes guardian links, guardians, consents, and member while preserving leases', async () => {
+test('studentErase delete mode removes guardian links, exclusive guardians, consents, and member while preserving leases', async () => {
   const executed = [];
   const conn = {
     beginTransaction: async () => executed.push(['beginTransaction']),
     execute: async (sql, params) => {
       executed.push([sql, params]);
-      if (sql.includes('SELECT guardian_id FROM student_guardian')) {
+      if (sql.includes('SELECT guardian_id FROM student_guardian WHERE member_id')) {
         return [[{ guardian_id: 'g1' }, { guardian_id: 'g2' }]];
       }
-      if (sql.includes('DELETE FROM guardians')) return [{ affectedRows: 2 }];
+      if (sql.includes('SELECT 1 FROM student_guardian WHERE guardian_id')) {
+        const gid = params[0];
+        if (gid === 'g2') return [[{ 1: 1 }]]; // shared
+        return [[]]; // exclusive
+      }
+      if (sql.includes('DELETE FROM guardians')) return [{ affectedRows: 1 }];
       if (sql.includes('DELETE FROM student_guardian')) return [{ affectedRows: 2 }];
       if (sql.includes('DELETE FROM school_consent')) return [{ affectedRows: 3 }];
       if (sql.includes('DELETE FROM members_info')) return [{ affectedRows: 1 }];
@@ -214,16 +222,109 @@ test('studentErase delete mode removes guardian links, guardians, consents, and 
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.ok, true);
     assert.equal(res.body.mode, 'delete');
-    assert.deepEqual(res.body.receipt, {
-      members_info_deleted: true,
-      guardians_deleted: 2,
-      student_guardian_links_deleted: 2,
-      consents_deleted: 3,
-      leases_preserved: 5,
-    });
+    assert.equal(res.body.receipt.members_info_deleted, true);
+    assert.equal(res.body.receipt.guardians_deleted, 1); // only exclusive g1
+    assert.equal(res.body.receipt.guardians_preserved_shared, 1); // g2 preserved
+    assert.equal(res.body.receipt.student_guardian_links_deleted, 2);
+    assert.equal(res.body.receipt.consents_deleted, 3);
+    assert.equal(res.body.receipt.leases_preserved, 5);
     const statements = executed.map(([sql]) => String(sql));
+    // DELETE guardians should come before DELETE student_guardian
     assert.ok(statements.findIndex((sql) => sql.includes('DELETE FROM guardians')) < statements.findIndex((sql) => sql.includes('DELETE FROM student_guardian')));
     assert.doesNotMatch(statements.join('\n'), /(?:UPDATE|DELETE)\s+member_assigned_device_lease/i);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('studentErase delete mode preserves shared guardians across students', async () => {
+  const executed = [];
+  const conn = {
+    beginTransaction: async () => executed.push(['beginTransaction']),
+    execute: async (sql, params) => {
+      executed.push([sql, params]);
+      if (sql.includes('SELECT guardian_id FROM student_guardian WHERE member_id')) {
+        return [[{ guardian_id: 'g-shared' }]];
+      }
+      if (sql.includes('SELECT 1 FROM student_guardian WHERE guardian_id')) {
+        return [[{ 1: 1 }]]; // shared — other student linked
+      }
+      if (sql.includes('DELETE FROM guardians')) return [{ affectedRows: 0 }];
+      if (sql.includes('DELETE FROM student_guardian')) return [{ affectedRows: 1 }];
+      if (sql.includes('DELETE FROM school_consent')) return [{ affectedRows: 1 }];
+      if (sql.includes('DELETE FROM members_info')) return [{ affectedRows: 1 }];
+      throw new Error(`unexpected transaction statement: ${sql}`);
+    },
+    commit: async () => executed.push(['commit']),
+    rollback: async () => executed.push(['rollback']),
+    release: () => executed.push(['release']),
+  };
+  const pool = {
+    execute: async (sql) => {
+      if (sql.includes('SELECT 1 FROM members_info')) return [[{ 1: 1 }]];
+      if (sql.includes('COUNT(*) AS total FROM member_assigned_device_lease')) return [[{ total: 0 }]];
+      throw new Error(`unexpected pool statement: ${sql}`);
+    },
+    getConnection: async () => conn,
+  };
+  const loaded = loadSchoolController({ pool });
+  try {
+    const res = createResponse();
+    await loaded.controller.studentErase(
+      { body: { company_id: 77, member_id: 123, mode: 'delete' } },
+      res
+    );
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.receipt.guardians_deleted, 0);
+    assert.equal(res.body.receipt.guardians_preserved_shared, 1);
+    assert.equal(res.body.receipt.student_guardian_links_deleted, 1);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('studentErase anonymize mode preserves shared guardians', async () => {
+  const executed = [];
+  const conn = {
+    beginTransaction: async () => executed.push(['beginTransaction']),
+    execute: async (sql, params) => {
+      executed.push([sql, params]);
+      if (sql.includes('UPDATE members_info')) return [{ affectedRows: 1 }];
+      if (sql.includes('SELECT guardian_id FROM student_guardian')) {
+        return [[{ guardian_id: 'g-shared' }]];
+      }
+      if (sql.includes('SELECT 1 FROM student_guardian WHERE guardian_id')) {
+        return [[{ 1: 1 }]]; // shared
+      }
+      if (sql.includes('UPDATE guardians')) return [{ affectedRows: 0 }];
+      if (sql.includes('UPDATE school_consent')) return [{ affectedRows: 1 }];
+      throw new Error(`unexpected transaction statement: ${sql}`);
+    },
+    commit: async () => executed.push(['commit']),
+    rollback: async () => executed.push(['rollback']),
+    release: () => executed.push(['release']),
+  };
+  const pool = {
+    execute: async (sql) => {
+      if (sql.includes('SELECT 1 FROM members_info')) return [[{ 1: 1 }]];
+      if (sql.includes('COUNT(*) AS total FROM member_assigned_device_lease')) return [[{ total: 0 }]];
+      throw new Error(`unexpected pool statement: ${sql}`);
+    },
+    getConnection: async () => conn,
+  };
+  const loaded = loadSchoolController({ pool });
+  try {
+    const res = createResponse();
+    await loaded.controller.studentErase({ body: { company_id: 77, member_id: 123 } }, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.receipt.guardians_anonymized, 0);
+    // Verify no UPDATE guardians was executed (shared guardian preserved)
+    const sqlText = executed.map(([sql]) => String(sql)).join('\n');
+    assert.doesNotMatch(sqlText, /UPDATE guardians SET first_name = 'REDACTED'/);
   } finally {
     loaded.restore();
   }

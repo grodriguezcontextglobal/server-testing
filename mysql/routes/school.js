@@ -11,6 +11,7 @@ const {
   schoolRoster,
   listStudentGuardians,
   addStudentGuardian,
+  searchGuardians,
   recordConsent,
   requestConsent,
   publicRetrieveConsent,
@@ -65,6 +66,9 @@ router.post("/guardians", canRead, listStudentGuardians);
 
 // Attach a new guardian to a student.
 router.post("/guardians/add", canCreate, addStudentGuardian);
+
+// Search guardians by email, member_id, or guardian_id within a company.
+router.post("/guardians/search", canRead, searchGuardians);
 
 // Consent / AUP: record a signed policy, list a student's consents, and the
 // company-wide compliance status (who has / hasn't signed).

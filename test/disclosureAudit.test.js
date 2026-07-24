@@ -118,9 +118,15 @@ test('studentExport logs a DISCLOSURE event after successful export', async () =
 test('studentErase logs a DISCLOSURE event after successful erase', async () => {
   const conn = {
     beginTransaction: async () => {},
-    execute: async (sql) => {
+    execute: async (sql, params) => {
       if (sql.includes('UPDATE members_info')) return [{ affectedRows: 1 }];
-      if (sql.includes('UPDATE guardians')) return [{ affectedRows: 2 }];
+      if (sql.includes('SELECT guardian_id FROM student_guardian')) {
+        return [[{ guardian_id: 'g1' }, { guardian_id: 'g2' }]];
+      }
+      if (sql.includes('SELECT 1 FROM student_guardian WHERE guardian_id')) {
+        return [[]]; // exclusive
+      }
+      if (sql.includes('UPDATE guardians')) return [{ affectedRows: 1 }];
       if (sql.includes('UPDATE school_consent')) return [{ affectedRows: 3 }];
       throw new Error(`unexpected transaction statement: ${sql}`);
     },
