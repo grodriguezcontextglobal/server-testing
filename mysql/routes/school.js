@@ -14,6 +14,7 @@ const {
   searchGuardians,
   recordConsent,
   requestConsent,
+  resendConsent,
   publicRetrieveConsent,
   publicRespondConsent,
   listMemberConsents,
@@ -74,6 +75,7 @@ router.post("/guardians/search", canRead, searchGuardians);
 // company-wide compliance status (who has / hasn't signed).
 router.post("/consent/record", canCreate, recordConsent);
 router.post("/consent/request", canCreate, requestConsent);
+router.post("/consent/resend", canCreate, resendConsent);
 router.post("/consent/public/retrieve", publicRetrieveConsent);
 router.post("/consent/public/respond", publicRespondConsent);
 router.post("/consent", canRead, listMemberConsents);

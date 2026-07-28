@@ -10,6 +10,7 @@
 const schedule = require("node-schedule");
 const logger = require("../helpers/logger");
 const { runOverdueReminders } = require("./overdueReminders");
+const { runExpireConsents } = require("./consentExpiry");
 
 const initScheduledJobs = () => {
   const jobs = [];
@@ -26,7 +27,19 @@ const initScheduledJobs = () => {
     })
   );
 
-  logger.info("[scheduler] initialized: overdue-reminders (daily 08:00)");
+  // Daily consent-OTC expiry sweep (school track) — 00:05 server time.
+  jobs.push(
+    schedule.scheduleJob("5 0 * * *", async () => {
+      try {
+        const result = await runExpireConsents();
+        logger.info(`[scheduler] consent-expiry: ${JSON.stringify(result)}`);
+      } catch (error) {
+        logger.error(`[scheduler] consent-expiry failed: ${error.message}`);
+      }
+    })
+  );
+
+  logger.info("[scheduler] initialized: overdue-reminders (daily 08:00), consent-expiry (daily 00:05)");
   return jobs;
 };
 

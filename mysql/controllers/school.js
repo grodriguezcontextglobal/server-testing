@@ -874,6 +874,103 @@ const requestConsent = async (req, res) => {
   }
 };
 
+// POST /api/school/consent/resend
+// Staff re-sends a pending consent request: regenerates the OTC (invalidating
+// the previous link) and re-enqueues the email. Only valid while status='pending'
+// — an already agreed/refused consent must go through /consent/request again
+// (new policy_version) rather than being resent.
+const resendConsent = async (req, res) => {
+  const pool = getConnection();
+  const { company_id, member_id, policy_type, policy_version } = req.body || {};
+
+  const validationError = validateStudentRequest({ company_id, member_id });
+  if (validationError) {
+    return res.status(400).json({ ok: false, msg: validationError });
+  }
+
+  const pType = policy_type && String(policy_type).trim() ? String(policy_type).trim() : "AUP";
+  const pVer = policy_version && String(policy_version).trim() ? String(policy_version).trim() : "1";
+
+  try {
+    const [rows] = await pool.execute(
+      `SELECT id, status, signer_name, signer_email
+         FROM school_consent
+        WHERE company_id = ? AND member_id = ? AND policy_type = ? AND policy_version = ?
+        LIMIT 1`,
+      [company_id, member_id, pType, pVer]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({
+        ok: false,
+        msg: "No consent request found for this student/policy. Use /consent/request first.",
+      });
+    }
+
+    const existing = rows[0];
+    if (!isConsentMutable(existing.status)) {
+      return res.status(409).json({
+        ok: false,
+        msg: `Consent already ${existing.status}; nothing to resend.`,
+        status: existing.status,
+      });
+    }
+    if (!existing.signer_email) {
+      return res.status(422).json({ ok: false, msg: "No guardian email on file for this consent request." });
+    }
+
+    const otc = generateOtc();
+    const expires = otcExpiresAt();
+
+    const [updateResult] = await pool.execute(
+      `UPDATE school_consent
+          SET otc = ?, otc_expires_at = ?, requested_at = NOW(), requester_staff_id = ?
+        WHERE id = ? AND status = 'pending'`,
+      [otc, expires, req.uid || null, existing.id]
+    );
+
+    if (!updateResult.affectedRows) {
+      return res.status(409).json({ ok: false, msg: "Consent was responded to before it could be resent." });
+    }
+
+    try {
+      const { enqueue } = require("../../helpers/queue");
+      const consentUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/school/consent/respond?otc=${otc}`;
+      await enqueue(
+        "send-email",
+        {
+          to: existing.signer_email,
+          from: "Devitrak Notifications <noreply@devitrak.com>",
+          subject: "Reminder: Consent Required for Device Agreement",
+          html: `
+          <p>Hello ${existing.signer_name || "Guardian"},</p>
+          <p>This is a reminder that a device assignment agreement still requires your consent.</p>
+          <p>Please review and respond to the consent request:</p>
+          <p><a href="${consentUrl}" style="display:inline-block;padding:12px 24px;background:#4F46E5;color:#fff;text-decoration:none;border-radius:6px;">Review Consent</a></p>
+          <p>Or copy this link: ${consentUrl}</p>
+          <p>This link expires in 7 days. Any previous consent link is no longer valid.</p>
+          <p>Best regards,<br/>Devitrak</p>
+        `,
+        },
+        { idempotencyKey: `school-consent-resend:${existing.id}:${otc.slice(0, 16)}` }
+      );
+    } catch (emailErr) {
+      logger.error("Failed to enqueue consent resend email:", emailErr.message);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      consent_id: existing.id,
+      status: "pending",
+      expires_at: expires,
+      guardian_email: existing.signer_email,
+    });
+  } catch (error) {
+    logger.error("resendConsent error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 // POST /api/school/consent/public/retrieve
 // Public: guardian retrieves consent details using the OTC.
 const publicRetrieveConsent = async (req, res) => {
@@ -1262,6 +1359,7 @@ module.exports = {
   searchGuardians,
   recordConsent,
   requestConsent,
+  resendConsent,
   publicRetrieveConsent,
   publicRespondConsent,
   listMemberConsents,
