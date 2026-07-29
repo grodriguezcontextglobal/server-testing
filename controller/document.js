@@ -90,8 +90,8 @@ function createUploadDocument({
       });
 
       // El dueño del job = quien podrá hacer polling de GET /api/jobs/owned/:jobId.
-      // Esta ruta no corre validateJWT (req.uid es null), así que el uid del
-      // dueño se toma de created_by (el uid Mongo que el frontend ya envía).
+      // Esta ruta ahora sí corre validateJWT, así que context.uid normalmente
+      // viene del JWT; created_by queda como fallback por compatibilidad.
       const context = extractContextFn(req);
       if (!context.uid) context.uid = req.body.created_by || null;
 
@@ -168,7 +168,7 @@ const getCompanyDocumentByID = async (req, res) => {
 
 const getDocumentTypes = async (req, res) => {
   try {
-    const { company_id } = req.user;
+    const { company_id } = req.query;
     const types = await Document.getCompanyDocumentTypes(company_id);
     res.json({
       ok: true,
@@ -184,7 +184,7 @@ const getDocumentTypes = async (req, res) => {
 
 const getTriggerActions = async (req, res) => {
   try {
-    const { company_id } = req.user;
+    const { company_id } = req.query;
     const actions = await Document.getCompanyTriggerActions(company_id);
     res.json({
       ok: true,
