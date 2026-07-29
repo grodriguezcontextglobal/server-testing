@@ -13,7 +13,11 @@ const { groupBy } = require("lodash");
 const { enqueue, extractJobContext } = require("../../helpers/queue");
 const { createQueuedJobController } = require("../../helpers/queuedController");
 const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
+const { chunkArray } = require("../../helpers/chunkArray");
 require("dotenv").config();
+
+// Rows per INSERT statement for bulk writes -- see insertBulkItem.
+const BULK_INSERT_BATCH_SIZE = 500;
 
 const {
   getStaffCompanyAccess,
@@ -554,18 +558,30 @@ const insertBulkItem = async (request, response) => {
       image_url || null,
       supplier_info,
     ]);
-    const [result] = await connection.query(query, [values]);
-    // connection.query(query, [values], function (err, result) {
-    // });
-    // cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
-    // cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
+    // Batched inserts inside one transaction: a serial-number range can span
+    // thousands of rows, and one unbounded `VALUES ?` for all of them risks
+    // max_allowed_packet and holds the request open for the whole write.
+    const batches = chunkArray(values, BULK_INSERT_BATCH_SIZE);
+    const dbConnection = await connection.getConnection();
+    let affectedRows = 0;
+    let insertId = null;
+    try {
+      await dbConnection.beginTransaction();
+      for (const batch of batches) {
+        const [batchResult] = await dbConnection.query(query, [batch]);
+        affectedRows += batchResult.affectedRows || 0;
+        if (insertId === null) insertId = batchResult.insertId || null;
+      }
+      await dbConnection.commit();
+    } catch (error) {
+      await dbConnection.rollback();
+      throw error;
+    } finally {
+      dbConnection.release();
+    }
 
     return response.status(201).json({
-      item: result,
+      item: { affectedRows, insertId },
       ok: true,
     });
   } catch (error) {

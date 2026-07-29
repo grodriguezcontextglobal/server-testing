@@ -24,3 +24,8 @@ payload.json
 # never commit real secrets
 .env
 .env.backup
+
+# pnpm is not used in production (npm/pm2-runtime is) — don't let a stray
+# `pnpm install`/`pnpm test` reintroduce these
+pnpm-lock.yaml
+pnpm-workspace.yaml

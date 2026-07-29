@@ -2,6 +2,8 @@ const { Router } = require("express");
 const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
+const { validateJWT } = require("../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 
 // tmp/uploads está gitignoreado (tmp/uploads/), así que puede no existir en un
 // checkout limpio o si el OS/limpiador de temporales lo borra. Multer
@@ -99,19 +101,23 @@ const uploadXLSX = multer({
 
 const router = Router();
 
-// Middleware for all routes
-// router.use(validateJWT);
+// Dashboard-only: managing a company's document catalog is a staff action.
+const canManage = [validateJWT, checkTokenVersion];
 
 // Routes
-router.post("/upload", upload.single("document"), uploadDocument);
-router.post("/upload/xlsx", uploadXLSX.single("document"), uploadExcelToS3);
-router.get("/", getCompanyDocuments);
-router.get("/types", getDocumentTypes);
-router.get("/triggers", getTriggerActions);
+router.post("/upload", canManage, upload.single("document"), uploadDocument);
+router.post("/upload/xlsx", canManage, uploadXLSX.single("document"), uploadExcelToS3);
+router.get("/", canManage, getCompanyDocuments);
+router.get("/types", canManage, getDocumentTypes);
+router.get("/triggers", canManage, getTriggerActions);
+// NOT auth-gated: these three are also used from public/unauthenticated pages
+// (e.g. a consumer/guardian viewing or downloading the exact document they're
+// about to sign, before they have any staff session). Do not add validateJWT
+// here without confirming with the frontend which public flows depend on them.
 router.get("/:id", getCompanyDocumentByID);
 router.get("/download/:documentId/:userId", getDocumentDownloadUrl);
 router.post("/download/documentUrl", generateTemporaryDownloadUrl);
-router.delete("/:id", deleteDocument);
+router.delete("/:id", canManage, deleteDocument);
 // Error handling middleware for multer errors
 router.use((error, req, res, next) => {
   if (error instanceof multer.MulterError) {
