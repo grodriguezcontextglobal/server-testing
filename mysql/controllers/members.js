@@ -3,7 +3,14 @@ require("dotenv").config();
 const getConnection = require("../database/config");
 const { minorsMissingConsent, isConsentStale } = require("../helpers/consentGate");
 const { isUnder13 } = require("../helpers/ageCalc");
+const { chunkArray } = require("../../helpers/chunkArray");
 const connection = getConnection();
+
+// Rows per INSERT statement for bulk writes. Keeps a single statement's
+// placeholder count and payload size well under MySQL/PlanetScale limits
+// even for large imports (thousands of rows), instead of building one
+// unbounded VALUES list for the whole request.
+const BULK_INSERT_BATCH_SIZE = 500;
 
 const normalizeDateOfBirth = (value) => {
   if (value === undefined) return undefined;
@@ -399,24 +406,44 @@ const insertBulkMembers = async (request, response) => {
     );
 
     const rowPlaceholders = `(${columns.map(() => "?").join(", ")})`;
-    const placeholders = valid.map(() => rowPlaceholders).join(", ");
-    const values = [];
-    for (const r of valid) {
-      for (const c of columns) values.push(r[c] !== undefined ? r[c] : null);
-    }
+    const query = `INSERT INTO members_info (${columns.join(", ")}) VALUES `;
 
-    const query = `INSERT INTO members_info (${columns.join(
-      ", "
-    )}) VALUES ${placeholders}`;
-    const [result] = await connection.query(query, values);
+    // Batched inserts inside one transaction: a single unbounded VALUES list
+    // for thousands of rows risks the connection's max_allowed_packet/param
+    // limits and holds the request open for the whole import. Each batch
+    // still runs on the shared pool but as its own statement, and all of
+    // them commit (or roll back) together.
+    const batches = chunkArray(valid, BULK_INSERT_BATCH_SIZE);
+    const dbConnection = await connection.getConnection();
+    let affectedRows = 0;
+    let insertId = null;
+    try {
+      await dbConnection.beginTransaction();
+      for (const batch of batches) {
+        const batchValues = [];
+        for (const r of batch) {
+          for (const c of columns) batchValues.push(r[c] !== undefined ? r[c] : null);
+        }
+        const batchQuery = query + batch.map(() => rowPlaceholders).join(", ");
+        const [result] = await dbConnection.query(batchQuery, batchValues);
+        affectedRows += result.affectedRows || 0;
+        if (insertId === null) insertId = result.insertId || null;
+      }
+      await dbConnection.commit();
+    } catch (error) {
+      await dbConnection.rollback();
+      throw error;
+    } finally {
+      dbConnection.release();
+    }
 
     return response.status(201).json({
       ok: true,
       requested: input.length,
       inserted: valid.length,
       skipped,
-      affectedRows: result.affectedRows || 0,
-      insertId: result.insertId || null,
+      affectedRows,
+      insertId,
       columns,
     });
   } catch (error) {
