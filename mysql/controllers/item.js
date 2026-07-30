@@ -3836,23 +3836,35 @@ const deleteBulkItemBasedOnCriteria = async (request, response) => {
       values.push(item_group);
     }
 
-    if (
-      serial_number &&
-      Array.isArray(serial_number) &&
-      serial_number.length > 0
-    ) {
-      const serialPlaceholders = serial_number.map(() => "?").join(",");
-      whereClauses.push(`serial_number IN (${serialPlaceholders})`);
-      values.push(...serial_number);
+    // A serial_number list is the one criterion that can be genuinely large
+    // (a specific set of units to remove) -- an unbounded IN (...) for all of
+    // them risks max_allowed_packet/parameter limits. The other criteria
+    // above are single values or a company's location list (naturally
+    // small), so only this one needs batching: run the DELETE once per
+    // serial-number batch, sharing the same transaction, and sum the counts.
+    const hasSerialFilter =
+      serial_number && Array.isArray(serial_number) && serial_number.length > 0;
+    const serialBatches = hasSerialFilter
+      ? chunkArray(serial_number, BULK_INSERT_BATCH_SIZE)
+      : [null];
+
+    let deletedCount = 0;
+    for (const serialBatch of serialBatches) {
+      const batchWhereClauses = [...whereClauses];
+      const batchValues = [...values];
+      if (serialBatch) {
+        const serialPlaceholders = serialBatch.map(() => "?").join(",");
+        batchWhereClauses.push(`serial_number IN (${serialPlaceholders})`);
+        batchValues.push(...serialBatch);
+      }
+
+      const query = `DELETE FROM item_inv WHERE ${batchWhereClauses.join(" AND ")}`;
+      logger.info(`[deleteBulkItemBasedOnCriteria] Executing query: ${query}`);
+      logger.info(`[deleteBulkItemBasedOnCriteria] With values: ${JSON.stringify(batchValues)}`);
+
+      const [result] = await connection.execute(query, batchValues);
+      deletedCount += result.affectedRows;
     }
-
-    const query = `DELETE FROM item_inv WHERE ${whereClauses.join(" AND ")}`;
-
-    logger.info(`[deleteBulkItemBasedOnCriteria] Executing query: ${query}`);
-    logger.info(`[deleteBulkItemBasedOnCriteria] With values: ${JSON.stringify(values)}`);
-
-    const [result] = await connection.execute(query, values);
-    const deletedCount = result.affectedRows;
 
     if (deletedCount === 0) {
       await connection.commit();
