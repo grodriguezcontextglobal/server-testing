@@ -3546,12 +3546,18 @@ const deleteBulkItems = async (request, response) => {
       const writable = await getWritableScope(userAccess, "delete");
       const permitted = new Set((writable.values || []).map(String));
       const connection = getConnection();
-      const placeholders = item_ids.map(() => "?").join(",");
-      const [rows] = await connection.execute(
-        `SELECT item_id, location_id, category_name FROM item_inv
-         WHERE company_id = ? AND item_id IN (${placeholders})`,
-        [company_id, ...item_ids]
-      );
+      // Batched: an unbounded IN (...) for the whole item_ids array risks
+      // max_allowed_packet/parameter limits for a large delete request.
+      const rows = [];
+      for (const batch of chunkArray(item_ids, BULK_INSERT_BATCH_SIZE)) {
+        const placeholders = batch.map(() => "?").join(",");
+        const [batchRows] = await connection.execute(
+          `SELECT item_id, location_id, category_name FROM item_inv
+           WHERE company_id = ? AND item_id IN (${placeholders})`,
+          [company_id, ...batch]
+        );
+        rows.push(...batchRows);
+      }
       targetIds = rows
         .filter((r) =>
           permitted.has(String(writable.dimension === "location" ? r.location_id : r.category_name))
