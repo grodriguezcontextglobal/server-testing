@@ -1434,33 +1434,53 @@ const bulkReturnMemberLeases = async (request, response) => {
         .json({ ok: true, returned: 0, msg: "No outstanding leases in scope." });
     }
 
-    const leaseKeyClause = leases
-      .map(() => "(company_id = ? AND member_id = ? AND device_id = ? AND returned = 0)")
-      .join(" OR ");
-    const leaseKeyValues = leases.flatMap((l) => [
-      String(l.company_id),
-      l.member_id,
-      l.device_id,
-    ]);
-    await connection.query(
-      `UPDATE member_assigned_device_lease
-       SET returned = 1, return_status = ?, condition_note = ?, returned_date = NOW()
-       WHERE ${leaseKeyClause}`,
-      [return_status, condition_note, ...leaseKeyValues]
-    );
-
-    // Physical devices come back for 'returned'/'damaged'; 'lost' stays out.
+    // Both writes below (mark leases returned + restock inventory) must
+    // succeed or fail together -- a partial run previously could leave
+    // leases marked returned with their devices never restocked. Also
+    // batches the lease-key OR-clause and the device-id IN-clause instead of
+    // building one unbounded statement for the whole scope (end-of-term
+    // collection can span thousands of leases).
+    const dbConnection = await connection.getConnection();
     let devicesRestocked = 0;
-    if (return_status !== "lost") {
-      const deviceIds = [...new Set(leases.map((l) => l.device_id).filter(Boolean))];
-      if (deviceIds.length) {
-        const [res] = await connection.query(
-          `UPDATE item_inv SET warehouse = 1, logistic_status = 'in-stock', \`update_at\` = NOW()
-           WHERE company_id = ? AND item_id IN (${deviceIds.map(() => "?").join(",")})`,
-          [String(company_id), ...deviceIds]
+    try {
+      await dbConnection.beginTransaction();
+
+      for (const batch of chunkArray(leases, BULK_INSERT_BATCH_SIZE)) {
+        const leaseKeyClause = batch
+          .map(() => "(company_id = ? AND member_id = ? AND device_id = ? AND returned = 0)")
+          .join(" OR ");
+        const leaseKeyValues = batch.flatMap((l) => [
+          String(l.company_id),
+          l.member_id,
+          l.device_id,
+        ]);
+        await dbConnection.query(
+          `UPDATE member_assigned_device_lease
+           SET returned = 1, return_status = ?, condition_note = ?, returned_date = NOW()
+           WHERE ${leaseKeyClause}`,
+          [return_status, condition_note, ...leaseKeyValues]
         );
-        devicesRestocked = res.affectedRows || 0;
       }
+
+      // Physical devices come back for 'returned'/'damaged'; 'lost' stays out.
+      if (return_status !== "lost") {
+        const deviceIds = [...new Set(leases.map((l) => l.device_id).filter(Boolean))];
+        for (const batch of chunkArray(deviceIds, BULK_INSERT_BATCH_SIZE)) {
+          const [res] = await dbConnection.query(
+            `UPDATE item_inv SET warehouse = 1, logistic_status = 'in-stock', \`update_at\` = NOW()
+             WHERE company_id = ? AND item_id IN (${batch.map(() => "?").join(",")})`,
+            [String(company_id), ...batch]
+          );
+          devicesRestocked += res.affectedRows || 0;
+        }
+      }
+
+      await dbConnection.commit();
+    } catch (error) {
+      await dbConnection.rollback();
+      throw error;
+    } finally {
+      dbConnection.release();
     }
 
     return response.status(200).json({
