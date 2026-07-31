@@ -130,4 +130,14 @@ register(
   createBulkInsertItemRangeHandler({ getConnection: getSqlConnection })
 );
 
+const { createBulkReturnMemberLeasesHandler } = require("./bulkReturnMemberLeases");
+
+// Fin de trimestre: si no se manda member_ids/grade toca TODOS los leases
+// pendientes de la compañía -- ver project_bulk_queue_migration_plan.md y
+// mysql/controllers/members.js § bulkReturnMemberLeases.
+register(
+  "member:bulk-return-leases",
+  createBulkReturnMemberLeasesHandler({ getConnection: getSqlConnection })
+);
+
 module.exports = { register, getHandler, handlers };

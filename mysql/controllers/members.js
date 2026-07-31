@@ -4,6 +4,8 @@ const getConnection = require("../database/config");
 const { minorsMissingConsent, isConsentStale } = require("../helpers/consentGate");
 const { isUnder13 } = require("../helpers/ageCalc");
 const { chunkArray } = require("../../helpers/chunkArray");
+const { enqueue, extractJobContext } = require("../../helpers/queue");
+const { waitForJobOutcome } = require("../../helpers/queuedController");
 const connection = getConnection();
 
 // Rows per INSERT statement for bulk writes. Keeps a single statement's
@@ -1391,110 +1393,93 @@ const retrieveOverdueLeases = async (request, response) => {
 // member_ids, grade, or everything outstanding for the company. Marks the
 // lease rows returned (history preserved) and puts the devices back in the
 // warehouse (skipped for status 'lost' — those devices never came back).
-const bulkReturnMemberLeases = async (request, response) => {
-  try {
-    const {
-      company_id,
-      member_ids,
-      grade,
-      return_status = "returned",
-      condition_note = null,
-    } = request.body || {};
-    if (!company_id) {
-      return response
-        .status(400)
-        .json({ ok: false, msg: "company_id is required" });
-    }
-    if (!["returned", "lost", "damaged"].includes(return_status)) {
-      return response
-        .status(400)
-        .json({ ok: false, msg: "return_status must be returned|lost|damaged" });
-    }
-
-    // Resolve the outstanding leases in scope first so we can sync inventory.
-    const scopeValues = [String(company_id)];
-    let scopeClause = "";
-    if (Array.isArray(member_ids) && member_ids.length) {
-      scopeClause = ` AND madl.member_id IN (${member_ids.map(() => "?").join(",")})`;
-      scopeValues.push(...member_ids.map((m) => Number(m)));
-    } else if (grade !== undefined && grade !== null && String(grade).trim() !== "") {
-      scopeClause = " AND mi.grade = ?";
-      scopeValues.push(String(grade).trim());
-    }
-    const [leases] = await connection.query(
-      `SELECT madl.company_id, madl.member_id, madl.device_id
-       FROM member_assigned_device_lease madl
-       JOIN members_info mi ON mi.member_id = madl.member_id
-       WHERE madl.company_id = ? AND madl.returned = 0${scopeClause}`,
-      scopeValues
-    );
-    if (!leases.length) {
-      return response
-        .status(200)
-        .json({ ok: true, returned: 0, msg: "No outstanding leases in scope." });
-    }
-
-    // Both writes below (mark leases returned + restock inventory) must
-    // succeed or fail together -- a partial run previously could leave
-    // leases marked returned with their devices never restocked. Also
-    // batches the lease-key OR-clause and the device-id IN-clause instead of
-    // building one unbounded statement for the whole scope (end-of-term
-    // collection can span thousands of leases).
-    const dbConnection = await connection.getConnection();
-    let devicesRestocked = 0;
+// Migrado a cola (ver project_bulk_queue_migration_plan.md): sin
+// member_ids/grade, esto toca TODOS los leases pendientes de la compañía --
+// sin techo natural, mismo perfil de riesgo que insertBulkItem. El
+// controller solo valida y resuelve la lista de leases en scope (lectura
+// rápida, preserva el early-exit "sin leases" de siempre) y encola; las 2
+// escrituras (marcar devuelto + reponer inventario) viven en
+// queue/handlers/bulkReturnMemberLeases.js. Igual que insertBulkItem, usa
+// waitForJobOutcome para responder con la misma forma de siempre en el caso
+// típico (solo cae a 202+jobId si supera maxWaitMs).
+function createBulkReturnMemberLeases({
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  waitForJobOutcomeFn = waitForJobOutcome,
+  maxWaitMs = 4000,
+} = {}) {
+  return async function bulkReturnMemberLeases(request, response) {
     try {
-      await dbConnection.beginTransaction();
-
-      for (const batch of chunkArray(leases, BULK_INSERT_BATCH_SIZE)) {
-        const leaseKeyClause = batch
-          .map(() => "(company_id = ? AND member_id = ? AND device_id = ? AND returned = 0)")
-          .join(" OR ");
-        const leaseKeyValues = batch.flatMap((l) => [
-          String(l.company_id),
-          l.member_id,
-          l.device_id,
-        ]);
-        await dbConnection.query(
-          `UPDATE member_assigned_device_lease
-           SET returned = 1, return_status = ?, condition_note = ?, returned_date = NOW()
-           WHERE ${leaseKeyClause}`,
-          [return_status, condition_note, ...leaseKeyValues]
-        );
+      const {
+        company_id,
+        member_ids,
+        grade,
+        return_status = "returned",
+        condition_note = null,
+      } = request.body || {};
+      if (!company_id) {
+        return response
+          .status(400)
+          .json({ ok: false, msg: "company_id is required" });
+      }
+      if (!["returned", "lost", "damaged"].includes(return_status)) {
+        return response
+          .status(400)
+          .json({ ok: false, msg: "return_status must be returned|lost|damaged" });
       }
 
-      // Physical devices come back for 'returned'/'damaged'; 'lost' stays out.
-      if (return_status !== "lost") {
-        const deviceIds = [...new Set(leases.map((l) => l.device_id).filter(Boolean))];
-        for (const batch of chunkArray(deviceIds, BULK_INSERT_BATCH_SIZE)) {
-          const [res] = await dbConnection.query(
-            `UPDATE item_inv SET warehouse = 1, logistic_status = 'in-stock', \`update_at\` = NOW()
-             WHERE company_id = ? AND item_id IN (${batch.map(() => "?").join(",")})`,
-            [String(company_id), ...batch]
-          );
-          devicesRestocked += res.affectedRows || 0;
-        }
+      // Resolve the outstanding leases in scope first so we know whether
+      // there's anything to enqueue (preserves the "no leases" early exit).
+      const scopeValues = [String(company_id)];
+      let scopeClause = "";
+      if (Array.isArray(member_ids) && member_ids.length) {
+        scopeClause = ` AND madl.member_id IN (${member_ids.map(() => "?").join(",")})`;
+        scopeValues.push(...member_ids.map((m) => Number(m)));
+      } else if (grade !== undefined && grade !== null && String(grade).trim() !== "") {
+        scopeClause = " AND mi.grade = ?";
+        scopeValues.push(String(grade).trim());
+      }
+      const [leases] = await connection.query(
+        `SELECT madl.company_id, madl.member_id, madl.device_id
+         FROM member_assigned_device_lease madl
+         JOIN members_info mi ON mi.member_id = madl.member_id
+         WHERE madl.company_id = ? AND madl.returned = 0${scopeClause}`,
+        scopeValues
+      );
+      if (!leases.length) {
+        return response
+          .status(200)
+          .json({ ok: true, returned: 0, msg: "No outstanding leases in scope." });
       }
 
-      await dbConnection.commit();
+      const payload = { company_id, return_status, condition_note, leases };
+      const job = await enqueueFn("member:bulk-return-leases", payload, {
+        context: extractContextFn(request),
+      });
+
+      const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
+      if (outcome.outcome === "done") {
+        return response.status(200).json({ ok: true, ...outcome.result });
+      }
+      if (outcome.outcome === "failed") {
+        return response.status(500).json({
+          ok: false,
+          msg: outcome.job.lastError || "Bulk return failed",
+        });
+      }
+      return response.status(202).json({
+        ok: true,
+        jobId: job.id,
+        msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
+      });
     } catch (error) {
-      await dbConnection.rollback();
-      throw error;
-    } finally {
-      dbConnection.release();
+      return response
+        .status(500)
+        .json({ ok: false, msg: "Internal server error", error: error.message });
     }
-
-    return response.status(200).json({
-      ok: true,
-      returned: leases.length,
-      devicesRestocked,
-      return_status,
-    });
-  } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
-  }
-};
+  };
+}
+const bulkReturnMemberLeases = createBulkReturnMemberLeases();
 
 // PUBLIC self-service lookup for the family portal ("My Devices").
 // Verification is knowledge-based: the student ID (external_id) plus the
@@ -1584,5 +1569,6 @@ module.exports = {
   removeRowAssignedDeviceLeaseMember,
   retrieveOverdueLeases,
   bulkReturnMemberLeases,
+  createBulkReturnMemberLeases,
   retrieveMyDevices,
 };
