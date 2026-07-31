@@ -179,7 +179,19 @@ const insertNewMember = async (request, response) => {
   }
 };
 
-const insertBulkMembers = async (request, response) => {
+// Migrado a cola (ver project_bulk_queue_migration_plan.md): un import CSV
+// a nivel de distrito escolar puede ser miles de filas. El controller
+// normaliza las filas y resuelve las columnas reales de la tabla (rápido,
+// sin escritura); el INSERT real vive en
+// queue/handlers/bulkInsertMembers.js. Usa waitForJobOutcome para
+// responder con la misma forma de siempre en el caso típico.
+function createInsertBulkMembers({
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  waitForJobOutcomeFn = waitForJobOutcome,
+  maxWaitMs = 4000,
+} = {}) {
+  return async function insertBulkMembers(request, response) {
   try {
     const body = request.body || {};
     const input = Array.isArray(body.rows)
@@ -407,53 +419,41 @@ const insertBulkMembers = async (request, response) => {
       (k) => present.has(k) && schemaCols.has(k)
     );
 
-    const rowPlaceholders = `(${columns.map(() => "?").join(", ")})`;
-    const query = `INSERT INTO members_info (${columns.join(", ")}) VALUES `;
+    const payload = { valid, columns };
+    const job = await enqueueFn("member:bulk-insert", payload, {
+      context: extractContextFn(request),
+    });
 
-    // Batched inserts inside one transaction: a single unbounded VALUES list
-    // for thousands of rows risks the connection's max_allowed_packet/param
-    // limits and holds the request open for the whole import. Each batch
-    // still runs on the shared pool but as its own statement, and all of
-    // them commit (or roll back) together.
-    const batches = chunkArray(valid, BULK_INSERT_BATCH_SIZE);
-    const dbConnection = await connection.getConnection();
-    let affectedRows = 0;
-    let insertId = null;
-    try {
-      await dbConnection.beginTransaction();
-      for (const batch of batches) {
-        const batchValues = [];
-        for (const r of batch) {
-          for (const c of columns) batchValues.push(r[c] !== undefined ? r[c] : null);
-        }
-        const batchQuery = query + batch.map(() => rowPlaceholders).join(", ");
-        const [result] = await dbConnection.query(batchQuery, batchValues);
-        affectedRows += result.affectedRows || 0;
-        if (insertId === null) insertId = result.insertId || null;
-      }
-      await dbConnection.commit();
-    } catch (error) {
-      await dbConnection.rollback();
-      throw error;
-    } finally {
-      dbConnection.release();
+    const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
+    if (outcome.outcome === "done") {
+      return response.status(201).json({
+        ok: true,
+        requested: input.length,
+        inserted: valid.length,
+        skipped,
+        columns,
+        ...outcome.result,
+      });
     }
-
-    return response.status(201).json({
+    if (outcome.outcome === "failed") {
+      return response.status(500).json({
+        ok: false,
+        msg: outcome.job.lastError || "Bulk insert failed",
+      });
+    }
+    return response.status(202).json({
       ok: true,
-      requested: input.length,
-      inserted: valid.length,
-      skipped,
-      affectedRows,
-      insertId,
-      columns,
+      jobId: job.id,
+      msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
     });
   } catch (error) {
     return response
       .status(500)
       .json({ ok: false, msg: "Internal server error", error: error.message });
   }
-};
+  };
+}
+const insertBulkMembers = createInsertBulkMembers();
 
 // Retrieve rows from member_assigned_device_lease with optional filters
 const retrieveMembersAssignedDevices = async (request, response) => {
@@ -1559,6 +1559,7 @@ const retrieveMyDevices = async (request, response) => {
 module.exports = {
   insertNewMember,
   insertBulkMembers,
+  createInsertBulkMembers,
   updateMemberInfo,
   deleteMember,
   retrieveMemberInfo,

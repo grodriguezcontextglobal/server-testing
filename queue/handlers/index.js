@@ -150,4 +150,14 @@ register(
   createDeleteBulkItemBasedOnCriteriaHandler({ getConnection: getSqlConnection })
 );
 
+const { createBulkInsertMembersHandler } = require("./bulkInsertMembers");
+
+// Import de estudiantes/miembros vía CSV -- un import a nivel de distrito
+// puede ser miles de filas, ver project_bulk_queue_migration_plan.md y
+// mysql/controllers/members.js § insertBulkMembers.
+register(
+  "member:bulk-insert",
+  createBulkInsertMembersHandler({ getConnection: getSqlConnection })
+);
+
 module.exports = { register, getHandler, handlers };
