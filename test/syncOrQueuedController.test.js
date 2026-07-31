@@ -2,7 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const { createSyncOrQueuedController } = require('../helpers/queuedController');
+const { createSyncOrQueuedController, waitForJobOutcome } = require('../helpers/queuedController');
 
 function mockRes() {
   return {
@@ -140,6 +140,15 @@ test('createSyncOrQueuedController: si enqueue falla, responde 500 sin lanzar', 
 
   assert.equal(res.statusCode, 500);
   assert.equal(res.payload.ok, false);
+});
+
+test('waitForJobOutcome: exportada por separado para controllers con pre-checks async propios (ej. insertBulkItem)', async () => {
+  const JobModel = fakeJobModel([{ status: 'pending' }, { status: 'done', result: { ok: true, inserted: 5 } }]);
+
+  const outcome = await waitForJobOutcome({ id: 'JOB-X' }, { sleepFn: noSleep, JobModel });
+
+  assert.equal(outcome.outcome, 'done');
+  assert.deepEqual(outcome.result, { ok: true, inserted: 5 });
 });
 
 test('createSyncOrQueuedController: adjunta context e idempotencyKey al enqueue, igual que createQueuedJobController', async () => {
