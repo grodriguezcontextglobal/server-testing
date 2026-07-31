@@ -179,19 +179,21 @@ Production runs as **separate native nssm services** (no containers; Windows Ser
 
 | Service | Runs | Owns |
 |---------|------|------|
-| `DevitrakServer` | Node (`index.js`, pm2-runtime) | HTTP API + in-process queue worker for **all job types except email** |
+| `DevitrakServer` | Node (`index.js`, pm2-runtime) | HTTP API + in-process queue worker for **all job types except email and the bulk-write types** |
 | `DevitrakGoWorker` | `go-worker\worker.exe` | inventory Go operations (see the Go worker section) |
 | `DevitrakEmailWorker` | `node queue\standalone.js` | **email** jobs only |
+| `DevitrakBulkWorker` | `node queue\standalone.js` | **bulk-write** jobs only (see below) — fast poll, not yet deployed |
 
 The split is driven entirely by env — the code is identical across services:
 - **`DevitrakServer`**: `GO_WORKER_EXTERNAL=true` (don't spawn a co-located Go worker —
-  call the service) and `QUEUE_EXCLUDE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments`
-  (let the email worker own those). Optionally `GO_WORKER_HOST` if the Go worker is on
-  another box (default `localhost`).
+  call the service) and `QUEUE_EXCLUDE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments,inventory:bulk-insert-range,member:bulk-return-leases,inventory:bulk-delete-by-criteria,member:bulk-insert`
+  (let the email worker and the bulk worker own those). Optionally `GO_WORKER_HOST` if
+  the Go worker is on another box (default `localhost`).
 - **`DevitrakEmailWorker`**: `QUEUE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments`.
+- **`DevitrakBulkWorker`**: `QUEUE_TYPES=inventory:bulk-insert-range,member:bulk-return-leases,inventory:bulk-delete-by-criteria,member:bulk-insert` and `QUEUE_POLL_MS=300` (see below — this one's poll interval matters).
 
 The atomic claim + type filter (`queue/core.js` `buildClaimFilter`) guarantee no job is
-processed twice across the two workers.
+processed twice across workers.
 
 ### Create the email worker service
 
@@ -225,6 +227,60 @@ nssm restart DevitrakServer
 > **Enable incrementally.** Start `DevitrakEmailWorker` FIRST and confirm it drains email
 > jobs; only then set `QUEUE_EXCLUDE_TYPES` on the main server. Otherwise email jobs would
 > sit unclaimed in the gap. To remove: `nssm remove DevitrakEmailWorker confirm`.
+
+### Create the bulk worker service (fast poll — NOT YET DEPLOYED)
+
+Backs the 4 queue-migrated bulk-write endpoints (see
+`project_bulk_queue_migration_plan.md` in the AI memory store):
+`insertBulkItem`, `bulkReturnMemberLeases`, `deleteBulkItemBasedOnCriteria`,
+`insertBulkMembers`. Their controllers enqueue and then wait (poll the `Job`
+document) for a few seconds before responding with the exact same body a
+synchronous handler would have returned — so the frontend contract doesn't
+change for a typical request. That only works if this job gets picked up fast:
+the **default** queue worker polls every `QUEUE_POLL_MS` (4000ms), which would
+add 2-4s of latency to every one of these calls, even a 2-row insert. This
+worker exists solely to poll much faster (`QUEUE_POLL_MS=300`) for just these
+4 job types, without touching the default interval used by every other queue
+consumer.
+
+**Until this service is running, jobs of these 4 types are NOT dead — the
+main `DevitrakServer` worker still picks them up (at its default 4s poll,
+before `QUEUE_EXCLUDE_TYPES` below is applied to it), just slower than
+intended.** Don't apply the `QUEUE_EXCLUDE_TYPES` change to `DevitrakServer`
+until this service is confirmed running, or these 4 job types would sit
+unclaimed.
+
+Run **as Administrator**:
+
+```powershell
+nssm install DevitrakBulkWorker "C:\Program Files\nodejs\node.exe"
+nssm set DevitrakBulkWorker AppParameters "queue\standalone.js"
+nssm set DevitrakBulkWorker AppDirectory "C:\Users\CGAdmin\Documents\Github\server-testing"
+nssm set DevitrakBulkWorker DisplayName "Devitrak Bulk Worker"
+nssm set DevitrakBulkWorker Description "Dedicated fast-poll task-queue worker for bulk-write jobs (queue/standalone.js)."
+nssm set DevitrakBulkWorker Start SERVICE_AUTO_START
+nssm set DevitrakBulkWorker AppEnvironmentExtra QUEUE_TYPES=inventory:bulk-insert-range,member:bulk-return-leases,inventory:bulk-delete-by-criteria,member:bulk-insert QUEUE_POLL_MS=300
+nssm set DevitrakBulkWorker AppStdout "C:\Users\CGAdmin\Documents\Github\server-testing\logs\bulk-worker-out.log"
+nssm set DevitrakBulkWorker AppStderr "C:\Users\CGAdmin\Documents\Github\server-testing\logs\bulk-worker-err.log"
+nssm set DevitrakBulkWorker AppExit Default Restart
+nssm set DevitrakBulkWorker AppRestartDelay 3000
+nssm start DevitrakBulkWorker
+nssm status DevitrakBulkWorker    # SERVICE_RUNNING
+```
+
+Then, once confirmed running, add the 4 bulk types to the main server's exclude
+list (again, `AppEnvironmentExtra` **replaces** the whole block — re-list
+`PM2_HOME` and the existing email-worker exclusions too):
+
+```powershell
+nssm set DevitrakServer AppEnvironmentExtra PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2 GO_WORKER_EXTERNAL=true QUEUE_EXCLUDE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments,inventory:bulk-insert-range,member:bulk-return-leases,inventory:bulk-delete-by-criteria,member:bulk-insert
+nssm restart DevitrakServer
+```
+
+> **Enable incrementally, same as the email worker.** Start `DevitrakBulkWorker`
+> FIRST, hit one of the 4 endpoints with a small payload, and confirm it responds
+> with the normal (non-202) body quickly; only then set `QUEUE_EXCLUDE_TYPES` on
+> the main server. To remove: `nssm remove DevitrakBulkWorker confirm`.
 
 ---
 
