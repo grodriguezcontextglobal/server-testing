@@ -140,4 +140,14 @@ register(
   createBulkReturnMemberLeasesHandler({ getConnection: getSqlConnection })
 );
 
+const { createDeleteBulkItemBasedOnCriteriaHandler } = require("./deleteBulkItemBasedOnCriteria");
+
+// Sin serial_number, borra TODA una categoría/ubicación del inventario --
+// sin techo natural, ver project_bulk_queue_migration_plan.md y
+// mysql/controllers/item.js § deleteBulkItemBasedOnCriteria.
+register(
+  "inventory:bulk-delete-by-criteria",
+  createDeleteBulkItemBasedOnCriteriaHandler({ getConnection: getSqlConnection })
+);
+
 module.exports = { register, getHandler, handlers };

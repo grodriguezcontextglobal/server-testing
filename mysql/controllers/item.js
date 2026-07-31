@@ -3672,129 +3672,109 @@ const confirmItemsReturnedToStock = async (request, response) => {
   }
 };
 
-const deleteBulkItemBasedOnCriteria = async (request, response) => {
-  const pool = getConnection();
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-    console.log("deleteBulkItemBasedOnCriteria request.body:", request.body);
-    const { serial_number, category_name, item_group, company_id } =
-      request.body;
+// Migrado a cola (ver project_bulk_queue_migration_plan.md): sin
+// serial_number, esto borra TODA una categoría/ubicación del inventario --
+// sin techo natural, mismo perfil de riesgo que insertBulkItem/
+// bulkReturnMemberLeases. El controller resuelve el scope (company_id +
+// category_name/item_group, y los location_ids permitidos si el rol es
+// location-scoped) y encola; el DELETE real vive en
+// queue/handlers/deleteBulkItemBasedOnCriteria.js. Usa waitForJobOutcome
+// para responder con la misma forma de siempre en el caso típico.
+function createDeleteBulkItemBasedOnCriteria({
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  getWritableScopeFn = getWritableScope,
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  waitForJobOutcomeFn = waitForJobOutcome,
+  maxWaitMs = 4000,
+} = {}) {
+  return async function deleteBulkItemBasedOnCriteria(request, response) {
+    try {
+      const { serial_number, category_name, item_group, company_id } = request.body;
 
-    if (!company_id || !category_name) {
-      return response.status(400).json({
-        msg: "company_id and category_name are required.",
+      if (!company_id || !category_name) {
+        return response.status(400).json({
+          msg: "company_id and category_name are required.",
+          ok: false,
+        });
+      }
+
+      const userAccess = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
+      if (!userAccess) {
+        return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+      }
+
+      // Intersect the delete criteria with the staff's can_delete scope. Category-scoped
+      // roles: the fixed category_name must itself be permitted (all-or-nothing). Location-
+      // scoped roles: the criteria carry no location, so restrict the DELETE to permitted
+      // location_ids. Full-access roles are unrestricted.
+      let location_ids = null;
+      if (userAccess.scoped) {
+        const writable = await getWritableScopeFn(userAccess, "delete");
+        if (writable.dimension === "category") {
+          if (!(writable.values || []).includes(category_name)) {
+            return response.status(200).json({
+              deleted_count: 0,
+              msg: "Category not within your permitted scope. No changes were made.",
+              ok: true,
+            });
+          }
+        } else if (writable.dimension === "location") {
+          if (!writable.values || writable.values.length === 0) {
+            return response.status(200).json({
+              deleted_count: 0,
+              msg: "No locations within your permitted scope. No changes were made.",
+              ok: true,
+            });
+          }
+          location_ids = writable.values;
+        }
+      }
+
+      const payload = { company_id, category_name, item_group, serial_number, location_ids };
+      const job = await enqueueFn("inventory:bulk-delete-by-criteria", payload, {
+        context: extractContextFn(request),
+      });
+
+      const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
+      if (outcome.outcome === "done") {
+        const { deletedCount } = outcome.result;
+        if (deletedCount === 0) {
+          return response.status(200).json({
+            deleted_count: 0,
+            msg: "No items found matching the provided criteria. No changes were made.",
+            ok: true,
+          });
+        }
+        return response.status(200).json({
+          deleted_count: deletedCount,
+          msg: `${deletedCount} item(s) deleted successfully.`,
+          ok: true,
+        });
+      }
+      if (outcome.outcome === "failed") {
+        return response.status(500).json({
+          error: outcome.job.lastError,
+          msg: "An internal error occurred. Please contact the administrator.",
+          ok: false,
+        });
+      }
+      return response.status(202).json({
+        ok: true,
+        jobId: job.id,
+        msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
+      });
+    } catch (error) {
+      logger.error("deleteBulkItemBasedOnCriteria error:", error);
+      return response.status(500).json({
+        error: error.message,
+        msg: "An internal error occurred. Please contact the administrator.",
         ok: false,
       });
     }
-
-    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
-    if (!userAccess) {
-      await connection.rollback();
-      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
-    }
-
-    let whereClauses = ["company_id = ?", "category_name = ?"];
-    let values = [company_id, category_name];
-
-    // Intersect the delete criteria with the staff's can_delete scope. Category-scoped
-    // roles: the fixed category_name must itself be permitted (all-or-nothing). Location-
-    // scoped roles: the criteria carry no location, so restrict the DELETE to permitted
-    // location_ids. Full-access roles are unrestricted.
-    if (userAccess.scoped) {
-      const writable = await getWritableScope(userAccess, "delete");
-      if (writable.dimension === "category") {
-        if (!(writable.values || []).includes(category_name)) {
-          await connection.rollback();
-          return response.status(200).json({
-            deleted_count: 0,
-            msg: "Category not within your permitted scope. No changes were made.",
-            ok: true,
-          });
-        }
-      } else if (writable.dimension === "location") {
-        if (!writable.values || writable.values.length === 0) {
-          await connection.rollback();
-          return response.status(200).json({
-            deleted_count: 0,
-            msg: "No locations within your permitted scope. No changes were made.",
-            ok: true,
-          });
-        }
-        const locPlaceholders = writable.values.map(() => "?").join(",");
-        whereClauses.push(`location_id IN (${locPlaceholders})`);
-        values.push(...writable.values);
-      }
-    }
-
-    if (item_group) {
-      whereClauses.push("item_group = ?");
-      values.push(item_group);
-    }
-
-    // A serial_number list is the one criterion that can be genuinely large
-    // (a specific set of units to remove) -- an unbounded IN (...) for all of
-    // them risks max_allowed_packet/parameter limits. The other criteria
-    // above are single values or a company's location list (naturally
-    // small), so only this one needs batching: run the DELETE once per
-    // serial-number batch, sharing the same transaction, and sum the counts.
-    const hasSerialFilter =
-      serial_number && Array.isArray(serial_number) && serial_number.length > 0;
-    const serialBatches = hasSerialFilter
-      ? chunkArray(serial_number, BULK_INSERT_BATCH_SIZE)
-      : [null];
-
-    let deletedCount = 0;
-    for (const serialBatch of serialBatches) {
-      const batchWhereClauses = [...whereClauses];
-      const batchValues = [...values];
-      if (serialBatch) {
-        const serialPlaceholders = serialBatch.map(() => "?").join(",");
-        batchWhereClauses.push(`serial_number IN (${serialPlaceholders})`);
-        batchValues.push(...serialBatch);
-      }
-
-      const query = `DELETE FROM item_inv WHERE ${batchWhereClauses.join(" AND ")}`;
-      logger.info(`[deleteBulkItemBasedOnCriteria] Executing query: ${query}`);
-      logger.info(`[deleteBulkItemBasedOnCriteria] With values: ${JSON.stringify(batchValues)}`);
-
-      const [result] = await connection.execute(query, batchValues);
-      deletedCount += result.affectedRows;
-    }
-
-    if (deletedCount === 0) {
-      await connection.commit();
-      return response.status(200).json({
-        deleted_count: 0,
-        msg: "No items found matching the provided criteria. No changes were made.",
-        ok: true,
-      });
-    }
-
-    await connection.commit();
-
-    return response.status(200).json({
-      deleted_count: deletedCount,
-      msg: `${deletedCount} item(s) deleted successfully.`,
-      ok: true,
-    });
-  } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
-    logger.error("deleteBulkItemBasedOnCriteria error:", error);
-    return response.status(500).json({
-      error: error.message,
-      msg: "An internal error occurred. Please contact the administrator.",
-      ok: false,
-    });
-  } finally {
-    if (connection) {
-      connection.release();
-    }
-  }
-};
+  };
+}
+const deleteBulkItemBasedOnCriteria = createDeleteBulkItemBasedOnCriteria();
 
 const retrieveCompanyInventoryBasedOnParams = async (request, response) => {
   const { expected, company_id, location, item_group, category_name, limit } = request.body;
@@ -3849,6 +3829,7 @@ module.exports = {
   consultingItemTable,
   consultItemDataFromSerialNumber,
   deleteBulkItemBasedOnCriteria,
+  createDeleteBulkItemBasedOnCriteria,
   deleteBulkItems,
   deleteContainerItem,
   deleteItem,
