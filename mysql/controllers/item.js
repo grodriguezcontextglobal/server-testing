@@ -11,7 +11,7 @@ const {
 const ReceiversPool = require("../../models/ReceiversPool");
 const { groupBy } = require("lodash");
 const { enqueue, extractJobContext } = require("../../helpers/queue");
-const { createQueuedJobController } = require("../../helpers/queuedController");
+const { createQueuedJobController, waitForJobOutcome } = require("../../helpers/queuedController");
 const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
 const { chunkArray } = require("../../helpers/chunkArray");
 require("dotenv").config();
@@ -399,199 +399,96 @@ const insertingItem = async (request, response) => {
   }
 };
 
-const insertBulkItem = async (request, response) => {
-  try {
-    const connection = getConnection();
-    // const cache_connection = await clientRedis();
-    const {
-      category_name,
-      sub_category_name,
-      item_group,
-      sub_item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      min_serial_number,
-      max_serial_number,
-      warehouse,
-      main_warehouse,
-      created_at,
-      update_at,
-      company,
-      location,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      containerId,
-      display_item,
-      enableAssignFeature,
-      image_url,
-      supplier_info,
-    } = request.body;
-
-    // Determine location name
-    const locName = typeof location === "string" ? location : location?.name;
-    if (!locName || !company_id) {
-      return response.status(400).json({
-        msg: "Company ID and Location Name are required.",
-        ok: false,
-      });
-    }
-
-    // Lookup Location ID
-    const locationId = await getLocationId(connection, company_id, locName);
-    if (!locationId) {
-      return response.status(404).json({
-        msg: `Location '${locName}' not found.`,
-        ok: false,
-      });
-    }
-
-    // Scope write gate (create): a location/category-scoped role may only bulk-create
-    // items within its assigned scope (with can_create). Every row shares this single
-    // location + category, so an all-or-nothing check is correct here. Full-access passes.
-    const creatorAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
-    if (!creatorAccess) {
-      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
-    }
-    if (!(await canWriteInScope(creatorAccess, "create", { locationId, categoryName: category_name }))) {
-      return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
-    }
-
-    if (!min_serial_number || !max_serial_number) {
-      return response.status(400).json({
-        msg: "Minimum and maximum serial numbers are required.",
-        ok: false,
-      });
-    }
-
-    // Generate serial numbers from min_serial_number to max_serial_number
-    const serialNumbers = [];
-    let currentSerial = parseInt(min_serial_number, 10);
-    const maxSerial = parseInt(max_serial_number, 10);
-
-    while (currentSerial <= maxSerial) {
-      serialNumbers.push(
-        currentSerial.toString().padStart(min_serial_number.length, "0"),
-      );
-      currentSerial++;
-    }
-
-    if (serialNumbers.length === 0) {
-      return response.status(400).json({
-        msg: "No serial numbers generated.",
-        ok: false,
-      });
-    }
-
-    const query = `
-    INSERT INTO item_inv
-    (
-      category_name,
-      sub_category_name,
-      item_group,
-      sub_item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial_number,
-      warehouse,
-      main_warehouse,
-      create_at,
-      update_at,
-      company,
-      location,
-      location_id,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      container_id,
-      display_item,
-      enableAssignFeature,
-      image_url,
-      supplier_info
-      )
-      VALUES ?
-    `;
-
-    // Prepare an array of value arrays, each sub-array representing a row to be inserted
-    const values = serialNumbers.map((serial_number) => [
-      category_name,
-      sub_category_name || null,
-      item_group,
-      sub_item_group || null,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial_number,
-      warehouse,
-      main_warehouse,
-      created_at,
-      update_at,
-      company,
-      locName,
-      locationId,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      containerId,
-      display_item,
-      enableAssignFeature,
-      image_url || null,
-      supplier_info,
-    ]);
-    // Batched inserts inside one transaction: a serial-number range can span
-    // thousands of rows, and one unbounded `VALUES ?` for all of them risks
-    // max_allowed_packet and holds the request open for the whole write.
-    const batches = chunkArray(values, BULK_INSERT_BATCH_SIZE);
-    const dbConnection = await connection.getConnection();
-    let affectedRows = 0;
-    let insertId = null;
+// Migrado a cola (ver project_bulk_queue_migration_plan.md): un rango
+// min/max de serial lo EXPANDE EL SERVIDOR, sin techo natural (2 números
+// pueden generar millones de filas) -- el mayor riesgo de volumen de los 7
+// bulk fixes de la sesión anterior. El controller solo resuelve
+// location_id/valida scope (rápido, igual que insertBulkItemAlhpanumericFormat)
+// y encola; el INSERT real vive en queue/handlers/bulkInsertItemRange.js.
+// A diferencia de ese hermano (fire-and-forget 202), este usa
+// waitForJobOutcome para NO romper el contrato en el caso típico: si el job
+// termina dentro de maxWaitMs (con el worker DEDICADO de poll rápido, no el
+// genérico de 4s) responde 201 con la misma forma de siempre; solo una
+// carga verdaderamente enorme cae al 202+jobId.
+function createInsertBulkItemRange({
+  getLocationIdFn = getLocationId,
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  connectionFn = getConnection,
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  canWriteInScopeFn = canWriteInScope,
+  waitForJobOutcomeFn = waitForJobOutcome,
+  maxWaitMs = 4000,
+} = {}) {
+  return async function insertBulkItem(request, response) {
     try {
-      await dbConnection.beginTransaction();
-      for (const batch of batches) {
-        const [batchResult] = await dbConnection.query(query, [batch]);
-        affectedRows += batchResult.affectedRows || 0;
-        if (insertId === null) insertId = batchResult.insertId || null;
-      }
-      await dbConnection.commit();
-    } catch (error) {
-      await dbConnection.rollback();
-      throw error;
-    } finally {
-      dbConnection.release();
-    }
+      const { location, company_id, category_name, min_serial_number, max_serial_number } = request.body;
 
-    return response.status(201).json({
-      item: { affectedRows, insertId },
-      ok: true,
-    });
-  } catch (error) {
-    response.status(500).json({
-      err: error,
-      msg: `${error.message}`,
-      ok: false,
-    });
-  }
-};
+      const locName = typeof location === "string" ? location : location?.name;
+      if (!locName || !company_id) {
+        return response.status(400).json({
+          msg: "Company ID and Location Name are required.",
+          ok: false,
+        });
+      }
+
+      const connection = connectionFn();
+      const locationId = await getLocationIdFn(connection, company_id, locName);
+      if (!locationId) {
+        return response.status(404).json({
+          msg: `Location '${locName}' not found.`,
+          ok: false,
+        });
+      }
+
+      // Scope write gate (create): a location/category-scoped role may only bulk-create
+      // items within its assigned scope (with can_create). Every row shares this single
+      // location + category, so an all-or-nothing check is correct here. Full-access passes.
+      const creatorAccess = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
+      if (!creatorAccess) {
+        return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+      }
+      if (!(await canWriteInScopeFn(creatorAccess, "create", { locationId, categoryName: category_name }))) {
+        return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
+      }
+
+      if (!min_serial_number || !max_serial_number) {
+        return response.status(400).json({
+          msg: "Minimum and maximum serial numbers are required.",
+          ok: false,
+        });
+      }
+
+      const payload = { ...request.body, location: locName, location_id: locationId };
+      const job = await enqueueFn("inventory:bulk-insert-range", payload, {
+        context: extractContextFn(request),
+      });
+
+      const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
+      if (outcome.outcome === "done") {
+        return response.status(201).json({ item: outcome.result, ok: true });
+      }
+      if (outcome.outcome === "failed") {
+        return response.status(500).json({
+          ok: false,
+          msg: outcome.job.lastError || "Bulk insert failed",
+        });
+      }
+      return response.status(202).json({
+        ok: true,
+        jobId: job.id,
+        msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
+      });
+    } catch (error) {
+      response.status(500).json({
+        err: error,
+        msg: `${error.message}`,
+        ok: false,
+      });
+    }
+  };
+}
+const insertBulkItem = createInsertBulkItemRange();
 
 // Migrado al contrato async (202 + jobId, ver DESIGN_task_queue.md § Fase 4b):
 // hasta 15,000 seriales por request, insertados síncronamente antes sostenían
@@ -3546,12 +3443,18 @@ const deleteBulkItems = async (request, response) => {
       const writable = await getWritableScope(userAccess, "delete");
       const permitted = new Set((writable.values || []).map(String));
       const connection = getConnection();
-      const placeholders = item_ids.map(() => "?").join(",");
-      const [rows] = await connection.execute(
-        `SELECT item_id, location_id, category_name FROM item_inv
-         WHERE company_id = ? AND item_id IN (${placeholders})`,
-        [company_id, ...item_ids]
-      );
+      // Batched: an unbounded IN (...) for the whole item_ids array risks
+      // max_allowed_packet/parameter limits for a large delete request.
+      const rows = [];
+      for (const batch of chunkArray(item_ids, BULK_INSERT_BATCH_SIZE)) {
+        const placeholders = batch.map(() => "?").join(",");
+        const [batchRows] = await connection.execute(
+          `SELECT item_id, location_id, category_name FROM item_inv
+           WHERE company_id = ? AND item_id IN (${placeholders})`,
+          [company_id, ...batch]
+        );
+        rows.push(...batchRows);
+      }
       targetIds = rows
         .filter((r) =>
           permitted.has(String(writable.dimension === "location" ? r.location_id : r.category_name))
@@ -3769,117 +3672,109 @@ const confirmItemsReturnedToStock = async (request, response) => {
   }
 };
 
-const deleteBulkItemBasedOnCriteria = async (request, response) => {
-  const pool = getConnection();
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-    console.log("deleteBulkItemBasedOnCriteria request.body:", request.body);
-    const { serial_number, category_name, item_group, company_id } =
-      request.body;
+// Migrado a cola (ver project_bulk_queue_migration_plan.md): sin
+// serial_number, esto borra TODA una categoría/ubicación del inventario --
+// sin techo natural, mismo perfil de riesgo que insertBulkItem/
+// bulkReturnMemberLeases. El controller resuelve el scope (company_id +
+// category_name/item_group, y los location_ids permitidos si el rol es
+// location-scoped) y encola; el DELETE real vive en
+// queue/handlers/deleteBulkItemBasedOnCriteria.js. Usa waitForJobOutcome
+// para responder con la misma forma de siempre en el caso típico.
+function createDeleteBulkItemBasedOnCriteria({
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  getWritableScopeFn = getWritableScope,
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  waitForJobOutcomeFn = waitForJobOutcome,
+  maxWaitMs = 4000,
+} = {}) {
+  return async function deleteBulkItemBasedOnCriteria(request, response) {
+    try {
+      const { serial_number, category_name, item_group, company_id } = request.body;
 
-    if (!company_id || !category_name) {
-      return response.status(400).json({
-        msg: "company_id and category_name are required.",
+      if (!company_id || !category_name) {
+        return response.status(400).json({
+          msg: "company_id and category_name are required.",
+          ok: false,
+        });
+      }
+
+      const userAccess = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
+      if (!userAccess) {
+        return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+      }
+
+      // Intersect the delete criteria with the staff's can_delete scope. Category-scoped
+      // roles: the fixed category_name must itself be permitted (all-or-nothing). Location-
+      // scoped roles: the criteria carry no location, so restrict the DELETE to permitted
+      // location_ids. Full-access roles are unrestricted.
+      let location_ids = null;
+      if (userAccess.scoped) {
+        const writable = await getWritableScopeFn(userAccess, "delete");
+        if (writable.dimension === "category") {
+          if (!(writable.values || []).includes(category_name)) {
+            return response.status(200).json({
+              deleted_count: 0,
+              msg: "Category not within your permitted scope. No changes were made.",
+              ok: true,
+            });
+          }
+        } else if (writable.dimension === "location") {
+          if (!writable.values || writable.values.length === 0) {
+            return response.status(200).json({
+              deleted_count: 0,
+              msg: "No locations within your permitted scope. No changes were made.",
+              ok: true,
+            });
+          }
+          location_ids = writable.values;
+        }
+      }
+
+      const payload = { company_id, category_name, item_group, serial_number, location_ids };
+      const job = await enqueueFn("inventory:bulk-delete-by-criteria", payload, {
+        context: extractContextFn(request),
+      });
+
+      const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
+      if (outcome.outcome === "done") {
+        const { deletedCount } = outcome.result;
+        if (deletedCount === 0) {
+          return response.status(200).json({
+            deleted_count: 0,
+            msg: "No items found matching the provided criteria. No changes were made.",
+            ok: true,
+          });
+        }
+        return response.status(200).json({
+          deleted_count: deletedCount,
+          msg: `${deletedCount} item(s) deleted successfully.`,
+          ok: true,
+        });
+      }
+      if (outcome.outcome === "failed") {
+        return response.status(500).json({
+          error: outcome.job.lastError,
+          msg: "An internal error occurred. Please contact the administrator.",
+          ok: false,
+        });
+      }
+      return response.status(202).json({
+        ok: true,
+        jobId: job.id,
+        msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
+      });
+    } catch (error) {
+      logger.error("deleteBulkItemBasedOnCriteria error:", error);
+      return response.status(500).json({
+        error: error.message,
+        msg: "An internal error occurred. Please contact the administrator.",
         ok: false,
       });
     }
-
-    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
-    if (!userAccess) {
-      await connection.rollback();
-      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
-    }
-
-    let whereClauses = ["company_id = ?", "category_name = ?"];
-    let values = [company_id, category_name];
-
-    // Intersect the delete criteria with the staff's can_delete scope. Category-scoped
-    // roles: the fixed category_name must itself be permitted (all-or-nothing). Location-
-    // scoped roles: the criteria carry no location, so restrict the DELETE to permitted
-    // location_ids. Full-access roles are unrestricted.
-    if (userAccess.scoped) {
-      const writable = await getWritableScope(userAccess, "delete");
-      if (writable.dimension === "category") {
-        if (!(writable.values || []).includes(category_name)) {
-          await connection.rollback();
-          return response.status(200).json({
-            deleted_count: 0,
-            msg: "Category not within your permitted scope. No changes were made.",
-            ok: true,
-          });
-        }
-      } else if (writable.dimension === "location") {
-        if (!writable.values || writable.values.length === 0) {
-          await connection.rollback();
-          return response.status(200).json({
-            deleted_count: 0,
-            msg: "No locations within your permitted scope. No changes were made.",
-            ok: true,
-          });
-        }
-        const locPlaceholders = writable.values.map(() => "?").join(",");
-        whereClauses.push(`location_id IN (${locPlaceholders})`);
-        values.push(...writable.values);
-      }
-    }
-
-    if (item_group) {
-      whereClauses.push("item_group = ?");
-      values.push(item_group);
-    }
-
-    if (
-      serial_number &&
-      Array.isArray(serial_number) &&
-      serial_number.length > 0
-    ) {
-      const serialPlaceholders = serial_number.map(() => "?").join(",");
-      whereClauses.push(`serial_number IN (${serialPlaceholders})`);
-      values.push(...serial_number);
-    }
-
-    const query = `DELETE FROM item_inv WHERE ${whereClauses.join(" AND ")}`;
-
-    logger.info(`[deleteBulkItemBasedOnCriteria] Executing query: ${query}`);
-    logger.info(`[deleteBulkItemBasedOnCriteria] With values: ${JSON.stringify(values)}`);
-
-    const [result] = await connection.execute(query, values);
-    const deletedCount = result.affectedRows;
-
-    if (deletedCount === 0) {
-      await connection.commit();
-      return response.status(200).json({
-        deleted_count: 0,
-        msg: "No items found matching the provided criteria. No changes were made.",
-        ok: true,
-      });
-    }
-
-    await connection.commit();
-
-    return response.status(200).json({
-      deleted_count: deletedCount,
-      msg: `${deletedCount} item(s) deleted successfully.`,
-      ok: true,
-    });
-  } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
-    logger.error("deleteBulkItemBasedOnCriteria error:", error);
-    return response.status(500).json({
-      error: error.message,
-      msg: "An internal error occurred. Please contact the administrator.",
-      ok: false,
-    });
-  } finally {
-    if (connection) {
-      connection.release();
-    }
-  }
-};
+  };
+}
+const deleteBulkItemBasedOnCriteria = createDeleteBulkItemBasedOnCriteria();
 
 const retrieveCompanyInventoryBasedOnParams = async (request, response) => {
   const { expected, company_id, location, item_group, category_name, limit } = request.body;
@@ -3934,6 +3829,7 @@ module.exports = {
   consultingItemTable,
   consultItemDataFromSerialNumber,
   deleteBulkItemBasedOnCriteria,
+  createDeleteBulkItemBasedOnCriteria,
   deleteBulkItems,
   deleteContainerItem,
   deleteItem,
@@ -3946,6 +3842,7 @@ module.exports = {
   getInventoryHierarchyWithTypes,
   gettingDataFromLocationOption,
   insertBulkItem,
+  createInsertBulkItemRange,
   insertBulkItemAlhpanumericFormat,
   createInsertBulkItemAlphanumeric,
   insertContainerItems,

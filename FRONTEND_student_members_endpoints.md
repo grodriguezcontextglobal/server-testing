@@ -176,6 +176,9 @@ but functionally this is the "students receiving devices" surface.
   `return_status:"lost"` — puts the physical devices back in warehouse stock.
   `200 { ok:true, returned, devicesRestocked, return_status }`, or
   `{ ok:true, returned:0, msg:"No outstanding leases in scope." }` if nothing matched.
+  ⚠️ Now queue-backed (2026-07-31) — same request/response contract for a normal
+  call, but a request touching the WHOLE company can rarely return `202+jobId`
+  instead. See `FRONTEND_bulk_queue_migration.md`.
 
 - **`POST /api/db_member/my-devices`** (**public, no auth**) — Body:
   `{ email, external_id }`. Knowledge-based verification: `external_id` is the
@@ -207,5 +210,8 @@ but functionally this is the "students receiving devices" surface.
 - `POST /api/db_lease/status` (cross-type lease dashboard) and the RBAC
   scoped-roles contract — see `FRONTEND_server_updates_2026-07.md` §2 and §4.
 - Core member CRUD (`new-member`, `update-member-info`, `delete-member-info`,
-  `bulk-members`, `consulting-member`, `retrieve-members-assigned-devices`,
-  the single-row lease update/delete endpoints) is unchanged — not repeated here.
+  `consulting-member`, `retrieve-members-assigned-devices`, the single-row
+  lease update/delete endpoints) is unchanged — not repeated here.
+- `POST /api/db_member/bulk-members` (CSV import) — same request/response
+  contract as always, but now queue-backed like `bulk-return` above; see
+  `FRONTEND_bulk_queue_migration.md` for the rare `202+jobId` case.

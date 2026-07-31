@@ -1,6 +1,10 @@
 require("dotenv").config();
 const { response } = require("express");
 const getConnection = require("../database/config");
+const { chunkArray } = require("../../helpers/chunkArray");
+
+// Rows per statement for bulk writes -- see updateGroupItems.
+const BULK_UPDATE_BATCH_SIZE = 500;
 const logger = require("../../helpers/logger");
 const { groupBy } = require("lodash");
 
@@ -187,8 +191,8 @@ const updateCompanyData = async (request, response) => {
 };
 
 const updateGroupItems = async (request, response) => {
+  const pool = getConnection();
   try {
-    const connection = await getConnection();
     const {
       category_name,
       item_group,
@@ -244,45 +248,60 @@ const updateGroupItems = async (request, response) => {
     const validItems = copyData.filter((item) => item.item_id);
 
     if (validItems.length) {
-      const first = validItems[0];
-      const serialCases = validItems.map(() => "WHEN ? THEN ?").join(" ");
-      const itemIdsPlaceholders = validItems.map(() => "?").join(",");
+      // Batched inside one transaction: an unbounded CASE/WHEN + IN (...) for
+      // the whole copy (thousands of items) risks max_allowed_packet/parameter
+      // limits and holds the request open for the whole write.
+      const connection = await pool.getConnection();
+      try {
+        await connection.beginTransaction();
+        for (const batch of chunkArray(validItems, BULK_UPDATE_BATCH_SIZE)) {
+          const first = batch[0];
+          const serialCases = batch.map(() => "WHEN ? THEN ?").join(" ");
+          const itemIdsPlaceholders = batch.map(() => "?").join(",");
 
-      const query = `
-        UPDATE item_inv
-        SET serial_number = CASE item_id ${serialCases} END,
-            category_name=?, item_group=?, cost=?, brand=?, descript_item=?, ownership=?,
-            main_warehouse=?, warehouse=?, company=?, location=?, sub_location=?, current_location=?,
-            extra_serial_number=?, company_id=?, return_date=?, update_at=?, enableAssignFeature=?,
-            container=?, containerSpotLimit=?, image_url=?
-        WHERE item_id IN (${itemIdsPlaceholders})`;
+          const query = `
+            UPDATE item_inv
+            SET serial_number = CASE item_id ${serialCases} END,
+                category_name=?, item_group=?, cost=?, brand=?, descript_item=?, ownership=?,
+                main_warehouse=?, warehouse=?, company=?, location=?, sub_location=?, current_location=?,
+                extra_serial_number=?, company_id=?, return_date=?, update_at=?, enableAssignFeature=?,
+                container=?, containerSpotLimit=?, image_url=?
+            WHERE item_id IN (${itemIdsPlaceholders})`;
 
-      const values = [
-        ...validItems.flatMap((item) => [item.item_id, item.serial_number]),
-        first.category_name,
-        first.item_group,
-        first.cost,
-        first.brand,
-        first.descript_item,
-        first.ownership,
-        first.main_warehouse,
-        first.warehouse,
-        first.company,
-        first.location,
-        first.sub_location,
-        first.current_location,
-        JSON.stringify(first.extra_serial_number),
-        first.company_id,
-        first.return_date,
-        first.update_at,
-        first.enableAssignFeature,
-        first.container,
-        first.containerSpotLimit,
-        first.image_url,
-        ...validItems.map((item) => item.item_id),
-      ];
+          const values = [
+            ...batch.flatMap((item) => [item.item_id, item.serial_number]),
+            first.category_name,
+            first.item_group,
+            first.cost,
+            first.brand,
+            first.descript_item,
+            first.ownership,
+            first.main_warehouse,
+            first.warehouse,
+            first.company,
+            first.location,
+            first.sub_location,
+            first.current_location,
+            JSON.stringify(first.extra_serial_number),
+            first.company_id,
+            first.return_date,
+            first.update_at,
+            first.enableAssignFeature,
+            first.container,
+            first.containerSpotLimit,
+            first.image_url,
+            ...batch.map((item) => item.item_id),
+          ];
 
-      await connection.execute(query, values);
+          await connection.execute(query, values);
+        }
+        await connection.commit();
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
     }
 
     return response

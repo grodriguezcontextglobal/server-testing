@@ -119,4 +119,45 @@ register(
   createEventItemShippingBulkUpdateHandler({ getConnection: getSqlConnection })
 );
 
+const { createBulkInsertItemRangeHandler } = require("./bulkInsertItemRange");
+
+// Rango min/max de serial que el SERVIDOR expande a filas -- sin techo
+// natural, ver project_bulk_queue_migration_plan.md. El controller
+// (mysql/controllers/item.js § insertBulkItem) espera este job con
+// waitForJobOutcome y responde igual que antes de migrar si termina rápido.
+register(
+  "inventory:bulk-insert-range",
+  createBulkInsertItemRangeHandler({ getConnection: getSqlConnection })
+);
+
+const { createBulkReturnMemberLeasesHandler } = require("./bulkReturnMemberLeases");
+
+// Fin de trimestre: si no se manda member_ids/grade toca TODOS los leases
+// pendientes de la compañía -- ver project_bulk_queue_migration_plan.md y
+// mysql/controllers/members.js § bulkReturnMemberLeases.
+register(
+  "member:bulk-return-leases",
+  createBulkReturnMemberLeasesHandler({ getConnection: getSqlConnection })
+);
+
+const { createDeleteBulkItemBasedOnCriteriaHandler } = require("./deleteBulkItemBasedOnCriteria");
+
+// Sin serial_number, borra TODA una categoría/ubicación del inventario --
+// sin techo natural, ver project_bulk_queue_migration_plan.md y
+// mysql/controllers/item.js § deleteBulkItemBasedOnCriteria.
+register(
+  "inventory:bulk-delete-by-criteria",
+  createDeleteBulkItemBasedOnCriteriaHandler({ getConnection: getSqlConnection })
+);
+
+const { createBulkInsertMembersHandler } = require("./bulkInsertMembers");
+
+// Import de estudiantes/miembros vía CSV -- un import a nivel de distrito
+// puede ser miles de filas, ver project_bulk_queue_migration_plan.md y
+// mysql/controllers/members.js § insertBulkMembers.
+register(
+  "member:bulk-insert",
+  createBulkInsertMembersHandler({ getConnection: getSqlConnection })
+);
+
 module.exports = { register, getHandler, handlers };
