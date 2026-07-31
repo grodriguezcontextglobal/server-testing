@@ -119,4 +119,15 @@ register(
   createEventItemShippingBulkUpdateHandler({ getConnection: getSqlConnection })
 );
 
+const { createBulkInsertItemRangeHandler } = require("./bulkInsertItemRange");
+
+// Rango min/max de serial que el SERVIDOR expande a filas -- sin techo
+// natural, ver project_bulk_queue_migration_plan.md. El controller
+// (mysql/controllers/item.js § insertBulkItem) espera este job con
+// waitForJobOutcome y responde igual que antes de migrar si termina rápido.
+register(
+  "inventory:bulk-insert-range",
+  createBulkInsertItemRangeHandler({ getConnection: getSqlConnection })
+);
+
 module.exports = { register, getHandler, handlers };

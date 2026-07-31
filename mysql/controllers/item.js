@@ -11,7 +11,7 @@ const {
 const ReceiversPool = require("../../models/ReceiversPool");
 const { groupBy } = require("lodash");
 const { enqueue, extractJobContext } = require("../../helpers/queue");
-const { createQueuedJobController } = require("../../helpers/queuedController");
+const { createQueuedJobController, waitForJobOutcome } = require("../../helpers/queuedController");
 const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
 const { chunkArray } = require("../../helpers/chunkArray");
 require("dotenv").config();
@@ -399,199 +399,96 @@ const insertingItem = async (request, response) => {
   }
 };
 
-const insertBulkItem = async (request, response) => {
-  try {
-    const connection = getConnection();
-    // const cache_connection = await clientRedis();
-    const {
-      category_name,
-      sub_category_name,
-      item_group,
-      sub_item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      min_serial_number,
-      max_serial_number,
-      warehouse,
-      main_warehouse,
-      created_at,
-      update_at,
-      company,
-      location,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      containerId,
-      display_item,
-      enableAssignFeature,
-      image_url,
-      supplier_info,
-    } = request.body;
-
-    // Determine location name
-    const locName = typeof location === "string" ? location : location?.name;
-    if (!locName || !company_id) {
-      return response.status(400).json({
-        msg: "Company ID and Location Name are required.",
-        ok: false,
-      });
-    }
-
-    // Lookup Location ID
-    const locationId = await getLocationId(connection, company_id, locName);
-    if (!locationId) {
-      return response.status(404).json({
-        msg: `Location '${locName}' not found.`,
-        ok: false,
-      });
-    }
-
-    // Scope write gate (create): a location/category-scoped role may only bulk-create
-    // items within its assigned scope (with can_create). Every row shares this single
-    // location + category, so an all-or-nothing check is correct here. Full-access passes.
-    const creatorAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
-    if (!creatorAccess) {
-      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
-    }
-    if (!(await canWriteInScope(creatorAccess, "create", { locationId, categoryName: category_name }))) {
-      return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
-    }
-
-    if (!min_serial_number || !max_serial_number) {
-      return response.status(400).json({
-        msg: "Minimum and maximum serial numbers are required.",
-        ok: false,
-      });
-    }
-
-    // Generate serial numbers from min_serial_number to max_serial_number
-    const serialNumbers = [];
-    let currentSerial = parseInt(min_serial_number, 10);
-    const maxSerial = parseInt(max_serial_number, 10);
-
-    while (currentSerial <= maxSerial) {
-      serialNumbers.push(
-        currentSerial.toString().padStart(min_serial_number.length, "0"),
-      );
-      currentSerial++;
-    }
-
-    if (serialNumbers.length === 0) {
-      return response.status(400).json({
-        msg: "No serial numbers generated.",
-        ok: false,
-      });
-    }
-
-    const query = `
-    INSERT INTO item_inv
-    (
-      category_name,
-      sub_category_name,
-      item_group,
-      sub_item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial_number,
-      warehouse,
-      main_warehouse,
-      create_at,
-      update_at,
-      company,
-      location,
-      location_id,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      container_id,
-      display_item,
-      enableAssignFeature,
-      image_url,
-      supplier_info
-      )
-      VALUES ?
-    `;
-
-    // Prepare an array of value arrays, each sub-array representing a row to be inserted
-    const values = serialNumbers.map((serial_number) => [
-      category_name,
-      sub_category_name || null,
-      item_group,
-      sub_item_group || null,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial_number,
-      warehouse,
-      main_warehouse,
-      created_at,
-      update_at,
-      company,
-      locName,
-      locationId,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      containerId,
-      display_item,
-      enableAssignFeature,
-      image_url || null,
-      supplier_info,
-    ]);
-    // Batched inserts inside one transaction: a serial-number range can span
-    // thousands of rows, and one unbounded `VALUES ?` for all of them risks
-    // max_allowed_packet and holds the request open for the whole write.
-    const batches = chunkArray(values, BULK_INSERT_BATCH_SIZE);
-    const dbConnection = await connection.getConnection();
-    let affectedRows = 0;
-    let insertId = null;
+// Migrado a cola (ver project_bulk_queue_migration_plan.md): un rango
+// min/max de serial lo EXPANDE EL SERVIDOR, sin techo natural (2 números
+// pueden generar millones de filas) -- el mayor riesgo de volumen de los 7
+// bulk fixes de la sesión anterior. El controller solo resuelve
+// location_id/valida scope (rápido, igual que insertBulkItemAlhpanumericFormat)
+// y encola; el INSERT real vive en queue/handlers/bulkInsertItemRange.js.
+// A diferencia de ese hermano (fire-and-forget 202), este usa
+// waitForJobOutcome para NO romper el contrato en el caso típico: si el job
+// termina dentro de maxWaitMs (con el worker DEDICADO de poll rápido, no el
+// genérico de 4s) responde 201 con la misma forma de siempre; solo una
+// carga verdaderamente enorme cae al 202+jobId.
+function createInsertBulkItemRange({
+  getLocationIdFn = getLocationId,
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  connectionFn = getConnection,
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  canWriteInScopeFn = canWriteInScope,
+  waitForJobOutcomeFn = waitForJobOutcome,
+  maxWaitMs = 4000,
+} = {}) {
+  return async function insertBulkItem(request, response) {
     try {
-      await dbConnection.beginTransaction();
-      for (const batch of batches) {
-        const [batchResult] = await dbConnection.query(query, [batch]);
-        affectedRows += batchResult.affectedRows || 0;
-        if (insertId === null) insertId = batchResult.insertId || null;
-      }
-      await dbConnection.commit();
-    } catch (error) {
-      await dbConnection.rollback();
-      throw error;
-    } finally {
-      dbConnection.release();
-    }
+      const { location, company_id, category_name, min_serial_number, max_serial_number } = request.body;
 
-    return response.status(201).json({
-      item: { affectedRows, insertId },
-      ok: true,
-    });
-  } catch (error) {
-    response.status(500).json({
-      err: error,
-      msg: `${error.message}`,
-      ok: false,
-    });
-  }
-};
+      const locName = typeof location === "string" ? location : location?.name;
+      if (!locName || !company_id) {
+        return response.status(400).json({
+          msg: "Company ID and Location Name are required.",
+          ok: false,
+        });
+      }
+
+      const connection = connectionFn();
+      const locationId = await getLocationIdFn(connection, company_id, locName);
+      if (!locationId) {
+        return response.status(404).json({
+          msg: `Location '${locName}' not found.`,
+          ok: false,
+        });
+      }
+
+      // Scope write gate (create): a location/category-scoped role may only bulk-create
+      // items within its assigned scope (with can_create). Every row shares this single
+      // location + category, so an all-or-nothing check is correct here. Full-access passes.
+      const creatorAccess = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
+      if (!creatorAccess) {
+        return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+      }
+      if (!(await canWriteInScopeFn(creatorAccess, "create", { locationId, categoryName: category_name }))) {
+        return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
+      }
+
+      if (!min_serial_number || !max_serial_number) {
+        return response.status(400).json({
+          msg: "Minimum and maximum serial numbers are required.",
+          ok: false,
+        });
+      }
+
+      const payload = { ...request.body, location: locName, location_id: locationId };
+      const job = await enqueueFn("inventory:bulk-insert-range", payload, {
+        context: extractContextFn(request),
+      });
+
+      const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
+      if (outcome.outcome === "done") {
+        return response.status(201).json({ item: outcome.result, ok: true });
+      }
+      if (outcome.outcome === "failed") {
+        return response.status(500).json({
+          ok: false,
+          msg: outcome.job.lastError || "Bulk insert failed",
+        });
+      }
+      return response.status(202).json({
+        ok: true,
+        jobId: job.id,
+        msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
+      });
+    } catch (error) {
+      response.status(500).json({
+        err: error,
+        msg: `${error.message}`,
+        ok: false,
+      });
+    }
+  };
+}
+const insertBulkItem = createInsertBulkItemRange();
 
 // Migrado al contrato async (202 + jobId, ver DESIGN_task_queue.md § Fase 4b):
 // hasta 15,000 seriales por request, insertados síncronamente antes sostenían
@@ -3964,6 +3861,7 @@ module.exports = {
   getInventoryHierarchyWithTypes,
   gettingDataFromLocationOption,
   insertBulkItem,
+  createInsertBulkItemRange,
   insertBulkItemAlhpanumericFormat,
   createInsertBulkItemAlphanumeric,
   insertContainerItems,
