@@ -1,4 +1,5 @@
 // redisClient.js
+require("dotenv").config();
 const { createClient } = require("redis");
 
 // Create a Redis client instance
@@ -6,11 +7,16 @@ let client;
 
 const clientRedis = async () => {
   if (!client) {
+    if (!process.env.REDIS_PASSWORD || !process.env.REDIS_HOST) {
+      throw new Error(
+        "Missing REDIS_HOST/REDIS_PASSWORD environment variables"
+      );
+    }
     client = createClient({
-      password: "4EOcn5AV1zVQA2ab675qWQKTLG5AMeHx",
+      password: process.env.REDIS_PASSWORD,
       socket: {
-        host: "redis-19013.c61.us-east-1-3.ec2.redns.redis-cloud.com",
-        port: 19013,
+        host: process.env.REDIS_HOST,
+        port: parseInt(process.env.REDIS_PORT, 10) || 6379,
       },
       disableOfflineQueue: false,
     });
@@ -35,24 +41,3 @@ const clientRedis = async () => {
 module.exports = {
   clientRedis,
 };
-
-// const redisMemory = require('redis')
-// const { createClient } =redisMemory
-
-// const clientRedis = async () => {
-
-//   try {
-//     const connecting = createClient({
-//       password: "WEsiydybNHxFJRKMr2EyLpHSsCbEudWp",
-//       socket: {
-//         host: "redis-10858.c10.us-east-1-2.ec2.redns.redis-cloud.com",
-//         port: 10858,
-//       },
-//     })
-//     return await connecting.connect()
-//   } catch (error) {
-//     console.log(error);
-//     throw new Error(`Error in starting connecting with Redis cache memory ${error.message}`);
-
-//   }
-// };

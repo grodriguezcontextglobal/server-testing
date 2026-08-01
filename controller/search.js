@@ -185,12 +185,48 @@ const searchingStaff = async (props) => {
   return result.flat();
 };
 
+// Values the frontend actually sends (see FRONTEND_search_backend_segmentation_plan.md
+// § 2). "device" covers BOTH searchingDeviceTransaction and searchingDevicePool --
+// there is no separate device-pool-only category.
+const VALID_SEARCH_CATEGORIES = new Set(["consumers", "staff", "device", "event"]);
+
+// Pure + exported: normalizes req.query.category to one of the 4 known values or
+// "all". Anything else (typo, stale/future frontend build, missing, an array from
+// a malformed ?category=a&category=b) falls back to "all" -- this endpoint is hit
+// on every keystroke across the whole app, so it must never 400/500 on a bad value.
+const resolveSearchCategory = (rawCategory) => {
+  const value = Array.isArray(rawCategory) ? rawCategory[0] : rawCategory;
+  return VALID_SEARCH_CATEGORIES.has(value) ? value : "all";
+};
+
+// Pre-built "skipped branch" shapes, one per sub-search's own return type -- so a
+// skipped branch looks exactly like a real search that found nothing (same shape
+// the frontend already treats as empty via `?? []`/`?.length ?? 0`), no new
+// empty/null convention introduced.
+const EMPTY_CONSUMER_RESULT = { consumers: [], hasMore: false };
+const EMPTY_DEVICE_TRANSACTION_RESULT = { deviceTransaction: [], hasMore: false };
+const EMPTY_DEVICE_POOL_RESULT = { devicePool: [], hasMore: false };
+const EMPTY_EVENT_RESULT = { hasMore: false, results: [] };
+const EMPTY_STAFF_RESULT = [];
+
 const searching = async (req, res) => {
   // const { variable, company } = req.body;
   const variable = req.query.variable;
   const company = req.query.company;
+  const category = resolveSearchCategory(req.query.category);
   try {
     const companyInfo = await searchingCompanyInfo(company);
+
+    // Gate each sub-search behind the requested category so an unrelated tab's
+    // DB queries/joins are skipped entirely (the actual perf win the frontend
+    // change is for) -- not just narrowing which branches show up in the JSON.
+    // `transaction` has no dedicated UI tab/category in the agreed contract, so
+    // it always runs, same as before this change.
+    const runConsumer = category === "all" || category === "consumers";
+    const runStaff = category === "all" || category === "staff";
+    const runDevice = category === "all" || category === "device";
+    const runEvent = category === "all" || category === "event";
+
     const [
       consumerFound,
       transactionFound,
@@ -199,18 +235,16 @@ const searching = async (req, res) => {
       eventFound,
       staffFound,
     ] = await Promise.all([
-      searchingConsumer(variable, company),
+      runConsumer ? searchingConsumer(variable, company) : Promise.resolve(EMPTY_CONSUMER_RESULT),
       searchingTransaction(variable, company),
-      searchingDeviceTransaction(variable, company),
-      searchingDevicePool(variable, company),
-      searchingEvents({
-        variable: variable,
-        company: companyInfo.company_name,
-      }),
-      searchingStaff({
-        variable: variable,
-        employees: companyInfo.employees,
-      }),
+      runDevice ? searchingDeviceTransaction(variable, company) : Promise.resolve(EMPTY_DEVICE_TRANSACTION_RESULT),
+      runDevice ? searchingDevicePool(variable, company) : Promise.resolve(EMPTY_DEVICE_POOL_RESULT),
+      runEvent
+        ? searchingEvents({ variable: variable, company: companyInfo.company_name })
+        : Promise.resolve(EMPTY_EVENT_RESULT),
+      runStaff
+        ? searchingStaff({ variable: variable, employees: companyInfo.employees })
+        : Promise.resolve(EMPTY_STAFF_RESULT),
     ]);
 
     return res.status(200).json({
@@ -2215,6 +2249,7 @@ function buildDateRangeQuery(startDate, endDate) {
 
 module.exports = {
   searching,
+  resolveSearchCategory,
   moreConsumer,
   moreEvents,
   moreStaff,
