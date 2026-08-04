@@ -132,6 +132,7 @@ test('settings endpoint returns COPPA fields', async () => {
         enforce_member_consent: 1,
         enforce_under_13_consent: 1,
         required_consent_policy_version: '2',
+        consent_document_id: '6a721382fc36a5e066a42000',
       }]];
     },
   };
@@ -143,11 +144,43 @@ test('settings endpoint returns COPPA fields', async () => {
       enforce_member_consent: true,
       enforce_under_13_consent: true,
       required_consent_policy_version: '2',
+      consent_document_id: '6a721382fc36a5e066a42000',
     });
   });
 });
 
-test('setConsentEnforcement stores COPPA settings and required policy version', async () => {
+test('setConsentEnforcement stores COPPA settings, required policy version and consent document id', async () => {
+  const executed = [];
+  const pool = {
+    execute: async (sql, params) => {
+      executed.push({ sql, params });
+      return [{ affectedRows: 1 }];
+    },
+  };
+  await withController(schoolControllerPath, pool, async (controller) => {
+    const res = createResponse();
+    await controller.setConsentEnforcement(
+      {
+        body: {
+          company_id: 77,
+          enforce: true,
+          enforce_under_13: true,
+          required_consent_policy_version: '2',
+          consent_document_id: '6a721382fc36a5e066a42000',
+        },
+      },
+      res
+    );
+    assert.equal(res.statusCode, 200);
+    assert.match(executed[0].sql, /required_consent_policy_version/);
+    assert.match(executed[0].sql, /consent_document_id/);
+    assert.deepEqual(executed[0].params, [77, 1, 1, '2', '6a721382fc36a5e066a42000']);
+    assert.equal(res.body.settings.enforce_under_13_consent, true);
+    assert.equal(res.body.settings.consent_document_id, '6a721382fc36a5e066a42000');
+  });
+});
+
+test('setConsentEnforcement stores null consent_document_id when omitted', async () => {
   const executed = [];
   const pool = {
     execute: async (sql, params) => {
@@ -162,9 +195,97 @@ test('setConsentEnforcement stores COPPA settings and required policy version', 
       res
     );
     assert.equal(res.statusCode, 200);
-    assert.match(executed[0].sql, /required_consent_policy_version/);
-    assert.deepEqual(executed[0].params, [77, 1, 1, '2']);
-    assert.equal(res.body.settings.enforce_under_13_consent, true);
+    assert.equal(executed[0].params[4], null);
+    assert.equal(res.body.settings.consent_document_id, null);
+  });
+});
+
+test('publicRetrieveConsent exposes consent_document_id so the guardian can view the policy document', async () => {
+  const pool = {
+    execute: async (sql) => {
+      assert.match(sql, /consent_document_id/);
+      return [[{
+        consent_id: 1,
+        company_id: 77,
+        member_id: 10,
+        guardian_id: 5,
+        policy_type: 'ferpa',
+        policy_version: '2',
+        signer_name: null,
+        signer_email: null,
+        method: 'otc',
+        consented_at: null,
+        created_at: '2026-07-23T00:00:00.000Z',
+        status: 'pending',
+        otc_expires_at: '2099-01-01T00:00:00.000Z',
+        requested_at: '2026-07-23T00:00:00.000Z',
+        responded_at: null,
+        refused_at: null,
+        effective_otc_expires_at: '2099-01-01T00:00:00.000Z',
+        company_name: 'Acme School',
+        industry: 'education',
+        consent_document_id: '6a721382fc36a5e066a42000',
+        student_first_name: 'Ada',
+        student_last_name: 'Student',
+        student_email: null,
+        student_grade: '5',
+        student_homeroom: null,
+        student_date_of_birth: '2016-07-23',
+        guardian_first_name: 'Grace',
+        guardian_last_name: 'Guardian',
+        guardian_email: 'grace@example.com',
+        guardian_phone_number: null,
+      }]];
+    },
+  };
+  await withController(schoolControllerPath, pool, async (controller) => {
+    const res = createResponse();
+    await controller.publicRetrieveConsent({ body: { otc: 'tok_123' } }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.company.consent_document_id, '6a721382fc36a5e066a42000');
+  });
+});
+
+test('publicRetrieveConsent returns consent_document_id null when company has no settings row', async () => {
+  const pool = {
+    execute: async () => [[{
+      consent_id: 1,
+      company_id: 77,
+      member_id: 10,
+      guardian_id: 5,
+      policy_type: 'ferpa',
+      policy_version: '2',
+      signer_name: null,
+      signer_email: null,
+      method: 'otc',
+      consented_at: null,
+      created_at: '2026-07-23T00:00:00.000Z',
+      status: 'pending',
+      otc_expires_at: '2099-01-01T00:00:00.000Z',
+      requested_at: '2026-07-23T00:00:00.000Z',
+      responded_at: null,
+      refused_at: null,
+      effective_otc_expires_at: '2099-01-01T00:00:00.000Z',
+      company_name: 'Acme School',
+      industry: 'education',
+      consent_document_id: null,
+      student_first_name: 'Ada',
+      student_last_name: 'Student',
+      student_email: null,
+      student_grade: '5',
+      student_homeroom: null,
+      student_date_of_birth: '2016-07-23',
+      guardian_first_name: 'Grace',
+      guardian_last_name: 'Guardian',
+      guardian_email: 'grace@example.com',
+      guardian_phone_number: null,
+    }]],
+  };
+  await withController(schoolControllerPath, pool, async (controller) => {
+    const res = createResponse();
+    await controller.publicRetrieveConsent({ body: { otc: 'tok_123' } }, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.company.consent_document_id, null);
   });
 });
 

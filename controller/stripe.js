@@ -242,11 +242,16 @@ const updateStripeCompanyAccount = async (connectedAccountId, dataToUpdate) => {
 const stripeCompanyAccountUpdate = async (request, response) => {
   try {
     const { connectedAccountId, ...updateData } = request.body;
-    if (!connectedAccountId) {
+    console.log("🚀 ~ stripeCompanyAccountUpdate ~ updateData:", request.body);
+    const accountId = connectedAccountId && typeof connectedAccountId === "object"
+      ? connectedAccountId.id
+      : connectedAccountId;
+
+    if (!accountId) {
       return response.status(400).json({ ok: false, error: "Connected account ID is required." });
     }
 
-    const account = await updateStripeCompanyAccount(connectedAccountId, updateData);
+    const account = await updateStripeCompanyAccount(accountId, updateData);
     
     if (account) {
       return response.status(200).json({
