@@ -1013,6 +1013,8 @@ const publicRetrieveConsent = async (req, res) => {
           ci.company_name,
           ci.industry,
 
+          css.consent_document_id,
+
           mi.first_name AS student_first_name,
           mi.last_name AS student_last_name,
           mi.email AS student_email,
@@ -1029,6 +1031,9 @@ const publicRetrieveConsent = async (req, res) => {
 
         INNER JOIN company_info AS ci
           ON ci.company_id = sc.company_id
+
+        LEFT JOIN company_school_settings AS css
+          ON css.company_id = sc.company_id
 
         INNER JOIN members_info AS mi
           ON mi.member_id = sc.member_id
@@ -1097,6 +1102,7 @@ const publicRetrieveConsent = async (req, res) => {
         id: record.company_id,
         name: record.company_name,
         industry: record.industry,
+        consent_document_id: record.consent_document_id || null,
       },
 
       guardian: {
@@ -1270,7 +1276,7 @@ const getSchoolSettings = async (req, res) => {
   }
   try {
     const [rows] = await connection.query(
-      `SELECT enforce_member_consent, enforce_under_13_consent, required_consent_policy_version
+      `SELECT enforce_member_consent, enforce_under_13_consent, required_consent_policy_version, consent_document_id
          FROM company_school_settings WHERE company_id = ? LIMIT 1`,
       [company_id]
     );
@@ -1281,12 +1287,14 @@ const getSchoolSettings = async (req, res) => {
     const required_consent_policy_version = rows.length
       ? rows[0].required_consent_policy_version || null
       : null;
+    const consent_document_id = rows.length ? rows[0].consent_document_id || null : null;
     return res.status(200).json({
       ok: true,
       settings: {
         enforce_member_consent,
         enforce_under_13_consent,
         required_consent_policy_version,
+        consent_document_id,
       },
     });
   } catch (error) {
@@ -1296,13 +1304,15 @@ const getSchoolSettings = async (req, res) => {
 };
 
 // POST /api/school/settings/consent-enforcement
-// { company_id, enforce, enforce_under_13?, required_consent_policy_version? }
+// { company_id, enforce, enforce_under_13?, required_consent_policy_version?, consent_document_id? }
 // Opt-in toggle. Upsert into the separate company_school_settings table (never
 // touches company_info). Turn ON only AFTER backfilling consents, or existing
 // minors without a recorded consent will be blocked from device assignment.
+// consent_document_id is the Mongo Document _id the guardian reviews before
+// agreeing/declining (surfaced later via publicRetrieveConsent).
 const setConsentEnforcement = async (req, res) => {
   const connection = getConnection();
-  const { company_id, enforce, enforce_under_13, required_consent_policy_version } = req.body || {};
+  const { company_id, enforce, enforce_under_13, required_consent_policy_version, consent_document_id } = req.body || {};
   if (!company_id) {
     return res.status(400).json({ ok: false, msg: "company_id is required" });
   }
@@ -1326,16 +1336,23 @@ const setConsentEnforcement = async (req, res) => {
     String(required_consent_policy_version).trim() !== ""
       ? String(required_consent_policy_version).trim()
       : null;
+  const documentId =
+    consent_document_id !== undefined &&
+    consent_document_id !== null &&
+    String(consent_document_id).trim() !== ""
+      ? String(consent_document_id).trim()
+      : null;
   try {
     await connection.execute(
       `INSERT INTO company_school_settings
-         (company_id, enforce_member_consent, enforce_under_13_consent, required_consent_policy_version)
-       VALUES (?, ?, ?, ?)
+         (company_id, enforce_member_consent, enforce_under_13_consent, required_consent_policy_version, consent_document_id)
+       VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE
          enforce_member_consent = VALUES(enforce_member_consent),
          enforce_under_13_consent = VALUES(enforce_under_13_consent),
-         required_consent_policy_version = VALUES(required_consent_policy_version)`,
-      [company_id, val, under13Val, requiredVersion]
+         required_consent_policy_version = VALUES(required_consent_policy_version),
+         consent_document_id = VALUES(consent_document_id)`,
+      [company_id, val, under13Val, requiredVersion, documentId]
     );
     return res.status(200).json({
       ok: true,
@@ -1343,6 +1360,7 @@ const setConsentEnforcement = async (req, res) => {
         enforce_member_consent: val === 1,
         enforce_under_13_consent: under13Val === 1,
         required_consent_policy_version: requiredVersion,
+        consent_document_id: documentId,
       },
     });
   } catch (error) {
