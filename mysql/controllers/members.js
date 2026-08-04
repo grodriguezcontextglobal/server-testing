@@ -1416,6 +1416,8 @@ function createBulkReturnMemberLeases({
         grade,
         return_status = "returned",
         condition_note = null,
+        warehouse,
+        logistic_status,
       } = request.body || {};
       if (!company_id) {
         return response
@@ -1452,7 +1454,7 @@ function createBulkReturnMemberLeases({
           .json({ ok: true, returned: 0, msg: "No outstanding leases in scope." });
       }
 
-      const payload = { company_id, return_status, condition_note, leases };
+      const payload = { company_id, return_status, condition_note, warehouse, logistic_status, leases };
       const job = await enqueueFn("member:bulk-return-leases", payload, {
         context: extractContextFn(request),
       });
