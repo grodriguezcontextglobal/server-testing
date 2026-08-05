@@ -11,6 +11,106 @@ const moment = require("moment");
 const getConnection = require("../mysql/database/config");
 const { groupBy, noConflict } = require("lodash");
 
+/**
+ * A keyword typed into the global search bar is user input. Escape it before it
+ * reaches a Mongo $regex or a SQL LIKE so metacharacters match literally
+ * instead of throwing ("C++") or matching every row ("%").
+ */
+const escapeRegex = (value) =>
+  String(value ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const escapeLike = (value) =>
+  String(value ?? "").replace(/[\\%_]/g, (char) => `\\${char}`);
+
+/**
+ * SHOW COLUMNS is cheap and cached per process. Resolving the real column list
+ * keeps the search resilient to schema drift: a column that isn't there is
+ * simply not searched, instead of turning the whole query into a 500.
+ */
+const tableColumnsCache = new Map();
+const getTableColumns = async (table) => {
+  if (tableColumnsCache.has(table)) {
+    return tableColumnsCache.get(table);
+  }
+  const connection = getConnection();
+  const [described] = await connection.query(`SHOW COLUMNS FROM \`${table}\``);
+  const columns = new Set(described.map((column) => column.Field));
+  tableColumnsCache.set(table, columns);
+  return columns;
+};
+
+const buildLikeClause = (columns, needle, alias = null) => ({
+  clause: columns
+    .map(
+      (column) =>
+        `${alias ? `${alias}.` : ""}\`${column}\` LIKE ?`
+    )
+    .join(" OR "),
+  params: columns.map(() => needle),
+});
+
+/**
+ * What makes an open lease match a keyword. Parameterised by the item alias so
+ * the same list drives both the Assigned bucket (which selects lease rows) and
+ * the item_id set that Inventory subtracts — they must never drift apart, or the
+ * two buckets stop partitioning the units.
+ */
+const leaseMatchConditions = (itemAlias) => [
+  `${itemAlias}.\`serial_number\` LIKE ?`,
+  `${itemAlias}.\`item_group\` LIKE ?`,
+  `${itemAlias}.\`category_name\` LIKE ?`,
+  `${itemAlias}.\`brand\` LIKE ?`,
+  "mi.`first_name` LIKE ?",
+  "mi.`last_name` LIKE ?",
+  "mi.`email` LIKE ?",
+  "CONCAT_WS(' ', mi.`first_name`, mi.`last_name`) LIKE ?",
+  "madl.`location` LIKE ?",
+];
+
+/**
+ * The exact set of item_ids the Assigned bucket will show for this keyword.
+ * Inventory excludes this set so the section counts add up to the header total.
+ */
+const matchedLeaseItemsSql = (needle, companyId) => {
+  const conditions = leaseMatchConditions("ii2");
+  return {
+    sql: `SELECT DISTINCT ii2.item_id
+            FROM member_assigned_device_lease madl
+            JOIN item_inv ii2 ON ii2.item_id = madl.device_id
+            LEFT JOIN members_info mi ON mi.member_id = madl.member_id
+           WHERE madl.\`company_id\` = ?
+             AND (madl.\`returned\` = 0 OR madl.\`returned\` IS NULL)
+             AND (${conditions.join(" OR ")})`,
+    params: [companyId, ...conditions.map(() => needle)],
+  };
+};
+
+/**
+ * item_inv and members_info are keyed by the MySQL company id, but this
+ * endpoint is called with the Mongo company id. Use the SQL id when the client
+ * sends it, otherwise resolve it from company_info by name.
+ */
+const resolveCompanySqlId = async (companyInfo, providedSqlId) => {
+  const asNumber = Number(providedSqlId);
+  if (providedSqlId && Number.isFinite(asNumber)) {
+    return asNumber;
+  }
+  if (!companyInfo?.company_name) {
+    return null;
+  }
+  try {
+    const connection = getConnection();
+    const [rows] = await connection.execute(
+      "SELECT company_id FROM company_info WHERE company_name = ? LIMIT 1",
+      [companyInfo.company_name]
+    );
+    return rows[0]?.company_id ?? null;
+  } catch (error) {
+    console.error("resolveCompanySqlId:", error.message);
+    return null;
+  }
+};
+
 const searchingCompanyInfo = async (company) => {
   const cache_connection = await clientRedis();
   const cached = await cache_connection.get(`company_${company}`);
@@ -35,11 +135,28 @@ const searchingCompanyInfo = async (company) => {
 // };
 
 const searchingConsumer = async (variable, company, lastId = null) => {
+  const safe = escapeRegex(variable);
   const query = {
     $or: [
-      { name: { $regex: variable, $options: "i" } },
-      { lastName: { $regex: variable, $options: "i" } },
-      { email: { $regex: variable, $options: "i" } },
+      { name: { $regex: safe, $options: "i" } },
+      { lastName: { $regex: safe, $options: "i" } },
+      { email: { $regex: safe, $options: "i" } },
+      // so a full name typed as one string still matches
+      {
+        $expr: {
+          $regexMatch: {
+            input: {
+              $concat: [
+                { $ifNull: ["$name", ""] },
+                " ",
+                { $ifNull: ["$lastName", ""] },
+              ],
+            },
+            regex: safe,
+            options: "i",
+          },
+        },
+      },
     ],
     company_providers: { $in: [company] },
   };
@@ -59,13 +176,14 @@ const searchingConsumer = async (variable, company, lastId = null) => {
 };
 
 const searchingTransaction = async (variable, company) => {
+  const safe = escapeRegex(variable);
   return await Transaction.find({
     $or: [
       { paymentIntent: variable },
       { clientSecret: variable },
-      { "consumerInfo.name": { $regex: variable, $options: "i" } },
-      { "consumerInfo.lastName": { $regex: variable, $options: "i" } },
-      { "consumerInfo.email": { $regex: variable, $options: "i" } },
+      { "consumerInfo.name": { $regex: safe, $options: "i" } },
+      { "consumerInfo.lastName": { $regex: safe, $options: "i" } },
+      { "consumerInfo.email": { $regex: safe, $options: "i" } },
       { eventSelected: variable },
     ],
     $and: [{ active: true }, { company: company }],
@@ -85,12 +203,14 @@ const searchingTransaction = async (variable, company) => {
 // };
 
 const searchingDeviceTransaction = async (variable, company, lastId = null) => {
+  const safe = escapeRegex(variable);
   const query = {
     $or: [
       { paymentIntent: variable },
-      { user: { $regex: variable, $options: "i" } },
-      { "device.serialNumber": { $regex: variable, $options: "i" } },
-      { "device.deviceType": { $regex: variable, $options: "i" } },
+      { user: { $regex: safe, $options: "i" } },
+      { "device.serialNumber": { $regex: safe, $options: "i" } },
+      { "device.deviceType": { $regex: safe, $options: "i" } },
+      { eventSelected: { $regex: safe, $options: "i" } },
     ],
     company: { $in: [company] },
   };
@@ -98,21 +218,34 @@ const searchingDeviceTransaction = async (variable, company, lastId = null) => {
     query._id = { $gt: new mongoose.Types.ObjectId(lastId) };
   }
   const limit = 11;
-  const results = await Receivers.find(query).sort({ _id: 1 }).limit(limit);
+  // `results` is a capped page for display; `total` and `serials` cover the whole
+  // match set, so the header count and the Inventory subtraction don't silently
+  // work off the first ten rows only.
+  const [results, total, serials] = await Promise.all([
+    Receivers.find(query).sort({ _id: 1 }).limit(limit),
+    Receivers.countDocuments(query),
+    Receivers.distinct("device.serialNumber", query),
+  ]);
   const hasMore = results.length === limit;
   if (hasMore) {
     results.pop();
   }
-  return { deviceTransaction: results, hasMore };
+  return {
+    deviceTransaction: results,
+    total,
+    serials: serials.filter(Boolean),
+    hasMore,
+  };
 };
 
 const searchingDevicePool = async (variable, company, lastId = null) => {
   const result = new Set();
+  const safe = escapeRegex(variable);
   const query = {
     $or: [
-      { device: { $regex: variable, $options: "i" } },
-      { type: { $regex: variable, $options: "i" } },
-      { eventSelected: { $regex: variable, $options: "i" } },
+      { device: { $regex: safe, $options: "i" } },
+      { type: { $regex: safe, $options: "i" } },
+      { eventSelected: { $regex: safe, $options: "i" } },
     ],
     $and: [{ company: company }],
   };
@@ -144,14 +277,441 @@ const searchingDevicePool = async (variable, company, lastId = null) => {
   };
 };
 
+/**
+ * Company inventory lives in MySQL (item_inv), which the global search used to
+ * ignore entirely -- so a keyword like "Chromebook" (an item_group / category /
+ * brand value) returned nothing even when hundreds of units were on the books.
+ * Returns the matching units plus a category/group/brand rollup so the UI can
+ * answer "how many Chromebooks do we have" without paging the whole list.
+ */
+const INVENTORY_DETAIL_LIMIT = 120;
+const INVENTORY_SEARCHABLE_COLUMNS = [
+  "serial_number",
+  "item_group",
+  "category_name",
+  "brand",
+  "descript_item",
+  "location",
+  "sub_location",
+  "current_location",
+  "warehouse",
+  "ownership",
+  "status",
+  "extra_serial_number",
+];
+const INVENTORY_RETURN_COLUMNS = [
+  "item_id",
+  "category_name",
+  "item_group",
+  "brand",
+  "descript_item",
+  "serial_number",
+  "location",
+  "sub_location",
+  "current_location",
+  "ownership",
+  "status",
+  "cost",
+  "image_url",
+  "return_date",
+  "company_id",
+];
+
+const searchingInventory = async (
+  variable,
+  company_sql_id,
+  excludeSerials = []
+) => {
+  const empty = {
+    items: [],
+    groups: [],
+    total: 0,
+    matchedTotal: 0,
+    elsewhereTotal: 0,
+    hasMore: false,
+  };
+  if (!variable || !company_sql_id) {
+    return empty;
+  }
+  try {
+    const connection = getConnection();
+    const existing = await getTableColumns("item_inv");
+    const searchable = INVENTORY_SEARCHABLE_COLUMNS.filter((column) =>
+      existing.has(column)
+    );
+    if (searchable.length === 0) {
+      return empty;
+    }
+    const needle = `%${escapeLike(variable)}%`;
+    const serials = [...new Set((excludeSerials ?? []).filter(Boolean))];
+    const lease = matchedLeaseItemsSql(needle, String(company_sql_id));
+
+    // every matching unit, whichever bucket ends up showing it -- this is what
+    // the group rollup reports, so "how many Chromebooks do we have" still works
+    const { clause, params } = buildLikeClause(searchable, needle);
+    const matchWhere = `company_id = ? AND (${clause})`;
+    const matchValues = [company_sql_id, ...params];
+
+    // the Inventory bucket proper: matching units that no *other* bucket shows.
+    // Subtracting exactly the rows Assigned/Devices display is what makes the
+    // section counts add up to the header total instead of overlapping it.
+    let shownWhere = `${matchWhere} AND item_id NOT IN (${lease.sql})`;
+    const shownValues = [...matchValues, ...lease.params];
+    if (serials.length > 0) {
+      shownWhere += ` AND (serial_number IS NULL OR serial_number NOT IN (?))`;
+      shownValues.push(serials);
+    }
+
+    const selectList = INVENTORY_RETURN_COLUMNS.filter((column) =>
+      existing.has(column)
+    )
+      .map((column) => `\`${column}\``)
+      .join(", ");
+    const groupColumns = ["category_name", "item_group", "brand"].filter(
+      (column) => existing.has(column)
+    );
+    const aliasedGroupColumns = groupColumns
+      .map((column) => `ii.\`${column}\``)
+      .join(", ");
+    const groupLike = buildLikeClause(searchable, needle, "ii");
+
+    const [matchedRows, shownRows, itemRows, groupRows] = await Promise.all([
+      connection.query(
+        `SELECT COUNT(*) AS total FROM item_inv WHERE ${matchWhere}`,
+        matchValues
+      ),
+      connection.query(
+        `SELECT COUNT(*) AS total FROM item_inv WHERE ${shownWhere}`,
+        shownValues
+      ),
+      connection.query(
+        `SELECT ${selectList} FROM item_inv WHERE ${shownWhere}
+          ORDER BY \`item_group\` ASC, \`serial_number\` ASC
+          LIMIT ${INVENTORY_DETAIL_LIMIT + 1}`,
+        shownValues
+      ),
+      groupColumns.length > 0
+        ? // the rollup keeps the whole picture: per group, how many exist and how
+          // many of those are out on an assignment
+          connection.query(
+            `SELECT ${aliasedGroupColumns}, COUNT(*) AS total,
+                    SUM(CASE WHEN L.item_id IS NULL THEN 0 ELSE 1 END) AS assigned
+               FROM item_inv ii
+               LEFT JOIN (${lease.sql}) L ON L.item_id = ii.item_id
+              WHERE ii.company_id = ? AND (${groupLike.clause})
+              GROUP BY ${aliasedGroupColumns}
+              ORDER BY total DESC
+              LIMIT 40`,
+            [...lease.params, company_sql_id, ...groupLike.params]
+          )
+        : Promise.resolve([[]]),
+    ]);
+
+    const items = itemRows[0];
+    const hasMore = items.length > INVENTORY_DETAIL_LIMIT;
+    if (hasMore) {
+      items.pop();
+    }
+    const matchedTotal = Number(matchedRows[0][0]?.total ?? 0);
+    const total = Number(shownRows[0][0]?.total ?? items.length);
+    return {
+      items,
+      groups: groupRows[0],
+      // what this section shows, and therefore contributes to the header
+      total,
+      // every matching unit, including the ones another bucket is showing
+      matchedTotal,
+      elsewhereTotal: Math.max(0, matchedTotal - total),
+      hasMore,
+    };
+  } catch (error) {
+    console.error("searchingInventory:", error.message);
+    return { ...empty, error: error.message };
+  }
+};
+
+/**
+ * The people a company hands devices to (members_info) -- "students" in the
+ * education accounts. Also MySQL-only, also previously unsearchable.
+ */
+const MEMBER_DETAIL_LIMIT = 60;
+const MEMBER_SEARCHABLE_COLUMNS = [
+  "first_name",
+  "last_name",
+  "email",
+  "phone_number",
+  "address",
+  "address_street",
+  "address_city",
+  "address_state",
+  "address_zip",
+];
+const MEMBER_RETURN_COLUMNS = [
+  "member_id",
+  "first_name",
+  "last_name",
+  "email",
+  "phone_number",
+  "address",
+  "address_street",
+  "address_city",
+  "address_state",
+  "address_zip",
+  "image_url",
+  "company_id",
+];
+
+const searchingMembers = async (variable, company_sql_id) => {
+  const empty = { members: [], total: 0, hasMore: false };
+  if (!variable || !company_sql_id) {
+    return empty;
+  }
+  try {
+    const connection = getConnection();
+    const existing = await getTableColumns("members_info");
+    const searchable = MEMBER_SEARCHABLE_COLUMNS.filter((column) =>
+      existing.has(column)
+    );
+    if (searchable.length === 0) {
+      return empty;
+    }
+    const needle = `%${escapeLike(variable)}%`;
+    const { clause, params } = buildLikeClause(searchable, needle);
+    const conditions = [clause];
+    // members_info.company_id is varchar -- bind a string so the index is usable
+    const values = [String(company_sql_id), ...params];
+    // so a full name typed as one string ("Jane Doe") still matches
+    if (existing.has("first_name") && existing.has("last_name")) {
+      conditions.push("CONCAT_WS(' ', `first_name`, `last_name`) LIKE ?");
+      values.push(needle);
+    }
+    const where = `company_id = ? AND (${conditions.join(" OR ")})`;
+    const selectList = MEMBER_RETURN_COLUMNS.filter((column) =>
+      existing.has(column)
+    )
+      .map((column) => `\`${column}\``)
+      .join(", ");
+
+    const [countRows, memberRows] = await Promise.all([
+      connection.execute(
+        `SELECT COUNT(*) AS total FROM members_info WHERE ${where}`,
+        values
+      ),
+      connection.execute(
+        `SELECT ${selectList} FROM members_info WHERE ${where}
+          ORDER BY \`last_name\` ASC, \`first_name\` ASC
+          LIMIT ${MEMBER_DETAIL_LIMIT + 1}`,
+        values
+      ),
+    ]);
+
+    const members = memberRows[0];
+    const hasMore = members.length > MEMBER_DETAIL_LIMIT;
+    if (hasMore) {
+      members.pop();
+    }
+    return {
+      members,
+      total: countRows[0][0]?.total ?? members.length,
+      hasMore,
+    };
+  } catch (error) {
+    console.error("searchingMembers:", error.message);
+    return { ...empty, error: error.message };
+  }
+};
+
+/**
+ * Units currently in someone's hands, the members way: member_assigned_device_lease
+ * joined to the item and the person holding it.
+ *
+ * The Mongo `Receivers` collection only covers the event-checkout flow (consumer
+ * + paymentIntent + event), which a school district never uses — so without this
+ * a district could not answer "who has this Chromebook, and when is it due?".
+ *
+ * Only open leases are returned: this bucket means "out right now", not history.
+ */
+const ASSIGNMENT_DETAIL_LIMIT = 60;
+
+const searchingMemberAssignments = async (variable, company_sql_id) => {
+  const empty = { assignments: [], total: 0, overdue: 0, hasMore: false };
+  if (!variable || !company_sql_id) {
+    return empty;
+  }
+  try {
+    const connection = getConnection();
+    const needle = `%${escapeLike(variable)}%`;
+    // company_id is varchar on the members tables -- bind a string so the index
+    // is usable instead of forcing MySQL to cast the column
+    const companyId = String(company_sql_id);
+    const conditions = leaseMatchConditions("ii");
+    const where =
+      "madl.`company_id` = ? AND (madl.`returned` = 0 OR madl.`returned` IS NULL)" +
+      ` AND (${conditions.join(" OR ")})`;
+    const values = [companyId, ...conditions.map(() => needle)];
+
+    const from = `FROM member_assigned_device_lease madl
+        JOIN item_inv ii ON ii.item_id = madl.device_id
+        LEFT JOIN members_info mi ON mi.member_id = madl.member_id`;
+
+    const [countRows, assignmentRows] = await Promise.all([
+      connection.execute(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN madl.expected_return_date IS NOT NULL
+                          AND madl.expected_return_date < NOW()
+                         THEN 1 ELSE 0 END) AS overdue
+           ${from} WHERE ${where}`,
+        values
+      ),
+      connection.execute(
+        `SELECT madl.lease_id, madl.member_id, madl.assigned_date,
+                madl.expected_return_date, madl.location AS lease_location,
+                madl.staff_member_id, madl.returned,
+                mi.first_name, mi.last_name, mi.email, mi.image_url,
+                ii.item_id, ii.serial_number, ii.item_group, ii.category_name,
+                ii.brand, ii.status
+           ${from} WHERE ${where}
+          ORDER BY madl.expected_return_date IS NULL,
+                   madl.expected_return_date ASC
+          LIMIT ${ASSIGNMENT_DETAIL_LIMIT + 1}`,
+        values
+      ),
+    ]);
+
+    const assignments = assignmentRows[0];
+    const hasMore = assignments.length > ASSIGNMENT_DETAIL_LIMIT;
+    if (hasMore) {
+      assignments.pop();
+    }
+    return {
+      assignments,
+      total: countRows[0][0]?.total ?? assignments.length,
+      overdue: Number(countRows[0][0]?.overdue ?? 0),
+      hasMore,
+    };
+  } catch (error) {
+    console.error("searchingMemberAssignments:", error.message);
+    return { ...empty, error: error.message };
+  }
+};
+
+/**
+ * The header count must not bill the same physical unit twice. A Chromebook that
+ * is both on the books and in a student's hands shows up in the Inventory bucket
+ * *and* the Assigned bucket — two lenses, one laptop.
+ *
+ * So the unit total is |inventory ∪ open leases ∪ event checkouts|, deduped on
+ * item_id. Event checkouts live in Mongo and are keyed by serial: one that
+ * resolves to an item_inv row is that unit, one that doesn't (the AV demo data
+ * uses a separate serial namespace) counts on its own.
+ *
+ * People and events are different kinds of thing from units, so they still add:
+ * matching a student *and* the laptop they hold is genuinely two results.
+ */
+const countDistinctUnits = async (variable, company_sql_id, checkoutSerials) => {
+  const serials = [...new Set((checkoutSerials ?? []).filter(Boolean))];
+  if (!variable || !company_sql_id) {
+    return serials.length;
+  }
+  try {
+    const connection = getConnection();
+    const needle = `%${escapeLike(variable)}%`;
+    const companyId = String(company_sql_id);
+    const existing = await getTableColumns("item_inv");
+    const inventoryColumns = INVENTORY_SEARCHABLE_COLUMNS.filter((column) =>
+      existing.has(column)
+    );
+
+    const arms = [];
+    const params = [];
+
+    if (inventoryColumns.length > 0) {
+      const { clause, params: likeParams } = buildLikeClause(
+        inventoryColumns,
+        needle
+      );
+      arms.push(
+        `SELECT item_id FROM item_inv WHERE company_id = ? AND (${clause})`
+      );
+      params.push(company_sql_id, ...likeParams);
+    }
+
+    const lease = matchedLeaseItemsSql(needle, companyId);
+    arms.push(lease.sql);
+    params.push(...lease.params);
+
+    // checkout serials that ARE inventory rows fold into the same set
+    if (serials.length > 0) {
+      arms.push(
+        `SELECT item_id FROM item_inv WHERE company_id = ? AND serial_number IN (?)`
+      );
+      params.push(company_sql_id, serials);
+    }
+
+    // UNION (not UNION ALL) is what does the de-duplication on item_id
+    const [unionRows] = await connection.query(
+      `SELECT COUNT(*) AS units FROM (${arms.join(" UNION ")}) u`,
+      params
+    );
+    let units = Number(unionRows[0]?.units ?? 0);
+
+    // ...and the ones that aren't inventory rows stand on their own
+    if (serials.length > 0) {
+      const [knownRows] = await connection.query(
+        `SELECT COUNT(DISTINCT serial_number) AS known FROM item_inv
+          WHERE company_id = ? AND serial_number IN (?)`,
+        [company_sql_id, serials]
+      );
+      units += serials.length - Number(knownRows[0]?.known ?? 0);
+    }
+    return units;
+  } catch (error) {
+    console.error("countDistinctUnits:", error.message);
+    return serials.length;
+  }
+};
+
+/**
+ * Warehouses / rooms a keyword might name, with the unit count behind each one.
+ */
+const searchingInventoryLocations = async (variable, company_sql_id) => {
+  const empty = { locations: [] };
+  if (!variable || !company_sql_id) {
+    return empty;
+  }
+  try {
+    const connection = getConnection();
+    const existing = await getTableColumns("locations");
+    if (!existing.has("location_name")) {
+      return empty;
+    }
+    const needle = `%${escapeLike(variable)}%`;
+    const [rows] = await connection.execute(
+      `SELECT l.location_id, l.location_name,
+              (SELECT COUNT(*) FROM item_inv i
+                WHERE i.location_id = l.location_id) AS item_count
+         FROM locations l
+        WHERE l.company_id = ? AND l.location_name LIKE ?
+        ORDER BY l.location_name ASC
+        LIMIT 25`,
+      [company_sql_id, needle]
+    );
+    return { locations: rows };
+  } catch (error) {
+    console.error("searchingInventoryLocations:", error.message);
+    return { ...empty, error: error.message };
+  }
+};
+
 const searchingEvents = async (props) => {
   const { variable, company } = props;
+  const safe = escapeRegex(variable);
   const query = {
     $or: [
-      { "eventInfoDetail.eventName": { $regex: `${variable}`, $options: "i" } },
-      { "eventInfoDetail.dateBegin": { $regex: `${variable}`, $options: "i" } },
-      { "eventInfoDetail.address": { $regex: `${variable}`, $options: "i" } },
-      { user: { $regex: variable, $options: "i" } },
+      { "eventInfoDetail.eventName": { $regex: safe, $options: "i" } },
+      { "eventInfoDetail.dateBegin": { $regex: safe, $options: "i" } },
+      { "eventInfoDetail.address": { $regex: safe, $options: "i" } },
+      { user: { $regex: safe, $options: "i" } },
     ],
     $and: [
       { active: true },
@@ -171,7 +731,7 @@ const searchingEvents = async (props) => {
 const searchingStaff = async (props) => {
   const { variable, employees } = props;
   let result = [];
-  for (let employee of employees) {
+  for (let employee of employees ?? []) {
     const ref = JSON.stringify(employee);
     // case-insensitive: consumers/devices/events all match with $options "i"
     if (String(ref).toLowerCase().includes(String(variable).toLowerCase())) {
@@ -182,7 +742,9 @@ const searchingStaff = async (props) => {
       result.push(staffFound[0]);
     }
   }
-  return result.flat();
+  // an employee invited but never registered has no AdminUser doc -- dropping
+  // those keeps the result count honest instead of padding it with undefined
+  return result.flat().filter(Boolean);
 };
 
 const searching = async (req, res) => {
@@ -191,17 +753,32 @@ const searching = async (req, res) => {
   const company = req.query.company;
   try {
     const companyInfo = await searchingCompanyInfo(company);
+    const companySqlId = await resolveCompanySqlId(
+      companyInfo,
+      req.query.company_sql_id
+    );
+    // The event-checkout serials have to be known before Inventory runs, because
+    // Inventory subtracts whatever another bucket is already showing.
+    const deviceTransactionFound = await searchingDeviceTransaction(
+      variable,
+      company
+    );
+    const checkoutSerials = deviceTransactionFound.serials ?? [];
+
     const [
       consumerFound,
       transactionFound,
-      deviceTransactionFound,
       devicePoolFound,
       eventFound,
       staffFound,
+      inventoryFound,
+      memberFound,
+      inventoryLocationFound,
+      memberAssignmentFound,
+      unitTotal,
     ] = await Promise.all([
       searchingConsumer(variable, company),
       searchingTransaction(variable, company),
-      searchingDeviceTransaction(variable, company),
       searchingDevicePool(variable, company),
       searchingEvents({
         variable: variable,
@@ -211,17 +788,49 @@ const searching = async (req, res) => {
         variable: variable,
         employees: companyInfo.employees,
       }),
+      searchingInventory(variable, companySqlId, checkoutSerials),
+      searchingMembers(variable, companySqlId),
+      searchingInventoryLocations(variable, companySqlId),
+      searchingMemberAssignments(variable, companySqlId),
+      // One physical unit = one result, however many buckets surface it.
+      countDistinctUnits(variable, companySqlId, checkoutSerials),
     ]);
+    const totals = {
+      units: unitTotal,
+      consumers: consumerFound.consumers?.length ?? 0,
+      staff: staffFound.length,
+      members: memberFound.total ?? 0,
+      events: eventFound.results?.length ?? 0,
+      // how `units` splits across the buckets that render it -- these add up to
+      // `units`, which is what lets the sections reconcile to the header
+      unitsByBucket: {
+        inventory: inventoryFound.total ?? 0,
+        eventCheckouts: deviceTransactionFound.total ?? 0,
+        assigned: memberAssignmentFound.total ?? 0,
+      },
+    };
+    totals.all =
+      totals.units +
+      totals.consumers +
+      totals.staff +
+      totals.members +
+      totals.events;
 
     return res.status(200).json({
       ok: true,
       comps: companyInfo,
+      company_sql_id: companySqlId,
+      totals,
       consumer: consumerFound,
       transaction: transactionFound,
       deviceTransaction: deviceTransactionFound,
       devicePool: devicePoolFound,
       event: eventFound,
       staff: staffFound,
+      inventory: inventoryFound,
+      member: memberFound,
+      inventoryLocation: inventoryLocationFound,
+      memberAssignment: memberAssignmentFound,
     });
   } catch (error) {
     return res.status(500).json({
