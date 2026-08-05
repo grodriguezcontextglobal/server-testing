@@ -3,6 +3,46 @@ require("dotenv").config();
 const getConnection = require("../database/config");
 const connection = getConnection();
 
+/**
+ * Normalize a date of birth into a MySQL DATE string.
+ *
+ * Returns:
+ *   undefined - nothing supplied, leave the column alone
+ *   null      - explicitly cleared
+ *   "YYYY-MM-DD" - a usable date
+ *   false     - supplied but unusable
+ *
+ * Callers turn `false` into a 400 rather than dropping the value. Silently
+ * discarding date_of_birth is exactly how every member ended up without one:
+ * the field was absent from the allowlists below, so the form posted it, the
+ * API ignored it, and nothing ever reported a problem.
+ */
+const normalizeDateOfBirth = (value) => {
+  if (value === undefined) return undefined;
+  if (value === null || String(value).trim() === "") return null;
+
+  // Accept "YYYY-MM-DD" and full ISO timestamps.
+  const match = String(value).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return false;
+
+  const [, y, m, d] = match;
+  const parsed = new Date(Date.UTC(Number(y), Number(m) - 1, Number(d)));
+  // Rejects impossible calendar dates like 2026-02-31, which Date rolls over.
+  if (
+    parsed.getUTCFullYear() !== Number(y) ||
+    parsed.getUTCMonth() !== Number(m) - 1 ||
+    parsed.getUTCDate() !== Number(d)
+  ) {
+    return false;
+  }
+  if (parsed.getTime() > Date.now()) return false;
+
+  return `${y}-${m}-${d}`;
+};
+
+const INVALID_DOB_MESSAGE =
+  "date_of_birth must be a valid past date in YYYY-MM-DD format.";
+
 const insertNewMember = async (request, response) => {
   try {
     const body = request.body || {};
@@ -82,8 +122,14 @@ const insertNewMember = async (request, response) => {
       address = composed || undefined;
     }
 
+    const date_of_birth = normalizeDateOfBirth(body.date_of_birth);
+    if (date_of_birth === false) {
+      return response.status(400).json({ message: INVALID_DOB_MESSAGE });
+    }
+
     // Collect allowed columns dynamically
     const allowed = {
+      date_of_birth,
       first_name,
       last_name,
       email: body.email ? String(body.email).trim() : undefined,
@@ -329,6 +375,7 @@ const insertBulkMembers = async (request, response) => {
       "grade",
       "homeroom",
       "minor",
+      "date_of_birth",
       "parent_guardian_first_name",
       "parent_guardian_last_name",
       "parent_guardian_email",
@@ -344,6 +391,13 @@ const insertBulkMembers = async (request, response) => {
           ["1", "true", "yes", "y"].includes(String(r.minor).toLowerCase().trim())
             ? 1
             : 0;
+      }
+      if (r.date_of_birth !== undefined) {
+        // A spreadsheet cell that isn't a usable date imports as NULL rather
+        // than failing the whole batch — unlike the single-member form, where
+        // a bad value is worth a 400 the person can act on.
+        const dob = normalizeDateOfBirth(r.date_of_birth);
+        r.date_of_birth = dob === false ? null : dob;
       }
     }
 
@@ -522,7 +576,7 @@ const updateMemberInfo = async (request, response) => {
         'address', 'address_street', 'address_city', 'address_state', 'address_zip',
         'company_id', 'image_url', 'minor', 'parent_guardian_first_name',
         'parent_guardian_last_name', 'parent_guardian_email', 'parent_guardian_phone_number',
-        'grade', 'homeroom', 'external_id'
+        'grade', 'homeroom', 'external_id', 'date_of_birth'
     ];
 
     const updateData = {};
@@ -539,6 +593,15 @@ const updateMemberInfo = async (request, response) => {
 
     if (body.phone || body.phoneNumber) {
         updateData.phone_number = String(body.phone || body.phoneNumber).trim();
+    }
+
+    // Replaces the generic string-trim above with a validated DATE value.
+    if (Object.prototype.hasOwnProperty.call(body, "date_of_birth")) {
+        const dob = normalizeDateOfBirth(body.date_of_birth);
+        if (dob === false) {
+            return response.status(400).json({ message: INVALID_DOB_MESSAGE });
+        }
+        updateData.date_of_birth = dob;
     }
 
     const columnsToUpdate = Object.keys(updateData);
@@ -1345,6 +1408,7 @@ const retrieveMyDevices = async (request, response) => {
 };
 
 module.exports = {
+  normalizeDateOfBirth,
   insertNewMember,
   insertBulkMembers,
   updateMemberInfo,
