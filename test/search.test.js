@@ -77,6 +77,7 @@ describe('resolveSearchCategory', () => {
 
 describe('searching (category branch-skipping)', () => {
   const cachePath = path.resolve(__dirname, '../database/cacheMemoryConfig.js');
+  const sqlConfigPath = path.resolve(__dirname, '../mysql/database/config.js');
   let User, Receivers, ReceiversPool, Event, AdminUser, Transaction, Company;
   let calls;
   let originals;
@@ -96,6 +97,23 @@ describe('searching (category branch-skipping)', () => {
           expire: async () => {},
         }),
       },
+    };
+
+    // `searching()` also calls `resolveCompanySqlId`, which falls back to a
+    // REAL `getConnection()` query when no `company_sql_id` is in the request
+    // (none of these tests send one) -- without this mock, every test here
+    // would open a live connection to the real configured MySQL/PlanetScale
+    // host, and that connection is never closed, which leaves the test
+    // process hanging after all assertions already passed.
+    delete require.cache[sqlConfigPath];
+    require.cache[sqlConfigPath] = {
+      id: sqlConfigPath,
+      filename: sqlConfigPath,
+      loaded: true,
+      exports: () => ({
+        query: async () => [[], []],
+        execute: async () => [[], []],
+      }),
     };
 
     User = require('../models/User');
@@ -140,6 +158,7 @@ describe('searching (category branch-skipping)', () => {
     Transaction.find = originals.transactionFind;
     Company.findById = originals.companyFindById;
     delete require.cache[cachePath];
+    delete require.cache[sqlConfigPath];
   });
 
   function mockRes() {
