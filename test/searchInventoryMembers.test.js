@@ -369,4 +369,70 @@ describe('searching() -- inventory/members/assignments (MySQL sections)', () => 
       res.payload.totals.units + res.payload.totals.consumers + res.payload.totals.staff + res.payload.totals.members + res.payload.totals.events,
     );
   });
+
+  // ─── Concurrency: members/assignments/locations must not wait on deviceTransaction ───
+  // Regression guard for the perf fix -- before it, `deviceTransactionFound` was
+  // `await`ed BEFORE the Promise.all even started, so every other section
+  // (including these, which don't need its result) was serialized behind it.
+
+  it('the members_info query starts before a slow deviceTransaction resolves, not after', async () => {
+    let deviceTransactionResolved = false;
+    let membersQueryStartedBeforeDeviceTransactionResolved = false;
+
+    Receivers.find = () => ({
+      sort: () => ({
+        limit: async () => {
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          deviceTransactionResolved = true;
+          return [];
+        },
+      }),
+    });
+
+    installMysqlMock({ rows: { members: [{ member_id: 1 }] } });
+    const originalExecute = mockConnection.execute.bind(mockConnection);
+    mockConnection.execute = async (sql, params) => {
+      if (/FROM members_info WHERE/.test(sql) && /LIMIT 61/.test(sql) && !deviceTransactionResolved) {
+        membersQueryStartedBeforeDeviceTransactionResolved = true;
+      }
+      return originalExecute(sql, params);
+    };
+
+    const searching = loadSearching();
+    const res = mockRes();
+    await searching({ query: { variable: 'a', company: 'C1', category: 'all', company_sql_id: '133' } }, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(
+      membersQueryStartedBeforeDeviceTransactionResolved,
+      'members_info must not be serialized behind deviceTransaction -- it does not depend on its result'
+    );
+  });
+
+  // ─── Reliability: a hung (not failing) query must not hang/break the whole search ───
+
+  it('a hung MySQL query is bounded by the section timeout instead of hanging the whole search', async () => {
+    process.env.SEARCH_SECTION_TIMEOUT_MS = '20';
+    try {
+      installMysqlMock();
+      // A query that never settles -- simulates a real hung connection/query,
+      // as opposed to the already-covered "throws an error" case.
+      mockConnection.execute = () => new Promise(() => {});
+      mockConnection.query = () => new Promise(() => {});
+
+      const searching = loadSearching(); // fresh require picks up the env var
+      const res = mockRes();
+
+      const start = Date.now();
+      await searching({ query: { variable: 'a', company: 'C1', category: 'members', company_sql_id: '133' } }, res);
+      const elapsed = Date.now() - start;
+
+      assert.equal(res.statusCode, 200);
+      assert.ok(elapsed < 2000, `expected the ~20ms section timeout to bound the response, took ${elapsed}ms`);
+      assert.deepEqual(res.payload.member.members, []);
+      assert.ok(res.payload.member.error?.includes('timeout'), 'the timeout should be surfaced on the section, like the thrown-error case');
+    } finally {
+      delete process.env.SEARCH_SECTION_TIMEOUT_MS;
+    }
+  });
 });

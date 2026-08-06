@@ -805,6 +805,35 @@ const EMPTY_ASSIGNMENT_RESULT = {
   hasMore: false,
 };
 
+/**
+ * A slow (not failing) Vitess/MySQL query has no bound today -- item_inv's
+ * pool `connectTimeout` only covers acquiring a connection, not running the
+ * query. Without this, one hung section rides the whole /search/searching_
+ * response into the global 30s response timeout (index.js), discarding every
+ * OTHER section that already finished. This can't cancel the underlying
+ * query (mysql2 doesn't expose that), it just stops the response from
+ * waiting on it -- the query still finishes server-side and releases its
+ * connection on its own.
+ */
+const SECTION_TIMEOUT_MS = Number(process.env.SEARCH_SECTION_TIMEOUT_MS) || 5000;
+const withSectionTimeout = (promise, emptyResult, label) => {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      console.error(`${label}: section timed out after ${SECTION_TIMEOUT_MS}ms`);
+      resolve(
+        emptyResult && typeof emptyResult === "object"
+          ? { ...emptyResult, error: `timeout after ${SECTION_TIMEOUT_MS}ms` }
+          : emptyResult
+      );
+    }, SECTION_TIMEOUT_MS);
+  });
+  // Whichever side of the race wins, clear the timer -- otherwise every fast,
+  // successful search leaves a dangling 5s timer behind (harmless individually,
+  // but it piles up under real traffic instead of being freed right away).
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+};
+
 const searching = async (req, res) => {
   // const { variable, company } = req.body;
   const variable = req.query.variable;
@@ -831,27 +860,51 @@ const searching = async (req, res) => {
     const runInventory = category === "all" || category === "inventory";
     const runMembers = category === "all" || category === "members";
 
-    // The event-checkout serials have to be known before Inventory runs, because
-    // Inventory subtracts whatever another bucket is already showing.
-    const deviceTransactionFound = runDevice
-      ? await searchingDeviceTransaction(variable, company)
-      : EMPTY_DEVICE_TRANSACTION_RESULT;
-    const checkoutSerials = deviceTransactionFound.serials ?? [];
+    const deviceTransactionPromise = runDevice
+      ? searchingDeviceTransaction(variable, company)
+      : Promise.resolve(EMPTY_DEVICE_TRANSACTION_RESULT);
+
+    // Only Inventory and the dedup count actually need the checkout serials
+    // (Inventory subtracts whatever the checkout bucket already shows) --
+    // chaining just these two off deviceTransactionPromise, instead of
+    // `await`ing it before the Promise.all like before, lets every other
+    // section below start immediately instead of waiting on deviceTransaction
+    // first.
+    const inventoryAndUnitsPromise = runInventory || runDevice
+      ? deviceTransactionPromise.then((deviceTransactionFound) => {
+          const checkoutSerials = deviceTransactionFound.serials ?? [];
+          return Promise.all([
+            runInventory
+              ? withSectionTimeout(
+                  searchingInventory(variable, companySqlId, checkoutSerials),
+                  EMPTY_INVENTORY_RESULT,
+                  "searchingInventory"
+                )
+              : Promise.resolve(EMPTY_INVENTORY_RESULT),
+            withSectionTimeout(
+              countDistinctUnits(variable, companySqlId, checkoutSerials),
+              0,
+              "countDistinctUnits"
+            ),
+          ]);
+        })
+      : Promise.resolve([EMPTY_INVENTORY_RESULT, 0]);
 
     const [
       consumerFound,
       transactionFound,
+      deviceTransactionFound,
       devicePoolFound,
       eventFound,
       staffFound,
-      inventoryFound,
+      [inventoryFound, unitTotal],
       memberFound,
       inventoryLocationFound,
       memberAssignmentFound,
-      unitTotal,
     ] = await Promise.all([
       runConsumer ? searchingConsumer(variable, company) : Promise.resolve(EMPTY_CONSUMER_RESULT),
       searchingTransaction(variable, company),
+      deviceTransactionPromise,
       runDevice ? searchingDevicePool(variable, company) : Promise.resolve(EMPTY_DEVICE_POOL_RESULT),
       runEvent
         ? searchingEvents({ variable: variable, company: companyInfo.company_name })
@@ -859,23 +912,24 @@ const searching = async (req, res) => {
       runStaff
         ? searchingStaff({ variable: variable, employees: companyInfo.employees })
         : Promise.resolve(EMPTY_STAFF_RESULT),
-      runInventory
-        ? searchingInventory(variable, companySqlId, checkoutSerials)
-        : Promise.resolve(EMPTY_INVENTORY_RESULT),
+      inventoryAndUnitsPromise,
       runMembers
-        ? searchingMembers(variable, companySqlId)
+        ? withSectionTimeout(searchingMembers(variable, companySqlId), EMPTY_MEMBER_RESULT, "searchingMembers")
         : Promise.resolve(EMPTY_MEMBER_RESULT),
       runInventory
-        ? searchingInventoryLocations(variable, companySqlId)
+        ? withSectionTimeout(
+            searchingInventoryLocations(variable, companySqlId),
+            EMPTY_INVENTORY_LOCATION_RESULT,
+            "searchingInventoryLocations"
+          )
         : Promise.resolve(EMPTY_INVENTORY_LOCATION_RESULT),
       runDevice
-        ? searchingMemberAssignments(variable, companySqlId)
+        ? withSectionTimeout(
+            searchingMemberAssignments(variable, companySqlId),
+            EMPTY_ASSIGNMENT_RESULT,
+            "searchingMemberAssignments"
+          )
         : Promise.resolve(EMPTY_ASSIGNMENT_RESULT),
-      // One physical unit = one result, however many buckets surface it. Only
-      // worth computing when a bucket that reports units actually ran.
-      runInventory || runDevice
-        ? countDistinctUnits(variable, companySqlId, checkoutSerials)
-        : Promise.resolve(0),
     ]);
     const totals = {
       units: unitTotal,
