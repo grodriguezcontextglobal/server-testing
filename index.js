@@ -286,13 +286,22 @@ const startServer = () => {
     const workerPath = path.resolve(__dirname, "go-worker", execName);
     const fs = require("fs");
 
+    // Log the resolved target ALWAYS (not only in the external topology), and
+    // resolve it through helpers/goWorker.js so this line can never disagree
+    // with what runtime actually calls. A silent Node/worker port mismatch took
+    // weeks to find in prod precisely because no startup line ever stated the
+    // address Node would dial.
+    const { host: workerHost, port: workerPort } =
+      require("./helpers/goWorker").resolveWorkerTarget();
+    logger.info(`Go worker target: http://${workerHost}:${workerPort}`);
+
     // GO_WORKER_EXTERNAL=true: the Go worker runs as its own service/host (see
     // helpers/goWorker.js GO_WORKER_HOST) — Node must NOT spawn a local copy.
     // This switch enables the split-services topology; default (unset) preserves
     // today's behavior of spawning a co-located worker.
     if (process.env.GO_WORKER_EXTERNAL === "true") {
       logger.info(
-        `GO_WORKER_EXTERNAL=true — not spawning a local Go worker; calling ${process.env.GO_WORKER_HOST || "localhost"}:${process.env.GO_WORKER_PORT || 7453}.`
+        `GO_WORKER_EXTERNAL=true — not spawning a local Go worker; using the target above.`
       );
     } else if (fs.existsSync(workerPath)) {
       logger.info(`Starting Go worker...`);

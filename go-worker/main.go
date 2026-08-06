@@ -83,7 +83,12 @@ func startServer() {
 	http.HandleFunc("/", recoverMiddleware(handleRequest))
 	port := os.Getenv("GO_WORKER_PORT")
 	if port == "" {
-		port = "8081"
+		// Must stay in sync with DEFAULT_GO_WORKER_PORT in helpers/goWorker.js.
+		// These two defaults used to disagree (8081 here vs 7453 there), so an
+		// environment that set GO_WORKER_PORT for only ONE of the two processes
+		// left them silently talking past each other — the root cause of the
+		// "Go Worker Connection Failed / circuit breaker open" outages in prod.
+		port = "7453"
 	}
 	fmt.Printf("Go worker server listening on port %s\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
