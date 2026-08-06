@@ -211,6 +211,11 @@ const configureRoutes = (app) => {
   // Mount consumer public namespace (attendees app; no token required)
   app.use("/api/consumer", require("./routes/consumer"));
 
+  // School namespace. Mounted explicitly rather than through the mysqlRoutes
+  // map above, which prefixes everything with /api/db_ — the frontend calls
+  // these at /api/school/*.
+  app.use("/api/school", require("./mysql/routes/school"));
+
   app.use("/api", require("./routes/status"));
 };
 
