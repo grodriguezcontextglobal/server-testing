@@ -20,6 +20,7 @@ const {
   buildConsentLink,
   deriveConsentStatus,
   isMutable,
+  isPolicyStale,
 } = require('../mysql/controllers/school');
 
 const NOW = new Date('2026-08-05T12:00:00Z');
@@ -102,6 +103,20 @@ test('deriveConsentStatus treats a pending request with no expiry as pending', (
     deriveConsentStatus({ status: 'pending', expires_at: null }, NOW),
     'pending'
   );
+});
+
+test('isPolicyStale only fires when a required version is set and differs', () => {
+  // Mirrors the frontend's isPolicyStale so /school/consent/status and
+  // normalizeConsentStatus can never disagree about what "stale" means.
+  assert.strictEqual(isPolicyStale({ policy_version: '1' }, '2'), true);
+  assert.strictEqual(isPolicyStale({ policy_version: '1' }, '1'), false);
+  assert.strictEqual(isPolicyStale({ policy_version: '1' }, null), false);
+  assert.strictEqual(isPolicyStale(null, '2'), false);
+});
+
+test('isPolicyStale compares versions as strings, not by type', () => {
+  // MySQL hands back a VARCHAR; a caller may pass a number from JSON.
+  assert.strictEqual(isPolicyStale({ policy_version: '2' }, 2), false);
 });
 
 test('isMutable is true only while a request is still answerable', () => {

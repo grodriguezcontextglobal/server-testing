@@ -21,6 +21,7 @@ const {
   addGuardian,
   searchGuardians,
   getMemberConsent,
+  getConsentStatusSummary,
   requestConsent,
   resendConsent,
   publicRetrieveConsent,
@@ -77,6 +78,9 @@ router.post("/guardians/search", staff, searchGuardians);
 
 // ---- consent (staff) ------------------------------------------------------
 router.post("/consent", staff, getMemberConsent);
+// District-wide posture in one call. The readiness dashboard used to ask
+// /consent once per minor — ~961 requests on the demo district.
+router.post("/consent/status", staff, getConsentStatusSummary);
 router.post("/consent/request", staff, requestConsent);
 router.post("/consent/resend", staff, resendConsent);
 

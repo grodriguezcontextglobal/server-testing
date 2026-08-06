@@ -522,6 +522,114 @@ const getMemberConsent = async (request, response) => {
   }
 };
 
+/**
+ * Whether a stored consent satisfies the company's required policy version.
+ * Mirrors the frontend's isPolicyStale so both sides agree on "stale".
+ */
+const isPolicyStale = (row, requiredVersion) => {
+  if (!row || !requiredVersion) return false;
+  return String(row.policy_version) !== String(requiredVersion);
+};
+
+/**
+ * District-wide consent posture in one request.
+ *
+ * The readiness dashboard needs a status for every minor on the roster. Asking
+ * /school/consent per student meant ~961 requests against the demo district —
+ * enough to trip a production rate limiter, and all of it fired the moment
+ * consent enforcement is switched on. This collapses it to a single query.
+ *
+ * Returns the fields Gustavo's §3.3 documents (total / consented /
+ * missing_count / missing[]) plus a `statuses` map keyed by member_id, which is
+ * what the dashboard renders chips from.
+ */
+const getConsentStatusSummary = async (request, response) => {
+  try {
+    await ensureSchoolTables();
+    const {
+      company_id,
+      policy_type = DEFAULT_POLICY_TYPE,
+      policy_version,
+    } = request.body || {};
+    if (!company_id) return badRequest(response, "company_id is required.");
+
+    const settings = await settingsRowFor(company_id);
+    const requiredVersion =
+      policy_version ?? settings.required_consent_policy_version ?? null;
+
+    // Same minor rule the profile and the dashboard use: derive from
+    // date_of_birth, fall back to the legacy flag when there's no birthdate.
+    const [rows] = await connection.query(
+      `SELECT m.member_id, m.first_name, m.last_name, m.grade, m.date_of_birth,
+              (m.date_of_birth IS NOT NULL
+               AND TIMESTAMPDIFF(YEAR, m.date_of_birth, CURDATE()) < 13) AS under_13,
+              c.status AS consent_status, c.policy_version, c.expires_at
+         FROM members_info m
+         LEFT JOIN (
+           SELECT s.* FROM school_consents s
+           JOIN (SELECT member_id, MAX(id) AS max_id
+                   FROM school_consents
+                  WHERE company_id = ? AND policy_type = ?
+                  GROUP BY member_id) latest
+             ON s.id = latest.max_id
+         ) c ON c.member_id = m.member_id
+        WHERE m.company_id = ?
+          AND ((m.date_of_birth IS NOT NULL
+                AND TIMESTAMPDIFF(YEAR, m.date_of_birth, CURDATE()) < 18)
+            OR (m.date_of_birth IS NULL AND m.minor = 1))`,
+      [String(company_id), policy_type, String(company_id)]
+    );
+
+    const statuses = {};
+    const missing = [];
+    let consented = 0;
+
+    rows.forEach((row) => {
+      const hasRecord = Boolean(row.consent_status);
+      let status = "missing";
+
+      if (hasRecord) {
+        const derived = deriveConsentStatus({
+          status: row.consent_status,
+          expires_at: row.expires_at,
+        });
+        status =
+          derived === "agreed" && isPolicyStale(row, requiredVersion)
+            ? "stale"
+            : derived;
+      }
+
+      statuses[row.member_id] = status;
+
+      if (status === "agreed") {
+        consented += 1;
+      } else {
+        missing.push({
+          member_id: row.member_id,
+          first_name: row.first_name,
+          last_name: row.last_name,
+          grade: row.grade,
+          under_13: Boolean(row.under_13),
+          status,
+        });
+      }
+    });
+
+    return response.status(200).json({
+      ok: true,
+      policy_type,
+      policy_version: requiredVersion,
+      total: rows.length,
+      consented,
+      missing_count: missing.length,
+      missing,
+      statuses,
+    });
+  } catch (error) {
+    return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 /** Shared by request and resend: mint a code, store its hash, deliver the link. */
 const issueConsentRequest = async ({
   companyId,
@@ -899,6 +1007,7 @@ module.exports = {
   buildConsentLink,
   deriveConsentStatus,
   isMutable,
+  isPolicyStale,
   ensureSchoolTables,
   // handlers
   getSchoolSettings,
@@ -907,6 +1016,7 @@ module.exports = {
   addGuardian,
   searchGuardians,
   getMemberConsent,
+  getConsentStatusSummary,
   requestConsent,
   resendConsent,
   publicRetrieveConsent,
