@@ -5,14 +5,14 @@ const { createClient } = require("redis");
 // Create a Redis client instance
 let client;
 
-const clientRedis = async () => {
+const createClientRedis = ({ createClientFn = createClient } = {}) => async () => {
   if (!client) {
     if (!process.env.REDIS_PASSWORD || !process.env.REDIS_HOST) {
       throw new Error(
         "Missing REDIS_HOST/REDIS_PASSWORD environment variables"
       );
     }
-    client = createClient({
+    const newClient = createClientFn({
       password: process.env.REDIS_PASSWORD,
       socket: {
         host: process.env.REDIS_HOST,
@@ -20,17 +20,23 @@ const clientRedis = async () => {
       },
       disableOfflineQueue: false,
     });
-    await client.connect();
 
     // Log if connected successfully
-    client.on("connect", () => {
+    newClient.on("connect", () => {
       console.log("Connected to Redis");
     });
 
     // Handle errors
-    client.on("error", (err) => {
+    newClient.on("error", (err) => {
       console.error("Redis error:", err);
     });
+
+    // Only promote to the module-level singleton once connect() actually
+    // succeeds. If it throws, `client` stays null so the NEXT call starts a
+    // fresh connection attempt instead of retrying on this same broken
+    // instance (which node-redis v4 can hang on indefinitely).
+    await newClient.connect();
+    client = newClient;
   } else if (!client.isOpen) {
     await client.connect();
   }
@@ -38,6 +44,12 @@ const clientRedis = async () => {
   return client;
 };
 
+const clientRedis = createClientRedis();
+
 module.exports = {
   clientRedis,
+  createClientRedis,
+  __resetClientForTests: () => {
+    client = undefined;
+  },
 };

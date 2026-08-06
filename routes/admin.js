@@ -28,6 +28,10 @@ const {
   addReceiverToTransaction,
   checkingReceiversAssigned,
 } = require("../controller/receiver");
+const {
+  getStaffActivityLogs,
+  registerStaffActivity,
+} = require("../controller/staffActivityLog");
 const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
@@ -109,5 +113,9 @@ router.get("/check-online-status/:email", checkStatus);
 router.post("/mfa/generate", validateJWT, generateMfaSecret);
 router.post("/mfa/verify", validateJWT, verifyMfaSetup);
 router.post("/mfa/disable", validateJWT, disableMfa);
+
+// Staff activity log
+router.post("/activity-logs", validateJWT, checkTokenVersion, registerStaffActivity);
+router.get("/activity-logs", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), getStaffActivityLogs);
 
 module.exports = router;
