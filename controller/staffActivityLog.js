@@ -145,7 +145,54 @@ const getStaffActivityLogs = async (req, res) => {
   }
 };
 
+/**
+ * HTTP endpoint to register a staff activity record. The acting staff member
+ * and their company are resolved server-side from the JWT (`req.uid`), never
+ * trusted from the request body, to prevent a caller from logging activity
+ * under someone else's identity or another company.
+ */
+const createRegisterStaffActivity = ({
+  findAdminUserFn = (id) => AdminUser.findById(id),
+  logStaffActivityFn = logStaffActivity,
+} = {}) => async (req, res) => {
+  try {
+    const { uid } = req;
+    const { action, target_model, target_id, details } = req.body;
+
+    if (!action || !target_model) {
+      return res
+        .status(400)
+        .json({ ok: false, msg: "action and target_model are required" });
+    }
+
+    const staffMember = await findAdminUserFn(uid);
+    if (!staffMember) {
+      return res.status(404).json({ ok: false, msg: "Staff member not found" });
+    }
+
+    await logStaffActivityFn({
+      staff_member_id: staffMember.id,
+      company_id: staffMember.company,
+      action,
+      target_model,
+      target_id,
+      details,
+      ip_address: req.ip,
+      device_info: req.headers["user-agent"],
+    });
+
+    return res.status(202).json({ ok: true, msg: "Activity registered" });
+  } catch (error) {
+    logger.error(error);
+    return res.status(500).json({ ok: false, msg: "Error registering activity" });
+  }
+};
+
+const registerStaffActivity = createRegisterStaffActivity();
+
 module.exports = {
   logStaffActivity,
   getStaffActivityLogs,
+  createRegisterStaffActivity,
+  registerStaffActivity,
 };
