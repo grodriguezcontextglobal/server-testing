@@ -84,18 +84,35 @@ Node calls it over `http://localhost:<GO_WORKER_PORT>/<command>` (see
 [`helpers/goWorker.js`](helpers/goWorker.js)); the worker's `main.go` starts an HTTP server
 (`startServer`) unless it's invoked with ≥3 CLI args (legacy/testing path).
 
-### ⚠️ Port must be set explicitly — defaults disagree
-
-The two sides have **different built-in defaults**, so an unset `GO_WORKER_PORT` breaks the link:
+### ⚠️ Port must be set to the SAME value for both processes
 
 | Side | Env var | Built-in default |
 |------|---------|------------------|
 | Node caller (`helpers/goWorker.js`) | `GO_WORKER_PORT` | `7453` |
-| Go worker (`go-worker/main.go`)     | `GO_WORKER_PORT` | `8081` |
+| Go worker (`go-worker/main.go`)     | `GO_WORKER_PORT` | `7453` |
 
-Production **must** set `GO_WORKER_PORT` to the **same value** for both the Node service and the
-worker process, or Node will POST to `7453` while the worker listens on `8081` and every call fails
-with *"Go Worker Connection Failed … Ensure the Go worker is running."*
+The defaults now match (they used to disagree — `7453` vs `8081`), and
+`test/goWorkerTarget.test.js` fails if either side drifts. **Matching defaults are not enough on
+their own**, because whatever value one process reads must equal the other's:
+
+> **This caused a multi-week production outage (2026-08).** `DevitrakGoWorker` had
+> `GO_WORKER_PORT=7453` injected by nssm, while `DevitrakServer` had **no** `GO_WORKER_PORT` in its
+> `AppEnvironmentExtra` — so Node's `dotenv` picked up `GO_WORKER_PORT=7452` from the repo `.env`
+> and dialed a port nobody was listening on. Every call died with `ECONNREFUSED` and the circuit
+> breaker sat open, while `/health` on 7453 answered fine and `go-worker-err.log` stayed empty, so
+> it looked like an intermittent worker fault for weeks. The worker was healthy the entire time.
+
+Rules that follow from that:
+
+* Set `GO_WORKER_PORT` **explicitly on both services**, never rely on one of them inheriting `.env`.
+* `AppEnvironmentExtra` **replaces the whole set** — re-list the existing variables when adding one.
+* On startup Node now logs `Go worker target: http://<host>:<port>`. **Check that line matches the
+  worker's actual port after any deploy or service change** — it is the cheapest possible guard
+  against this class of bug.
+* Verify from the box itself, which bypasses Node and the breaker entirely:
+  ```powershell
+  node -e "fetch('http://localhost:7453/retrieve-item-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company_id:134})}).then(r=>r.text()).then(t=>console.log('OK:',t.slice(0,80))).catch(e=>console.log('FAIL:',e.message,'| CAUSE:',e.cause?.code))"
+  ```
 
 ### Where the worker gets its config
 
@@ -165,6 +182,52 @@ nssm status DevitrakGoWorker      # SERVICE_RUNNING
 > own with `go build` (Windows here; the Docker image builds the Linux `worker`). On the first pull
 > after it was untracked, if git reports a modify/delete conflict on `go-worker/worker.exe`, resolve
 > with `git rm --cached go-worker/worker.exe` — the running service's local binary is untouched.
+
+### Automating the rebuild on every restart (recommended)
+
+Forgetting the `go build` step means prod silently keeps running **old Go code** after a pull. To
+remove that failure mode, wire [`scripts/build-go-worker.ps1`](scripts/build-go-worker.ps1) as the
+service's **`Start/Pre` hook** so nssm rebuilds the binary before every start. Run as Administrator:
+
+```powershell
+nssm set DevitrakGoWorker AppEvents Start/Pre "powershell.exe -ExecutionPolicy Bypass -NoProfile -File C:\Users\CGAdmin\Documents\Github\server-testing\scripts\build-go-worker.ps1"
+
+# Verify it was stored
+nssm get DevitrakGoWorker AppEvents Start/Pre
+```
+
+After that, `nssm restart DevitrakGoWorker` alone is enough — it compiles the current source and
+starts the fresh binary.
+
+**How the script behaves on failure — and why.** It **always exits 0**. A `Start/Pre` hook that
+fails can block the service from starting, and restarting the worker is often an *incident-recovery*
+action; a compile error in half-finished source must never be the reason production can't come back
+up. So on any failure it keeps the last known-good `worker.exe`, logs loudly, and lets the service
+start. It also builds to a staging file and only swaps it in on success, so a broken build can never
+leave a corrupt binary behind.
+
+**The tradeoff you must know about:** a silent build failure means the worker keeps running old
+code — exactly the problem this automation is meant to prevent. So after deploying Go changes,
+**check the log**:
+
+```powershell
+Get-Content "C:\Users\CGAdmin\Documents\Github\server-testing\logs\go-worker-build.log" -Tail 20
+```
+
+Every run appends a `RESULT:` line — `BUILT` (new binary in place), `SKIPPED` (Go toolchain not
+found) or `FAILED` (compile error; previous binary kept, with the compiler output above it).
+
+Gotchas worth checking the first time you enable this:
+
+* **`go` must be resolvable by the service account** (usually `LocalSystem`), whose `PATH` differs
+  from the interactive admin's. The script falls back to the standard install paths, but if you see
+  `RESULT: SKIPPED`, that's what happened.
+* **Cold builds are slow.** Go's build cache makes subsequent builds a few seconds, but the very
+  first one can take much longer; confirm nssm doesn't cut the hook short on that first restart.
+* To disable the hook later: `nssm set DevitrakGoWorker AppEvents Start/Pre ""`.
+
+The script also works standalone, as a drop-in for the manual `go build`:
+`powershell -ExecutionPolicy Bypass -File scripts\build-go-worker.ps1`.
 
 **Manual fallback** (no service): run it detached with the port set explicitly —
 `$env:GO_WORKER_PORT = "7453"; Start-Process .\worker.exe -WorkingDirectory "...\go-worker"`. This
