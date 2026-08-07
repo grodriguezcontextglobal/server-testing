@@ -222,6 +222,12 @@ Gotchas worth checking the first time you enable this:
 * **`go` must be resolvable by the service account** (usually `LocalSystem`), whose `PATH` differs
   from the interactive admin's. The script falls back to the standard install paths, but if you see
   `RESULT: SKIPPED`, that's what happened.
+* **`-buildvcs=false` is mandatory when building as the service account** (the script already passes
+  it). Go stamps git metadata into binaries since 1.18, so `go build` shells out to git; the service
+  account is not the repo's owner, so git aborts with *"detected dubious ownership"* (exit 128) and
+  the build dies with `error obtaining VCS status: exit status 128`. The confusing part is that the
+  identical `go build` run **by hand as the repo owner succeeds**, which makes it look like an
+  environment fault rather than a permissions one.
 * **Cold builds are slow.** Go's build cache makes subsequent builds a few seconds, but the very
   first one can take much longer; confirm nssm doesn't cut the hook short on that first restart.
 * To disable the hook later: `nssm set DevitrakGoWorker AppEvents Start/Pre ""`.
