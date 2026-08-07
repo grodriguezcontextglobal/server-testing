@@ -166,14 +166,20 @@ To remove it entirely: `nssm remove DevitrakGoWorker confirm`.
 
 ### Updating the worker after a deploy
 
-Once the service exists, a worker update is: rebuild the binary, then restart the service.
+Once the service exists, a worker update is: rebuild the binary, then restart the service. Prefer
+[`scripts/restart-go-worker.ps1`](scripts/restart-go-worker.ps1) (next section), which does all of
+this plus a health check. The manual equivalent:
 
 ```powershell
 cd "C:\Users\CGAdmin\Documents\Github\server-testing\go-worker"
+nssm stop DevitrakGoWorker        # worker.exe is locked while the service runs
 go build -o .\worker.exe          # rebuild from the freshly-pulled Go source
-nssm restart DevitrakGoWorker     # load the new binary
+nssm start DevitrakGoWorker       # load the new binary
 nssm status DevitrakGoWorker      # SERVICE_RUNNING
 ```
+
+> Building **as any account other than the repo's owner** additionally needs `-buildvcs=false` —
+> see the gotcha under the automation section below.
 
 > The invariant: **after any change to `worker.exe` or `go-worker/*.go`, restart the worker** — a
 > freshly built binary does nothing until the process is restarted.
@@ -183,21 +189,26 @@ nssm status DevitrakGoWorker      # SERVICE_RUNNING
 > after it was untracked, if git reports a modify/delete conflict on `go-worker/worker.exe`, resolve
 > with `git rm --cached go-worker/worker.exe` — the running service's local binary is untouched.
 
-### Automating the rebuild on every restart (recommended)
+### Automating the rebuild (recommended)
 
-Forgetting the `go build` step means prod silently keeps running **old Go code** after a pull. To
-remove that failure mode, wire [`scripts/build-go-worker.ps1`](scripts/build-go-worker.ps1) as the
-service's **`Start/Pre` hook** so nssm rebuilds the binary before every start. Run as Administrator:
+Forgetting the `go build` step means prod silently keeps running **old Go code** after a pull. Use
+[`scripts/restart-go-worker.ps1`](scripts/restart-go-worker.ps1) instead of a bare
+`nssm restart` — it stops the service, rebuilds, starts it, and health-checks the result.
+**Run in an elevated (Administrator) shell:**
 
 ```powershell
-nssm set DevitrakGoWorker AppEvents Start/Pre "powershell.exe -ExecutionPolicy Bypass -NoProfile -File C:\Users\CGAdmin\Documents\Github\server-testing\scripts\build-go-worker.ps1"
-
-# Verify it was stored
-nssm get DevitrakGoWorker AppEvents Start/Pre
+cd "C:\Users\CGAdmin\Documents\Github\server-testing"
+powershell -ExecutionPolicy Bypass -File .\scripts\restart-go-worker.ps1
 ```
 
-After that, `nssm restart DevitrakGoWorker` alone is enough — it compiles the current source and
-starts the fresh binary.
+That is the whole deploy for Go changes: `git pull`, then this.
+
+> **Do NOT wire the build as an nssm `Start/Pre` hook.** It was tried and it does not work: nssm
+> cuts the hook off after a few seconds, while a real `go build` here takes **8-10s**, so the build
+> was killed on every restart. Only the runs that *failed fast* (~4s) ever reached their `RESULT`
+> line, which made it look like it was working when it was not. Measured on the prod box
+> 2026-08-07. Building outside the service lifecycle removes the time limit and also guarantees
+> `worker.exe` isn't locked by a running process when the new binary is swapped in.
 
 **How the script behaves on failure — and why.** It **always exits 0**. A `Start/Pre` hook that
 fails can block the service from starting, and restarting the worker is often an *incident-recovery*
