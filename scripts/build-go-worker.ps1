@@ -86,7 +86,15 @@ if (Test-Path $staging) {
 
 Push-Location $goWorkerDir
 try {
-    $buildOutput = & $goExe build -o $staging . 2>&1
+    # -buildvcs=false is REQUIRED here, not an optimization. Since Go 1.18,
+    # `go build` stamps VCS metadata into the binary, which means it shells out
+    # to git. This hook runs as the service account (LocalSystem / MACHINE$),
+    # while the repo is owned by the interactive admin, so git refuses with
+    # "detected dubious ownership" (exit 128) and takes the whole build down
+    # with "error obtaining VCS status". The same `go build` run by hand as the
+    # repo owner succeeds, which makes this look like an environment mystery.
+    # Nothing here consumes the VCS stamp, so turning it off is free.
+    $buildOutput = & $goExe build -buildvcs=false -o $staging . 2>&1
     $buildExitCode = $LASTEXITCODE
 } catch {
     $buildOutput = $_.Exception.Message
