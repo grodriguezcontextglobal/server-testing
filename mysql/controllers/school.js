@@ -4,7 +4,7 @@ const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
 const StaffActivityLog = require("../../models/StaffActivityLog");
 const { isUnder13 } = require("../helpers/ageCalc");
-const { generateOtc, otcExpiresAt, isOtcExpired, isConsentMutable, isValidDecision } = require("../helpers/consentOtc");
+const { generateOtc, hashOtc, otcExpiresAt, isOtcExpired, isConsentMutable, isValidDecision } = require("../helpers/consentOtc");
 
 const hasBlankRequiredId = (value) =>
   value === undefined || value === null || String(value).trim() === "";
@@ -817,7 +817,7 @@ const requestConsent = async (req, res) => {
     await pool.execute(
       `INSERT INTO school_consent
         (id, company_id, member_id, guardian_id, policy_type, policy_version,
-         signer_name, signer_email, method, status, otc, otc_expires_at,
+         signer_name, signer_email, method, status, otc_hash, otc_expires_at,
          requested_at, requester_staff_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, NOW(), ?)`,
       [
@@ -830,7 +830,8 @@ const requestConsent = async (req, res) => {
         guardianName || "Guardian",
         guardianEmail,
         "email-link",
-        otc,
+        // Only the digest is persisted; `otc` itself goes out in the email below.
+        hashOtc(otc),
         expires,
         req.uid || null,
       ]
@@ -924,9 +925,9 @@ const resendConsent = async (req, res) => {
 
     const [updateResult] = await pool.execute(
       `UPDATE school_consent
-          SET otc = ?, otc_expires_at = ?, requested_at = NOW(), requester_staff_id = ?
+          SET otc_hash = ?, otc_expires_at = ?, requested_at = NOW(), requester_staff_id = ?
         WHERE id = ? AND status = 'pending'`,
-      [otc, expires, req.uid || null, existing.id]
+      [hashOtc(otc), expires, req.uid || null, existing.id]
     );
 
     if (!updateResult.affectedRows) {
@@ -1043,10 +1044,10 @@ const publicRetrieveConsent = async (req, res) => {
           ON g.id = sc.guardian_id
          AND g.company_id = sc.company_id
 
-        WHERE sc.otc = ?
+        WHERE sc.otc_hash = ?
         LIMIT 1
       `,
-      [token]
+      [hashOtc(token)]
     );
 
     if (!rows.length) {
@@ -1158,8 +1159,8 @@ const publicRespondConsent = async (req, res) => {
 
   try {
     const [rows] = await pool.execute(
-      "SELECT id, status, otc_expires_at FROM school_consent WHERE otc = ?",
-      [token]
+      "SELECT id, status, otc_expires_at FROM school_consent WHERE otc_hash = ?",
+      [hashOtc(token)]
     );
 
     if (!rows.length) {

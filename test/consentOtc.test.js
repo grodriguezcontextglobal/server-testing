@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 
 const {
   generateOtc,
+  hashOtc,
   otcExpiresAt,
   isOtcExpired,
   isConsentMutable,
@@ -47,4 +48,31 @@ test('isValidDecision accepts agreed and refused only', () => {
   assert.equal(isValidDecision('agreed'), true);
   assert.equal(isValidDecision('refused'), true);
   assert.equal(isValidDecision('invalid'), false);
+});
+
+test('hashOtc is a stable 64-char hex digest', () => {
+  const digest = hashOtc('some-token');
+  assert.match(digest, /^[0-9a-f]{64}$/);
+  assert.equal(digest, hashOtc('some-token'));
+});
+
+test('hashOtc separates distinct codes', () => {
+  assert.notEqual(hashOtc(generateOtc()), hashOtc(generateOtc()));
+});
+
+test('hashOtc never returns the code it was given', () => {
+  // The stored value must not be usable as a consent link on its own.
+  const otc = generateOtc();
+  assert.notEqual(hashOtc(otc), otc);
+  assert.ok(!hashOtc(otc).includes(otc));
+});
+
+test('hashOtc matches MySQL SHA2(otc, 256) so the backfill lines up', () => {
+  // Fixed vector: `SELECT SHA2('abc', 256)` in MySQL returns this digest. The
+  // otc_hash migration backfills with SHA2(), so a drift here would silently
+  // invalidate every consent link issued before the migration ran.
+  assert.equal(
+    hashOtc('abc'),
+    'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad'
+  );
 });
