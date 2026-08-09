@@ -677,6 +677,51 @@ const searchGuardians = async (req, res) => {
 
 // PURE + exported: roster rows carrying a `consented` flag -> compliance summary
 // (who has / hasn't signed). Deterministic, no I/O.
+/**
+ * Consent state for ONE student, as the compliance dashboard renders it.
+ *
+ * A binary consented/not answer is not enough to act on: "the guardian has not
+ * replied yet", "the link we sent has expired", "the guardian refused" and "they
+ * agreed, but to last year's policy" all read as 'not consented' and each needs a
+ * different follow-up. The five states below are the closed vocabulary the
+ * frontend maps to chips; anything outside it renders as 'not requested'.
+ *
+ * `rows` is every consent row for the student under one policy_type. The unique
+ * key is (member_id, policy_type, policy_version), so there is at most one row
+ * per version and the required version's row — when it exists — is the one that
+ * governs. Otherwise the most recent row speaks, which is what surfaces an
+ * agreement against a superseded policy as 'stale' rather than as compliant.
+ */
+const deriveConsentState = (rows, requiredVersion, now = new Date()) => {
+  if (!rows || !rows.length) return "missing";
+
+  const atRequired = requiredVersion
+    ? rows.find((r) => String(r.policy_version) === String(requiredVersion))
+    : null;
+  const governing =
+    atRequired ||
+    [...rows].sort(
+      (a, b) =>
+        new Date(b.responded_at || b.requested_at || b.created_at || 0) -
+        new Date(a.responded_at || a.requested_at || a.created_at || 0)
+    )[0];
+
+  const status = String(governing.status || "").toLowerCase();
+
+  if (status === "agreed") {
+    // Agreed, but against a policy version we no longer accept.
+    if (requiredVersion && String(governing.policy_version) !== String(requiredVersion)) {
+      return "stale";
+    }
+    return "agreed";
+  }
+  if (status === "refused") return "refused";
+  if (status === "pending") {
+    return isOtcExpired(governing.otc_expires_at, now) ? "expired" : "pending";
+  }
+  return "missing";
+};
+
 const summarizeConsentStatus = (rows = []) => {
   let consented = 0;
   const missing = [];
@@ -1260,7 +1305,64 @@ const consentStatus = async (req, res) => {
     }
     const members = [...byMember.values()];
     const summary = summarizeConsentStatus(members);
-    return res.status(200).json({ ok: true, policy_type: pType, ...summary, members });
+
+    // The query above only joins rows that already say 'agreed', so on its own it
+    // cannot tell "never asked" apart from "asked and refused". Pull every row for
+    // the tenant and derive the per-student state the dashboard actually renders.
+    // The caller may pin a policy version; otherwise the company's required
+    // version decides what counts as current, and therefore what reads as stale.
+    let requiredVersion =
+      policy_version && String(policy_version).trim() !== ""
+        ? String(policy_version).trim()
+        : null;
+    if (!requiredVersion) {
+      const [settingsRows] = await connection.query(
+        `SELECT required_consent_policy_version FROM company_school_settings
+          WHERE company_id = ? LIMIT 1`,
+        [company_id]
+      );
+      requiredVersion = settingsRows.length
+        ? settingsRows[0].required_consent_policy_version
+        : null;
+    }
+
+    const [consentRows] = await connection.query(
+      `SELECT member_id, policy_version, status, otc_expires_at,
+              requested_at, responded_at, created_at
+         FROM school_consent
+        WHERE company_id = ? AND policy_type = ?`,
+      [company_id, pType]
+    );
+    const rowsByMember = new Map();
+    for (const r of consentRows) {
+      const list = rowsByMember.get(r.member_id);
+      if (list) list.push(r);
+      else rowsByMember.set(r.member_id, [r]);
+    }
+
+    const now = new Date();
+    const statuses = {};
+    const counts = { agreed: 0, stale: 0, pending: 0, expired: 0, refused: 0, missing: 0 };
+    for (const member of members) {
+      const state = deriveConsentState(
+        rowsByMember.get(member.member_id),
+        requiredVersion,
+        now
+      );
+      statuses[member.member_id] = state;
+      counts[state] += 1;
+      member.consent_state = state;
+    }
+
+    return res.status(200).json({
+      ok: true,
+      policy_type: pType,
+      required_consent_policy_version: requiredVersion,
+      ...summary,
+      statuses,
+      counts,
+      members,
+    });
   } catch (error) {
     logger.error("consentStatus error:", error.message);
     return res.status(500).json({ ok: false, msg: error.message });
@@ -1392,6 +1494,7 @@ module.exports = {
   classifyMemberLease,
   mergeGuardians,
   summarizeConsentStatus,
+  deriveConsentState,
   validateStudentRequest,
   anonymizeStudent,
   deleteStudent,

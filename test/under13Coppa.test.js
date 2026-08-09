@@ -290,8 +290,19 @@ test('publicRetrieveConsent returns consent_document_id null when company has no
 });
 
 test('consent status includes under_13 per member', async () => {
+  // consentStatus issues three reads: the member roster, the company's required
+  // policy version, and the raw consent rows it derives per-student state from.
+  // Dispatch on the statement so the roster query is still held to carrying
+  // date_of_birth (that is what this test is about) without the other two
+  // tripping the same assertion.
   const pool = {
     query: async (sql) => {
+      if (/FROM company_school_settings/.test(sql)) {
+        return [[{ required_consent_policy_version: '2' }]];
+      }
+      if (/FROM school_consent/.test(sql)) {
+        return [[{ member_id: 11, policy_version: '2', status: 'agreed' }]];
+      }
       assert.match(sql, /date_of_birth/);
       return [[
         { member_id: 10, first_name: 'Ada', last_name: 'Student', grade: '5', date_of_birth: '2016-07-23', consented: 0 },
