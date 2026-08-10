@@ -3,6 +3,7 @@ const getConnection = require("../database/config");
 const { clientRedis } = require("../../database/cacheMemoryConfig");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
+const { describeSqlShape } = require("../../helpers/sqlShape");
 const {
   processSubLocation,
   processSubLocationPath,
@@ -2125,6 +2126,48 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
   }
 };
 
+// Shapes already reported by THIS process. Each distinct shape is logged once
+// rather than on every call, because the endpoint is high traffic and the goal
+// is an inventory, not a request log. Under pm2 cluster each worker reports
+// independently, which just means a shape can appear once per worker.
+const reportedQueryShapes = new Set();
+
+/**
+ * Records the SHAPE of a client-supplied statement (never its values) so the
+ * full set of queries the frontend sends can be inventoried before replacing
+ * this endpoint with a server-side named-query catalog. Several frontend call
+ * sites build their SQL in variables, so reading the client source is not
+ * enough to enumerate them.
+ *
+ * Never throws: auditing must not be able to break the endpoint it observes.
+ */
+const auditRawQueryShape = (request, query) => {
+  try {
+    if (process.env.SQL_SHAPE_AUDIT === "false") return;
+
+    const described = describeSqlShape(query);
+    if (reportedQueryShapes.has(described.hash)) return;
+    reportedQueryShapes.add(described.hash);
+
+    logger.warn("raw-sql endpoint: new query shape observed", {
+      shape_hash: described.hash,
+      statement_type: described.type,
+      tables: described.tables,
+      // false => this shape cannot be scoped to the caller's company, so it
+      // reads (or writes) across tenants. These are the priority cases for the
+      // catalog.
+      has_company_id: described.hasCompanyId,
+      mounted_at: request.baseUrl,
+      sql_staff_id: request.sqlStaffId ?? null,
+      shape: described.shape,
+    });
+  } catch (auditError) {
+    logger.error("raw-sql endpoint: shape audit failed", {
+      error: auditError.message,
+    });
+  }
+};
+
 const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   request,
   response,
@@ -2132,6 +2175,8 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   try {
     const connection = getConnection();
     let { query, values } = request.body;
+
+    auditRawQueryShape(request, query);
     // Clone the values to safely manipulate
     let finalValues = [];
     let placeholderIndex = 0;
