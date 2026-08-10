@@ -4,7 +4,7 @@ const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
 const StaffActivityLog = require("../../models/StaffActivityLog");
 const { isUnder13 } = require("../helpers/ageCalc");
-const { generateOtc, otcExpiresAt, isOtcExpired, isConsentMutable, isValidDecision } = require("../helpers/consentOtc");
+const { generateOtc, hashOtc, otcExpiresAt, isOtcExpired, isConsentMutable, isValidDecision } = require("../helpers/consentOtc");
 
 const hasBlankRequiredId = (value) =>
   value === undefined || value === null || String(value).trim() === "";
@@ -810,6 +810,9 @@ const requestConsent = async (req, res) => {
       return res.status(422).json({ ok: false, msg: "No guardian email found for this student. Add a guardian first." });
     }
 
+    // `otc` is the plaintext code that goes in the guardian's email and is
+    // never persisted; only its hash is stored, so a database read cannot be
+    // replayed as a consent link.
     const otc = generateOtc();
     const expires = otcExpiresAt();
     const id = randomUUID();
@@ -830,7 +833,7 @@ const requestConsent = async (req, res) => {
         guardianName || "Guardian",
         guardianEmail,
         "email-link",
-        otc,
+        hashOtc(otc),
         expires,
         req.uid || null,
       ]
@@ -838,7 +841,7 @@ const requestConsent = async (req, res) => {
 
     try {
       const { enqueue } = require("../../helpers/queue");
-      const consentUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/school/consent/respond?otc=${otc}`;
+      const consentUrl = `${process.env.FRONTEND_URL || "https://admin.devitrak.net/api"}/school/consent/respond?otc=${otc}`;
       await enqueue(
         "send-email",
         {
@@ -919,14 +922,17 @@ const resendConsent = async (req, res) => {
       return res.status(422).json({ ok: false, msg: "No guardian email on file for this consent request." });
     }
 
+    // Plaintext goes to the email, hash goes to the database. Rotating it here
+    // is what invalidates the previous link.
     const otc = generateOtc();
+    const hashedOtc = hashOtc(otc);
     const expires = otcExpiresAt();
 
     const [updateResult] = await pool.execute(
       `UPDATE school_consent
           SET otc = ?, otc_expires_at = ?, requested_at = NOW(), requester_staff_id = ?
         WHERE id = ? AND status = 'pending'`,
-      [otc, expires, req.uid || null, existing.id]
+      [hashedOtc, expires, req.uid || null, existing.id]
     );
 
     if (!updateResult.affectedRows) {
@@ -935,7 +941,7 @@ const resendConsent = async (req, res) => {
 
     try {
       const { enqueue } = require("../../helpers/queue");
-      const consentUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/school/consent/respond?otc=${otc}`;
+      const consentUrl = `${process.env.FRONTEND_URL || "https://admin.devitrak.net/api"}/school/consent/respond?otc=${otc}`;
       await enqueue(
         "send-email",
         {
@@ -952,7 +958,9 @@ const resendConsent = async (req, res) => {
           <p>Best regards,<br/>Devitrak</p>
         `,
         },
-        { idempotencyKey: `school-consent-resend:${existing.id}:${otc.slice(0, 16)}` }
+        // Keyed on the HASH, not the plaintext: this string is persisted on the
+        // Job document, and the code itself has no business being indexed there.
+        { idempotencyKey: `school-consent-resend:${existing.id}:${hashedOtc.slice(0, 16)}` }
       );
     } catch (emailErr) {
       logger.error("Failed to enqueue consent resend email:", emailErr.message);
@@ -1043,10 +1051,16 @@ const publicRetrieveConsent = async (req, res) => {
           ON g.id = sc.guardian_id
          AND g.company_id = sc.company_id
 
-        WHERE sc.otc = ?
+        WHERE sc.otc IN (?, ?)
         LIMIT 1
       `,
-      [token]
+      // Hashed first, plaintext second. The plaintext arm only matches rows
+      // written before hashing shipped, and exists so outstanding guardian
+      // links keep working no matter the order of the code deploy and the
+      // backfill migration. Remove it (and this comment) once
+      // hash_existing_school_consent_otc.sql has run everywhere and no
+      // "legacy plaintext OTC matched" warnings appear.
+      [hashOtc(token), token]
     );
 
     if (!rows.length) {
@@ -1157,13 +1171,21 @@ const publicRespondConsent = async (req, res) => {
   }
 
   try {
+    // See publicRetrieveConsent: hashed first, plaintext arm is the transitional
+    // fallback for rows written before hashing shipped.
     const [rows] = await pool.execute(
-      "SELECT id, status, otc_expires_at FROM school_consent WHERE otc = ?",
-      [token]
+      "SELECT id, status, otc_expires_at, otc FROM school_consent WHERE otc IN (?, ?) LIMIT 1",
+      [hashOtc(token), token]
     );
 
     if (!rows.length) {
       return res.status(404).json({ ok: false, msg: "Invalid consent link." });
+    }
+
+    if (rows[0].otc === token) {
+      logger.warn("legacy plaintext OTC matched — run hash_existing_school_consent_otc.sql", {
+        consent_id: rows[0].id,
+      });
     }
 
     const consent = rows[0];
