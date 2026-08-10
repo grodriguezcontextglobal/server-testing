@@ -28,6 +28,7 @@ const {
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
   runNamedInventoryQuery,
+  returnEventDevicesToWarehouse,
   insertBulkItemAlhpanumericFormat,
   getGroupedItemInventory,
   // insertContainerItems,
@@ -173,6 +174,16 @@ router.post(
   validateJWT,
   checkTokenVersion,
   runNamedInventoryQuery
+);
+
+// Return event devices to the warehouse atomically. Replaces three separate
+// raw-SQL calls (UPDATE warehouse / SELECT ids / DELETE assignments) that were
+// three independent transactions.
+router.post(
+  "/return-event-devices",
+  validateJWT,
+  checkTokenVersion,
+  returnEventDevicesToWarehouse
 );
 
 //get inventory company based on location and sublocation

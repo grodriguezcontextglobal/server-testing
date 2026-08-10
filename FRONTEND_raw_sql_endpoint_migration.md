@@ -270,6 +270,53 @@ they could read or write another tenant's rows. The catalog versions are scoped:
 If any screen depends on the old cross-company behaviour, that is a bug worth
 raising rather than working around.
 
+### ⭐ `POST /return-event-devices` — replaces three calls with one
+
+This one is **not** a catalog entry; it is its own endpoint, because it replaces
+a sequence rather than a single statement.
+
+Today returning devices from an event is three separate calls:
+
+```js
+// 1. UPDATE item_inv SET warehouse = 1 ... WHERE serial_number IN (...)
+// 2. SELECT item_id FROM item_inv WHERE ... serial_number IN (...)
+// 3. DELETE FROM item_inv_assigned_event WHERE event_id = ? AND item_id IN (...)
+```
+
+Those are three independent transactions. If anything fails between the first
+and the last — a network blip, a deadlock — the stock is marked returned to the
+warehouse **and still assigned to the event**, and nothing later reconciles it.
+
+Replace all three with:
+
+```js
+devitrakApi.post("/db_event/return-event-devices", {
+  event_id: event.sql.event_id,
+  item_group: devicesFetchedPool[0].type,
+  category_name: props.category,
+  serial_numbers: devicesFetchedPool.map((item) => item.device),
+});
+```
+
+Response:
+
+```jsonc
+{
+  "ok": true,
+  "returned_items": 12,        // rows set back to warehouse
+  "removed_assignments": 12,   // event assignments deleted
+  "skipped_serials": 0         // serials that matched nothing in your company
+}
+```
+
+`skipped_serials > 0` means some serials don't exist or belong to another
+company — surfaced rather than silently dropped, so you can tell a partial
+result from a complete one. `404` means none of them matched.
+
+You no longer send `item_ids`: the server derives them itself from
+company-scoped rows. That is deliberate — the old `DELETE` took ids straight
+from the browser with no company filter of its own.
+
 ### Migration order suggested
 
 1. Start with the five `inventory.byAttribute` call sites — one entry replaces
@@ -277,8 +324,11 @@ raising rather than working around.
 2. Then the rented list/count/export trio (`rentedPage` / `rentedCount` /
    `rentedAll`) — note `rentedPage` and `rentedCount` are guaranteed to share
    the same filter, so pagination totals stay consistent.
-3. Then the write paths (`markInWarehouse`, `deleteByEventAndItems`) — verify
-   the scoped behaviour on a staging company first.
+3. Then **`/return-event-devices`** (see above), which retires three call sites
+   at once and fixes a real consistency bug. Verify on a staging company first.
+   The catalog entries `inventory.markInWarehouse` and
+   `eventAssignments.deleteByEventAndItems` exist for any other caller, but if
+   you are doing the event-return flow, prefer the single endpoint.
 4. Last, the staff lookups.
 
 ### Coverage

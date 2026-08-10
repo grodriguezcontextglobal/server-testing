@@ -2131,6 +2131,125 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
   }
 };
 
+/**
+ * Returns event devices to the warehouse and detaches them from the event, as
+ * ONE atomic operation.
+ *
+ * The frontend does this today as three separate calls to the raw-SQL endpoint:
+ * UPDATE item_inv SET warehouse = 1, then SELECT the item_ids, then DELETE the
+ * event assignments. Split like that they are three independent transactions,
+ * so a failure between the first and the last leaves stock marked as returned
+ * to the warehouse while still assigned to the event — a state nothing later
+ * reconciles.
+ *
+ * Two things make this safer than the sequence it replaces:
+ *  - `FOR UPDATE` holds the matched rows for the life of the transaction, so a
+ *    concurrent assignment cannot slip between the read and the writes.
+ *  - The item_ids are derived HERE from company-scoped rows, instead of being
+ *    supplied by the client. The legacy DELETE took item_ids straight from the
+ *    browser and had no company filter of its own, so it could detach another
+ *    tenant's assignments.
+ */
+const returnEventDevicesToWarehouse = async (request, response) => {
+  const { event_id, item_group, category_name, serial_numbers } = request.body || {};
+
+  if (!event_id || !item_group || !category_name) {
+    return response.status(400).json({
+      ok: false,
+      msg: "event_id, item_group and category_name are required",
+    });
+  }
+
+  const serials = [
+    ...new Set(
+      (Array.isArray(serial_numbers) ? serial_numbers : []).filter(
+        (value) => value !== null && value !== undefined && String(value).trim() !== ""
+      )
+    ),
+  ];
+  if (!serials.length) {
+    return response
+      .status(400)
+      .json({ ok: false, msg: "serial_numbers must be a non-empty array" });
+  }
+
+  const context = await resolveCompanyContext(request);
+  if (!context.ok) {
+    return response.status(context.status).json({ ok: false, msg: context.msg });
+  }
+
+  // getConnection() returns the Pool, which has no beginTransaction/commit —
+  // only an individual PoolConnection does.
+  const pool = getConnection();
+  const connection = await pool.getConnection();
+  let transactionStarted = false;
+
+  try {
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [items] = await connection.execute(
+      `SELECT item_id FROM item_inv
+        WHERE company_id = ? AND item_group = ? AND category_name = ?
+          AND serial_number IN (${serials.map(() => "?").join(", ")})
+        FOR UPDATE`,
+      [context.companyId, item_group, category_name, ...serials]
+    );
+
+    if (!items.length) {
+      await connection.rollback();
+      return response.status(404).json({
+        ok: false,
+        msg: "No matching inventory items found for this company.",
+      });
+    }
+
+    const itemIds = items.map((row) => row.item_id);
+    const itemPlaceholders = itemIds.map(() => "?").join(", ");
+
+    const [updated] = await connection.execute(
+      `UPDATE item_inv SET warehouse = 1, update_at = NOW()
+        WHERE company_id = ? AND item_id IN (${itemPlaceholders})`,
+      [context.companyId, ...itemIds]
+    );
+
+    const [deleted] = await connection.execute(
+      `DELETE FROM item_inv_assigned_event
+        WHERE event_id = ? AND item_id IN (${itemPlaceholders})`,
+      [event_id, ...itemIds]
+    );
+
+    await connection.commit();
+
+    return response.status(200).json({
+      ok: true,
+      returned_items: updated.affectedRows,
+      removed_assignments: deleted.affectedRows,
+      // Serials that matched nothing in THIS company: either unknown, or owned
+      // by another tenant. Reported rather than silently dropped, so the caller
+      // can tell a partial result from a complete one.
+      skipped_serials: serials.length - itemIds.length,
+    });
+  } catch (error) {
+    if (transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        logger.error("returnEventDevicesToWarehouse rollback failed", {
+          error: rollbackError.message,
+        });
+      }
+    }
+    logger.error("returnEventDevicesToWarehouse failed", {
+      event_id,
+      error: error.message,
+    });
+    return response.status(500).json({ ok: false, msg: error.message });
+  } finally {
+    connection.release();
+  }
+};
+
 // Shapes already reported by THIS process. Each distinct shape is logged once
 // rather than on every call, because the endpoint is high traffic and the goal
 // is an inventory, not a request log. Under pm2 cluster each worker reports
@@ -3936,6 +4055,7 @@ module.exports = {
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
   runNamedInventoryQuery,
+  returnEventDevicesToWarehouse,
   consultingCompanyInventoryWithPagination,
   consultingInventoryTracking,
   consultingItem,

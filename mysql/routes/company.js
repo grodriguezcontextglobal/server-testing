@@ -28,6 +28,7 @@ const {
   getGroupedItemInventory,
   consultingCompanyInventoryBasedOnSubmittedParameters,
   runNamedInventoryQuery,
+  returnEventDevicesToWarehouse,
   updateAllItemsInInventory,
   updateItemsBasedOnAlphanumericSerialNumber,
   updateItemsBasedOnSerialNumber,
@@ -145,6 +146,16 @@ router.post(
   validateJWT,
   checkTokenVersion,
   runNamedInventoryQuery
+);
+
+// Return event devices to the warehouse atomically. Replaces three separate
+// raw-SQL calls (UPDATE warehouse / SELECT ids / DELETE assignments) that were
+// three independent transactions.
+router.post(
+  "/return-event-devices",
+  validateJWT,
+  checkTokenVersion,
+  returnEventDevicesToWarehouse
 );
 
 //update all items in inventory company based on submitted parameters
