@@ -5,6 +5,10 @@ const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
 const { describeSqlShape } = require("../../helpers/sqlShape");
 const {
+  buildNamedQuery,
+  QueryParamError,
+} = require("../queries/inventoryQueryCatalog");
+const {
   processSubLocation,
   processSubLocationPath,
   resolveSubLocationFilter,
@@ -2168,6 +2172,59 @@ const auditRawQueryShape = (request, query) => {
   }
 };
 
+/**
+ * Runs a statement from the server-side catalog. This is the replacement for
+ * consultingCompanyInventoryBasedOnSubmittedParameters: the client names a
+ * query and passes parameters, and the SQL text never leaves the server.
+ *
+ * The company id still arrives in the body (the frontend has it to hand), but
+ * it is no longer TRUSTED: getStaffCompanyAccess resolves the caller's active
+ * membership of that company and returns null otherwise, so a tampered value
+ * yields 403 instead of another tenant's rows. That check is what closes the
+ * cross-tenant hole in the legacy endpoint, where the company filter was
+ * whatever the browser chose to send.
+ */
+const runNamedInventoryQuery = async (request, response) => {
+  try {
+    const { queryName, params, company_id } = request.body;
+
+    if (!queryName) {
+      return response.status(400).json({ ok: false, msg: "queryName is required" });
+    }
+    if (!company_id) {
+      return response.status(400).json({ ok: false, msg: "company_id is required" });
+    }
+
+    const access = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!access) {
+      return response
+        .status(403)
+        .json({ ok: false, msg: "Not an active staff member of this company" });
+    }
+
+    let built;
+    try {
+      built = buildNamedQuery(queryName, params, { companyId: company_id });
+    } catch (paramError) {
+      if (paramError instanceof QueryParamError) {
+        return response.status(400).json({ ok: false, msg: paramError.message });
+      }
+      throw paramError;
+    }
+
+    const connection = getConnection();
+    const [result] = await connection.execute(built.sql, built.values);
+
+    return response.status(200).json({ ok: true, result });
+  } catch (error) {
+    logger.error("runNamedInventoryQuery failed", {
+      queryName: request.body?.queryName,
+      error: error.message,
+    });
+    return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   request,
   response,
@@ -3867,6 +3924,7 @@ module.exports = {
   containerItemsDetails,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  runNamedInventoryQuery,
   consultingCompanyInventoryWithPagination,
   consultingInventoryTracking,
   consultingItem,

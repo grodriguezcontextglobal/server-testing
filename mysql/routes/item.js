@@ -27,6 +27,7 @@ const {
   consultingCompanyInventoryWithPagination,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  runNamedInventoryQuery,
   insertBulkItemAlhpanumericFormat,
   getGroupedItemInventory,
   // insertContainerItems,
@@ -162,6 +163,16 @@ router.post(
   validateJWT,
   checkTokenVersion,
   consultingCompanyInventoryBasedOnSubmittedParameters
+);
+
+// Replacement for the route above: the client names a catalog entry instead of
+// sending SQL. Mounted on all three routers so call sites can migrate without
+// also changing which namespace they post to.
+router.post(
+  "/inventory-query",
+  validateJWT,
+  checkTokenVersion,
+  runNamedInventoryQuery
 );
 
 //get inventory company based on location and sublocation
