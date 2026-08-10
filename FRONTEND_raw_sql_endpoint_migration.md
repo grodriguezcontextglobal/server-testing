@@ -194,10 +194,16 @@ you already use.
 ```js
 devitrakApi.post("/db_event/inventory-query", {
   queryName: "inventory.itemsByIds",
-  company_id: user.sqlInfo.company_id,
   params: { itemIds: [12, 13], supplierId },   // per-entry, see table below
 });
+// company comes from the s-company-lq header your client already sends
 ```
+
+**You do not need to send `company_id` in the body.** The server reads it from
+the **`s-company-lq`** header (the SQL company id) that your API client already
+attaches to every request. Sending `company_id` in the body or query still works
+for call sites you haven't touched yet — the header simply wins when both are
+present — but new code should just omit it.
 
 ### Response
 
@@ -206,17 +212,22 @@ driver's rows. **No parsing changes.**
 
 | Status | When |
 |---|---|
-| `400` | missing/unknown `queryName`, missing `company_id`, or bad params (message says which) |
-| `403` | you are not an active staff member of that `company_id` |
+| `400` | missing/unknown `queryName`, no company context, or bad params (message says which) |
+| `401` | no staff identity resolvable on the request |
+| `403` | you are not an active staff member of that company |
 | `500` | unexpected server error |
 
-### `company_id` is still sent, but no longer trusted
+### The company is no longer trusted, wherever it comes from
 
-Keep sending it. The server now verifies it against your staff membership
-before using it — if it doesn't match a company you actively belong to, you get
-`403` instead of that company's rows. **This is the whole point of the
-migration**: previously the company filter was whatever SQL the browser chose to
-send.
+Header or body, it makes no difference to the security model: both are values
+your client chose to send. Before using it, the server checks it against your
+staff membership, and answers `403` if you are not an active member of that
+company.
+
+**That check is the whole point of the migration.** Previously the company
+filter was simply whatever SQL the browser put in the request, sourced from
+`user.sqlInfo.company_id` — editable client state — so anyone could read another
+tenant's rows by changing it.
 
 ### Catalog
 

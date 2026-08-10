@@ -8,6 +8,7 @@ const {
   buildNamedQuery,
   QueryParamError,
 } = require("../queries/inventoryQueryCatalog");
+const { resolveCompanyContext } = require("../helpers/companyContext");
 const {
   processSubLocation,
   processSubLocationPath,
@@ -2147,9 +2148,20 @@ const reportedQueryShapes = new Set();
  */
 const auditRawQueryShape = (request, query) => {
   try {
+    logger.info("raw-sql endpoint: auditing query shape", { query });
+    logger.info("raw-sql endpoint: SQL_SHAPE_AUDIT", { value: process.env.SQL_SHAPE_AUDIT });
     if (process.env.SQL_SHAPE_AUDIT === "false") return;
 
     const described = describeSqlShape(query);
+    logger.info("raw-sql endpoint: query shape observed", {
+      shape_hash: described.hash,
+      statement_type: described.type,
+      tables: described.tables,
+      has_company_id: described.hasCompanyId,
+      mounted_at: request.baseUrl,
+      sql_staff_id: request.sqlStaffId ?? null,
+      shape: described.shape,
+    });
     if (reportedQueryShapes.has(described.hash)) return;
     reportedQueryShapes.add(described.hash);
 
@@ -2186,25 +2198,24 @@ const auditRawQueryShape = (request, query) => {
  */
 const runNamedInventoryQuery = async (request, response) => {
   try {
-    const { queryName, params, company_id } = request.body;
+    const { queryName, params } = request.body;
 
     if (!queryName) {
       return response.status(400).json({ ok: false, msg: "queryName is required" });
     }
-    if (!company_id) {
-      return response.status(400).json({ ok: false, msg: "company_id is required" });
-    }
 
-    const access = await getStaffCompanyAccess(request.sqlStaffId, company_id);
-    if (!access) {
-      return response
-        .status(403)
-        .json({ ok: false, msg: "Not an active staff member of this company" });
+    // Reads the s-company-lq header (or body/query for not-yet-migrated call
+    // sites) and proves the caller belongs to that company. A header is client
+    // input just like a body field, so the verification inside is what makes it
+    // safe — not where the value was read from.
+    const context = await resolveCompanyContext(request);
+    if (!context.ok) {
+      return response.status(context.status).json({ ok: false, msg: context.msg });
     }
 
     let built;
     try {
-      built = buildNamedQuery(queryName, params, { companyId: company_id });
+      built = buildNamedQuery(queryName, params, { companyId: context.companyId });
     } catch (paramError) {
       if (paramError instanceof QueryParamError) {
         return response.status(400).json({ ok: false, msg: paramError.message });
