@@ -229,6 +229,7 @@ send.
 | `inventory.itemsSummaryByIds` | `itemIds[]` | summary columns by id list ⚠️ |
 | `inventory.assignableExactSerial` | `location`, `itemGroup`, `categoryName`, `serialNumber` | exact-serial assignable lookup |
 | `inventory.assignableFromSerial` | `location`, `itemGroup`, `categoryName`, `startingSerial`, `quantity` | range-from-serial with limit |
+| `inventory.assignableBySerials` | `location`, `itemGroup`, `categoryName`, `serialNumbers[]` | the `deviceInfoQuery` lookup |
 | `inventory.byAttribute` | `attribute`, `value` | the five `select * … where <attr> = ?` screens |
 | `inventory.rentedPage` | `pageSize`, `offset`, `supplierId?`, `search?` | paginated rented list |
 | `inventory.rentedCount` | `supplierId?`, `search?` | its `COUNT(*)` companion |
@@ -269,12 +270,15 @@ raising rather than working around.
    the scoped behaviour on a staging company first.
 4. Last, the staff lookups.
 
-### Known gap
+### Coverage
 
-One call site is **not in the catalog** because its SQL wasn't in what backend
-received: the one using **`deviceInfoQuery` / `deviceInfoValues`**. Send that
-template and an entry gets added. Until then, keep that one call on the legacy
-endpoint — which stays mounted and working throughout the migration.
+**Every call site backend received now has a catalog entry** — including the
+`deviceInfoQuery` one, which maps to `inventory.assignableBySerials`.
+
+If you hit a call site that has no entry, that means its SQL never reached
+backend. Don't work around it: send the template and an entry gets added. The
+legacy endpoint stays mounted throughout, so an unmigrated call site keeps
+working in the meantime.
 
 ---
 
@@ -285,7 +289,8 @@ endpoint — which stays mounted and working throughout the migration.
    ship whenever.
 3. **Migrate** call sites to `/inventory-query` (§5), in the suggested order.
 4. **Don't** adopt the `IN (?)` + array pattern in new code (§3).
-5. **Send** the `deviceInfoQuery` template so its catalog entry can be written.
+5. **Raise** any call site with no matching catalog entry, rather than working
+   around it.
 
 The legacy endpoint keeps working the entire time — there is no flag day, and
 you can migrate one call site per PR.

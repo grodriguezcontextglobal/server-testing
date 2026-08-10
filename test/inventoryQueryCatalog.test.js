@@ -32,6 +32,9 @@ test('ninguna entrada mete valores en el texto SQL: los IN generan placeholders'
       itemGroup: G, categoryName: C, serialNumbers: ['ZZSN1', 'ZZSN2'],
     },
     'inventory.itemsSummaryByIds': { itemIds: [907, 908] },
+    'inventory.assignableBySerials': {
+      location: L, itemGroup: G, categoryName: C, serialNumbers: ['ZZSN1', 'ZZSN2'],
+    },
     'inventory.markInWarehouse': {
       itemGroup: G, categoryName: C, serialNumbers: ['ZZSN1', 'ZZSN2'],
     },
@@ -62,6 +65,7 @@ test('la cantidad de ? en el SQL coincide con la cantidad de valores', () => {
     ['inventory.itemsSummaryByIds', { itemIds: [1, 2] }],
     ['inventory.assignableExactSerial', { location: 'l', itemGroup: 'g', categoryName: 'c', serialNumber: 'S' }],
     ['inventory.assignableFromSerial', { location: 'l', itemGroup: 'g', categoryName: 'c', startingSerial: 'S', quantity: 10 }],
+    ['inventory.assignableBySerials', { location: 'l', itemGroup: 'g', categoryName: 'c', serialNumbers: ['A', 'B', 'C'] }],
     ['inventory.byAttribute', { attribute: 'brand', value: 'Apple' }],
     ['inventory.rentedPage', { pageSize: 10, offset: 0 }],
     ['inventory.rentedPage', { pageSize: 10, offset: 0, supplierId: 'X', search: 'abc' }],
@@ -211,6 +215,39 @@ test('inventory.itemsByIds reproduce la forma legacy, con y sin supplier', () =>
   const conSupplier = buildNamedQuery('inventory.itemsByIds', { itemIds: [1], supplierId: 'SUP9' }, CTX);
   assert.match(conSupplier.sql, /AND supplier_info = \?$/);
   assert.deepEqual(conSupplier.values, [1, 'Rent', 133, 'SUP9']);
+});
+
+// Las tres entradas de "stock asignable" solo difieren en como acotan el
+// serial. En el cliente eran tres strings escritos a mano y ya habian empezado
+// a divergir (dos con lista de columnas explicita, una con SELECT *), asi que
+// el filtro compartido se fija aca.
+test('las tres entradas assignable* comparten el mismo filtro base', () => {
+  const base = { location: 'ZZL', itemGroup: 'ZZG', categoryName: 'ZZC' };
+  const construidas = [
+    buildNamedQuery('inventory.assignableExactSerial', { ...base, serialNumber: 'S' }, CTX),
+    buildNamedQuery('inventory.assignableFromSerial', { ...base, startingSerial: 'S', quantity: 5 }, CTX),
+    buildNamedQuery('inventory.assignableBySerials', { ...base, serialNumbers: ['A', 'B'] }, CTX),
+  ];
+
+  for (const { sql, values } of construidas) {
+    assert.match(
+      sql,
+      /company_id = \? AND warehouse = 1 AND enableAssignFeature = 1 AND location = \? AND item_group = \? AND category_name = \?/,
+    );
+    // El filtro compartido va primero, en el mismo orden, en las tres.
+    assert.deepEqual(values.slice(0, 4), [133, 'ZZL', 'ZZG', 'ZZC']);
+  }
+});
+
+test('inventory.assignableBySerials reproduce la forma legacy de deviceInfoQuery', () => {
+  const { sql, values } = buildNamedQuery(
+    'inventory.assignableBySerials',
+    { location: 'L1', itemGroup: 'G1', categoryName: 'C1', serialNumbers: ['SN1', 'SN2'] },
+    CTX,
+  );
+  assert.match(sql, /^SELECT item_id, serial_number, location, container, category_name, item_group FROM item_inv/);
+  assert.match(sql, /AND serial_number IN \(\?, \?\)$/);
+  assert.deepEqual(values, [133, 'L1', 'G1', 'C1', 'SN1', 'SN2']);
 });
 
 test('inventory.rentedPage y rentedCount comparten exactamente el mismo filtro', () => {

@@ -71,6 +71,28 @@ const FILTERABLE_ATTRIBUTES = new Set([
 
 const RENT_COLUMNS = 'item_id, serial_number, item_group';
 
+const ASSIGNABLE_COLUMNS =
+  'item_id, serial_number, location, container, category_name, item_group';
+
+/**
+ * Shared WHERE for the three "assignable stock" lookups, which differ only in
+ * how they narrow the serial (exact / from-a-starting-point / explicit list).
+ * Kept in one place because the three used to be separate hand-written strings
+ * on the client and had already started to drift: two selected an explicit
+ * column list, one selected `*`.
+ */
+const buildAssignableFilter = ({ location, itemGroup, categoryName }, companyId) => ({
+  where:
+    'company_id = ? AND warehouse = 1 AND enableAssignFeature = 1 ' +
+    'AND location = ? AND item_group = ? AND category_name = ?',
+  values: [
+    companyId,
+    requirePresent(location, 'location'),
+    requirePresent(itemGroup, 'itemGroup'),
+    requirePresent(categoryName, 'categoryName'),
+  ],
+});
+
 /**
  * Shared WHERE for the "rented items" screens: always scoped to the caller's
  * company, optionally narrowed by supplier and by a free-text search.
@@ -189,44 +211,42 @@ const catalog = {
 
   'inventory.assignableExactSerial': {
     description: 'The assignable item matching one exact serial.',
-    build: ({ location, itemGroup, categoryName, serialNumber }, { companyId }) => ({
-      sql:
-        'SELECT * FROM item_inv ' +
-        'WHERE company_id = ? AND warehouse = 1 AND enableAssignFeature = 1 ' +
-        'AND location = ? AND item_group = ? AND category_name = ? AND serial_number = ?',
-      values: [
-        companyId,
-        requirePresent(location, 'location'),
-        requirePresent(itemGroup, 'itemGroup'),
-        requirePresent(categoryName, 'categoryName'),
-        requirePresent(serialNumber, 'serialNumber'),
-      ],
-    }),
+    build: (params, { companyId }) => {
+      const { where, values } = buildAssignableFilter(params, companyId);
+      return {
+        sql: `SELECT * FROM item_inv WHERE ${where} AND serial_number = ?`,
+        values: [...values, requirePresent(params.serialNumber, 'serialNumber')],
+      };
+    },
   },
 
   'inventory.assignableFromSerial': {
     description: 'Assignable items from a starting serial onward, capped by quantity.',
-    build: (
-      { location, itemGroup, categoryName, startingSerial, quantity },
-      { companyId }
-    ) => {
+    build: (params, { companyId }) => {
       // LIMIT is interpolated because MySQL will not accept a placeholder there
       // in every driver/version combination; it is validated as an integer
       // first, so no client text reaches the SQL.
-      const limit = requireCount(quantity, 'quantity', { min: 1, max: 5000 });
+      const limit = requireCount(params.quantity, 'quantity', { min: 1, max: 5000 });
+      const { where, values } = buildAssignableFilter(params, companyId);
       return {
         sql:
-          'SELECT item_id, serial_number, location, container, category_name, item_group ' +
-          'FROM item_inv WHERE company_id = ? AND warehouse = 1 AND enableAssignFeature = 1 ' +
-          'AND location = ? AND item_group = ? AND category_name = ? AND serial_number >= ? ' +
+          `SELECT ${ASSIGNABLE_COLUMNS} FROM item_inv WHERE ${where} AND serial_number >= ? ` +
           `ORDER BY serial_number ASC LIMIT ${limit}`,
-        values: [
-          companyId,
-          requirePresent(location, 'location'),
-          requirePresent(itemGroup, 'itemGroup'),
-          requirePresent(categoryName, 'categoryName'),
-          requirePresent(startingSerial, 'startingSerial'),
-        ],
+        values: [...values, requirePresent(params.startingSerial, 'startingSerial')],
+      };
+    },
+  },
+
+  'inventory.assignableBySerials': {
+    description: 'Assignable items for an explicit list of serials.',
+    build: (params, { companyId }) => {
+      const serials = requireNonEmptyArray(params.serialNumbers, 'serialNumbers');
+      const { where, values } = buildAssignableFilter(params, companyId);
+      return {
+        sql:
+          `SELECT ${ASSIGNABLE_COLUMNS} FROM item_inv ` +
+          `WHERE ${where} AND serial_number IN (${placeholders(serials)})`,
+        values: [...values, ...serials],
       };
     },
   },
