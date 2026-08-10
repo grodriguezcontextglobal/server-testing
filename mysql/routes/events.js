@@ -145,9 +145,15 @@ router.post(
   getGroupedItemWithFormatInventory,
 );
 
-//consulting company inventory based on submitted parameters
+// Consulting company inventory based on submitted parameters.
+// This handler executes SQL supplied in the request body, so it MUST stay
+// authenticated. It was reachable anonymously here (and on /api/db_item),
+// while the identical /api/db_company route was gated — anyone on the internet
+// could run arbitrary statements against production. Do not remove these.
 router.post(
   "/inventory-based-on-submitted-parameters",
+  validateJWT,
+  checkTokenVersion,
   consultingCompanyInventoryBasedOnSubmittedParameters,
 );
 

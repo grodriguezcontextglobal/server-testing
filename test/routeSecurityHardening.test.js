@@ -342,3 +342,37 @@ test('mysql/routes/inventory.js: PUT /container/:container_item_id tiene validat
   assert.ok(handlers !== null, 'La ruta PUT /container/:container_item_id debe existir');
   assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en PUT /container/:container_item_id');
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE — /inventory-based-on-submitted-parameters (las 3 rutas)
+//
+// consultingCompanyInventoryBasedOnSubmittedParameters EJECUTA el SQL que
+// viene en el body de la request. El mismo handler está montado en tres
+// routers y dos de ellos (db_event, db_item) estaban SIN autenticación
+// alguna: cualquiera en internet podía correr sentencias arbitrarias contra
+// producción. Estos tests fijan que las tres rutas queden autenticadas.
+// ════════════════════════════════════════════════════════════════════════════
+
+const { checkTokenVersion } = require('../middlewares/checkValidateToken');
+
+const RAW_QUERY_ROUTE = '/inventory-based-on-submitted-parameters';
+
+for (const routerPath of [
+  '../mysql/routes/company',
+  '../mysql/routes/events',
+  '../mysql/routes/item',
+]) {
+  test(`${routerPath}: POST ${RAW_QUERY_ROUTE} exige validateJWT + checkTokenVersion`, () => {
+    const router = loadRouter(routerPath);
+    const handlers = getRouteHandlers(router, 'POST', RAW_QUERY_ROUTE);
+    assert.ok(handlers !== null, `La ruta POST ${RAW_QUERY_ROUTE} debe existir en ${routerPath}`);
+    assert.ok(
+      handlers.includes(validateJWT),
+      `validateJWT debe estar en POST ${RAW_QUERY_ROUTE} de ${routerPath} — este handler ejecuta SQL del cliente`,
+    );
+    assert.ok(
+      handlers.includes(checkTokenVersion),
+      `checkTokenVersion debe estar en POST ${RAW_QUERY_ROUTE} de ${routerPath} — sin él una sesión revocada sigue ejecutando SQL`,
+    );
+  });
+}
