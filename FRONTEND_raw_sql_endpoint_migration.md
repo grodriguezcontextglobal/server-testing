@@ -1,9 +1,12 @@
 # Frontend Map — `/inventory-based-on-submitted-parameters` migration (2026-08-10)
 
 > **Audience:** the frontend agent.
+> **This document is the contract reference** — what each endpoint accepts and
+> returns. For the ordered, per-call-site execution plan, see
+> [`FRONTEND_inventory_migration_plan.md`](FRONTEND_inventory_migration_plan.md).
+>
 > **One thing already shipped and may affect you today** (§1). Everything else is
-> work you can do now, on your own schedule, against the endpoint exactly as it
-> behaves today — no backend coordination required.
+> work you can do on your own schedule — no backend coordination required.
 
 ## Why this exists
 
