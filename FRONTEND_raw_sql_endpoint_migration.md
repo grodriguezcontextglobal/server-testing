@@ -20,7 +20,7 @@ and **the phases you can act on now don't depend on the backend at all**.
 |---|---|---|
 | 1 | Two of the three routes required no authentication — fixed | ✅ **Deployed** — see §1 |
 | 2 | Server logs every distinct query shape to inventory them | ✅ Deployed (invisible to you) |
-| 3 | Replace client SQL with server-side named queries | ⏳ Not designed yet — **do not build against it** |
+| 3 | Replace client SQL with server-side named queries | ✅ **Live** — `POST /inventory-query`, see §5 |
 
 ---
 
@@ -177,39 +177,115 @@ edited.
 
 ---
 
-## §5 — Phase 3 preview (do NOT build against this yet)
+## §5 — The replacement endpoint (LIVE, migrate to this)
 
-The end state replaces client SQL with named queries:
+```
+POST /api/db_company/inventory-query
+POST /api/db_event/inventory-query
+POST /api/db_item/inventory-query
+```
+
+All three are the same handler — mounted on every namespace so a call site can
+migrate **without also changing which URL prefix it posts to**. Keep the prefix
+you already use.
+
+### Request
 
 ```js
-// Illustrative only. Names and params are NOT final.
-devitrakApi.post("/db_item/inventory-query", {
-  queryName: "inventory.rentedItemsByIds",
-  params: { itemIds: [...], supplierId },
+devitrakApi.post("/db_event/inventory-query", {
+  queryName: "inventory.itemsByIds",
+  company_id: user.sqlInfo.company_id,
+  params: { itemIds: [12, 13], supplierId },   // per-entry, see table below
 });
 ```
 
-`company_id` will be injected server-side from your JWT and will no longer be
-accepted from the request body.
+### Response
 
-**Why it isn't specified yet, honestly:** ~6 of your call sites pass SQL built
-in variables (`query1`, `countQuery`, `getAllQuery`, `deviceInfoQuery`, plus two
-bare `query, values`), so reading the frontend source doesn't enumerate them.
-Publishing a catalog that misses one would break you. Phase 2 instrumentation is
-now collecting the real inventory from production traffic; the catalog gets
-written from that, and this document gets the final contract.
+Identical to the old endpoint — `{ ok: true, result }`, where `result` is the
+driver's rows. **No parsing changes.**
 
-**What you can do to speed that up:** send backend the SQL templates behind those
-six variables. With them the catalog can be written immediately instead of
-waiting on log collection.
+| Status | When |
+|---|---|
+| `400` | missing/unknown `queryName`, missing `company_id`, or bad params (message says which) |
+| `403` | you are not an active staff member of that `company_id` |
+| `500` | unexpected server error |
+
+### `company_id` is still sent, but no longer trusted
+
+Keep sending it. The server now verifies it against your staff membership
+before using it — if it doesn't match a company you actively belong to, you get
+`403` instead of that company's rows. **This is the whole point of the
+migration**: previously the company filter was whatever SQL the browser chose to
+send.
+
+### Catalog
+
+| `queryName` | `params` | Replaces |
+|---|---|---|
+| `inventory.itemsByIds` | `itemIds[]`, `supplierId?` | rented items by id list |
+| `inventory.serialsByGroupCategoryLocation` | `itemGroup`, `categoryName`, `location`, `warehouse?`(1) | serial list for a group/category/location |
+| `inventory.itemsByGroupCategoryLocationSerials` | `itemGroup`, `categoryName`, `location`, `serialNumbers[]`, `warehouse?`(1) | `SELECT *` for specific serials |
+| `inventory.itemIdsByGroupCategorySerials` | `itemGroup`, `categoryName`, `serialNumbers[]` | item ids from serials ⚠️ |
+| `inventory.itemsSummaryByIds` | `itemIds[]` | summary columns by id list ⚠️ |
+| `inventory.assignableExactSerial` | `location`, `itemGroup`, `categoryName`, `serialNumber` | exact-serial assignable lookup |
+| `inventory.assignableFromSerial` | `location`, `itemGroup`, `categoryName`, `startingSerial`, `quantity` | range-from-serial with limit |
+| `inventory.byAttribute` | `attribute`, `value` | the five `select * … where <attr> = ?` screens |
+| `inventory.rentedPage` | `pageSize`, `offset`, `supplierId?`, `search?` | paginated rented list |
+| `inventory.rentedCount` | `supplierId?`, `search?` | its `COUNT(*)` companion |
+| `inventory.rentedAll` | `supplierId?` | unpaginated export |
+| `inventory.markInWarehouse` | `itemGroup`, `categoryName`, `serialNumbers[]` | the `UPDATE … warehouse = 1` |
+| `eventAssignments.deleteByEventAndItems` | `eventId`, `itemIds[]` | the `DELETE` from `item_inv_assigned_event` ⚠️ |
+| `staff.idsByEmails` | `emails[]` | staff ids from emails ⚠️ |
+| `staff.detailsByIds` | `staffIds[]` | staff names/emails by id ⚠️ |
+
+`attribute` for `inventory.byAttribute` is limited to: `brand`,
+`category_name`, `item_group`, `location`, `ownership`.
+
+### ⚠️ Five entries now return fewer rows than before — on purpose
+
+The marked entries replace queries that had **no company filter at all**, so
+they could read or write another tenant's rows. The catalog versions are scoped:
+
+- `staff.idsByEmails`, `staff.detailsByIds` — scoped through `company_staff`
+  (only **active** members of your company). If your UI expected a staff member
+  who is inactive or belongs to another company, they will now be absent.
+- `eventAssignments.deleteByEventAndItems` — scoped through a join to
+  `item_inv`. It will no longer delete assignments for items outside your
+  company.
+- `inventory.itemIdsByGroupCategorySerials`, `inventory.itemsSummaryByIds` — now
+  filtered by company.
+
+If any screen depends on the old cross-company behaviour, that is a bug worth
+raising rather than working around.
+
+### Migration order suggested
+
+1. Start with the five `inventory.byAttribute` call sites — one entry replaces
+   all of them, and they're simple reads.
+2. Then the rented list/count/export trio (`rentedPage` / `rentedCount` /
+   `rentedAll`) — note `rentedPage` and `rentedCount` are guaranteed to share
+   the same filter, so pagination totals stay consistent.
+3. Then the write paths (`markInWarehouse`, `deleteByEventAndItems`) — verify
+   the scoped behaviour on a staging company first.
+4. Last, the staff lookups.
+
+### Known gap
+
+One call site is **not in the catalog** because its SQL wasn't in what backend
+received: the one using **`deviceInfoQuery` / `deviceInfoValues`**. Send that
+template and an entry gets added. Until then, keep that one call on the legacy
+endpoint — which stays mounted and working throughout the migration.
 
 ---
 
 ## Summary — what to action
 
 1. **Confirm** `x-token` is attached on every call to this endpoint (§1).
-2. **Fix** the three interpolated-value call sites (§2). No backend dependency.
-3. **Add** `company_id` to the two fixable unscoped queries (§4).
+2. **Fix** the three interpolated-value call sites (§2). No backend dependency,
+   ship whenever.
+3. **Migrate** call sites to `/inventory-query` (§5), in the suggested order.
 4. **Don't** adopt the `IN (?)` + array pattern in new code (§3).
-5. **Don't** build against Phase 3 yet (§5) — but sending the six missing SQL
-   templates unblocks it.
+5. **Send** the `deviceInfoQuery` template so its catalog entry can be written.
+
+The legacy endpoint keeps working the entire time — there is no flag day, and
+you can migrate one call site per PR.
