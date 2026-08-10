@@ -820,7 +820,7 @@ const requestConsent = async (req, res) => {
     await pool.execute(
       `INSERT INTO school_consent
         (id, company_id, member_id, guardian_id, policy_type, policy_version,
-         signer_name, signer_email, method, status, otc, otc_expires_at,
+         signer_name, signer_email, method, status, otc_hash, otc_expires_at,
          requested_at, requester_staff_id)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, NOW(), ?)`,
       [
@@ -841,7 +841,7 @@ const requestConsent = async (req, res) => {
 
     try {
       const { enqueue } = require("../../helpers/queue");
-      const consentUrl = `${process.env.FRONTEND_URL || "https://admin.devitrak.net/api"}/school/consent/respond?otc=${otc}`;
+      const consentUrl = `${process.env.FRONTEND_URL || "https://admin.devitrak.net"}/school/consent/respond?otc=${otc}`;
       await enqueue(
         "send-email",
         {
@@ -930,7 +930,7 @@ const resendConsent = async (req, res) => {
 
     const [updateResult] = await pool.execute(
       `UPDATE school_consent
-          SET otc = ?, otc_expires_at = ?, requested_at = NOW(), requester_staff_id = ?
+          SET otc_hash = ?, otc_expires_at = ?, requested_at = NOW(), requester_staff_id = ?
         WHERE id = ? AND status = 'pending'`,
       [hashedOtc, expires, req.uid || null, existing.id]
     );
@@ -941,7 +941,7 @@ const resendConsent = async (req, res) => {
 
     try {
       const { enqueue } = require("../../helpers/queue");
-      const consentUrl = `${process.env.FRONTEND_URL || "https://admin.devitrak.net/api"}/school/consent/respond?otc=${otc}`;
+      const consentUrl = `${process.env.FRONTEND_URL || "https://admin.devitrak.net"}/school/consent/respond?otc=${otc}`;
       await enqueue(
         "send-email",
         {
@@ -1051,7 +1051,7 @@ const publicRetrieveConsent = async (req, res) => {
           ON g.id = sc.guardian_id
          AND g.company_id = sc.company_id
 
-        WHERE sc.otc IN (?, ?)
+        WHERE sc.otc_hash IN (?, ?)
         LIMIT 1
       `,
       // Hashed first, plaintext second. The plaintext arm only matches rows
@@ -1120,23 +1120,23 @@ const publicRetrieveConsent = async (req, res) => {
       },
 
       guardian: {
-        id: record.guardian_id,
+        // id: record.guardian_id,
         first_name: record.guardian_first_name,
         last_name: record.guardian_last_name,
         full_name: guardianFullName,
         email: record.guardian_email || record.signer_email || null,
-        phone_number: record.guardian_phone_number || null,
+        // phone_number: record.guardian_phone_number || null,
       },
 
       student: {
-        id: record.member_id,
-        first_name: record.student_first_name,
-        last_name: record.student_last_name,
+        // id: record.member_id,
+        // first_name: record.student_first_name,
+        // last_name: record.student_last_name,
         full_name: studentFullName,
-        email: record.student_email || null,
+        // email: record.student_email || null,
         grade: record.student_grade || null,
-        homeroom: record.student_homeroom || null,
-        date_of_birth: record.student_date_of_birth || null,
+        // homeroom: record.student_homeroom || null,
+        // date_of_birth: record.student_date_of_birth || null,
       },
     };
 
@@ -1174,7 +1174,7 @@ const publicRespondConsent = async (req, res) => {
     // See publicRetrieveConsent: hashed first, plaintext arm is the transitional
     // fallback for rows written before hashing shipped.
     const [rows] = await pool.execute(
-      "SELECT id, status, otc_expires_at, otc FROM school_consent WHERE otc IN (?, ?) LIMIT 1",
+      "SELECT id, status, otc_expires_at, otc_hash FROM school_consent WHERE otc_hash IN (?, ?) LIMIT 1",
       [hashOtc(token), token]
     );
 
@@ -1182,7 +1182,7 @@ const publicRespondConsent = async (req, res) => {
       return res.status(404).json({ ok: false, msg: "Invalid consent link." });
     }
 
-    if (rows[0].otc === token) {
+    if (rows[0].otc_hash === token) {
       logger.warn("legacy plaintext OTC matched — run hash_existing_school_consent_otc.sql", {
         consent_id: rows[0].id,
       });

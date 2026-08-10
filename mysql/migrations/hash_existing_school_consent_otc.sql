@@ -21,21 +21,26 @@
 -- warnings appear in the logs for a full expiry window (7 days), then the
 -- plaintext fallback in publicRetrieveConsent / publicRespondConsent can go.
 
+-- COLUMN NAME: the column was RENAMED `otc` -> `otc_hash` alongside this change.
+-- Because it was a rename and not a new column, the existing plaintext values
+-- moved with it — they are sitting in `otc_hash` right now, unhashed. That is
+-- what this backfill converts in place.
+
 -- Check what will change before changing it.
 -- SELECT COUNT(*) AS to_hash FROM school_consent
---  WHERE otc IS NOT NULL AND CHAR_LENGTH(otc) <> 64;
+--  WHERE otc_hash IS NOT NULL AND CHAR_LENGTH(otc_hash) <> 64;
 
 UPDATE school_consent
-   SET otc = SHA2(otc, 256)
- WHERE otc IS NOT NULL
-   AND CHAR_LENGTH(otc) <> 64;
+   SET otc_hash = SHA2(otc_hash, 256)
+ WHERE otc_hash IS NOT NULL
+   AND CHAR_LENGTH(otc_hash) <> 64;
 
 -- Verify: this must return 0 rows afterwards.
 -- SELECT COUNT(*) AS still_plaintext FROM school_consent
---  WHERE otc IS NOT NULL AND CHAR_LENGTH(otc) <> 64;
+--  WHERE otc_hash IS NOT NULL AND CHAR_LENGTH(otc_hash) <> 64;
 
 -- NOTE for Vitess/PlanetScale: an unqualified UPDATE may be rejected depending
 -- on the keyspace's settings. If it is, scope it by primary key in batches, e.g.
---   UPDATE school_consent SET otc = SHA2(otc, 256)
---    WHERE id IN (...) AND CHAR_LENGTH(otc) <> 64;
+--   UPDATE school_consent SET otc_hash = SHA2(otc_hash, 256)
+--    WHERE id IN (...) AND CHAR_LENGTH(otc_hash) <> 64;
 -- The length guard keeps each batch idempotent on its own.
