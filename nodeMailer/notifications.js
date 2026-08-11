@@ -42,6 +42,7 @@ const {
   returnConfirmationLeaseMemberMessageHtml,
   forceLogoutNotificationHtmlTemplate,
   memberEmailNotificationHtml,
+  customizeMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
@@ -834,6 +835,15 @@ const buildMemberEmailMessage = (body) => ({
 });
 const memberEmailNotification = createQueuedEmailController(buildMemberEmailMessage);
 
+const buildCustomizeMessage = (body) => ({
+  to: body.staff,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: `Devitrak Notification - ${body.subject}`,
+  html: customizeMessageHtml(body),
+});
+const customizeMessage = createQueuedEmailController(buildCustomizeMessage);
+
+
 module.exports = {
   assingDeviceNotification,
   buildAssignDeviceMessage,
@@ -921,4 +931,6 @@ module.exports = {
   singleEmailNotification,
   staffInternalNotification,
   termsAndConditionsAcceptanceNotification,
+  buildCustomizeMessage,
+  customizeMessage,
 };
