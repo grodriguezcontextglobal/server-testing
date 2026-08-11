@@ -1061,16 +1061,15 @@ const lostDeviceFeeReceipt = (props = {}, normalizeLostFeePayload) => {
                   </tr>
                 </table>
 
-                ${
-                  data.link && data.link !== "#"
-                    ? `
+                ${data.link && data.link !== "#"
+      ? `
                     <p style="margin-top:24px;">
                       <a href="${data.link}" style="background:#007bff;color:white;padding:12px 20px;text-decoration:none;border-radius:4px;">
                         View transaction
                       </a>
                     </p>`
-                    : ""
-                }
+      : ""
+    }
 
                 <p style="font-size:12px;color:#888;margin-top:30px;">
                   This email was sent from an unmonitored account. Please do not reply.
@@ -7167,6 +7166,153 @@ const memberEmailNotificationHtml = (props) => {
 `;
 };
 
+
+/**
+ * Free-form notification: the caller supplies the subject and the body.
+ *
+ * `message` is interpolated as HTML on purpose — that is what makes the message
+ * "customizable" — so whatever reaches this function can put arbitrary markup in
+ * the email. Keep that in mind before exposing it to any caller that isn't
+ * trusted; see the note on the route in routes/nodeMailer.js.
+ */
+const customizeMessageHtml = (props) => {
+  const subject = props?.subject || "Notification";
+  const message = props?.message || "";
+  const company = props?.company || "Devitrak";
+  return `
+  <html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Devitrak App | Easy way to manage inventory. A good solution for your
+      business no matter the size of your organization.
+    </title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+    </style>
+  </head>
+  <body
+    style="
+      max-width: 768px;
+      min-width: 320px;
+      background-color:#fff;
+      color: #1a202c;
+      font-family: 'Inter', sans-serif;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+      margin: auto;
+      padding: 0;
+    "
+  >
+    <div
+      style="
+        margin-left: auto;
+        margin-right: auto;
+        padding: 2rem;
+        width: 100%;
+        border-radius: 12px;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2.5rem;
+          width: 100%;
+        "
+      >
+        <div style="align-self: flex-start">
+          <p
+            style="
+              text-align: left;
+              width: 100%;
+              color: #475467;
+              font-size: 9px;
+              font-style: normal;
+              font-weight: 500;
+              line-height: 9px;
+            "
+          >
+            Power by
+          </p>
+          <div
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
+        </div>
+      </div>
+      <div style="max-width: 768px; min-width: 320px">
+      <h1
+      style="
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 1rem;
+      "
+    >
+      ${subject}
+    </h1>
+    <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
+      This email notification sent from ${company}.
+    </p>
+    <p
+            style="
+              border-radius: 12px;
+              margin:auto;
+              color: #475467;
+              text-align: left;
+              font-size: 16px;
+              font-style: normal;
+              font-weight: 400;
+              line-height: 24px; /* 150% */
+              padding:12px 8px;
+              text-wrap: pretty
+            "
+          >
+            ${message}
+          </p>
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+        This email was sent from an unmonitored account. Do not reply to this email.
+      </p>
+      </div>
+      </div>
+    </div>
+  </body>
+</html>
+  `;
+
+};
+
 module.exports = {
   assigningDeviceMessageHtml,
   cancelingDepositMessageHtml,
@@ -7204,5 +7350,6 @@ module.exports = {
   staffInternalNotificationMessageHtml,
   staffNotificationMessageHtml,
   termsAndConditionsAcceptanceMessageHtml,
-  memberEmailNotificationHtml
+  memberEmailNotificationHtml,
+  customizeMessageHtml
 };

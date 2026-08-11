@@ -34,7 +34,8 @@ const {
   completedTask,
   failedTask,
   forcingRevokingActiveSession,
-  memberEmailNotification
+  memberEmailNotification,
+  customizeMessage
 } = require("../nodeMailer/notifications");
 const router = Router();
 
@@ -160,5 +161,16 @@ router.post("/forcing-revoking-active-session", forcingRevokingActiveSession)
 
 //member email notification
 router.post("/member-email-notification", memberEmailNotification);
+
+// Free-form notification: the caller chooses the recipient, the subject AND the
+// HTML body, which is interpolated into the template verbatim.
+//
+// Every route in this file is unauthenticated, so this one is consistent with
+// the rest — but it is not equivalent in what that costs. The others are
+// template-driven: a caller controls the data, while the template constrains
+// the shape. This one lets a caller send arbitrary markup to an arbitrary
+// address from noreply@devitrak.com, which is a ready-made phishing primitive.
+// Gate it (validateJWT + checkTokenVersion) before it becomes load-bearing.
+router.post("/customize-message-notification", customizeMessage);
 
 module.exports = router;
