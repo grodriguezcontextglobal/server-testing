@@ -38,6 +38,8 @@ const {
   getGroupedItemInventory,
   getGroupedItemWithFormatInventory,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  runNamedInventoryQuery,
+  returnEventDevicesToWarehouse,
   confirmItemsReturnedToStock,
 } = require("../controllers/item");
 const { validateJWT } = require("../../middlewares/validate-jwt");
@@ -145,10 +147,36 @@ router.post(
   getGroupedItemWithFormatInventory,
 );
 
-//consulting company inventory based on submitted parameters
+// Consulting company inventory based on submitted parameters.
+// This handler executes SQL supplied in the request body, so it MUST stay
+// authenticated. It was reachable anonymously here (and on /api/db_item),
+// while the identical /api/db_company route was gated — anyone on the internet
+// could run arbitrary statements against production. Do not remove these.
 router.post(
   "/inventory-based-on-submitted-parameters",
+  validateJWT,
+  checkTokenVersion,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+);
+
+// Replacement for the route above: the client names a catalog entry instead of
+// sending SQL. Mounted on all three routers so call sites can migrate without
+// also changing which namespace they post to.
+router.post(
+  "/inventory-query",
+  validateJWT,
+  checkTokenVersion,
+  runNamedInventoryQuery,
+);
+
+// Return event devices to the warehouse atomically. Replaces three separate
+// raw-SQL calls (UPDATE warehouse / SELECT ids / DELETE assignments) that were
+// three independent transactions.
+router.post(
+  "/return-event-devices",
+  validateJWT,
+  checkTokenVersion,
+  returnEventDevicesToWarehouse,
 );
 
 //allocate

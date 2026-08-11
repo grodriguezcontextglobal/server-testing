@@ -3,6 +3,12 @@ const getConnection = require("../database/config");
 const { clientRedis } = require("../../database/cacheMemoryConfig");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
+const { describeSqlShape } = require("../../helpers/sqlShape");
+const {
+  buildNamedQuery,
+  QueryParamError,
+} = require("../queries/inventoryQueryCatalog");
+const { resolveCompanyContext } = require("../helpers/companyContext");
 const {
   processSubLocation,
   processSubLocationPath,
@@ -887,7 +893,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
 ) => {
   let connection = null;
   try {
-    const { warehouse, company_id, item_group, category_name, data, logistic_status } =
+    const { warehouse, company_id, item_group, category_name, data, logistic_status = "allocated" } =
       request.body;
     // Validate request body
     if (
@@ -2125,6 +2131,230 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
   }
 };
 
+/**
+ * Returns event devices to the warehouse and detaches them from the event, as
+ * ONE atomic operation.
+ *
+ * The frontend does this today as three separate calls to the raw-SQL endpoint:
+ * UPDATE item_inv SET warehouse = 1, then SELECT the item_ids, then DELETE the
+ * event assignments. Split like that they are three independent transactions,
+ * so a failure between the first and the last leaves stock marked as returned
+ * to the warehouse while still assigned to the event — a state nothing later
+ * reconciles.
+ *
+ * Two things make this safer than the sequence it replaces:
+ *  - `FOR UPDATE` holds the matched rows for the life of the transaction, so a
+ *    concurrent assignment cannot slip between the read and the writes.
+ *  - The item_ids are derived HERE from company-scoped rows, instead of being
+ *    supplied by the client. The legacy DELETE took item_ids straight from the
+ *    browser and had no company filter of its own, so it could detach another
+ *    tenant's assignments.
+ */
+const returnEventDevicesToWarehouse = async (request, response) => {
+  const { event_id, item_group, category_name, serial_numbers } = request.body || {};
+
+  if (!event_id || !item_group || !category_name) {
+    return response.status(400).json({
+      ok: false,
+      msg: "event_id, item_group and category_name are required",
+    });
+  }
+
+  const serials = [
+    ...new Set(
+      (Array.isArray(serial_numbers) ? serial_numbers : []).filter(
+        (value) => value !== null && value !== undefined && String(value).trim() !== ""
+      )
+    ),
+  ];
+  if (!serials.length) {
+    return response
+      .status(400)
+      .json({ ok: false, msg: "serial_numbers must be a non-empty array" });
+  }
+
+  const context = await resolveCompanyContext(request);
+  if (!context.ok) {
+    return response.status(context.status).json({ ok: false, msg: context.msg });
+  }
+
+  // getConnection() returns the Pool, which has no beginTransaction/commit —
+  // only an individual PoolConnection does.
+  const pool = getConnection();
+  const connection = await pool.getConnection();
+  let transactionStarted = false;
+
+  try {
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [items] = await connection.execute(
+      `SELECT item_id FROM item_inv
+        WHERE company_id = ? AND item_group = ? AND category_name = ?
+          AND serial_number IN (${serials.map(() => "?").join(", ")})
+        FOR UPDATE`,
+      [context.companyId, item_group, category_name, ...serials]
+    );
+
+    if (!items.length) {
+      await connection.rollback();
+      return response.status(404).json({
+        ok: false,
+        msg: "No matching inventory items found for this company.",
+      });
+    }
+
+    const itemIds = items.map((row) => row.item_id);
+    const itemPlaceholders = itemIds.map(() => "?").join(", ");
+
+    const [updated] = await connection.execute(
+      `UPDATE item_inv SET warehouse = 1, update_at = NOW()
+        WHERE company_id = ? AND item_id IN (${itemPlaceholders})`,
+      [context.companyId, ...itemIds]
+    );
+
+    const [deleted] = await connection.execute(
+      `DELETE FROM item_inv_assigned_event
+        WHERE event_id = ? AND item_id IN (${itemPlaceholders})`,
+      [event_id, ...itemIds]
+    );
+
+    await connection.commit();
+
+    return response.status(200).json({
+      ok: true,
+      returned_items: updated.affectedRows,
+      removed_assignments: deleted.affectedRows,
+      // Serials that matched nothing in THIS company: either unknown, or owned
+      // by another tenant. Reported rather than silently dropped, so the caller
+      // can tell a partial result from a complete one.
+      skipped_serials: serials.length - itemIds.length,
+    });
+  } catch (error) {
+    if (transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        logger.error("returnEventDevicesToWarehouse rollback failed", {
+          error: rollbackError.message,
+        });
+      }
+    }
+    logger.error("returnEventDevicesToWarehouse failed", {
+      event_id,
+      error: error.message,
+    });
+    return response.status(500).json({ ok: false, msg: error.message });
+  } finally {
+    connection.release();
+  }
+};
+
+// Shapes already reported by THIS process. Each distinct shape is logged once
+// rather than on every call, because the endpoint is high traffic and the goal
+// is an inventory, not a request log. Under pm2 cluster each worker reports
+// independently, which just means a shape can appear once per worker.
+const reportedQueryShapes = new Set();
+
+/**
+ * Records the SHAPE of a client-supplied statement (never its values) so the
+ * full set of queries the frontend sends can be inventoried before replacing
+ * this endpoint with a server-side named-query catalog. Several frontend call
+ * sites build their SQL in variables, so reading the client source is not
+ * enough to enumerate them.
+ *
+ * Never throws: auditing must not be able to break the endpoint it observes.
+ */
+const auditRawQueryShape = (request, query) => {
+  try {
+    logger.info("raw-sql endpoint: auditing query shape", { query });
+    logger.info("raw-sql endpoint: SQL_SHAPE_AUDIT", { value: process.env.SQL_SHAPE_AUDIT });
+    if (process.env.SQL_SHAPE_AUDIT === "false") return;
+
+    const described = describeSqlShape(query);
+    logger.info("raw-sql endpoint: query shape observed", {
+      shape_hash: described.hash,
+      statement_type: described.type,
+      tables: described.tables,
+      has_company_id: described.hasCompanyId,
+      mounted_at: request.baseUrl,
+      sql_staff_id: request.sqlStaffId ?? null,
+      shape: described.shape,
+    });
+    if (reportedQueryShapes.has(described.hash)) return;
+    reportedQueryShapes.add(described.hash);
+
+    logger.warn("raw-sql endpoint: new query shape observed", {
+      shape_hash: described.hash,
+      statement_type: described.type,
+      tables: described.tables,
+      // false => this shape cannot be scoped to the caller's company, so it
+      // reads (or writes) across tenants. These are the priority cases for the
+      // catalog.
+      has_company_id: described.hasCompanyId,
+      mounted_at: request.baseUrl,
+      sql_staff_id: request.sqlStaffId ?? null,
+      shape: described.shape,
+    });
+  } catch (auditError) {
+    logger.error("raw-sql endpoint: shape audit failed", {
+      error: auditError.message,
+    });
+  }
+};
+
+/**
+ * Runs a statement from the server-side catalog. This is the replacement for
+ * consultingCompanyInventoryBasedOnSubmittedParameters: the client names a
+ * query and passes parameters, and the SQL text never leaves the server.
+ *
+ * The company id still arrives in the body (the frontend has it to hand), but
+ * it is no longer TRUSTED: getStaffCompanyAccess resolves the caller's active
+ * membership of that company and returns null otherwise, so a tampered value
+ * yields 403 instead of another tenant's rows. That check is what closes the
+ * cross-tenant hole in the legacy endpoint, where the company filter was
+ * whatever the browser chose to send.
+ */
+const runNamedInventoryQuery = async (request, response) => {
+  try {
+    const { queryName, params } = request.body;
+
+    if (!queryName) {
+      return response.status(400).json({ ok: false, msg: "queryName is required" });
+    }
+
+    // Reads the s-company-lq header (or body/query for not-yet-migrated call
+    // sites) and proves the caller belongs to that company. A header is client
+    // input just like a body field, so the verification inside is what makes it
+    // safe — not where the value was read from.
+    const context = await resolveCompanyContext(request);
+    if (!context.ok) {
+      return response.status(context.status).json({ ok: false, msg: context.msg });
+    }
+
+    let built;
+    try {
+      built = buildNamedQuery(queryName, params, { companyId: context.companyId });
+    } catch (paramError) {
+      if (paramError instanceof QueryParamError) {
+        return response.status(400).json({ ok: false, msg: paramError.message });
+      }
+      throw paramError;
+    }
+
+    const connection = getConnection();
+    const [result] = await connection.execute(built.sql, built.values);
+
+    return response.status(200).json({ ok: true, result });
+  } catch (error) {
+    logger.error("runNamedInventoryQuery failed", {
+      queryName: request.body?.queryName,
+      error: error.message,
+    });
+    return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   request,
   response,
@@ -2132,6 +2362,8 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   try {
     const connection = getConnection();
     let { query, values } = request.body;
+
+    auditRawQueryShape(request, query);
     // Clone the values to safely manipulate
     let finalValues = [];
     let placeholderIndex = 0;
@@ -3822,6 +4054,8 @@ module.exports = {
   containerItemsDetails,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  runNamedInventoryQuery,
+  returnEventDevicesToWarehouse,
   consultingCompanyInventoryWithPagination,
   consultingInventoryTracking,
   consultingItem,

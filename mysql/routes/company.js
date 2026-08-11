@@ -27,6 +27,8 @@ const {
   checkingInventoryCurrentState,
   getGroupedItemInventory,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  runNamedInventoryQuery,
+  returnEventDevicesToWarehouse,
   updateAllItemsInInventory,
   updateItemsBasedOnAlphanumericSerialNumber,
   updateItemsBasedOnSerialNumber,
@@ -134,6 +136,26 @@ router.post(
   validateJWT,
   checkTokenVersion,
   consultingCompanyInventoryBasedOnSubmittedParameters
+);
+
+// Replacement for the route above: the client names a catalog entry instead of
+// sending SQL. Mounted on all three routers so call sites can migrate without
+// also changing which namespace they post to.
+router.post(
+  "/inventory-query",
+  validateJWT,
+  checkTokenVersion,
+  runNamedInventoryQuery
+);
+
+// Return event devices to the warehouse atomically. Replaces three separate
+// raw-SQL calls (UPDATE warehouse / SELECT ids / DELETE assignments) that were
+// three independent transactions.
+router.post(
+  "/return-event-devices",
+  validateJWT,
+  checkTokenVersion,
+  returnEventDevicesToWarehouse
 );
 
 //update all items in inventory company based on submitted parameters
