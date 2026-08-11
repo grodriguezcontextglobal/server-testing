@@ -893,7 +893,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
 ) => {
   let connection = null;
   try {
-    const { warehouse, company_id, item_group, category_name, data, logistic_status } =
+    const { warehouse, company_id, item_group, category_name, data, logistic_status = "allocated" } =
       request.body;
     // Validate request body
     if (
