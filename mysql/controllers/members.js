@@ -1056,6 +1056,149 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
 };
 
 // Update rows in member_assigned_device_lease using dynamic filters and updates
+// ---------------------------------------------------------------------------
+// Member fees for lost / damaged devices (school track).
+//
+// The fee lives in `member_fees`, not on the lease row — see
+// mysql/migrations/add_member_fees.sql for why. It is written from two places:
+//   B1.1  update-member-assigned-device-lease, which carries fee_amount /
+//         fee_reason inside `update` (the frontend has always posted them there)
+//   B1.3  settle-member-fee, once the card has actually been charged
+// ---------------------------------------------------------------------------
+
+const FEE_PAYMENT_METHODS = new Set(["credit_card", "cash", "waived"]);
+// A fee is only meaningful on a device that did not come back intact. A fee on a
+// clean return is a caller bug the frontend would rather see rejected.
+const FEE_BEARING_RETURN_STATUSES = new Set(["lost", "damaged"]);
+
+// Amounts cross this boundary in DOLLARS as a JSON number (250 or 75.5), never
+// in cents — storing cents here would silently 100x every fee. `undefined` means
+// "not mentioned" (leave any existing fee alone); explicit null/"" means "clear".
+const normalizeFeeAmount = (value) => {
+  if (value === undefined) return { ok: true, value: undefined };
+  if (value === null || String(value).trim() === "")
+    return { ok: true, value: null };
+  if (typeof value !== "number" && typeof value !== "string") {
+    return { ok: false, msg: "fee_amount must be a number of dollars." };
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return { ok: false, msg: "fee_amount must be a number of dollars." };
+  }
+  if (parsed <= 0) {
+    // 0 and "no fee" must not be distinguishable on paper.
+    return { ok: false, msg: "fee_amount must be greater than 0." };
+  }
+  if (parsed > 99999999.99) {
+    return { ok: false, msg: "fee_amount exceeds the maximum allowed value." };
+  }
+  return { ok: true, value: Math.round(parsed * 100) / 100 };
+};
+
+// MySQL DATETIME, in UTC, so a settled-at timestamp cannot be read differently
+// depending on where the server happens to run.
+const toMysqlDatetime = (value) => {
+  const date = value ? new Date(value) : new Date();
+  if (isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 19).replace("T", " ");
+};
+
+// The fee routes must stay deployable BEFORE the migration runs: without the
+// table the fee is skipped exactly as it is dropped today, instead of turning a
+// working lease update into a 500. Only the positive answer is cached, so the
+// first call after the migration picks the table up without a restart.
+let memberFeesTableReady = false;
+const memberFeesTableExists = async () => {
+  if (memberFeesTableReady) return true;
+  try {
+    const [rows] = await connection.query("SHOW TABLES LIKE 'member_fees'");
+    memberFeesTableReady = Array.isArray(rows) && rows.length > 0;
+    return memberFeesTableReady;
+  } catch (error) {
+    return false;
+  }
+};
+
+// Pulls the fee out of an `update` payload. Absence is never "clear the fee":
+// the same route is used to edit only expected_return_date, and that call must
+// not wipe a recorded fee.
+const extractFeePayload = (update = {}) => {
+  const hasAmount = update.fee_amount !== undefined;
+  const hasReason = update.fee_reason !== undefined;
+  if (!hasAmount && !hasReason) return { present: false };
+  return {
+    present: true,
+    hasAmount,
+    fee_amount: update.fee_amount,
+    fee_reason: hasReason
+      ? update.fee_reason === null
+        ? null
+        : String(update.fee_reason).trim() || null
+      : undefined,
+  };
+};
+
+// One OUTSTANDING fee per (company, member, device): a re-submitted declaration
+// corrects the open fee instead of stacking a second debt, while a device that
+// already has a settled fee can legitimately accrue a new one.
+const upsertOutstandingFee = async ({
+  company_id,
+  member_id,
+  device_id,
+  fee_amount,
+  fee_reason,
+  return_status,
+}) => {
+  const [existing] = await connection.query(
+    `SELECT fee_id FROM member_fees
+      WHERE company_id = ? AND member_id = ? AND device_id <=> ? AND status = 'outstanding'
+      ORDER BY fee_id DESC LIMIT 1`,
+    [company_id, member_id, device_id]
+  );
+  const current = existing?.[0];
+  if (current) {
+    const sets = [];
+    const values = [];
+    if (fee_amount !== undefined) {
+      sets.push("fee_amount = ?");
+      values.push(fee_amount);
+    }
+    if (fee_reason !== undefined) {
+      sets.push("fee_reason = ?");
+      values.push(fee_reason);
+    }
+    if (return_status !== undefined && return_status !== null) {
+      sets.push("return_status = ?");
+      values.push(return_status);
+    }
+    if (!sets.length) return { fee_id: current.fee_id, created: false };
+    values.push(current.fee_id);
+    await connection.query(
+      `UPDATE member_fees SET ${sets.join(", ")} WHERE fee_id = ?`,
+      values
+    );
+    return { fee_id: current.fee_id, created: false };
+  }
+
+  // Nothing open yet — a reason on its own has no debt to attach itself to.
+  if (fee_amount === undefined || fee_amount === null) return null;
+
+  const [result] = await connection.query(
+    `INSERT INTO member_fees
+       (company_id, member_id, device_id, fee_amount, fee_reason, return_status, status)
+     VALUES (?, ?, ?, ?, ?, ?, 'outstanding')`,
+    [
+      company_id,
+      member_id,
+      device_id,
+      fee_amount,
+      fee_reason === undefined ? null : fee_reason,
+      return_status ?? null,
+    ]
+  );
+  return { fee_id: result.insertId, created: true };
+};
+
 const updateMemberAssignedDeviceLeaseRow = async (request, response) => {
   try {
     const body = request.body || {};
@@ -1163,27 +1306,363 @@ const updateMemberAssignedDeviceLeaseRow = async (request, response) => {
         !filters.some(([fk]) => fk === k)
     );
 
-    if (!updateEntries.length) {
+    // The fee is not a lease column — it is routed to member_fees. Validated
+    // here, BEFORE any write, so a malformed fee rejects the whole request
+    // instead of closing the lease and losing the debt.
+    const fee = extractFeePayload(normalizedUpdate);
+    let feeAmount;
+    let feeReturnStatus;
+    if (fee.present) {
+      const amount = normalizeFeeAmount(fee.fee_amount);
+      if (!amount.ok) {
+        return response.status(400).json({ ok: false, msg: amount.msg });
+      }
+      feeAmount = amount.value;
+
+      if (
+        normalizedWhere.company_id === undefined ||
+        normalizedWhere.member_id === undefined ||
+        normalizedWhere.device_id === undefined
+      ) {
+        return response.status(400).json({
+          ok: false,
+          msg: "A fee requires company_id, member_id and device_id in `where`.",
+        });
+      }
+
+      // Which outcome the fee is attached to: this update when it declares one,
+      // otherwise whatever the lease row already says.
+      if (normalizedUpdate.return_status !== undefined) {
+        feeReturnStatus = String(normalizedUpdate.return_status || "")
+          .trim()
+          .toLowerCase();
+      } else {
+        const [current] = await connection.query(
+          `SELECT return_status FROM member_assigned_device_lease
+            WHERE company_id = ? AND member_id = ? AND device_id = ? LIMIT 1`,
+          [
+            String(normalizedWhere.company_id).trim(),
+            String(normalizedWhere.member_id).trim(),
+            String(normalizedWhere.device_id).trim(),
+          ]
+        );
+        feeReturnStatus = String(current?.[0]?.return_status || "")
+          .trim()
+          .toLowerCase();
+      }
+      if (!FEE_BEARING_RETURN_STATUSES.has(feeReturnStatus)) {
+        return response.status(400).json({
+          ok: false,
+          msg: "A fee can only be recorded when return_status is 'lost' or 'damaged'.",
+        });
+      }
+    }
+
+    // A fee on its own is a valid request (staff adding a fee to a lease that
+    // was already closed); without one, an empty update still is not.
+    if (!updateEntries.length && !fee.present) {
       return response.status(400).json({
         ok: false,
         msg: "Provide at least one valid column to update.",
       });
     }
 
-    const setClause = updateEntries.map(([k]) => `\`${k}\` = ?`).join(", ");
-    const whereClause = filters.map(([k]) => `\`${k}\` = ?`).join(" AND ");
-    const values = updateEntries
-      .map(([, v]) => v)
-      .concat(filters.map(([, v]) => v));
+    let affectedRows = 0;
+    if (updateEntries.length) {
+      const setClause = updateEntries.map(([k]) => `\`${k}\` = ?`).join(", ");
+      const whereClause = filters.map(([k]) => `\`${k}\` = ?`).join(" AND ");
+      const values = updateEntries
+        .map(([, v]) => v)
+        .concat(filters.map(([, v]) => v));
 
-    const query = `UPDATE member_assigned_device_lease SET ${setClause} WHERE ${whereClause}`;
-    const [result] = await connection.query(query, values);
+      const query = `UPDATE member_assigned_device_lease SET ${setClause} WHERE ${whereClause}`;
+      const [result] = await connection.query(query, values);
+      affectedRows = result.affectedRows || 0;
+    }
+
+    let feeResult = null;
+    let feeSkipped;
+    if (fee.present) {
+      if (await memberFeesTableExists()) {
+        feeResult = await upsertOutstandingFee({
+          company_id: Number(normalizedWhere.company_id),
+          member_id: Number(normalizedWhere.member_id),
+          device_id: Number(normalizedWhere.device_id),
+          fee_amount: fee.hasAmount ? feeAmount : undefined,
+          fee_reason: fee.fee_reason,
+          return_status: feeReturnStatus,
+        });
+      } else {
+        feeSkipped = "member_fees table not found — run mysql/migrations/add_member_fees.sql";
+      }
+    }
+
     return response.status(200).json({
       ok: true,
       updated_fields: updateEntries.map(([k]) => k),
       filters: filters.map(([k]) => k),
-      affectedRows: result.affectedRows || 0,
+      affectedRows,
+      fee: feeResult,
+      ...(feeSkipped ? { fee_skipped: feeSkipped } : {}),
     });
+  } catch (error) {
+    return response
+      .status(500)
+      .json({ ok: false, msg: "Internal server error", error: error.message });
+  }
+};
+
+// Settle a member fee once the money has actually moved (B1.3).
+//
+// This is the other half of recording a fee: without it a family pays by card
+// and the student's record still shows the debt as outstanding — the worst of
+// the three possible states.
+//
+// Keyed by (member_id, device_id) as well as fee_id, because the charge modal
+// can be opened standalone from the header with no lease row in hand. A fee that
+// was never recorded is created here rather than 404'd — staff can charge for a
+// device closed before fees existed.
+const settleMemberFee = async (request, response) => {
+  try {
+    const body = request.body || {};
+    const company_id = body.company_id ?? body.companyId;
+    if (!company_id) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "company_id is required" });
+    }
+
+    const fee_id = body.fee_id ?? null;
+    const member_id = body.member_id ?? null;
+    const device_id = body.device_id ?? null;
+    if (!fee_id && !(member_id && device_id)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Provide fee_id, or member_id together with device_id.",
+      });
+    }
+
+    const status = String(body.status || "paid")
+      .trim()
+      .toLowerCase();
+    if (!["paid", "waived"].includes(status)) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "status must be 'paid' or 'waived'." });
+    }
+
+    const payment_method = String(
+      body.payment_method || (status === "waived" ? "waived" : "credit_card")
+    )
+      .trim()
+      .toLowerCase();
+    if (!FEE_PAYMENT_METHODS.has(payment_method)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "payment_method must be 'credit_card', 'cash' or 'waived'.",
+      });
+    }
+
+    const payment_intent = body.payment_intent
+      ? String(body.payment_intent).trim()
+      : null;
+    if (status === "paid" && payment_method === "credit_card" && !payment_intent) {
+      return response.status(400).json({
+        ok: false,
+        msg: "payment_intent is required for a credit_card payment.",
+      });
+    }
+
+    const paid = normalizeFeeAmount(body.paid_amount);
+    if (!paid.ok) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: paid.msg.replace("fee_amount", "paid_amount") });
+    }
+    if (status === "paid" && (paid.value === undefined || paid.value === null)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "paid_amount is required when status is 'paid'.",
+      });
+    }
+    const paidAmount = paid.value === undefined ? null : paid.value;
+
+    if (!(await memberFeesTableExists())) {
+      return response.status(503).json({
+        ok: false,
+        msg: "member_fees is not available — run mysql/migrations/add_member_fees.sql.",
+      });
+    }
+
+    // Idempotency: Stripe guarantees the intent id is unique, so a retry after a
+    // network timeout resolves to the fee already settled instead of a second one.
+    if (payment_intent) {
+      const [seen] = await connection.query(
+        "SELECT fee_id FROM member_fees WHERE payment_intent = ? LIMIT 1",
+        [payment_intent]
+      );
+      if (seen?.length) {
+        return response
+          .status(200)
+          .json({ ok: true, fee_id: seen[0].fee_id, idempotent: true });
+      }
+    }
+
+    let target = null;
+    if (fee_id) {
+      const [rows] = await connection.query(
+        "SELECT fee_id FROM member_fees WHERE fee_id = ? AND company_id = ? LIMIT 1",
+        [Number(fee_id), Number(company_id)]
+      );
+      target = rows?.[0] || null;
+      if (!target) {
+        return response
+          .status(404)
+          .json({ ok: false, msg: "Fee not found for this company." });
+      }
+    } else {
+      const [rows] = await connection.query(
+        `SELECT fee_id FROM member_fees
+          WHERE company_id = ? AND member_id = ? AND device_id = ? AND status = 'outstanding'
+          ORDER BY fee_id DESC LIMIT 1`,
+        [Number(company_id), Number(member_id), Number(device_id)]
+      );
+      target = rows?.[0] || null;
+    }
+
+    const paid_at = toMysqlDatetime(body.paid_at);
+    const collected_by_staff_id = request.sqlStaffId ?? null;
+
+    if (target) {
+      await connection.query(
+        `UPDATE member_fees
+            SET status = ?, paid_amount = ?, payment_intent = ?, payment_method = ?,
+                paid_at = ?, collected_by_staff_id = ?
+          WHERE fee_id = ? AND company_id = ?`,
+        [
+          status,
+          paidAmount,
+          payment_intent,
+          payment_method,
+          paid_at,
+          collected_by_staff_id,
+          target.fee_id,
+          Number(company_id),
+        ]
+      );
+      return response
+        .status(200)
+        .json({ ok: true, fee_id: target.fee_id, created: false });
+    }
+
+    // No fee on record — the device was closed before fees existed, or the
+    // charge was started straight from the header.
+    const feeAmount = normalizeFeeAmount(body.fee_amount);
+    if (!feeAmount.ok) {
+      return response.status(400).json({ ok: false, msg: feeAmount.msg });
+    }
+    const [result] = await connection.query(
+      `INSERT INTO member_fees
+         (company_id, member_id, device_id, fee_amount, fee_reason, return_status,
+          status, paid_amount, payment_intent, payment_method, paid_at, collected_by_staff_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        Number(company_id),
+        Number(member_id),
+        Number(device_id),
+        feeAmount.value === undefined || feeAmount.value === null
+          ? paidAmount
+          : feeAmount.value,
+        body.fee_reason ? String(body.fee_reason).trim() : null,
+        body.return_status ? String(body.return_status).trim().toLowerCase() : null,
+        status,
+        paidAmount,
+        payment_intent,
+        payment_method,
+        paid_at,
+        collected_by_staff_id,
+      ]
+    );
+    return response
+      .status(200)
+      .json({ ok: true, fee_id: result.insertId, created: true });
+  } catch (error) {
+    return response
+      .status(500)
+      .json({ ok: false, msg: "Internal server error", error: error.message });
+  }
+};
+
+// Read fees (B1.2) — the student profile's "Outstanding fees" section, the
+// company-wide fees report and the badge on the member list all read this.
+//
+// The student's name is joined in so the company-wide report needs no second
+// call. LEFT JOINs throughout: a debt must not disappear from the report because
+// the roster row or the inventory item was removed.
+const retrieveMemberFees = async (request, response) => {
+  try {
+    const body = request.body || {};
+    const company_id = body.company_id ?? body.companyId;
+    if (!company_id) {
+      return response
+        .status(400)
+        .json({ ok: false, msg: "company_id is required" });
+    }
+
+    const status = body.status ? String(body.status).trim().toLowerCase() : null;
+    if (status && !["outstanding", "paid", "waived"].includes(status)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "status must be 'outstanding', 'paid' or 'waived'.",
+      });
+    }
+
+    // A read that quietly returns "no fees" would tell a school nobody owes
+    // anything. If the table is missing, say so instead.
+    if (!(await memberFeesTableExists())) {
+      return response.status(503).json({
+        ok: false,
+        msg: "member_fees is not available — run mysql/migrations/add_member_fees.sql.",
+      });
+    }
+
+    const values = [Number(company_id)];
+    let filterClause = "";
+    if (body.member_id !== undefined && body.member_id !== null) {
+      filterClause += " AND mf.member_id = ?";
+      values.push(Number(body.member_id));
+    }
+    if (status) {
+      filterClause += " AND mf.status = ?";
+      values.push(status);
+    }
+
+    const [rows] = await connection.query(
+      `SELECT mf.fee_id, mf.member_id,
+              mi.first_name AS member_first_name, mi.last_name AS member_last_name,
+              mf.device_id, ii.serial_number, ii.category_name AS device_category_name,
+              mf.fee_amount, mf.fee_reason, mf.status, mf.return_status,
+              mf.payment_intent, mf.paid_amount, mf.payment_method, mf.paid_at,
+              mf.collected_by_staff_id, mf.created_at
+         FROM member_fees mf
+         LEFT JOIN members_info mi ON mi.member_id = mf.member_id
+         LEFT JOIN item_inv ii ON ii.item_id = mf.device_id
+        WHERE mf.company_id = ?${filterClause}
+        ORDER BY mf.fee_id DESC`,
+      values
+    );
+
+    // DECIMAL comes back from the driver as a string; the contract types both
+    // amounts as JSON numbers, and null must stay null (not become 0).
+    const normalized = (rows || []).map((row) => ({
+      ...row,
+      fee_amount: row.fee_amount === null ? null : Number(row.fee_amount),
+      paid_amount: row.paid_amount === null ? null : Number(row.paid_amount),
+    }));
+
+    return response
+      .status(200)
+      .json({ ok: true, count: normalized.length, rows: normalized });
   } catch (error) {
     return response
       .status(500)
@@ -1567,6 +2046,10 @@ module.exports = {
   retrieveMemberInfo,
   insertNewRowINMemberAssignedDeviceTableForLeaseTracking,
   updateMemberAssignedDeviceLeaseRow,
+  settleMemberFee,
+  retrieveMemberFees,
+  normalizeFeeAmount,
+  extractFeePayload,
   deleteMemberAssignedDeviceLeaseRows,
   retrieveMembersAssignedDevices,
   removeRowAssignedDeviceLeaseMember,

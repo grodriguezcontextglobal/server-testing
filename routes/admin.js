@@ -31,6 +31,7 @@ const {
 const {
   getStaffActivityLogs,
   registerStaffActivity,
+  getActivityVocabulary,
 } = require("../controller/staffActivityLog");
 const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
@@ -117,5 +118,8 @@ router.post("/mfa/disable", validateJWT, disableMfa);
 // Staff activity log
 router.post("/activity-logs", validateJWT, checkTokenVersion, registerStaffActivity);
 router.get("/activity-logs", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), getStaffActivityLogs);
+// Canonical action / target_model list for the report's filter dropdown. Static
+// metadata, so it needs no staff:read — only a valid session.
+router.get("/activity-logs/vocabulary", validateJWT, checkTokenVersion, getActivityVocabulary);
 
 module.exports = router;
