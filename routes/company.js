@@ -70,6 +70,8 @@ router.post("/new", createCompany);
 
 router.patch("/update-company/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("company", "update"), updatingCompany);
 
+router.patch("/update-company/register-process/:id", updatingCompany);
+
 router.post("/search-company", searchingCompany);
 
 router.get("/search-company", searchingGetCompanyInfo);

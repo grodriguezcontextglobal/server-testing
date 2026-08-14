@@ -2,6 +2,10 @@ const StaffActivityLog = require("../models/StaffActivityLog");
 const AdminUser = require("../models/AdminUser");
 const logger = require("../helpers/logger");
 const { enqueue } = require("../helpers/queue");
+const {
+  ACTIVITY_ACTIONS,
+  ACTIVITY_TARGET_MODELS,
+} = require("../constants/activityVocabulary");
 
 /**
  * Logs a staff member's activity.
@@ -190,9 +194,25 @@ const createRegisterStaffActivity = ({
 
 const registerStaffActivity = createRegisterStaffActivity();
 
+/**
+ * The vocabulary the report's filter dropdown is built from (B2.2).
+ *
+ * Deliberately NOT enforced on the write path: `action`/`target_model` remain
+ * free text, because rejecting an unlisted verb would drop an audit entry — the
+ * one thing an audit trail may never do. This endpoint publishes the intended
+ * spellings so the report can offer them instead of each caller inventing one.
+ */
+const getActivityVocabulary = (req, res) =>
+  res.json({
+    ok: true,
+    actions: ACTIVITY_ACTIONS,
+    target_models: ACTIVITY_TARGET_MODELS,
+  });
+
 module.exports = {
   logStaffActivity,
   getStaffActivityLogs,
   createRegisterStaffActivity,
   registerStaffActivity,
+  getActivityVocabulary,
 };
