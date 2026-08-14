@@ -984,14 +984,12 @@ const resendConsent = async (req, res) => {
 const publicRetrieveConsent = async (req, res) => {
   const pool = getConnection();
   const token = String(req.body?.otc || "").trim();
-
   if (!token) {
     return res.status(400).json({
       ok: false,
       msg: "otc is required",
     });
   }
-
   try {
     const [rows] = await pool.execute(
       `
@@ -1047,7 +1045,7 @@ const publicRetrieveConsent = async (req, res) => {
           ON mi.member_id = sc.member_id
          AND mi.company_id = sc.company_id
 
-        INNER JOIN guardians AS g
+        LEFT JOIN guardians AS g
           ON g.id = sc.guardian_id
          AND g.company_id = sc.company_id
 
@@ -1062,7 +1060,6 @@ const publicRetrieveConsent = async (req, res) => {
       // "legacy plaintext OTC matched" warnings appear.
       [hashOtc(token), token]
     );
-
     if (!rows.length) {
       return res.status(404).json({
         ok: false,
@@ -1340,28 +1337,28 @@ const setConsentEnforcement = async (req, res) => {
   }
   const val =
     enforce === true ||
-    enforce === 1 ||
-    String(enforce).toLowerCase() === "true" ||
-    String(enforce) === "1"
+      enforce === 1 ||
+      String(enforce).toLowerCase() === "true" ||
+      String(enforce) === "1"
       ? 1
       : 0;
   const under13Val =
     enforce_under_13 === true ||
-    enforce_under_13 === 1 ||
-    String(enforce_under_13).toLowerCase() === "true" ||
-    String(enforce_under_13) === "1"
+      enforce_under_13 === 1 ||
+      String(enforce_under_13).toLowerCase() === "true" ||
+      String(enforce_under_13) === "1"
       ? 1
       : 0;
   const requiredVersion =
     required_consent_policy_version !== undefined &&
-    required_consent_policy_version !== null &&
-    String(required_consent_policy_version).trim() !== ""
+      required_consent_policy_version !== null &&
+      String(required_consent_policy_version).trim() !== ""
       ? String(required_consent_policy_version).trim()
       : null;
   const documentId =
     consent_document_id !== undefined &&
-    consent_document_id !== null &&
-    String(consent_document_id).trim() !== ""
+      consent_document_id !== null &&
+      String(consent_document_id).trim() !== ""
       ? String(consent_document_id).trim()
       : null;
   try {

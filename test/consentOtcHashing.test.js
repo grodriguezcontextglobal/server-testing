@@ -268,6 +268,73 @@ test('publicRetrieveConsent: binds hash and plaintext, in that order', async () 
   }
 });
 
+// Regression: requestConsent's third guardian-resolution tier (embedded
+// parent_guardian_* on members_info) never populates guardian_id — there is no
+// `guardians` row to point at. That left school_consent.guardian_id NULL, and
+// publicRetrieveConsent's guardians JOIN was INNER, so a perfectly valid,
+// unexpired, matched-by-hash row was silently dropped and reported as
+// "Invalid consent link." The fix is a LEFT JOIN; the response already falls
+// back to signer_name/signer_email when the guardian columns come back NULL.
+test('publicRetrieveConsent: a consent with no normalized guardian (guardian_id NULL) still resolves', async () => {
+  const plaintext = generateOtc();
+
+  const pool = {
+    async execute(sql) {
+      if (/FROM school_consent AS sc/.test(sql)) {
+        return [[{
+          consent_id: 'c-embedded',
+          company_id: 147,
+          member_id: 664,
+          guardian_id: null,
+          policy_type: 'AUP',
+          policy_version: '1',
+          signer_name: 'Carlos Martinez',
+          signer_email: 'jdow3@invoxia.cc',
+          method: 'email-link',
+          consented_at: null,
+          created_at: new Date(),
+          status: 'pending',
+          otc_expires_at: new Date(Date.now() + 86400000),
+          requested_at: new Date(),
+          responded_at: null,
+          refused_at: null,
+          effective_otc_expires_at: new Date(Date.now() + 86400000),
+          company_name: 'Bridges Academy',
+          industry: 'education',
+          consent_document_id: null,
+          student_first_name: 'Ana',
+          student_last_name: 'Diaz',
+          student_email: null,
+          student_grade: '5',
+          student_homeroom: null,
+          student_date_of_birth: null,
+          // the guardians LEFT JOIN found no row — all four come back NULL
+          guardian_first_name: null,
+          guardian_last_name: null,
+          guardian_email: null,
+          guardian_phone_number: null,
+        }]];
+      }
+      return [[]];
+    },
+  };
+
+  const loaded = loadSchoolController({ pool });
+  try {
+    const res = createResponse();
+    await loaded.controller.publicRetrieveConsent({ body: { otc: plaintext } }, res);
+
+    assert.equal(res.statusCode, 200, 'a matched, unexpired row must not 404');
+    assert.equal(res.body.ok, true);
+    // falls back to signer_name/signer_email captured at request time
+    assert.equal(res.body.guardian.full_name, 'Carlos Martinez');
+    assert.equal(res.body.guardian.email, 'jdow3@invoxia.cc');
+    assert.equal(res.body.student.full_name, 'Ana Diaz');
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('an invalid otc is rejected without matching anything', async () => {
   const pool = { async execute() { return [[]]; } };
   const loaded = loadSchoolController({ pool });
