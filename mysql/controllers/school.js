@@ -1049,16 +1049,10 @@ const publicRetrieveConsent = async (req, res) => {
           ON g.id = sc.guardian_id
          AND g.company_id = sc.company_id
 
-        WHERE sc.otc_hash IN (?, ?)
+        WHERE sc.otc_hash = ?
         LIMIT 1
       `,
-      // Hashed first, plaintext second. The plaintext arm only matches rows
-      // written before hashing shipped, and exists so outstanding guardian
-      // links keep working no matter the order of the code deploy and the
-      // backfill migration. Remove it (and this comment) once
-      // hash_existing_school_consent_otc.sql has run everywhere and no
-      // "legacy plaintext OTC matched" warnings appear.
-      [hashOtc(token), token]
+      [hashOtc(token)]
     );
     if (!rows.length) {
       return res.status(404).json({
@@ -1168,21 +1162,13 @@ const publicRespondConsent = async (req, res) => {
   }
 
   try {
-    // See publicRetrieveConsent: hashed first, plaintext arm is the transitional
-    // fallback for rows written before hashing shipped.
     const [rows] = await pool.execute(
-      "SELECT id, status, otc_expires_at, otc_hash FROM school_consent WHERE otc_hash IN (?, ?) LIMIT 1",
-      [hashOtc(token), token]
+      "SELECT id, status, otc_expires_at FROM school_consent WHERE otc_hash = ? LIMIT 1",
+      [hashOtc(token)]
     );
 
     if (!rows.length) {
       return res.status(404).json({ ok: false, msg: "Invalid consent link." });
-    }
-
-    if (rows[0].otc_hash === token) {
-      logger.warn("legacy plaintext OTC matched — run hash_existing_school_consent_otc.sql", {
-        consent_id: rows[0].id,
-      });
     }
 
     const consent = rows[0];
