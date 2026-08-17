@@ -3,6 +3,7 @@
 const AdminUser         = require('../models/AdminUser');
 const Company           = require('../models/Company');
 const { hasPermission } = require('../constants/rolePermissions');
+const { resolveCompanyContext } = require('../helpers/companyContext');
 
 /**
  * Middleware de autorización para rutas MongoDB.
@@ -45,14 +46,8 @@ const authorizeMongoPermission = (resource, action) => async (req, res, next) =>
 
     // company_id (Mongo ObjectId) como selector de contexto. Puede venir en el
     // header x-company-id (recomendado) o en params/body/query (compatibilidad).
-    const headerCompanyId =
-      (typeof req.header === 'function' ? req.header('x-company-id') : undefined) ||
-      req.headers?.['x-company-id'];
-
-    const companyId = req.params?.company_id
-      || req.body?.company_id
-      || req.query?.company_id
-      || headerCompanyId;
+    // Mismo criterio que usan los call-sites de auditoría — ver helpers/companyContext.js.
+    const companyId = resolveCompanyContext(req);
 
     // El rol SIEMPRE viene de Company.employees. Sin contexto de compañía o sin
     // membresía activa → sin rol → se deniega (no hay fallback a AdminUser.role_type).

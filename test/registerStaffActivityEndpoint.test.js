@@ -36,10 +36,10 @@ test('registerStaffActivity: 404 cuando el staff member no existe', async () => 
   assert.equal(res.statusCode, 404);
 });
 
-test('registerStaffActivity: resuelve staff_member_id/company_id desde el JWT, nunca del body', async () => {
+test('registerStaffActivity: staff_member_id del JWT y company_id del header, nunca del body', async () => {
   const logged = [];
   const handler = createRegisterStaffActivity({
-    findAdminUserFn: async (id) => (id === 'S1' ? { id: 'S1', company: 'C1' } : null),
+    findAdminUserFn: async (id) => (id === 'S1' ? { id: 'S1' } : null),
     logStaffActivityFn: async (data) => { logged.push(data); },
   });
   const req = {
@@ -52,7 +52,7 @@ test('registerStaffActivity: resuelve staff_member_id/company_id desde el JWT, n
       staff_member_id: 'SPOOFED',
       company_id: 'SPOOFED_COMPANY',
     },
-    headers: { 'user-agent': 'jest' },
+    headers: { 'user-agent': 'jest', 'x-company-id': 'C1' },
     ip: '127.0.0.1',
   };
   const res = makeRes();
@@ -72,9 +72,28 @@ test('registerStaffActivity: resuelve staff_member_id/company_id desde el JWT, n
   assert.equal(logged[0].device_info, 'jest');
 });
 
+test('registerStaffActivity: sin contexto de compañía registra company_id null, no el del body', async () => {
+  const logged = [];
+  const handler = createRegisterStaffActivity({
+    findAdminUserFn: async () => ({ id: 'S1' }),
+    logStaffActivityFn: async (data) => { logged.push(data); },
+  });
+  const req = {
+    uid: 'S1',
+    body: { action: 'CREATE', target_model: 'Inventory', company_id: 'SPOOFED_COMPANY' },
+    headers: {},
+  };
+  const res = makeRes();
+
+  await handler(req, res);
+
+  assert.equal(res.statusCode, 202);
+  assert.equal(logged[0].company_id, null);
+});
+
 test('registerStaffActivity: 500 si logStaffActivityFn lanza', async () => {
   const handler = createRegisterStaffActivity({
-    findAdminUserFn: async () => ({ id: 'S1', company: 'C1' }),
+    findAdminUserFn: async () => ({ id: 'S1' }),
     logStaffActivityFn: async () => { throw new Error('boom'); },
   });
   const req = { uid: 'S1', body: { action: 'CREATE', target_model: 'Inventory' }, headers: {} };

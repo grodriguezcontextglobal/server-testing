@@ -12,6 +12,7 @@ const crypto = require("crypto");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const { logStaffActivity } = require("./staffActivityLog");
+const { resolveCompanyContext } = require("../helpers/companyContext");
 
 const createAdminUser = async (request, response = express.response) => {
   const { email, password } = request.body;
@@ -24,7 +25,20 @@ const createAdminUser = async (request, response = express.response) => {
         msg: `${email} is already in our record. Please use a different email address to create a new account.`,
       });
     }
-    adminUser = new AdminUser(request.body);
+
+    // Lista blanca explícita en vez de `new AdminUser(request.body)`: esta ruta
+    // es anónima (no lleva validateJWT), así que un body arbitrario permitía
+    // sembrar `super_user: true` — bypass total de authorizeMongoPermission —
+    // además de `companiesAssigned`, `active` y `tokenVersion`. Ni el rol ni la
+    // compañía se aceptan aquí: la membresía se crea en `Company.employees`
+    // (ver controller/registration.js § acceptInvitation).
+    adminUser = new AdminUser({
+      name: request.body.name,
+      lastName: request.body.lastName,
+      email: request.body.email,
+      phone: request.body.phone || "",
+      imageProfile: request.body.imageProfile || "",
+    });
 
     //encrypt password
     const salt = bcrypt.genSaltSync();
@@ -56,8 +70,8 @@ const createAdminUser = async (request, response = express.response) => {
       lastName: adminUser.lastName,
       email: adminUser.email,
       phone: adminUser.phone,
-      role: adminUser.role,
-      company: adminUser.company,
+      // role: adminUser.role,
+      // company: adminUser.company,
       token,
     });
   } catch (error) {
@@ -284,15 +298,15 @@ const loginUser = async (request, response) => {
     logger.info("Admin user login successful", {
       userId: adminUser.id,
       email: adminUser.email,
-      role: adminUser.role,
-      company: adminUser.company,
       loginInfo,
       requestId: loginInfo.requestId,
     });
 
+    // Sin compañía: el login es previo a que el usuario elija con cuál trabajar.
+    // Si el cliente ya la manda (x-company-id), se aprovecha; si no, queda null.
     await logStaffActivity({
       staff_member_id: adminUser.id,
-      company_id: adminUser.company,
+      company_id: resolveCompanyContext(request),
       action: "LOGIN",
       target_model: "AdminUser",
       target_id: adminUser.id,
@@ -310,7 +324,6 @@ const loginUser = async (request, response) => {
       email: adminUser.email,
       phone: adminUser.phone,
       role: adminUser.role,
-      company: adminUser.company,
       token,
     });
   } catch (error) {
@@ -433,7 +446,7 @@ const editAdminUser = async (request, response = response) => {
 
     await logStaffActivity({
       staff_member_id: request.uid,
-      company_id: adminUserUpdated.company,
+      company_id: resolveCompanyContext(request),
       action: "UPDATE",
       target_model: "AdminUser",
       target_id: adminUserUpdated.id,
@@ -451,7 +464,6 @@ const editAdminUser = async (request, response = response) => {
       lastName: adminUserUpdated.lastName,
       email: adminUserUpdated.email,
       phone: adminUserUpdated.phone,
-      company: adminUserUpdated.company,
       role: adminUserUpdated.role,
       // token,
     });
@@ -519,7 +531,7 @@ const deleteAdminUser = async (request, response) => {
 
     await logStaffActivity({
       staff_member_id: request.uid,
-      company_id: adminUser.company,
+      company_id: resolveCompanyContext(request),
       action: "DELETE",
       target_model: "AdminUser",
       target_id: adminUser.id,
@@ -839,10 +851,14 @@ const forceEndSession = async (request, response) => {
     await redis.del(sessionKey);
     await redis.del(ownerKey);
 
+    // `target_model` es obligatorio en StaffActivityLog y faltaba acá: los 6
+    // jobs FORCE_LOGOUT que había en dead-letter fallaban todos por eso.
     await logStaffActivity({
       staff_member_id: adminUser.id,
-      company_id: adminUser.company,
+      company_id: resolveCompanyContext(request),
       action: "FORCE_LOGOUT",
+      target_model: "AdminUser",
+      target_id: adminUser.id,
       details: { reason: "User-initiated remote session termination." },
       ip_address: request.ip,
     });

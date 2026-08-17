@@ -407,9 +407,15 @@ const registerExistingUserNewCompany = async (request, response) => {
 // ----- POST /api/registration/accept-invitation -----
 // Acepta una invitación de empresa. Crea el usuario en MongoDB+SQL si es nuevo,
 // o reutiliza el existente. Inserta en company_staff con el rol de la invitación.
-// Body: { user: { name, lastName, email, password? }, company: { company_name }, roleType }
+// Body: { user: { name, lastName, email, password? }, company: { company_name } }
+//
+// El ROL NO se acepta del body: lo definió quien invitó y ya está guardado en
+// `Company.employees[].roleType`. Aceptarlo del request permitía que el propio
+// invitado pidiera `root_admin` en una ruta sin autenticación y quedara así en
+// `company_staff`, que es la fuente de verdad del lado SQL (ver
+// mysql/helpers/staffAccess.js).
 const acceptInvitation = async (request, response) => {
-  const { user, company, roleType } = request.body;
+  const { user, company } = request.body;
 
   if (!user?.email || !company?.company_name) {
     return response.status(400).json({
@@ -417,8 +423,6 @@ const acceptInvitation = async (request, response) => {
       msg: "user.email y company.company_name son requeridos.",
     });
   }
-
-  const validRoleType = VALID_ROLE_TYPES.has(roleType) ? roleType : "assistant";
 
   try {
     // ── Buscar empresa en MongoDB ──────────────────────────────────────────────
@@ -429,6 +433,24 @@ const acceptInvitation = async (request, response) => {
         msg: `La empresa "${company.company_name}" no existe.`,
       });
     }
+
+    // ── La invitación tiene que existir ────────────────────────────────────────
+    // Antes, si el email no estaba en `employees` solo se saltaba el update de
+    // Mongo pero IGUAL se insertaba en company_staff: con saber el nombre de una
+    // empresa alcanzaba para darse acceso.
+    const empIndex = companyDoc.employees.findIndex((e) => e.user === user.email);
+    if (empIndex < 0) {
+      return response.status(404).json({
+        ok: false,
+        msg: `No hay una invitación pendiente para ${user.email} en "${company.company_name}".`,
+      });
+    }
+
+    // El rol lo fijó quien invitó, no el invitado.
+    const invitedRoleType = companyDoc.employees[empIndex].roleType;
+    const validRoleType = VALID_ROLE_TYPES.has(invitedRoleType)
+      ? invitedRoleType
+      : "assistant";
 
     const sqlConn = getConnection();
 
@@ -451,19 +473,16 @@ const acceptInvitation = async (request, response) => {
         password: bcrypt.hashSync(user.password, salt),
         phone: user.phone || "",
         imageProfile: "",
-        role: 0,
+        // role: 0,
         active: true,
       });
       await adminUser.save();
     }
 
     // ── Marcar empleado como Confirmed en MongoDB ──────────────────────────────
-    const empIndex = companyDoc.employees.findIndex((e) => e.user === user.email);
-    if (empIndex >= 0) {
-      companyDoc.employees[empIndex].status = "Confirmed";
-      if (isNewUser) companyDoc.employees[empIndex].userId = adminUser._id;
-      await companyDoc.save();
-    }
+    companyDoc.employees[empIndex].status = "Confirmed";
+    if (isNewUser) companyDoc.employees[empIndex].userId = adminUser._id;
+    await companyDoc.save();
 
     // ── SQL: crear o encontrar staff_member ───────────────────────────────────
     let sqlStaffId = null;
@@ -533,6 +552,9 @@ const acceptInvitation = async (request, response) => {
         _id: companyDoc._id,
         company_name: companyDoc.company_name,
         sql_id: sqlCompanyId,
+        // El rol efectivo con el que quedó la membresía. Se devuelve para que el
+        // cliente no tenga que adivinarlo ni mandarlo — ya no lo acepta el body.
+        roleType: validRoleType,
       },
     });
   } catch (error) {
