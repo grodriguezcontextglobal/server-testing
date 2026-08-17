@@ -4,10 +4,12 @@
  * Cubre:
  *  - 400 cuando faltan campos requeridos
  *  - 404 cuando la empresa no existe en MongoDB
+ *  - 404 cuando no hay invitación pendiente para ese email
  *  - 201 usuario nuevo: crea AdminUser + staff_member + company_staff
  *  - 200 usuario existente: reutiliza AdminUser + inserta company_staff
  *  - company_staff usa sqlCompanyId INT, no Mongo ObjectId
- *  - roleType desconocido queda como "assistant"
+ *  - el rol sale de la invitación (Company.employees), NUNCA del body
+ *  - roleType desconocido en la invitación queda como "assistant"
  *  - fallo en SQL es no bloqueante (responde ok igual)
  */
 
@@ -26,7 +28,7 @@ const sqlBehavior = {
   companyId:          77,
 };
 
-const capturedSQL = { companyStaffRows: [], staffMemberRows: [] };
+const capturedSQL = { companyStaffRows: [], staffMemberRows: [], roleLookups: [] };
 
 function makeSqlConn() {
   return {
@@ -57,6 +59,7 @@ function makeSqlConn() {
       const q = sql.trim().toUpperCase();
 
       if (q.startsWith("SELECT ID FROM ROLES")) {
+        capturedSQL.roleLookups.push(params[0]);
         return [[{ id: 5 }]];
       }
 
@@ -119,6 +122,7 @@ before(() => {
 afterEach(() => {
   capturedSQL.companyStaffRows = [];
   capturedSQL.staffMemberRows  = [];
+  capturedSQL.roleLookups      = [];
   sqlBehavior.failStaffInsert   = false;
   sqlBehavior.failCompanyLookup = false;
   sqlBehavior.failStaffSync     = false;
@@ -138,17 +142,23 @@ function mockRes() {
   return res;
 }
 
-function makeCompanyDoc(name = "Acme Corp") {
+// `employees` refleja la invitación que ya creó quien invita: el email y el
+// roleType asignado. El controlador exige que exista y toma el rol de ahí.
+function makeCompanyDoc(name = "Acme Corp", employees = null) {
   return {
     _id: "mongo-company-id",
     id:  "mongo-company-id",
     company_name: name,
-    employees: [
-      { user: "invited@test.com", status: "Pending", userId: null },
+    employees: employees ?? [
+      { user: "invited@test.com", status: "Pending", userId: null, roleType: "assistant" },
     ],
     saved: false,
     save: async function () { this.saved = true; },
   };
+}
+
+function invitationFor(email, roleType = "assistant") {
+  return [{ user: email, status: "Pending", userId: null, roleType }];
 }
 
 function makeAdminUserDoc(email = "invited@test.com") {
@@ -199,13 +209,51 @@ describe("POST /api/registration/accept-invitation", () => {
     assert.equal(res._body.ok, false);
   });
 
-  it("201 usuario nuevo: crea AdminUser, staff_member y company_staff", async () => {
-    companyDocs["Acme Corp"] = makeCompanyDoc("Acme Corp");
+  it("404 si no hay invitación pendiente para ese email", async () => {
+    companyDocs["Acme Corp"] = makeCompanyDoc("Acme Corp"); // invita a invited@test.com
+
+    const req = { body: {
+      user: { name: "Intruso", lastName: "X", email: "nadie@test.com", password: "Abc123!@" },
+      company: { company_name: "Acme Corp" },
+    }};
+    const res = mockRes();
+    await acceptInvitation(req, res);
+
+    assert.equal(res._code, 404);
+    assert.equal(res._body.ok, false);
+    // Y sobre todo: no se le dio acceso en SQL
+    assert.equal(capturedSQL.companyStaffRows.length, 0);
+    assert.equal(capturedSQL.staffMemberRows.length, 0);
+  });
+
+  it("el rol sale de la invitación, no del body", async () => {
+    companyDocs["Acme Corp"] = makeCompanyDoc(
+      "Acme Corp",
+      invitationFor("maria@test.com", "assistant")
+    );
 
     const req = { body: {
       user: { name: "Maria", lastName: "Lopez", email: "maria@test.com", password: "Secure1!X" },
       company: { company_name: "Acme Corp" },
-      roleType: "admin",
+      roleType: "root_admin", // intento de escalada — debe ignorarse
+    }};
+    const res = mockRes();
+    await acceptInvitation(req, res);
+
+    assert.equal(res._code, 201);
+    assert.deepEqual(capturedSQL.roleLookups, ["assistant"]);
+    assert.equal(res._body.company.roleType, "assistant");
+  });
+
+  it("201 usuario nuevo: crea AdminUser, staff_member y company_staff", async () => {
+    companyDocs["Acme Corp"] = makeCompanyDoc(
+      "Acme Corp",
+      invitationFor("maria@test.com", "admin")
+    );
+
+    const req = { body: {
+      user: { name: "Maria", lastName: "Lopez", email: "maria@test.com", password: "Secure1!X" },
+      company: { company_name: "Acme Corp" },
     }};
     const res = mockRes();
     await acceptInvitation(req, res);
@@ -227,14 +275,16 @@ describe("POST /api/registration/accept-invitation", () => {
   });
 
   it("200 usuario existente: reutiliza user, inserta company_staff sin crear staff_member", async () => {
-    companyDocs["Acme Corp"] = makeCompanyDoc("Acme Corp");
+    companyDocs["Acme Corp"] = makeCompanyDoc(
+      "Acme Corp",
+      invitationFor("existing@test.com", "assistant")
+    );
     adminUserDocs["existing@test.com"] = makeAdminUserDoc("existing@test.com");
     sqlBehavior.existingStaffId = 99;
 
     const req = { body: {
       user: { email: "existing@test.com" },
       company: { company_name: "Acme Corp" },
-      roleType: "assistant",
     }};
     const res = mockRes();
     await acceptInvitation(req, res);
@@ -252,31 +302,34 @@ describe("POST /api/registration/accept-invitation", () => {
     assert.equal(staffIdArg, 99);
   });
 
-  it("roleType desconocido normaliza a 'assistant'", async () => {
-    companyDocs["Acme Corp"] = makeCompanyDoc("Acme Corp");
+  it("roleType desconocido en la invitación normaliza a 'assistant'", async () => {
+    companyDocs["Acme Corp"] = makeCompanyDoc(
+      "Acme Corp",
+      invitationFor("z@test.com", "god_mode")
+    );
 
     const req = { body: {
       user: { name: "Z", lastName: "Z", email: "z@test.com", password: "Abc123!@" },
       company: { company_name: "Acme Corp" },
-      roleType: "god_mode",
     }};
     const res = mockRes();
     await acceptInvitation(req, res);
 
     assert.equal(res._code, 201);
-    // La query de roles recibió "assistant"
-    // (validado indirectamente — si fuera inválido no insertaría company_staff)
+    assert.deepEqual(capturedSQL.roleLookups, ["assistant"]);
     assert.equal(capturedSQL.companyStaffRows.length, 1);
   });
 
   it("fallo SQL en staff_member no bloquea la respuesta", async () => {
-    companyDocs["Acme Corp"] = makeCompanyDoc("Acme Corp");
+    companyDocs["Acme Corp"] = makeCompanyDoc(
+      "Acme Corp",
+      invitationFor("fail@test.com", "assistant")
+    );
     sqlBehavior.failStaffInsert = true;
 
     const req = { body: {
       user: { name: "A", lastName: "B", email: "fail@test.com", password: "Abc123!@" },
       company: { company_name: "Acme Corp" },
-      roleType: "assistant",
     }};
     const res = mockRes();
     await acceptInvitation(req, res);
@@ -294,7 +347,6 @@ describe("POST /api/registration/accept-invitation", () => {
     const req = { body: {
       user: { name: "C", lastName: "D", email: "invited@test.com", password: "Abc123!@" },
       company: { company_name: "Acme Corp" },
-      roleType: "assistant",
     }};
     const res = mockRes();
     await acceptInvitation(req, res);

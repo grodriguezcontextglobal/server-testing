@@ -1,7 +1,9 @@
 const StaffActivityLog = require("../models/StaffActivityLog");
 const AdminUser = require("../models/AdminUser");
+const Company = require("../models/Company");
 const logger = require("../helpers/logger");
 const { enqueue } = require("../helpers/queue");
+const { resolveCompanyContext } = require("../helpers/companyContext");
 const {
   ACTIVITY_ACTIONS,
   ACTIVITY_TARGET_MODELS,
@@ -40,12 +42,43 @@ const logStaffActivity = async (data, { enqueueFn = enqueue } = {}) => {
 };
 
 /**
+ * Compañías donde el requester es empleado ACTIVO.
+ *
+ * Fuente de verdad `Company.employees`, igual que authorizeMongoPermission, y
+ * con el mismo criterio de match: por `userId` o por email (`user`), porque los
+ * employees preexistentes no tienen userId — ver scripts/backfillMongoRoles.js.
+ */
+const findMemberships = async (requester, { CompanyModel = Company } = {}) => {
+  const requesterId = requester.id ?? requester._id;
+  const or = [];
+  if (requesterId != null) or.push({ "employees.userId": requesterId });
+  if (requester.email) or.push({ "employees.user": requester.email });
+  if (or.length === 0) return [];
+
+  const companies = await CompanyModel.find(
+    { $or: or },
+    { company_name: 1, employees: 1 }
+  ).lean();
+
+  const isActiveMember = (e) =>
+    ((e.userId != null && String(e.userId) === String(requesterId)) ||
+      (requester.email != null && e.user === requester.email)) &&
+    e.active !== false;
+
+  return companies.filter((c) => c.employees?.some(isActiveMember));
+};
+
+/**
  * Retrieves staff activity logs based on filters and permissions.
  */
-const getStaffActivityLogs = async (req, res) => {
+const createGetStaffActivityLogs = ({
+  findAdminUserFn = (id) => AdminUser.findById(id),
+  findMembershipsFn = findMemberships,
+  StaffActivityLogModel = StaffActivityLog,
+} = {}) => async (req, res) => {
   try {
     const { uid } = req;
-    const requester = await AdminUser.findById(uid);
+    const requester = await findAdminUserFn(uid);
 
     if (!requester) {
       return res.status(404).json({ ok: false, msg: "User not found" });
@@ -71,36 +104,31 @@ const getStaffActivityLogs = async (req, res) => {
       // Root admin can filter by any company_id if provided
       if (company_id) query.company_id = company_id;
     } else {
-      // Check if user has multiple companies
-      if (
-        requester.multipleCompanies &&
-        requester.companiesAssigned &&
-        requester.companiesAssigned.length > 0
-      ) {
-        const assignedCompanyIds = requester.companiesAssigned
-          .filter((c) => c.active) // Only active companies
-          .map((c) => c.company);
+      // Alcance = compañías donde el usuario es empleado ACTIVO, leído de
+      // `Company.employees` (la misma fuente de verdad que
+      // authorizeMongoPermission). Antes salía de AdminUser.companiesAssigned /
+      // AdminUser.company: el primero solo lo mantiene el frontend y el segundo
+      // ya no existe en el schema, así que un usuario con membresías reales
+      // podía recibir 403 "No company assigned".
+      const memberships = await findMembershipsFn(requester);
 
-        if (company_id) {
-          // If user requests a specific company, verify they have access
-          if (assignedCompanyIds.includes(company_id)) {
-            query.company_id = company_id;
-          } else {
-            return res
-              .status(403)
-              .json({
-                ok: false,
-                msg: "Unauthorized access to this company's logs",
-              });
-          }
-        } else {
-          // If no specific company requested, show logs for all assigned companies
-          query.company_id = { $in: assignedCompanyIds };
-        }
-      } else if (requester.company) {
-        // Single company mode
-        // If user tries to query a different company, block it (unless it matches their own)
-        if (company_id && company_id !== requester.company) {
+      if (memberships.length === 0) {
+        return res
+          .status(403)
+          .json({ ok: false, msg: "No company assigned to user" });
+      }
+
+      // Los registros históricos guardaron en `company_id` el NOMBRE de la
+      // compañía (venía del viejo AdminUser.company), mientras los nuevos
+      // guardan el ObjectId que llega por contexto. Se aceptan ambas claves
+      // para no volver invisible el historial; ver
+      // FRONTEND_admin_user_schema_cleanup.md § migración opcional.
+      const allowedKeys = memberships.flatMap((c) =>
+        [String(c._id), c.company_name].filter(Boolean)
+      );
+
+      if (company_id) {
+        if (!allowedKeys.includes(String(company_id))) {
           return res
             .status(403)
             .json({
@@ -108,12 +136,9 @@ const getStaffActivityLogs = async (req, res) => {
               msg: "Unauthorized access to this company's logs",
             });
         }
-        query.company_id = requester.company;
+        query.company_id = company_id;
       } else {
-        // No company assigned
-        return res
-          .status(403)
-          .json({ ok: false, msg: "No company assigned to user" });
+        query.company_id = { $in: allowedKeys };
       }
     }
 
@@ -128,13 +153,13 @@ const getStaffActivityLogs = async (req, res) => {
       if (end_date) query.timestamp.$lte = new Date(end_date);
     }
 
-    const logs = await StaffActivityLog.find(query)
+    const logs = await StaffActivityLogModel.find(query)
       .sort({ timestamp: -1 })
       .skip((page - 1) * limit)
       .limit(Number(limit))
       .populate("staff_member_id", "name lastName email role");
 
-    const total = await StaffActivityLog.countDocuments(query);
+    const total = await StaffActivityLogModel.countDocuments(query);
 
     res.json({
       ok: true,
@@ -148,6 +173,8 @@ const getStaffActivityLogs = async (req, res) => {
     res.status(500).json({ ok: false, msg: "Error fetching logs" });
   }
 };
+
+const getStaffActivityLogs = createGetStaffActivityLogs();
 
 /**
  * HTTP endpoint to register a staff activity record. The acting staff member
@@ -176,7 +203,9 @@ const createRegisterStaffActivity = ({
 
     await logStaffActivityFn({
       staff_member_id: staffMember.id,
-      company_id: staffMember.company,
+      // headerOnly: en esta ruta el body ES el contenido del log que manda el
+      // caller, así que no puede además decidir a qué compañía se atribuye.
+      company_id: resolveCompanyContext(req, { headerOnly: true }),
       action,
       target_model,
       target_id,
@@ -211,6 +240,8 @@ const getActivityVocabulary = (req, res) =>
 
 module.exports = {
   logStaffActivity,
+  findMemberships,
+  createGetStaffActivityLogs,
   getStaffActivityLogs,
   createRegisterStaffActivity,
   registerStaffActivity,

@@ -24,14 +24,16 @@ const AdminUserSchema = new Schema({
     required: true,
     unique: true,
   },
-  question: {
-    type: String,
-    required: true,
-  },
-  answer: {
-    type: String,
-    required: true,
-  },
+  // `question` / `answer` (pregunta secreta) se eliminaron: ningún flujo las
+  // leía — no hay recuperación de contraseña por pregunta secreta — y eran
+  // `required: true`, así que solo obligaban al alta a mandar datos inertes.
+  //
+  // LEGACY / SOLO PRESENTACIÓN. `role` y `role_type` NO son fuente de verdad:
+  // la autorización resuelve el rol por-compañía desde `Company.employees`
+  // (ver middlewares/authorizeMongoPermission.js). Se mantienen porque
+  // documentos existentes los traen y el frontend todavía los muestra; ningún
+  // path del backend los escribe ya. Pendiente de eliminar — ver
+  // FRONTEND_admin_user_schema_cleanup.md.
   role: {
     type: String,
     default: "Editor",
@@ -50,11 +52,10 @@ const AdminUserSchema = new Schema({
     type: Boolean,
     default: true,
   },
-  company: {
-    type: String,
-    required: true,
-    default: "",
-  },
+  // `company` se eliminó: un AdminUser pertenece a N compañías, así que un
+  // único campo no podía representar el contexto. La compañía la elige el
+  // cliente al loguearse y viaja por request (header `x-company-id`, ver
+  // helpers/companyContext.js); la membresía vive en `Company.employees`.
   imageProfile: {
     type: String,
     default: "",
@@ -99,6 +100,11 @@ const AdminUserSchema = new Schema({
     type: Boolean,
     default: false,
   },
+  // Mantenido por el frontend (PATCH /api/admin/profile/:id), no por el
+  // registro ni por la aceptación de invitaciones. Sirve como lista de
+  // compañías del usuario para el selector de login; el `role`/`role_type` de
+  // cada entrada es informativo — la autorización real sigue saliendo de
+  // `Company.employees`.
   companiesAssigned: [
     {
       company: {

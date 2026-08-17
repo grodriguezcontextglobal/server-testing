@@ -6,9 +6,15 @@ const StaffActivityLogSchema = new Schema({
     ref: "AdminUser",
     required: true,
   },
+  // Opcional a propósito: hay eventos que legítimamente no tienen compañía.
+  // El LOGIN ocurre ANTES de que el usuario elija con qué compañía trabajar
+  // (ver helpers/companyContext.js), y un audit trail no puede descartar un
+  // registro por no poder atribuirlo — con `required: true` el job terminaba
+  // en dead-letter y el evento se perdía.
   company_id: {
     type: String,
-    required: true,
+    required: false,
+    default: null,
   },
   action: {
     type: String,

@@ -210,18 +210,19 @@ test('publicRespondConsent: looks the row up by hash, not by the plaintext it re
   }
 });
 
-// Transitional: rows written before hashing shipped still hold plaintext. They
-// must keep working until the backfill migration has run everywhere, otherwise
-// every consent link already sitting in a guardian's inbox breaks.
-test('publicRespondConsent: still accepts a row whose otc is stored as legacy plaintext', async () => {
+// The transitional plaintext arm was removed 2026-08-17, once the backfill had
+// run on prod and every stored value was a hash. Only the hash may be bound —
+// binding the raw token again would let a leaked column value be replayed as a
+// consent link, which is the whole point of hashing it.
+test('publicRespondConsent: binds only the hash, never the raw token', async () => {
   const plaintext = generateOtc();
+  const seenParams = [];
 
   const pool = {
     async execute(sql, params) {
       if (/FROM school_consent WHERE otc/.test(sql)) {
-        // Simulates a pre-migration row: stored value IS the plaintext.
-        assert.equal(params[1], plaintext, 'the plaintext arm must still be bound');
-        return [[{ id: 'c-legacy', status: 'pending', otc: plaintext, otc_expires_at: new Date(Date.now() + 86400000) }]];
+        seenParams.push(params);
+        return [[]];
       }
       return [[]];
     },
@@ -235,14 +236,14 @@ test('publicRespondConsent: still accepts a row whose otc is stored as legacy pl
       res
     );
 
-    assert.equal(res.statusCode, 200);
-    assert.equal(res.body.status, 'refused');
+    assert.equal(res.statusCode, 404);
+    assert.deepEqual(seenParams[0], [hashOtc(plaintext)]);
   } finally {
     loaded.restore();
   }
 });
 
-test('publicRetrieveConsent: binds hash and plaintext, in that order', async () => {
+test('publicRetrieveConsent: binds only the hash', async () => {
   const plaintext = generateOtc();
   const seenParams = [];
 
@@ -262,7 +263,7 @@ test('publicRetrieveConsent: binds hash and plaintext, in that order', async () 
     await loaded.controller.publicRetrieveConsent({ body: { otc: plaintext } }, res);
 
     assert.equal(res.statusCode, 404);
-    assert.deepEqual(seenParams[0], [hashOtc(plaintext), plaintext]);
+    assert.deepEqual(seenParams[0], [hashOtc(plaintext)]);
   } finally {
     loaded.restore();
   }
