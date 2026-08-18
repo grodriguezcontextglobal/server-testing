@@ -16,7 +16,7 @@ const createEvent = async (request, response = express.response) => {
 
     await logStaffActivity({
       staff_member_id: request.uid,
-      company_id: event.company,
+      company_id: event.company_id,
       action: "CREATE",
       target_model: "Event",
       target_id: event.id,
@@ -64,7 +64,7 @@ const editEvent = async (request, response = response) => {
 
     await logStaffActivity({
       staff_member_id: request.uid,
-      company_id: staffEventEdited.company,
+      company_id: staffEventEdited.company_id,
       action: "UPDATE",
       target_model: "Event",
       target_id: staffEventEdited.id,
@@ -114,7 +114,7 @@ const editSubscriptionEvent = async (request, response = response) => {
 
     await logStaffActivity({
       staff_member_id: request.uid,
-      company_id: subscriptionEventEdited.company,
+      company_id: subscriptionEventEdited.company_id,
       action: "UPDATE",
       target_model: "Event",
       target_id: subscriptionEventEdited.id,
@@ -148,7 +148,7 @@ const deleteEvent = async (request, response) => {
 
     await logStaffActivity({
       staff_member_id: request.uid,
-      company_id: event.company,
+      company_id: event.company_id,
       action: "DELETE",
       target_model: "Event",
       target_id: event.id,
