@@ -54,7 +54,19 @@ const ErrorLogs = require("../../models/ErrorLogs");
 
 register("log:event", createModelInsertHandler((payload) => EventLog.create(payload)));
 register("log:notification", createModelInsertHandler((payload) => NotificationLog.create(payload)));
-register("log:staff-activity", createModelInsertHandler((payload) => StaffActivityLog.create(payload)));
+// No usa el genérico: `company_id` puede llegar como NOMBRE de compañía (los
+// call-sites de inventario no tienen otro dato) y el reporte scopea por id.
+// Ver queue/handlers/staffActivityLog.js.
+const { createStaffActivityLogHandler } = require("./staffActivityLog");
+const Company = require("../../models/Company");
+
+register(
+  "log:staff-activity",
+  createStaffActivityLogHandler((payload) => StaffActivityLog.create(payload), {
+    findCompaniesByName: (name, limit) =>
+      Company.find({ company_name: name }, { _id: 1 }).limit(limit).lean(),
+  })
+);
 // payload incluye el _id pre-generado en controller/errorLog.js (para que el
 // errorId respondido al cliente coincida con el documento que termina persistido).
 register("log:error", createModelInsertHandler((payload) => ErrorLogs.create(payload)));

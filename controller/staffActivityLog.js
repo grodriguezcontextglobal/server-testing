@@ -85,7 +85,6 @@ const createGetStaffActivityLogs = ({
     }
 
     const {
-      company_id,
       staff_member_id,
       action,
       target_model,
@@ -94,6 +93,12 @@ const createGetStaffActivityLogs = ({
       limit = 50,
       page = 1,
     } = req.query;
+
+    // La compañía sale del MISMO helper que usa el camino de escritura, no de
+    // `req.query.company_id` a secas: el cliente manda el contexto en el header
+    // `x-company-id`, así que leyendo solo el query string el reporte devolvía
+    // el historial entero sin filtrar por compañía.
+    const company_id = resolveCompanyContext(req);
 
     let query = {};
 
@@ -123,12 +128,14 @@ const createGetStaffActivityLogs = ({
       // guardan el ObjectId que llega por contexto. Se aceptan ambas claves
       // para no volver invisible el historial; ver
       // FRONTEND_admin_user_schema_cleanup.md § migración opcional.
-      const allowedKeys = memberships.flatMap((c) =>
-        [String(c._id), c.company_name].filter(Boolean)
-      );
+      const keysOf = (c) => [String(c._id), c.company_name].filter(Boolean);
 
       if (company_id) {
-        if (!allowedKeys.includes(String(company_id))) {
+        const scoped = memberships.find((c) =>
+          keysOf(c).includes(String(company_id))
+        );
+
+        if (!scoped) {
           return res
             .status(403)
             .json({
@@ -136,9 +143,13 @@ const createGetStaffActivityLogs = ({
               msg: "Unauthorized access to this company's logs",
             });
         }
-        query.company_id = company_id;
+
+        // Se filtra por AMBAS claves de esa compañía, no por la que vino en el
+        // request: pedir el id y recibir solo los registros nuevos escondería
+        // el historial de esa misma compañía guardado bajo su nombre.
+        query.company_id = { $in: keysOf(scoped) };
       } else {
-        query.company_id = { $in: allowedKeys };
+        query.company_id = { $in: memberships.flatMap(keysOf) };
       }
     }
 

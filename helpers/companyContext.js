@@ -33,10 +33,10 @@ function resolveCompanyContext(req, { headerOnly = false } = {}) {
   if (headerOnly) return headerCompanyId || null;
 
   return (
+    headerCompanyId ||
     req.params?.company_id ||
     req.body?.company_id ||
     req.query?.company_id ||
-    headerCompanyId ||
     null
   );
 }

@@ -29,3 +29,13 @@ payload.json
 # `pnpm install`/`pnpm test` reintroduce these
 pnpm-lock.yaml
 pnpm-workspace.yaml
+
+# Herramientas locales y artefactos de sesión: se regeneran por máquina, no son
+# parte del servidor.
+.claude/
+.atl/
+graphify-out/
+
+# Volcados y adjuntos sueltos que quedan en la raíz al depurar/reportar.
+diff.txt
+Server_Updates_June2026.pptx

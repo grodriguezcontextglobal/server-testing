@@ -119,6 +119,49 @@ describe("getStaffActivityLogs: alcance por Company.employees", () => {
     await handler({ uid: "S1", query: { company_id: "companyA" } }, res);
 
     assert.equal(res._body.ok, true);
+    // Filtrar por el id trae también lo guardado bajo el nombre: es el
+    // historial de la MISMA compañía, escrito antes de normalizar la clave.
+    assert.deepEqual(captured.query.company_id, { $in: ["companyA", "Acme Corp"] });
+  });
+
+  // El bug reportado: el cliente manda la compañía en el header y el reporte
+  // solo miraba req.query.company_id, así que devolvía el historial completo.
+  it("scopea por el header x-company-id, no solo por el query string", async () => {
+    const captured = {};
+    const handler = makeHandler({
+      requester: { id: "S1", email: "s1@test.com", super_user: false },
+      memberships: [
+        { _id: "companyA", company_name: "Acme Corp" },
+        { _id: "companyB", company_name: "Beta LLC" },
+      ],
+      captured,
+    });
+    const res = mockRes();
+
+    await handler(
+      { uid: "S1", query: {}, headers: { "x-company-id": "companyB" } },
+      res
+    );
+
+    assert.equal(res._body.ok, true);
+    assert.deepEqual(captured.query.company_id, { $in: ["companyB", "Beta LLC"] });
+  });
+
+  it("el super_user también queda scopeado cuando hay contexto de compañía", async () => {
+    const captured = {};
+    const handler = createGetStaffActivityLogs({
+      findAdminUserFn: async () => ({ id: "ROOT", super_user: true }),
+      findMembershipsFn: async () => [],
+      StaffActivityLogModel: makeLogModel(captured),
+    });
+    const res = mockRes();
+
+    await handler(
+      { uid: "ROOT", query: {}, headers: { "x-company-id": "companyA" } },
+      res
+    );
+
+    assert.equal(res._body.ok, true);
     assert.equal(captured.query.company_id, "companyA");
   });
 
@@ -134,7 +177,7 @@ describe("getStaffActivityLogs: alcance por Company.employees", () => {
     await handler({ uid: "S1", query: { company_id: "Acme Corp" } }, res);
 
     assert.equal(res._body.ok, true);
-    assert.equal(captured.query.company_id, "Acme Corp");
+    assert.deepEqual(captured.query.company_id, { $in: ["companyA", "Acme Corp"] });
   });
 
   it("super_user ve todo y no consulta membresías", async () => {
@@ -172,14 +215,30 @@ describe("resolveCompanyContext", () => {
     assert.equal(resolveCompanyContext({ headers: { "x-company-id": "C1" } }), "C1");
   });
 
-  it("params gana sobre body, query y header", () => {
+  // El header gana sobre params/body/query: es el contexto que el cliente
+  // eligió al loguearse, y lo que autorizó la operación. Si un valor del body
+  // pudiera pisarlo, el log quedaría atribuido a otra compañía que la que
+  // autorizó — y el reporte scopearía por una compañía que el caller eligió.
+  it("el header x-company-id gana sobre params, body y query", () => {
     const req = {
       params: { company_id: "P" },
       body: { company_id: "B" },
       query: { company_id: "Q" },
       headers: { "x-company-id": "H" },
     };
-    assert.equal(resolveCompanyContext(req), "P");
+    assert.equal(resolveCompanyContext(req), "H");
+  });
+
+  it("cae a params, body y query, en ese orden, cuando no hay header", () => {
+    assert.equal(
+      resolveCompanyContext({ params: { company_id: "P" }, body: { company_id: "B" }, query: { company_id: "Q" }, headers: {} }),
+      "P"
+    );
+    assert.equal(
+      resolveCompanyContext({ body: { company_id: "B" }, query: { company_id: "Q" }, headers: {} }),
+      "B"
+    );
+    assert.equal(resolveCompanyContext({ query: { company_id: "Q" }, headers: {} }), "Q");
   });
 
   it("headerOnly ignora params/body/query", () => {

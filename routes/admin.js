@@ -45,6 +45,10 @@ router.get("/protected", validateJWT, checkTokenVersion, (req, res) => {
   res.json({ message: "This is a protected route", user: req.user });
 });
 
+// Staff activity log
+router.post("/activity-logs", validateJWT, checkTokenVersion, registerStaffActivity);
+router.get("/activity-logs", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), getStaffActivityLogs);
+
 //create admin user
 router.post(
   "/new_admin_user",
@@ -115,9 +119,6 @@ router.post("/mfa/generate", validateJWT, generateMfaSecret);
 router.post("/mfa/verify", validateJWT, verifyMfaSetup);
 router.post("/mfa/disable", validateJWT, disableMfa);
 
-// Staff activity log
-router.post("/activity-logs", validateJWT, checkTokenVersion, registerStaffActivity);
-router.get("/activity-logs", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), getStaffActivityLogs);
 // Canonical action / target_model list for the report's filter dropdown. Static
 // metadata, so it needs no staff:read — only a valid session.
 router.get("/activity-logs/vocabulary", validateJWT, checkTokenVersion, getActivityVocabulary);
