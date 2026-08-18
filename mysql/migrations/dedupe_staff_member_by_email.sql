@@ -1,6 +1,7 @@
 -- ============================================================================
 -- A3.2 — Colapsar las filas duplicadas de `staff_member` por email
--- Runbook concreto, con los ids reales relevados en prod el 2026-08-18.
+-- EJECUTADO EN PROD EL 2026-08-18 (pasos 0 a 8). Solo quedan sin correr los
+-- dos DROP de las tablas de respaldo, al final.
 -- ============================================================================
 --
 -- PROBLEMA (FRONTEND_school_backend_asks.md § A3.2): un mismo email tiene
@@ -8,8 +9,9 @@
 -- `staff_id` y ya provocó que un login con rol scopeado cayera al rol
 -- equivocado.
 --
--- CAUSA: `insertingStaffMember` (mysql/controllers/staff.js:16) hace un INSERT
--- plano, sin upsert por email. **Este script limpia el dato, NO la causa.**
+-- CAUSA: los caminos de alta hacían un INSERT plano, sin upsert por email.
+-- Este script limpia el dato; la causa se cerró en el mismo release volviendo
+-- idempotentes esos caminos (ver PASO 8 al final).
 --
 -- CRITERIO DE CANÓNICO (el que se relevó y confirmó, no el genérico):
 --   1. Se queda la fila CON actividad en `staff_event`.
@@ -182,15 +184,25 @@ WHERE sm.staff_id IN (162, 177, 160, 200, 166, 168, 173, 175, 126, 142, 170)
 ORDER BY sm.email;
 
 
--- ─── PASO 8 · cerrar la puerta ──────────────────────────────────────────────
+-- ─── PASO 8 · cerrar la puerta ─────────────────────── ✅ APLICADO 2026-08-18
 -- Con los datos limpios, el UNIQUE impide que el INSERT plano del controller
--- vuelva a duplicar. Correrlo SOLO después de que el PASO 7 dé 0 filas.
+-- vuelva a duplicar.
 
--- ALTER TABLE staff_member ADD UNIQUE KEY uq_staff_member_email (email);
+ALTER TABLE staff_member ADD UNIQUE KEY uq_staff_member_email (email);
 
--- ⚠️ A partir de acá `insertingStaffMember` (mysql/controllers/staff.js:16)
--- devuelve error 1062 en vez de duplicar en silencio. Hay que convertirlo a
--- upsert (ask #1 de A3.2) en el MISMO release, o antes.
+-- Los tres caminos de escritura que ese índice rompía ya son idempotentes por
+-- email (ask #1 de A3.2, mismo release):
+--   · mysql/controllers/staff.js  → insertingStaffMember (POST /new_member):
+--     devuelve 200 + created:false reutilizando el staff_id existente.
+--   · controller/registration.js  → upsertStaffMemberSQL, usado por los 3
+--     call-sites (registro nuevo, usuario existente + empresa nueva,
+--     aceptación de invitación).
+-- Ambos atrapan el 1062 y releen, para la carrera de dos requests con el mismo
+-- email que pasan el SELECT a la vez.
+--
+-- ⚠️ PENDIENTE: seed/seed-school-demo.js y seed/seed-school-demo-rich.js
+-- siguen con INSERT plano. Solo afecta re-correr los seeds sobre una base que
+-- ya los tiene — fallan con 1062 en vez de duplicar.
 
 
 -- ─── LIMPIEZA (después de unos días sin incidentes) ─────────────────────────

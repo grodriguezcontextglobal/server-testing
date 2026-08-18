@@ -10,12 +10,43 @@ const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
 
 // ----- shared SQL helpers -----
 
-async function insertStaffMemberSQL(sqlConn, { first_name, last_name, email, phone_number }) {
-  const [result] = await sqlConn.execute(
-    "INSERT INTO staff_member (first_name, last_name, email, phone_number) VALUES (?, ?, ?, ?)",
-    [first_name, last_name, email, phone_number || null]
-  );
-  return result.insertId;
+/**
+ * Devuelve el `staff_id` de ese email, creando la fila solo si no existía.
+ *
+ * `staff_member.email` tiene UNIQUE (`uq_staff_member_email`, aplicado
+ * 2026-08-18 junto con la limpieza de duplicados — ver
+ * mysql/migrations/dedupe_staff_member_by_email.sql), así que un INSERT plano
+ * ahora falla con 1062 en vez de duplicar en silencio. Antes de ese índice el
+ * mismo email llegó a tener 9 filas y la resolución de `staff_id` quedaba
+ * ambigua: un login con rol scopeado terminó resolviendo al rol equivocado.
+ *
+ * El 1062 se atrapa en vez de prevenirse solo con el SELECT previo porque dos
+ * requests concurrentes con el mismo email (invitación aceptada dos veces,
+ * doble click) pasan ambos el SELECT y solo uno gana el INSERT. El que pierde
+ * relee y se queda con la fila del ganador.
+ */
+async function upsertStaffMemberSQL(sqlConn, { first_name, last_name, email, phone_number }) {
+  const findByEmail = async () => {
+    const [[row]] = await sqlConn.execute(
+      "SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1",
+      [email]
+    );
+    return row ? row.staff_id : null;
+  };
+
+  const existing = await findByEmail();
+  if (existing) return existing;
+
+  try {
+    const [result] = await sqlConn.execute(
+      "INSERT INTO staff_member (first_name, last_name, email, phone_number) VALUES (?, ?, ?, ?)",
+      [first_name, last_name, email, phone_number || null]
+    );
+    return result.insertId;
+  } catch (error) {
+    if (error?.errno === 1062 || error?.code === "ER_DUP_ENTRY") return await findByEmail();
+    throw error;
+  }
 }
 
 async function insertCompanyInfoSQL(sqlConn, { company_name, address, phone, main_email, industry }) {
@@ -165,7 +196,7 @@ const registerNewUserAndCompany = async (request, response) => {
     // --- Insertar staff_member en MySQL ---
     let sqlStaffId = null;
     try {
-      sqlStaffId = await insertStaffMemberSQL(sqlConn, {
+      sqlStaffId = await upsertStaffMemberSQL(sqlConn, {
         first_name: user.name,
         last_name: user.lastName,
         email: user.email,
@@ -306,20 +337,12 @@ const registerExistingUserNewCompany = async (request, response) => {
     let resolvedStaffId = jwtStaffId;
     if (!resolvedStaffId) {
       try {
-        const [[staffRow]] = await sqlConn.execute(
-          "SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1",
-          [adminUser.email]
-        );
-        if (staffRow) {
-          resolvedStaffId = staffRow.staff_id;
-        } else {
-          resolvedStaffId = await insertStaffMemberSQL(sqlConn, {
-            first_name: adminUser.name,
-            last_name: adminUser.lastName,
-            email: adminUser.email,
-            phone_number: adminUser.phone || null,
-          });
-        }
+        resolvedStaffId = await upsertStaffMemberSQL(sqlConn, {
+          first_name: adminUser.name,
+          last_name: adminUser.lastName,
+          email: adminUser.email,
+          phone_number: adminUser.phone || null,
+        });
       } catch (sqlErr) {
         logger.warn("staff_member lookup/insert falló para usuario existente", {
           email: adminUser.email,
@@ -487,20 +510,12 @@ const acceptInvitation = async (request, response) => {
     // ── SQL: crear o encontrar staff_member ───────────────────────────────────
     let sqlStaffId = null;
     try {
-      const [[existingStaff]] = await sqlConn.execute(
-        "SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1",
-        [user.email]
-      );
-      if (existingStaff) {
-        sqlStaffId = existingStaff.staff_id;
-      } else {
-        sqlStaffId = await insertStaffMemberSQL(sqlConn, {
-          first_name: adminUser.name,
-          last_name: adminUser.lastName,
-          email: adminUser.email,
-          phone_number: adminUser.phone || null,
-        });
-      }
+      sqlStaffId = await upsertStaffMemberSQL(sqlConn, {
+        first_name: adminUser.name,
+        last_name: adminUser.lastName,
+        email: adminUser.email,
+        phone_number: adminUser.phone || null,
+      });
     } catch (sqlErr) {
       logger.warn("staff_member insert/lookup falló para invitación", {
         email: user.email,

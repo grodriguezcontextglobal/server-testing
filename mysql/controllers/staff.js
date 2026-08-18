@@ -10,18 +10,72 @@ const { LOCATION_SCOPED_ROLES, CATEGORY_SCOPED_ROLES } = require('../helpers/sta
 // Whitelist for consultingStaffMemberInformation column filter
 const STAFF_MEMBER_COLUMNS = new Set(['id', 'first_name', 'last_name', 'email', 'phone_number']);
 
+/**
+ * Crea el staff_member, o devuelve el que ya existe con ese email.
+ *
+ * Antes insertaba siempre: un mismo email llegó a tener 9 filas y la
+ * resolución de `staff_id` quedaba ambigua — un login con rol scopeado
+ * terminó resolviendo al rol equivocado. Con el UNIQUE
+ * `uq_staff_member_email` (aplicado 2026-08-18, ver
+ * mysql/migrations/dedupe_staff_member_by_email.sql) ese INSERT plano ahora
+ * devolvería 1062, así que el endpoint pasa a ser idempotente por email.
+ *
+ * NO pisa `first_name`/`last_name`/`phone_number` de la fila existente: este
+ * endpoint es un alta, no una edición, y un alta repetida con datos peores no
+ * debería degradar un registro ya bueno. Para editar está
+ * `updatingStaffMemberInformation`.
+ *
+ * `member.insertId` sigue trayendo el staff_id en ambos casos, para no romper
+ * a quien ya leía esa propiedad.
+ */
 const insertingStaffMember = async (request, response) => {
   try {
     const { first_name, last_name, email, phone_number } = request.body;
+
+    const findByEmail = async () => {
+      const [[row]] = await connection.execute(
+        "SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1",
+        [email]
+      );
+      return row ? row.staff_id : null;
+    };
+
+    const existing = await findByEmail();
+    if (existing) {
+      return response.status(200).json({
+        ok: true,
+        created: false,
+        staff_id: existing,
+        member: { insertId: existing, affectedRows: 0 },
+      });
+    }
+
     const query = `
       INSERT INTO staff_member (first_name, last_name, email, phone_number)
       VALUES (?, ?, ?, ?)`;
     const values = [first_name, last_name, email, phone_number];
 
-    const [result] = await connection.execute(query, values);
+    let result;
+    try {
+      [result] = await connection.execute(query, values);
+    } catch (error) {
+      // Dos requests con el mismo email pasan ambos el SELECT y solo uno gana
+      // el INSERT; el que pierde se queda con la fila del ganador.
+      if (error?.errno !== 1062 && error?.code !== "ER_DUP_ENTRY") throw error;
+
+      const winner = await findByEmail();
+      return response.status(200).json({
+        ok: true,
+        created: false,
+        staff_id: winner,
+        member: { insertId: winner, affectedRows: 0 },
+      });
+    }
 
     return response.status(201).json({
       ok: true,
+      created: true,
+      staff_id: result.insertId,
       member: result,
     });
   } catch (error) {
