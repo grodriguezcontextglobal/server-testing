@@ -245,6 +245,7 @@ test('registerNewUserAndCompany: 201 — flujo exitoso — retorna token + user 
 
 test('registerNewUserAndCompany: flujo exitoso — inserta staff_member en MySQL', async () => {
   resetState();
+  sqlBehavior.staffMemberNotFound = true;
 
   const req = { body: { user: baseUserPayload(), company: baseCompanyPayload() } };
   const res = mockRes();
@@ -253,6 +254,30 @@ test('registerNewUserAndCompany: flujo exitoso — inserta staff_member en MySQL
   const staffInsert = sqlLog.find(q => q.sql.includes('INSERT INTO staff_member'));
   assert.ok(staffInsert, 'debe insertar en staff_member');
   assert.equal(staffInsert.params[2], 'ana@test.com', 'debe insertar el email correcto');
+});
+
+// `staff_member.email` tiene UNIQUE desde 2026-08-18 (ver
+// mysql/migrations/dedupe_staff_member_by_email.sql). Insertar igual devolvería
+// 1062; antes del índice devolvía una fila duplicada más, que es lo que hacía
+// ambigua la resolución de staff_id.
+test('registerNewUserAndCompany: reutiliza el staff_member existente en vez de insertar otro', async () => {
+  resetState();
+  // El default del stub SQL es "el email ya está en staff_member" (staff_id 99).
+
+  const req = { body: { user: baseUserPayload(), company: baseCompanyPayload() } };
+  const res = mockRes();
+  await registerNewUserAndCompany(req, res);
+
+  assert.equal(res.statusCode, 201);
+  assert.equal(
+    sqlLog.find(q => q.sql.includes('INSERT INTO staff_member')),
+    undefined,
+    'no debe insertar cuando el email ya existe'
+  );
+
+  const lookup = sqlLog.find(q => q.sql.includes('FROM staff_member'));
+  assert.ok(lookup, 'debe resolver el staff_id existente por email');
+  assert.equal(lookup.params[0], 'ana@test.com');
 });
 
 test('registerNewUserAndCompany: flujo exitoso — inserta company_info en MySQL', async () => {
