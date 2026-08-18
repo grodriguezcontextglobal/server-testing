@@ -13,6 +13,11 @@
 
 ## A3.1 — Persist `roleLabels` on the company document  ·  effort: XS (field whitelist)
 
+> **✅ RESUELTO (2026-08-18).** `roleLabels` es ahora un campo del schema
+> (`models/Company.js:213`), con los 10 role concepts como default, así que
+> persiste y se devuelve en las lecturas de company.
+
+
 **Problem:** renaming a role per company (e.g. Inventory Manager → "Warehouse
 Manager") works during the session but **reverts to default on the next login**.
 The frontend already `PATCH`es `roleLabels` and re-reads it at login; it's
