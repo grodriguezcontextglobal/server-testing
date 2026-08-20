@@ -115,8 +115,14 @@ router.post(
 );
 
 //inserting items in event from container item
+// Era anónima. Además del hueco obvio (INSERT al evento sin sesión), sin
+// validateJWT el job encolado queda SIN DUEÑO (context.uid = null), y entonces
+// GET /api/jobs/owned/:jobId devuelve 404 para el jobId que este endpoint
+// acaba de entregar — el cliente no podía consultar su propio trabajo.
 router.post(
   "/inserting-items-in-event-from-container",
+  validateJWT,
+  checkTokenVersion,
   insertingDeviceInEventDirectlyFromContainer,
 );
 
@@ -182,8 +188,16 @@ router.post(
 //allocate
 router.post("/allocate-device-event", validateJWT, checkTokenVersion, authorizePermission("event", "update"), allocateDeviceToEvent);
 
+// Variante de contenedor de /allocate-device-event, y era anónima mientras la
+// otra ya estaba gateada: hace UPDATE item_inv + INSERT al evento sobre los
+// item_id que expande del contenedor. Falta todavía el
+// authorizePermission("event", "update") que sí lleva su hermana — se dejó
+// fuera a propósito para no convertir esto en un 403 sorpresa para staff sin
+// ese permiso; decisión pendiente.
 router.post(
   "/allocate-device-container-event",
+  validateJWT,
+  checkTokenVersion,
   allocateDeviceMarkedAsContainerInEvent,
 );
 
