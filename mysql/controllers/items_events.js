@@ -478,10 +478,28 @@ const buildInsertDeviceEventContainerPayload = (body) => ({
   event_id: String(body.event_id),
   refDatabase: body.refDatabase,
 });
+
+// Sin dedup, el retry automático del cliente reencolaba el MISMO lote y el
+// INSERT del Go worker lo volvía a insertar (el comando ahora usa
+// INSERT IGNORE, pero eso solo cubre la fila repetida, no el trabajo repetido).
+// Mismo patrón namespaced que inventory:bulk-insert-alphanumeric
+// (mysql/controllers/item.js) y document:upload-pdf: se namespacea por tipo de
+// job para que dos endpoints distintos no choquen con la misma clave del cliente.
+const buildInsertDeviceEventContainerIdempotencyKey = (_body, request) => {
+  const clientKey =
+    typeof request?.get === "function"
+      ? request.get("Idempotency-Key") || request.get("idempotency-key")
+      : undefined;
+  return clientKey && String(clientKey).trim()
+    ? `go-worker:insert-device-event-container:${String(clientKey).trim()}`
+    : undefined;
+};
+
 const insertingDeviceInEventDirectlyFromContainer = createQueuedJobController(
   "go-worker:insert-device-event-container",
   buildInsertDeviceEventContainerPayload,
   {
+    idempotencyKeyFn: buildInsertDeviceEventContainerIdempotencyKey,
     buildSuccessBody: (job) => ({ msg: "Items queued for insertion into event", ok: true, jobId: job.id }),
   }
 );
@@ -551,17 +569,32 @@ function createAllocateDeviceToEvent({
 
       const connection = connectionFn();
       const placeholders = data.map(() => "?").join(",");
-      const query = `SELECT item_id from item_inv
+      // serial_number entra al SELECT para poder decir CUÁLES seriales no
+      // resolvieron: con solo item_id, un match parcial (7 de 10) era
+      // indistinguible de un match completo y el evento salía incompleto
+      // reportado como completo. Es aditivo: quien lea result[].item_id sigue igual.
+      const query = `SELECT item_id, serial_number from item_inv
                      where company_id = ? AND item_group = ?
                      AND category_name = ?
                      AND serial_number IN (${placeholders})`;
       const values = [company_id, item_group, category_name, ...data];
       const [result] = await connection.execute(query, values);
 
+      const matchedSerials = new Set(result.map((item) => String(item.serial_number)));
+      const unresolvedSerials = data.filter((serial) => !matchedSerials.has(String(serial)));
+
+      // 422, no 500: que los cuatro filtros (company_id + item_group +
+      // category_name + serial) no casen es un payload equivocado, no una falla
+      // del servidor. Como 5xx el cliente lo reintentaba en vano y el UI no
+      // podía distinguir "corregí el serial" de "reintentá más tarde".
+      // El `msg` se conserva textual para no romper a quien lo compare.
       if (result.length === 0) {
-        return response.status(500).json({
+        return response.status(422).json({
+          matched_count: 0,
           msg: "No items to allocate",
           ok: false,
+          requested_count: data.length,
+          unresolved_serials: unresolvedSerials,
         });
       }
 
@@ -578,8 +611,11 @@ function createAllocateDeviceToEvent({
 
       return response.status(200).json({
         inserted: insertedItemInEvent,
+        matched_count: result.length,
         ok: true,
+        requested_count: data.length,
         result,
+        unresolved_serials: unresolvedSerials,
         updateResult,
       });
     } catch (error) {
@@ -593,165 +629,196 @@ function createAllocateDeviceToEvent({
 }
 const allocateDeviceToEvent = createAllocateDeviceToEvent();
 
-const allocateDeviceMarkedAsContainerInEvent = async (request, response) => {
-  let connection;
+// Un placeholder por item EXPANDIDO (contenedores + su contenido) en UNA sola
+// sentencia: 500 contenedores de 20 hijos son 10.500 placeholders, arriba del
+// max_allowed_packet y del límite de Vitess. Se trocea igual que
+// lockItemsForEvent (mismo CHUNK_SIZE), y como los lotes viven dentro de la
+// misma transacción, sigue siendo todo-o-nada.
+const CONTAINER_CHUNK_SIZE = 1000;
 
-  try {
-    const { company_id, event_id, data, warehouse, eventName, company_id_nosql, logistic_status } = request.body;
-
-    if (!company_id || !event_id) {
-      return response
-        .status(400)
-        .json({ message: "company_id and event_id are required.", ok: false });
-    }
-
-    if (!Array.isArray(data) || data.length === 0) {
-      return response.status(400).json({
-        message: "No items were provided to be allocated to the event.",
-        ok: false,
-      });
-    }
-
-    connection = await getConnection().getConnection();
-    await connection.beginTransaction();
-
-    const placeholders = data.map(() => "?").join(",");
-    const containerQuery = `
-      SELECT ii.item_id, ci.child_ids
-      FROM container_items ci
-      JOIN item_inv ii ON ii.item_id = ci.container_item_id
-      WHERE ii.serial_number IN (${placeholders})
-        AND ii.company_id = ?;
-    `;
-
-    const [containers] = await connection.execute(containerQuery, [
-      ...data,
-      company_id,
-    ]);
-
-    if (containers.length === 0) {
-      await connection.rollback();
-      return response.status(404).json({
-        message: "No containers found with the provided serial numbers.",
-        ok: false,
-      });
-    }
-
-    const containerItemIds = containers.map((c) => c.item_id);
-
-    const childItemIds = containers
-      .flatMap((c) => {
-        if (!c.child_ids) return [];
-        if (Array.isArray(c.child_ids)) return c.child_ids;
-        if (typeof c.child_ids === "string") {
-          try {
-            const parsed = JSON.parse(c.child_ids);
-            return Array.isArray(parsed) ? parsed : [];
-          } catch {
-            return [];
-          }
-        }
-        return [];
-      })
-      .filter((id) => id != null);
-
-    const allItemsToProcess = [
-      ...new Set([...containerItemIds, ...childItemIds]),
-    ];
-
-    if (allItemsToProcess.length === 0) {
-      await connection.rollback();
-      return response
-        .status(200)
-        .json({ message: "The specified containers are empty.", ok: true });
-    }
-
-    // 1) Update warehouse + 2) Assign to event (do both in SQL transaction)
-    const allItemsPlaceholder = allItemsToProcess.map(() => "?").join(",");
-
-    const updateQuery = `
-      UPDATE item_inv
-      SET warehouse = ?, logistic_status = ?
-      WHERE company_id = ?
-        AND item_id IN (${allItemsPlaceholder});
-    `;
-    await connection.execute(updateQuery, [warehouse, logistic_status, company_id, ...allItemsToProcess]);
-
-    const insertPlaceholders = allItemsToProcess.map(() => "(?, ?)").join(", ");
-    const insertQuery = `
-      INSERT IGNORE INTO item_inv_assigned_event (event_id, item_id)
-      VALUES ${insertPlaceholders};
-    `;
-    const insertValues = allItemsToProcess.flatMap((id) => [event_id, id]);
-    await connection.execute(insertQuery, insertValues);
-
-    // Build props only for children (the receivers inside the container)
-    let resultProps = [];
-    if (childItemIds.length > 0) {
-      const placeholderChildren = childItemIds.map(() => "?").join(",");
-      const queryToPassAsPropsQuery = `
-        SELECT item_group, category_name, serial_number
-        FROM item_inv
-        WHERE company_id = ?
-          AND item_id IN (${placeholderChildren});
-      `;
-      const [rows] = await connection.execute(queryToPassAsPropsQuery, [
-        company_id,
-        ...childItemIds,
-      ]);
-      resultProps = rows;
-    }
-
-    const [companyInfo] = await connection.execute(
-      `SELECT company_name FROM company_info WHERE company_id = ?`,
-      [company_id],
-    );
-    const providerName = companyInfo?.[0]?.company_name ?? "N/A";
-
-    // Commit SQL first (avoids partial rollback between SQL and Mongo)
-    await connection.commit();
-
-    // Now push to Mongo pool (only if there are child devices)
-    if (resultProps.length > 0) {
-      const poolPayload = {
-        type: resultProps[0]?.item_group,
-        activity: false,
-        comment: "No comment.",
-        company: company_id_nosql,
-        deviceList: resultProps.map((item) => ({
-          category_name: item.category_name,
-          device: item.serial_number,
-          item_group: item.item_group,
-        })),
-        eventSelected: eventName,
-        provider: providerName,
-        status: "Operational",
-      };
-      await poolReceiversBulkWorker(poolPayload);
-    }
-
-    return response.status(200).json({
-      message: `${allItemsToProcess.length} total items (including containers and their contents) were allocated to the event.`,
-      ok: true,
-      props: resultProps,
-      result: { allItemsToProcess },
-    });
-  } catch (error) {
-    if (connection) {
-      try {
-        await connection.rollback();
-      } catch { }
-    }
-    logger.error(error);
-
-    return response.status(500).json({
-      error: error?.message || "Unknown error",
-      ok: false,
-    });
-  } finally {
-    if (connection) connection.release();
+const chunkList = (items, size = CONTAINER_CHUNK_SIZE) => {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
   }
+  return chunks;
 };
+
+// Factory con inyección por la misma razón que createAllocateDeviceToEvent
+// arriba: el handler toma la conexión y el pool de Mongo del módulo, así que
+// sin esto no hay forma de verificar el troceo sin una DB real.
+function createAllocateDeviceMarkedAsContainerInEvent({
+  connectionFn = getConnection,
+  poolReceiversBulkFn = poolReceiversBulkWorker,
+  chunkSize = CONTAINER_CHUNK_SIZE,
+} = {}) {
+  return async function allocateDeviceMarkedAsContainerInEvent(request, response) {
+    let connection;
+
+    try {
+      const { company_id, event_id, data, warehouse, eventName, company_id_nosql, logistic_status } = request.body;
+
+      if (!company_id || !event_id) {
+        return response
+          .status(400)
+          .json({ message: "company_id and event_id are required.", ok: false });
+      }
+
+      if (!Array.isArray(data) || data.length === 0) {
+        return response.status(400).json({
+          message: "No items were provided to be allocated to the event.",
+          ok: false,
+        });
+      }
+
+      connection = await connectionFn().getConnection();
+      await connection.beginTransaction();
+
+      const containers = [];
+      for (const serialChunk of chunkList(data, chunkSize)) {
+        const placeholders = serialChunk.map(() => "?").join(",");
+        const containerQuery = `
+          SELECT ii.item_id, ci.child_ids
+          FROM container_items ci
+          JOIN item_inv ii ON ii.item_id = ci.container_item_id
+          WHERE ii.serial_number IN (${placeholders})
+            AND ii.company_id = ?;
+        `;
+
+        const [rows] = await connection.execute(containerQuery, [
+          ...serialChunk,
+          company_id,
+        ]);
+        containers.push(...rows);
+      }
+
+      if (containers.length === 0) {
+        await connection.rollback();
+        return response.status(404).json({
+          message: "No containers found with the provided serial numbers.",
+          ok: false,
+        });
+      }
+
+      const containerItemIds = containers.map((c) => c.item_id);
+
+      const childItemIds = containers
+        .flatMap((c) => {
+          if (!c.child_ids) return [];
+          if (Array.isArray(c.child_ids)) return c.child_ids;
+          if (typeof c.child_ids === "string") {
+            try {
+              const parsed = JSON.parse(c.child_ids);
+              return Array.isArray(parsed) ? parsed : [];
+            } catch {
+              return [];
+            }
+          }
+          return [];
+        })
+        .filter((id) => id != null);
+
+      const allItemsToProcess = [
+        ...new Set([...containerItemIds, ...childItemIds]),
+      ];
+
+      if (allItemsToProcess.length === 0) {
+        await connection.rollback();
+        return response
+          .status(200)
+          .json({ message: "The specified containers are empty.", ok: true });
+      }
+
+      // 1) Update warehouse + 2) Assign to event (do both in SQL transaction)
+      for (const itemChunk of chunkList(allItemsToProcess, chunkSize)) {
+        const allItemsPlaceholder = itemChunk.map(() => "?").join(",");
+
+        const updateQuery = `
+          UPDATE item_inv
+          SET warehouse = ?, logistic_status = ?
+          WHERE company_id = ?
+            AND item_id IN (${allItemsPlaceholder});
+        `;
+        await connection.execute(updateQuery, [warehouse, logistic_status, company_id, ...itemChunk]);
+
+        const insertPlaceholders = itemChunk.map(() => "(?, ?)").join(", ");
+        const insertQuery = `
+          INSERT IGNORE INTO item_inv_assigned_event (event_id, item_id)
+          VALUES ${insertPlaceholders};
+        `;
+        const insertValues = itemChunk.flatMap((id) => [event_id, id]);
+        await connection.execute(insertQuery, insertValues);
+      }
+
+      // Build props only for children (the receivers inside the container)
+      const resultProps = [];
+      for (const childChunk of chunkList(childItemIds, chunkSize)) {
+        const placeholderChildren = childChunk.map(() => "?").join(",");
+        const queryToPassAsPropsQuery = `
+          SELECT item_group, category_name, serial_number
+          FROM item_inv
+          WHERE company_id = ?
+            AND item_id IN (${placeholderChildren});
+        `;
+        const [rows] = await connection.execute(queryToPassAsPropsQuery, [
+          company_id,
+          ...childChunk,
+        ]);
+        resultProps.push(...rows);
+      }
+
+      const [companyInfo] = await connection.execute(
+        `SELECT company_name FROM company_info WHERE company_id = ?`,
+        [company_id],
+      );
+      const providerName = companyInfo?.[0]?.company_name ?? "N/A";
+
+      // Commit SQL first (avoids partial rollback between SQL and Mongo)
+      await connection.commit();
+
+      // Now push to Mongo pool (only if there are child devices)
+      if (resultProps.length > 0) {
+        const poolPayload = {
+          type: resultProps[0]?.item_group,
+          activity: false,
+          comment: "No comment.",
+          company: company_id_nosql,
+          deviceList: resultProps.map((item) => ({
+            category_name: item.category_name,
+            device: item.serial_number,
+            item_group: item.item_group,
+          })),
+          eventSelected: eventName,
+          provider: providerName,
+          status: "Operational",
+        };
+        await poolReceiversBulkFn(poolPayload);
+      }
+
+      return response.status(200).json({
+        message: `${allItemsToProcess.length} total items (including containers and their contents) were allocated to the event.`,
+        ok: true,
+        props: resultProps,
+        result: { allItemsToProcess },
+      });
+    } catch (error) {
+      if (connection) {
+        try {
+          await connection.rollback();
+        } catch { }
+      }
+      logger.error(error);
+
+      return response.status(500).json({
+        error: error?.message || "Unknown error",
+        ok: false,
+      });
+    } finally {
+      if (connection) connection.release();
+    }
+  };
+}
+const allocateDeviceMarkedAsContainerInEvent = createAllocateDeviceMarkedAsContainerInEvent();
 
 const lockItemsForEvent = async (request, response) => {
   let connection;
@@ -880,9 +947,12 @@ const removeReservedItemsInInventoryForEvent = async (request, response) => {
 module.exports = {
   allocateDeviceMarkedAsContainerInEvent,
   allocateDeviceToEvent,
+  chunkList,
+  createAllocateDeviceMarkedAsContainerInEvent,
   createAllocateDeviceToEvent,
   createInsertingItemInEvent,
   performInsertingItemInEvent,
+  buildInsertDeviceEventContainerIdempotencyKey,
   buildInsertDeviceEventContainerPayload,
   bulkUpdateEventItemShipping,
   checkingInventoryCurrentState,

@@ -199,10 +199,14 @@ func executeCommand(command string, byteValue []byte) Response {
 			if err := json.Unmarshal(byteValue, &req); err != nil {
 				return Response{Status: "error", Message: fmt.Sprintf("Invalid JSON format: %v", err)}
 			}
-			if err := InsertDeviceInEventDirectlyFromContainer(db, req); err != nil {
+			inserted, err := InsertDeviceInEventDirectlyFromContainer(db, req)
+			if err != nil {
 				return Response{Status: "error", Message: fmt.Sprintf("Device container insert failed: %v", err)}
 			}
-			return Response{Status: "success", Message: "Devices from container inserted successfully"}
+			return Response{Status: "success", Message: "Devices from container inserted successfully", Data: map[string]interface{}{
+				"inserted_items": inserted,
+				"total_items":    len(req.RefDatabase),
+			}}
 		} else if command == "insert-item-event" {
 			var req InsertItemEventRequest
 			if err := json.Unmarshal(byteValue, &req); err != nil {

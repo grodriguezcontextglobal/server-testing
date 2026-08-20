@@ -112,23 +112,47 @@ type InsertDeviceFromContainerRequest struct {
 	RefDatabase []map[string]interface{} `json:"refDatabase"`
 }
 
-// InsertDeviceInEventDirectlyFromContainer handles bulk insert from container
-func InsertDeviceInEventDirectlyFromContainer(db *sql.DB, req InsertDeviceFromContainerRequest) error {
+// InsertDeviceInEventDirectlyFromContainer handles bulk insert from container.
+// Devuelve cuántas filas insertó realmente, para que el job de la cola pueda
+// reportar "N de M" en vez de un mensaje genérico — igual que insert-item-event.
+func InsertDeviceInEventDirectlyFromContainer(db *sql.DB, req InsertDeviceFromContainerRequest) (int64, error) {
 	LogInfo("Starting InsertDeviceInEventDirectlyFromContainer", map[string]interface{}{
 		"event_id":   req.EventID,
 		"item_count": len(req.RefDatabase),
 	})
 
 	if len(req.RefDatabase) == 0 {
-		return nil
+		return 0, nil
 	}
 
-	query := `INSERT INTO item_inv_assigned_event (item_id, event_id) VALUES `
+	// INSERT IGNORE: este comando se encola y el cliente reintenta, así que el
+	// mismo lote puede llegar dos veces; con INSERT plano duplicaba filas en
+	// item_inv_assigned_event. El camino síncrono equivalente
+	// (allocateDeviceMarkedAsContainerInEvent) ya usaba IGNORE.
+	// Efecto secundario útil: RowsAffected pasa a contar solo lo realmente
+	// insertado, así que total - inserted = lo que ya estaba asignado.
+	query := `INSERT IGNORE INTO item_inv_assigned_event (item_id, event_id) VALUES `
 	var values []interface{}
 	var placeholders []string
+	var inserted int64
 
 	batchSize := 1000
 	currentBatch := 0
+
+	flush := func() error {
+		stmt := query + strings.Join(placeholders, ",")
+		res, err := db.Exec(stmt, values...)
+		if err != nil {
+			return err
+		}
+		if affected, err := res.RowsAffected(); err == nil {
+			inserted += affected
+		}
+		placeholders = nil
+		values = nil
+		currentBatch = 0
+		return nil
+	}
 
 	for _, item := range req.RefDatabase {
 		itemID := item["item_id"]
@@ -137,26 +161,19 @@ func InsertDeviceInEventDirectlyFromContainer(db *sql.DB, req InsertDeviceFromCo
 
 		currentBatch++
 		if currentBatch >= batchSize {
-			stmt := query + strings.Join(placeholders, ",")
-			_, err := db.Exec(stmt, values...)
-			if err != nil {
-				return err
+			if err := flush(); err != nil {
+				return inserted, err
 			}
-			placeholders = nil
-			values = nil
-			currentBatch = 0
 		}
 	}
 
 	if currentBatch > 0 {
-		stmt := query + strings.Join(placeholders, ",")
-		_, err := db.Exec(stmt, values...)
-		if err != nil {
-			return err
+		if err := flush(); err != nil {
+			return inserted, err
 		}
 	}
 
-	return nil
+	return inserted, nil
 }
 
 // InsertItemEventRequest matches the Node.js request body

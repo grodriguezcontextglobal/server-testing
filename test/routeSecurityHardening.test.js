@@ -344,6 +344,35 @@ test('mysql/routes/inventory.js: PUT /container/:container_item_id tiene validat
 });
 
 // ════════════════════════════════════════════════════════════════════════════
+// BLOQUE — rutas de contenedor en evento (mysql/routes/events.js)
+// RED: las dos eran anónimas mientras su hermana /allocate-device-event ya
+// estaba gateada, y las dos escriben (UPDATE item_inv + INSERT al evento).
+// Además, sin validateJWT el job que encola /inserting-items-in-event-from-container
+// queda sin dueño (context.uid = null) y GET /api/jobs/owned/:jobId responde 404
+// para el jobId que el propio endpoint acaba de devolver.
+// ════════════════════════════════════════════════════════════════════════════
+
+test('mysql/routes/events.js: POST /inserting-items-in-event-from-container tiene validateJWT', () => {
+  const router = loadRouter('../mysql/routes/events');
+  const handlers = getRouteHandlers(router, 'POST', '/inserting-items-in-event-from-container');
+  assert.ok(handlers !== null, 'La ruta POST /inserting-items-in-event-from-container debe existir');
+  assert.ok(
+    handlers.includes(validateJWT),
+    'validateJWT debe estar en POST /inserting-items-in-event-from-container (si no, el job queda sin dueño)',
+  );
+});
+
+test('mysql/routes/events.js: POST /allocate-device-container-event tiene validateJWT', () => {
+  const router = loadRouter('../mysql/routes/events');
+  const handlers = getRouteHandlers(router, 'POST', '/allocate-device-container-event');
+  assert.ok(handlers !== null, 'La ruta POST /allocate-device-container-event debe existir');
+  assert.ok(
+    handlers.includes(validateJWT),
+    'validateJWT debe estar en POST /allocate-device-container-event',
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // BLOQUE — /inventory-based-on-submitted-parameters (las 3 rutas)
 //
 // consultingCompanyInventoryBasedOnSubmittedParameters EJECUTA el SQL que
