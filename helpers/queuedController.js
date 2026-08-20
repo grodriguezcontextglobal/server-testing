@@ -24,7 +24,9 @@ const defaultLogger = require("./logger");
  * @param {(body: object) => object|null} [opts.validate] Validación de entrada que corre ANTES de
  *   enqueue. Si devuelve `{status, body}`, responde eso y NO encola (preserva los 400 existentes
  *   en vez de convertirlos en 500). Si devuelve null/undefined, sigue normalmente.
- * @param {(body: object) => string} [opts.idempotencyKeyFn] Clave de dedup si hay una entidad natural.
+ * @param {(body: object, req: object) => (string|undefined)} [opts.idempotencyKeyFn] Clave de dedup si hay una entidad natural.
+ *   Recibe también la request para poder leer un header `Idempotency-Key` que manda el cliente
+ *   (no toda clave de dedup vive en el body). Devolver `undefined` = no deduplicar.
  * @param {(job: object) => object} [opts.buildSuccessBody]  Personaliza la respuesta 202 (default: {ok:true, jobId}).
  * @param {(body: object) => object} [opts.buildSkippedBody] Respuesta cuando buildPayload devuelve null (default: {ok:true}).
  * @param {Function} [opts.enqueueFn]
@@ -58,7 +60,7 @@ function createQueuedJobController(
       }
 
       const job = await enqueueFn(type, payload, {
-        idempotencyKey: idempotencyKeyFn ? idempotencyKeyFn(request.body) : undefined,
+        idempotencyKey: idempotencyKeyFn ? idempotencyKeyFn(request.body, request) : undefined,
         context: extractContextFn(request),
       });
 
@@ -90,7 +92,7 @@ function createQueuedJobController(
  * @param {(body: object) => (object|Promise<object>)} buildPayload
  * @param {object} [opts]
  * @param {(body: object) => object|null} [opts.validate]
- * @param {(body: object) => string} [opts.idempotencyKeyFn]
+ * @param {(body: object, req: object) => (string|undefined)} [opts.idempotencyKeyFn]
  * @param {number} [opts.syncStatus=200]              Status cuando termina a tiempo.
  * @param {(result: any) => object} [opts.buildSyncBody] Cuerpo cuando termina a tiempo (default: el `result` tal cual).
  * @param {number} [opts.failedStatus=500]            Status cuando el job termina en failed/dead dentro de la espera.
@@ -159,7 +161,7 @@ async function waitForJobOutcome(
  * @param {(body: object) => (object|Promise<object>)} buildPayload
  * @param {object} [opts]
  * @param {(body: object) => object|null} [opts.validate]
- * @param {(body: object) => string} [opts.idempotencyKeyFn]
+ * @param {(body: object, req: object) => (string|undefined)} [opts.idempotencyKeyFn]
  * @param {number} [opts.syncStatus=200]              Status cuando termina a tiempo.
  * @param {(result: any) => object} [opts.buildSyncBody] Cuerpo cuando termina a tiempo (default: el `result` tal cual).
  * @param {number} [opts.failedStatus=500]            Status cuando el job termina en failed/dead dentro de la espera.
@@ -209,7 +211,7 @@ function createSyncOrQueuedController(
 
       const payload = await buildPayload(request.body);
       const job = await enqueueFn(type, payload, {
-        idempotencyKey: idempotencyKeyFn ? idempotencyKeyFn(request.body) : undefined,
+        idempotencyKey: idempotencyKeyFn ? idempotencyKeyFn(request.body, request) : undefined,
         context: extractContextFn(request),
       });
 
