@@ -12577,8 +12577,42 @@
  },
  {
   "method": "POST",
+  "endpoint": "/api/school/consent/list",
+  "routeFile": "mysql/routes/school.js:84",
+  "handler": "listCompanyConsents",
+  "middlewares": [
+   "canRead"
+  ],
+  "source": "mysql/controllers/school.js:1254",
+  "viaFactory": null,
+  "body": [
+   "company_id",
+   "page",
+   "page_size",
+   "status"
+  ],
+  "params": [],
+  "query": [],
+  "headers": [],
+  "required": [
+   "company_id"
+  ],
+  "schemaTypes": {},
+  "ignoresBody": false,
+  "allowed": [],
+  "identifiers": [],
+  "dynamic": [],
+  "notes": [],
+  "statusCodes": [
+   "200",
+   "400",
+   "500"
+  ]
+ },
+ {
+  "method": "POST",
   "endpoint": "/api/school/consent/public/respond",
-  "routeFile": "mysql/routes/school.js:80",
+  "routeFile": "mysql/routes/school.js:81",
   "handler": "publicRespondConsent",
   "middlewares": [],
   "source": "mysql/controllers/school.js:1149",
@@ -12613,7 +12647,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/consent/public/retrieve",
-  "routeFile": "mysql/routes/school.js:79",
+  "routeFile": "mysql/routes/school.js:80",
   "handler": "publicRetrieveConsent",
   "middlewares": [],
   "source": "mysql/controllers/school.js:984",
@@ -12640,7 +12674,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/consent/record",
-  "routeFile": "mysql/routes/school.js:76",
+  "routeFile": "mysql/routes/school.js:77",
   "handler": "recordConsent",
   "middlewares": [
    "canCreate"
@@ -12682,7 +12716,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/consent/request",
-  "routeFile": "mysql/routes/school.js:77",
+  "routeFile": "mysql/routes/school.js:78",
   "handler": "requestConsent",
   "middlewares": [
    "canCreate"
@@ -12720,7 +12754,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/consent/resend",
-  "routeFile": "mysql/routes/school.js:78",
+  "routeFile": "mysql/routes/school.js:79",
   "handler": "resendConsent",
   "middlewares": [
    "canCreate"
@@ -12755,12 +12789,12 @@
  {
   "method": "POST",
   "endpoint": "/api/school/consent/status",
-  "routeFile": "mysql/routes/school.js:82",
+  "routeFile": "mysql/routes/school.js:85",
   "handler": "consentStatus",
   "middlewares": [
    "canRead"
   ],
-  "source": "mysql/controllers/school.js:1229",
+  "source": "mysql/controllers/school.js:1334",
   "viaFactory": null,
   "body": [
    "company_id",
@@ -12788,7 +12822,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/consent",
-  "routeFile": "mysql/routes/school.js:81",
+  "routeFile": "mysql/routes/school.js:82",
   "handler": "listMemberConsents",
   "middlewares": [
    "canRead"
@@ -12821,7 +12855,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/dashboard",
-  "routeFile": "mysql/routes/school.js:60",
+  "routeFile": "mysql/routes/school.js:61",
   "handler": "schoolDashboard",
   "middlewares": [
    "canRead"
@@ -12852,7 +12886,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/guardians/add",
-  "routeFile": "mysql/routes/school.js:69",
+  "routeFile": "mysql/routes/school.js:70",
   "handler": "addStudentGuardian",
   "middlewares": [
    "canCreate"
@@ -12898,7 +12932,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/guardians/search",
-  "routeFile": "mysql/routes/school.js:72",
+  "routeFile": "mysql/routes/school.js:73",
   "handler": "searchGuardians",
   "middlewares": [
    "canRead"
@@ -12935,7 +12969,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/guardians",
-  "routeFile": "mysql/routes/school.js:66",
+  "routeFile": "mysql/routes/school.js:67",
   "handler": "listStudentGuardians",
   "middlewares": [
    "canRead"
@@ -12968,7 +13002,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/roster",
-  "routeFile": "mysql/routes/school.js:63",
+  "routeFile": "mysql/routes/school.js:64",
   "handler": "schoolRoster",
   "middlewares": [
    "canRead"
@@ -13001,12 +13035,12 @@
  {
   "method": "POST",
   "endpoint": "/api/school/settings/consent-enforcement",
-  "routeFile": "mysql/routes/school.js:86",
+  "routeFile": "mysql/routes/school.js:89",
   "handler": "setConsentEnforcement",
   "middlewares": [
    "canUpdate"
   ],
-  "source": "mysql/controllers/school.js:1318",
+  "source": "mysql/controllers/school.js:1423",
   "viaFactory": null,
   "body": [
    "company_id",
@@ -13036,12 +13070,12 @@
  {
   "method": "POST",
   "endpoint": "/api/school/settings",
-  "routeFile": "mysql/routes/school.js:85",
+  "routeFile": "mysql/routes/school.js:88",
   "handler": "getSchoolSettings",
   "middlewares": [
    "canRead"
   ],
-  "source": "mysql/controllers/school.js:1276",
+  "source": "mysql/controllers/school.js:1381",
   "viaFactory": null,
   "body": [
    "company_id"
@@ -13067,7 +13101,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/student/access-log",
-  "routeFile": "mysql/routes/school.js:91",
+  "routeFile": "mysql/routes/school.js:94",
   "handler": "studentAccessLog",
   "middlewares": [
    "canRead"
@@ -13098,7 +13132,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/student/erase",
-  "routeFile": "mysql/routes/school.js:90",
+  "routeFile": "mysql/routes/school.js:93",
   "handler": "studentErase",
   "middlewares": [
    "canUpdate"
@@ -13129,7 +13163,7 @@
  {
   "method": "POST",
   "endpoint": "/api/school/student/export",
-  "routeFile": "mysql/routes/school.js:89",
+  "routeFile": "mysql/routes/school.js:92",
   "handler": "studentExport",
   "middlewares": [
    "canRead"

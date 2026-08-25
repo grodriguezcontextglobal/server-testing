@@ -18,7 +18,7 @@ Contrapartida tipada: **`docs/api-payloads.d.ts`** (interfaces + mapa `ApiEndpoi
 - Los tipos NO están en esta tabla a propósito: viven en el `.d.ts`, donde se marca que
   son inferidos.
 
-Cobertura: **450 de 485** endpoints montados tienen payload detectado.
+Cobertura: **451 de 486** endpoints montados tienen payload detectado.
 Routers presentes en el repo pero **no montados** en `index.js` (no existen en runtime): `routes/twilio.js`, `mysql/routes/location_manager.js`, `routes/cloudinary.js`.
 
 ## `/api/admin`
@@ -611,20 +611,21 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
+| POST | `/api/school/consent/list` | `company_id` | `page` `page_size` `status` | — | — | `canRead` | `mysql/controllers/school.js:1254` |
 | POST | `/api/school/consent/public/respond` | `signer_name` | `decision` `otc` | — | — | — | `mysql/controllers/school.js:1149` |
 | POST | `/api/school/consent/public/retrieve` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/school.js:984` |
 | POST | `/api/school/consent/record` | `company_id` `member_id` `signer_name` | `guardian_id` `method` `policy_type` `policy_version` `signer_email` | — | — | `canCreate` | `mysql/controllers/school.js:703` |
 | POST | `/api/school/consent/request` | `company_id` `member_id` | `guardian_id` `policy_type` `policy_version` | — | — | `canCreate` | `mysql/controllers/school.js:748` |
 | POST | `/api/school/consent/resend` | — | `company_id` `member_id` `policy_type` `policy_version` | — | — | `canCreate` | `mysql/controllers/school.js:885` |
-| POST | `/api/school/consent/status` | `company_id` | `policy_type` `policy_version` | — | — | `canRead` | `mysql/controllers/school.js:1229` |
+| POST | `/api/school/consent/status` | `company_id` | `policy_type` `policy_version` | — | — | `canRead` | `mysql/controllers/school.js:1334` |
 | POST | `/api/school/consent` | `company_id` `member_id` | — | — | — | `canRead` | `mysql/controllers/school.js:1206` |
 | POST | `/api/school/dashboard` | `company_id` | — | — | — | `canRead` | `mysql/controllers/school.js:76` |
 | POST | `/api/school/guardians/add` | `company_id` `email` `first_name` `guardian_id` `last_name` `member_id` | `is_primary` `phone_number` `relationship` | — | — | `canCreate` | `mysql/controllers/school.js:498` |
 | POST | `/api/school/guardians/search` | `company_id` `email` `guardian_id` `member_id` | — | — | — | `canRead` | `mysql/controllers/school.js:603` |
 | POST | `/api/school/guardians` | `company_id` `member_id` | — | — | — | `canRead` | `mysql/controllers/school.js:465` |
 | POST | `/api/school/roster` | `company_id` | `grade` `homeroom` | — | — | `canRead` | `mysql/controllers/school.js:107` |
-| POST | `/api/school/settings/consent-enforcement` | `company_id` | `consent_document_id` `enforce` `enforce_under_13` `required_consent_policy_version` | — | — | `canUpdate` | `mysql/controllers/school.js:1318` |
-| POST | `/api/school/settings` | `company_id` | — | — | — | `canRead` | `mysql/controllers/school.js:1276` |
+| POST | `/api/school/settings/consent-enforcement` | `company_id` | `consent_document_id` `enforce` `enforce_under_13` `required_consent_policy_version` | — | — | `canUpdate` | `mysql/controllers/school.js:1423` |
+| POST | `/api/school/settings` | `company_id` | — | — | — | `canRead` | `mysql/controllers/school.js:1381` |
 | POST | `/api/school/student/access-log` | — | `company_id` `member_id` `type` | — | — | `canRead` | `mysql/controllers/school.js:430` |
 | POST | `/api/school/student/erase` | — | `company_id` `member_id` | — | — | `canUpdate` | `mysql/controllers/school.js:370` |
 | POST | `/api/school/student/export` | — | `company_id` `member_id` | — | — | `canRead` | `mysql/controllers/school.js:191` |

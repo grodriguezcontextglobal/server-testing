@@ -5514,9 +5514,23 @@ export interface PostRegistrationNewBody {
 }
 
 /**
+ * `POST /api/school/consent/list`
+ * handler: listCompanyConsents — mysql/controllers/school.js:1254
+ * ruta: mysql/routes/school.js:84
+ * auth: canRead
+ * status: 200, 400, 500
+ */
+export interface PostSchoolConsentListBody {
+  company_id: number;
+  page?: number;
+  page_size?: number;
+  status?: string;
+}
+
+/**
  * `POST /api/school/consent/public/respond`
  * handler: publicRespondConsent — mysql/controllers/school.js:1149
- * ruta: mysql/routes/school.js:80
+ * ruta: mysql/routes/school.js:81
  * auth: sin middleware de auth en la ruta
  * headers: user-agent
  * status: 200, 400, 404, 410, 500
@@ -5530,7 +5544,7 @@ export interface PostSchoolConsentPublicRespondBody {
 /**
  * `POST /api/school/consent/public/retrieve`
  * handler: publicRetrieveConsent — mysql/controllers/school.js:984
- * ruta: mysql/routes/school.js:79
+ * ruta: mysql/routes/school.js:80
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 200, 400, 404, 410, 500
@@ -5539,7 +5553,7 @@ export interface PostSchoolConsentPublicRespondBody {
 /**
  * `POST /api/school/consent/record`
  * handler: recordConsent — mysql/controllers/school.js:703
- * ruta: mysql/routes/school.js:76
+ * ruta: mysql/routes/school.js:77
  * auth: canCreate
  * status: 200, 201, 400, 404, 500
  */
@@ -5557,7 +5571,7 @@ export interface PostSchoolConsentRecordBody {
 /**
  * `POST /api/school/consent/request`
  * handler: requestConsent — mysql/controllers/school.js:748
- * ruta: mysql/routes/school.js:77
+ * ruta: mysql/routes/school.js:78
  * auth: canCreate
  * status: 201, 400, 404, 422, 500
  */
@@ -5572,7 +5586,7 @@ export interface PostSchoolConsentRequestBody {
 /**
  * `POST /api/school/consent/resend`
  * handler: resendConsent — mysql/controllers/school.js:885
- * ruta: mysql/routes/school.js:78
+ * ruta: mysql/routes/school.js:79
  * auth: canCreate
  * status: 200, 400, 404, 409, 422, 500
  */
@@ -5585,8 +5599,8 @@ export interface PostSchoolConsentResendBody {
 
 /**
  * `POST /api/school/consent/status`
- * handler: consentStatus — mysql/controllers/school.js:1229
- * ruta: mysql/routes/school.js:82
+ * handler: consentStatus — mysql/controllers/school.js:1334
+ * ruta: mysql/routes/school.js:85
  * auth: canRead
  * status: 200, 400, 500
  */
@@ -5599,7 +5613,7 @@ export interface PostSchoolConsentStatusBody {
 /**
  * `POST /api/school/consent`
  * handler: listMemberConsents — mysql/controllers/school.js:1206
- * ruta: mysql/routes/school.js:81
+ * ruta: mysql/routes/school.js:82
  * auth: canRead
  * status: 200, 400, 500
  */
@@ -5611,7 +5625,7 @@ export interface PostSchoolConsentBody {
 /**
  * `POST /api/school/dashboard`
  * handler: schoolDashboard — mysql/controllers/school.js:76
- * ruta: mysql/routes/school.js:60
+ * ruta: mysql/routes/school.js:61
  * auth: canRead
  * status: 200, 400, 500
  */
@@ -5622,7 +5636,7 @@ export interface PostSchoolDashboardBody {
 /**
  * `POST /api/school/guardians/add`
  * handler: addStudentGuardian — mysql/controllers/school.js:498
- * ruta: mysql/routes/school.js:69
+ * ruta: mysql/routes/school.js:70
  * auth: canCreate
  * status: 200, 201, 400, 404, 500
  */
@@ -5641,7 +5655,7 @@ export interface PostSchoolGuardiansAddBody {
 /**
  * `POST /api/school/guardians/search`
  * handler: searchGuardians — mysql/controllers/school.js:603
- * ruta: mysql/routes/school.js:72
+ * ruta: mysql/routes/school.js:73
  * auth: canRead
  * status: 200, 400, 500
  */
@@ -5655,7 +5669,7 @@ export interface PostSchoolGuardiansSearchBody {
 /**
  * `POST /api/school/guardians`
  * handler: listStudentGuardians — mysql/controllers/school.js:465
- * ruta: mysql/routes/school.js:66
+ * ruta: mysql/routes/school.js:67
  * auth: canRead
  * status: 200, 400, 500
  */
@@ -5667,7 +5681,7 @@ export interface PostSchoolGuardiansBody {
 /**
  * `POST /api/school/roster`
  * handler: schoolRoster — mysql/controllers/school.js:107
- * ruta: mysql/routes/school.js:63
+ * ruta: mysql/routes/school.js:64
  * auth: canRead
  * status: 200, 400, 500
  */
@@ -5679,8 +5693,8 @@ export interface PostSchoolRosterBody {
 
 /**
  * `POST /api/school/settings/consent-enforcement`
- * handler: setConsentEnforcement — mysql/controllers/school.js:1318
- * ruta: mysql/routes/school.js:86
+ * handler: setConsentEnforcement — mysql/controllers/school.js:1423
+ * ruta: mysql/routes/school.js:89
  * auth: canUpdate
  * status: 200, 400, 500
  */
@@ -5694,8 +5708,8 @@ export interface PostSchoolSettingsConsentEnforcementBody {
 
 /**
  * `POST /api/school/settings`
- * handler: getSchoolSettings — mysql/controllers/school.js:1276
- * ruta: mysql/routes/school.js:85
+ * handler: getSchoolSettings — mysql/controllers/school.js:1381
+ * ruta: mysql/routes/school.js:88
  * auth: canRead
  * status: 200, 400, 500
  */
@@ -5706,7 +5720,7 @@ export interface PostSchoolSettingsBody {
 /**
  * `POST /api/school/student/access-log`
  * handler: studentAccessLog — mysql/controllers/school.js:430
- * ruta: mysql/routes/school.js:91
+ * ruta: mysql/routes/school.js:94
  * auth: canRead
  * status: 200, 400, 500
  */
@@ -5719,7 +5733,7 @@ export interface PostSchoolStudentAccessLogBody {
 /**
  * `POST /api/school/student/erase`
  * handler: studentErase — mysql/controllers/school.js:370
- * ruta: mysql/routes/school.js:90
+ * ruta: mysql/routes/school.js:93
  * auth: canUpdate
  * status: 200, 400, 404, 500
  */
@@ -5731,7 +5745,7 @@ export interface PostSchoolStudentEraseBody {
 /**
  * `POST /api/school/student/export`
  * handler: studentExport — mysql/controllers/school.js:191
- * ruta: mysql/routes/school.js:89
+ * ruta: mysql/routes/school.js:92
  * auth: canRead
  * status: 200, 400, 404, 500
  */
@@ -7319,6 +7333,7 @@ export interface ApiEndpoints {
   "POST /api/registration/accept-invitation": { body: PostRegistrationAcceptInvitationBody };
   "POST /api/registration/add-company": { body: PostRegistrationAddCompanyBody };
   "POST /api/registration/new": { body: PostRegistrationNewBody };
+  "POST /api/school/consent/list": { body: PostSchoolConsentListBody };
   "POST /api/school/consent/public/respond": { body: PostSchoolConsentPublicRespondBody };
   "POST /api/school/consent/public/retrieve": {  };
   "POST /api/school/consent/record": { body: PostSchoolConsentRecordBody };

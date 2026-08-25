@@ -466,6 +466,10 @@ function collectReq(body, acc) {
     while ((g = optH.exec(cond))) acc.optionalHints.add(g[1]);
     const arr = /!\s*Array\.isArray\(\s*([A-Za-z_$][\w$]*)/g;
     while ((g = arr.exec(cond))) acc.required.add(g[1]);
+    // Guardas por helper: `if (hasBlankRequiredId(company_id)) -> 400`. Es el
+    // patrón del módulo school; sin esto sus endpoints salían sin requeridos.
+    const helper = /\b(?:has|is)\w*(?:Blank|Missing|Empty|Invalid|Required)\w*\(\s*([A-Za-z_$][\w$]*)/g;
+    while ((g = helper.exec(cond))) acc.required.add(g[1]);
   }
 }
 
