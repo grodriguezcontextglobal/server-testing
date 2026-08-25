@@ -133,6 +133,45 @@ Two ways to record consent: **direct** (staff has an in-person signature) or
   missing_count, missing:[…] }`). Only counts `status='agreed'` rows as
   compliant — a `pending` OTC request does **not** count yet.
 
+- **`POST /api/school/consent/list`** (NEW, 2026-08-25) — revisión de los
+  consentimientos de **toda la company, en cualquier estado**. Es lo que faltaba:
+  `/consent` exige `member_id` y `/consent/status` solo dice firmado/no firmado.
+
+  ```jsonc
+  // Body — solo company_id es obligatorio
+  { "company_id": 42,
+    "status": "pending",   // opcional: agreed | pending | refused | expired
+    "page": 1,             // opcional, default 1
+    "page_size": 50 }      // opcional, default 50, máximo 200
+  // 200 {
+  //   ok, page, page_size, total, total_pages, count,
+  //   consents: [{ id, member_id, first_name, last_name, grade, guardian_id,
+  //                policy_type, policy_version, status, signer_name, signer_email,
+  //                method, requested_at, responded_at, refused_at, consented_at,
+  //                otc_expires_at, created_at, expired }]
+  // }
+  ```
+
+  Cuatro cosas a tener en cuenta:
+  - **`expired` no es un estado guardado**: es una fila `pending` cuya ventana de
+    OTC ya venció. Los filtros son **mutuamente excluyentes** a propósito
+    (`pending` excluye las vencidas), así que los contadores de las 4 pestañas
+    suman el total sin duplicar. Cada fila además trae el booleano `expired`
+    calculado en el servidor — el cliente no hace aritmética de fechas.
+  - Un `status` fuera de la lista blanca es **400** con el detalle de los válidos;
+    `page`/`page_size` no enteros o < 1 también son 400.
+  - Puede haber **varias filas por alumno** (una por versión de política y por
+    reenvío): ordenadas por la fecha más reciente del ciclo de vida
+    (`consented_at` → `responded_at` → `requested_at` → `created_at`).
+  - El **OTC no se expone nunca** (ni en hash): es una credencial portadora que da
+    acceso al PII del alumno y permite responder en nombre del guardián.
+    Nombre y grado del alumno vienen del `LEFT JOIN` con `members_info`, así que un
+    consentimiento de un alumno borrado sigue apareciendo con esos campos en `null`.
+
+  Auth: la misma que el resto del namespace (`canRead` = `x-token` +
+  `checkTokenVersion` + `requireIndustry("Education")` + `member:read`), y la
+  lectura queda registrada en el audit de PII.
+
 ### 2.5 Settings — consent enforcement toggle
 `POST /api/school/settings` (read) and `POST /api/school/settings/consent-enforcement`
 (write, `{ company_id, enforce:bool }`). Unchanged since 07-22 — see that doc

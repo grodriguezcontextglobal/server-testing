@@ -18,6 +18,7 @@ const {
   publicRetrieveConsent,
   publicRespondConsent,
   listMemberConsents,
+  listCompanyConsents,
   consentStatus,
   getSchoolSettings,
   setConsentEnforcement,
@@ -79,6 +80,8 @@ router.post("/consent/resend", canCreate, resendConsent);
 router.post("/consent/public/retrieve", publicRetrieveConsent);
 router.post("/consent/public/respond", publicRespondConsent);
 router.post("/consent", canRead, listMemberConsents);
+// Company-wide, cualquier estado, con filtro por status y paginación.
+router.post("/consent/list", canRead, listCompanyConsents);
 router.post("/consent/status", canRead, consentStatus);
 
 // School settings — read + opt-in toggle for consent enforcement (per company).

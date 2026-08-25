@@ -1224,6 +1224,111 @@ const listMemberConsents = async (req, res) => {
   }
 };
 
+// POST /api/school/consent/list
+//   { company_id, status?, page?=1, page_size?=50 }
+//
+// Company-wide consent review, in ANY state. `consentStatus` below only answers
+// "signed / not signed" (it joins on status='agreed'), and `listMemberConsents`
+// above needs a member_id — neither shows a company's pending or refused
+// requests, which is what a compliance screen needs.
+//
+// `expired` is NOT a stored status: it is a pending row whose OTC window has
+// closed. The buckets here are kept mutually exclusive on purpose (`pending`
+// excludes expired) so a UI can count them without double-counting; each row
+// also carries an `expired` flag so the client never has to do date math.
+//
+// The OTC hash is deliberately NOT selected: it is a bearer credential that
+// grants read access to a student's PII and the right to answer on the
+// guardian's behalf.
+const CONSENT_LIST_STATUSES = ["agreed", "pending", "refused", "expired"];
+const CONSENT_LIST_PAGE_SIZE = 50;
+const CONSENT_LIST_MAX_PAGE_SIZE = 200;
+
+const parsePositiveInt = (value, fallback) => {
+  if (value === undefined || value === null || String(value).trim() === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return null;
+  return parsed;
+};
+
+const listCompanyConsents = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, status, page, page_size } = req.body || {};
+  if (hasBlankRequiredId(company_id)) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+
+  let statusClause = "";
+  const statusParams = [];
+  if (status !== undefined && status !== null && String(status).trim() !== "") {
+    const wanted = String(status).trim().toLowerCase();
+    if (!CONSENT_LIST_STATUSES.includes(wanted)) {
+      return res.status(400).json({
+        ok: false,
+        msg: `status must be one of: ${CONSENT_LIST_STATUSES.join(", ")}`,
+      });
+    }
+    if (wanted === "expired") {
+      statusClause = "AND sc.status = 'pending' AND sc.otc_expires_at IS NOT NULL AND sc.otc_expires_at < NOW()";
+    } else if (wanted === "pending") {
+      statusClause = "AND sc.status = 'pending' AND (sc.otc_expires_at IS NULL OR sc.otc_expires_at >= NOW())";
+    } else {
+      statusClause = "AND sc.status = ?";
+      statusParams.push(wanted);
+    }
+  }
+
+  const pageNumber = parsePositiveInt(page, 1);
+  const requestedSize = parsePositiveInt(page_size, CONSENT_LIST_PAGE_SIZE);
+  if (pageNumber === null || requestedSize === null) {
+    return res.status(400).json({ ok: false, msg: "page and page_size must be positive integers" });
+  }
+  const pageSize = Math.min(requestedSize, CONSENT_LIST_MAX_PAGE_SIZE);
+  const offset = (pageNumber - 1) * pageSize;
+
+  try {
+    const [countRows] = await connection.query(
+      `SELECT COUNT(*) AS total FROM school_consent sc WHERE sc.company_id = ? ${statusClause}`,
+      [company_id, ...statusParams]
+    );
+    const total = countRows.length ? Number(countRows[0].total) : 0;
+
+    const [rows] = await connection.query(
+      `SELECT sc.id, sc.member_id, mi.first_name, mi.last_name, mi.grade,
+              sc.guardian_id, sc.policy_type, sc.policy_version, sc.status,
+              sc.signer_name, sc.signer_email, sc.method,
+              sc.requested_at, sc.responded_at, sc.refused_at, sc.consented_at,
+              sc.otc_expires_at, sc.created_at
+         FROM school_consent sc
+         LEFT JOIN members_info mi
+           ON mi.member_id = sc.member_id AND mi.company_id = sc.company_id
+        WHERE sc.company_id = ? ${statusClause}
+        ORDER BY COALESCE(sc.consented_at, sc.responded_at, sc.requested_at, sc.created_at) DESC, sc.id
+        LIMIT ? OFFSET ?`,
+      [company_id, ...statusParams, pageSize, offset]
+    );
+
+    const now = new Date();
+    const consents = rows.map((row) => ({
+      ...row,
+      expired: row.status === "pending" && !!row.otc_expires_at && new Date(row.otc_expires_at) < now,
+    }));
+
+    return res.status(200).json({
+      ok: true,
+      page: pageNumber,
+      page_size: pageSize,
+      total,
+      total_pages: pageSize > 0 ? Math.ceil(total / pageSize) : 0,
+      count: consents.length,
+      consents,
+    });
+  } catch (error) {
+    logger.error("listCompanyConsents error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 // POST /api/school/consent/status  { company_id, policy_type?='AUP', policy_version? }
 // Compliance view: which students have / have NOT signed the policy.
 const consentStatus = async (req, res) => {
@@ -1386,6 +1491,7 @@ module.exports = {
   publicRetrieveConsent,
   publicRespondConsent,
   listMemberConsents,
+  listCompanyConsents,
   consentStatus,
   getSchoolSettings,
   setConsentEnforcement,
