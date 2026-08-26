@@ -252,25 +252,38 @@ does **not** survive a reboot; prefer the service above.
 
 ---
 
-## Split services (native nssm) — Node · Go worker · email worker
+## Split services (native nssm) — Node · Go worker · email · bulk · delete
 
 Production runs as **separate native nssm services** (no containers; Windows Server
 2019). They share the external MySQL (PlanetScale) + Mongo and talk over localhost.
 
 | Service | Runs | Owns |
 |---------|------|------|
-| `DevitrakServer` | Node (`index.js`, pm2-runtime) | HTTP API + in-process queue worker for **all job types except email and the bulk-write types** |
+| `DevitrakServer` | Node (`index.js`, pm2-runtime) | HTTP API + in-process queue worker for **every job type that has no dedicated worker** (`QUEUE_EXCLUDE_GROUPS=dedicated`) |
 | `DevitrakGoWorker` | `go-worker\worker.exe` | inventory Go operations (see the Go worker section) |
 | `DevitrakEmailWorker` | `node queue\standalone.js` | **email** jobs only |
-| `DevitrakBulkWorker` | `node queue\standalone.js` | **bulk-write** jobs only (see below) — fast poll, not yet deployed |
+| `DevitrakBulkWorker` | `node queue\standalone.js` | **bulk-write** jobs only (see below) — fast poll |
+| `DevitrakDeleteWorker` | `node queue\standalone.js` | **delete** jobs only (see below) — fast poll, not yet deployed |
 
-The split is driven entirely by env — the code is identical across services:
+The split is driven entirely by env — the code is identical across services. The type
+lists live in **`constants/queueTypeGroups.js`** (groups `email`, `bulk`, `delete`), so a
+service is configured by GROUP and the lists never drift between the worker, the main
+server's exclusion and this document:
+
 - **`DevitrakServer`**: `GO_WORKER_EXTERNAL=true` (don't spawn a co-located Go worker —
-  call the service) and `QUEUE_EXCLUDE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments,inventory:bulk-insert-range,member:bulk-return-leases,inventory:bulk-delete-by-criteria,member:bulk-insert`
-  (let the email worker and the bulk worker own those). Optionally `GO_WORKER_HOST` if
-  the Go worker is on another box (default `localhost`).
-- **`DevitrakEmailWorker`**: `QUEUE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments`.
-- **`DevitrakBulkWorker`**: `QUEUE_TYPES=inventory:bulk-insert-range,member:bulk-return-leases,inventory:bulk-delete-by-criteria,member:bulk-insert` and `QUEUE_POLL_MS=300` (see below — this one's poll interval matters).
+  call the service) and `QUEUE_EXCLUDE_GROUPS=dedicated` — every type that has its own
+  worker, resolved from the registry. **This is the line you no longer have to edit when
+  a group gains a type.** Optionally `GO_WORKER_HOST` if the Go worker is on another box
+  (default `localhost`).
+- **`DevitrakEmailWorker`**: `QUEUE_GROUP=email`.
+- **`DevitrakBulkWorker`**: `QUEUE_GROUP=bulk` and `QUEUE_POLL_MS=300` (see below — this
+  one's poll interval matters).
+- **`DevitrakDeleteWorker`**: `QUEUE_GROUP=delete` and `QUEUE_POLL_MS=300`.
+
+The old form still works and takes precedence: an explicit `QUEUE_TYPES` overrides
+`QUEUE_GROUP`, and `QUEUE_EXCLUDE_TYPES` is added to whatever `QUEUE_EXCLUDE_GROUPS`
+resolves to. A **typo in a group name makes the process exit** instead of silently
+claiming the whole queue — check the service log if a worker won't start.
 
 The atomic claim + type filter (`queue/core.js` `buildClaimFilter`) guarantee no job is
 processed twice across workers.
@@ -361,6 +374,79 @@ nssm restart DevitrakServer
 > FIRST, hit one of the 4 endpoints with a small payload, and confirm it responds
 > with the normal (non-202) body quickly; only then set `QUEUE_EXCLUDE_TYPES` on
 > the main server. To remove: `nssm remove DevitrakBulkWorker confirm`.
+
+### Create the delete worker service (fast poll — NOT YET DEPLOYED)
+
+Owns the `delete` group of `constants/queueTypeGroups.js`:
+`inventory:bulk-delete-by-criteria` (`deleteBulkItemBasedOnCriteria`, which with
+no `serial_number` wipes a whole category/location) and
+`inventory:bulk-delete-by-ids` (`deleteBulkItems`, an explicit id list, chunked
+into batches of 500 against the Go worker).
+
+**Why deletes get their own process instead of riding along with `DevitrakBulkWorker`:**
+the worker drains jobs **one at a time** (`queue/worker.js` § `tick` — up to
+`QUEUE_BATCH` per cycle, sequentially). A bulk insert of ~15,000 serials holds the
+tick for as long as it takes, and a delete claimed behind it waits. That matters on
+this route specifically because the controller uses `waitForJobOutcome`
+(`maxWaitMs=4000`, `helpers/queuedController.js`) to preserve the synchronous
+contract: blow past those 4s and the endpoint degrades to the async `202 + jobId`
+shape. Its own process means a delete never queues behind an insert.
+
+Keep `QUEUE_POLL_MS=300` for the same reason as the bulk worker — the default
+4000ms poll alone would exhaust that 4s wait.
+
+Run **as Administrator**:
+
+```powershell
+nssm install DevitrakDeleteWorker "C:\Program Files\nodejs\node.exe"
+nssm set DevitrakDeleteWorker AppParameters "queue\standalone.js"
+nssm set DevitrakDeleteWorker AppDirectory "C:\Users\CGAdmin\Documents\Github\server-testing"
+nssm set DevitrakDeleteWorker DisplayName "Devitrak Delete Worker"
+nssm set DevitrakDeleteWorker Description "Dedicated fast-poll task-queue worker for delete jobs (queue/standalone.js)."
+nssm set DevitrakDeleteWorker Start SERVICE_AUTO_START
+nssm set DevitrakDeleteWorker AppEnvironmentExtra QUEUE_GROUP=delete QUEUE_POLL_MS=300
+nssm set DevitrakDeleteWorker AppStdout "C:\Users\CGAdmin\Documents\Github\server-testing\logs\delete-worker-out.log"
+nssm set DevitrakDeleteWorker AppStderr "C:\Users\CGAdmin\Documents\Github\server-testing\logs\delete-worker-err.log"
+nssm set DevitrakDeleteWorker AppExit Default Restart
+nssm set DevitrakDeleteWorker AppRestartDelay 3000
+nssm start DevitrakDeleteWorker
+nssm status DevitrakDeleteWorker   # SERVICE_RUNNING
+```
+
+Confirm the scope it actually resolved — the worker logs its own filter on start:
+
+```powershell
+Get-Content "C:\Users\CGAdmin\Documents\Github\server-testing\logs\delete-worker-out.log" -Tail 5
+# Task queue worker starting (id=..., poll=300ms, batch=20, types=[inventory:bulk-delete-by-criteria])
+```
+
+Then — and only then — hand the type over: switch `DevitrakBulkWorker` to the group
+form so it stops claiming deletes (`AppEnvironmentExtra` **replaces** the whole
+block, so re-list `QUEUE_POLL_MS`):
+
+```powershell
+nssm set DevitrakBulkWorker AppEnvironmentExtra QUEUE_GROUP=bulk QUEUE_POLL_MS=300
+nssm restart DevitrakBulkWorker
+```
+
+> **Order matters, but nothing is lost if you get it wrong in this direction.**
+> While both services list the delete type they just compete for it and the atomic
+> claim decides — no double processing, only no isolation yet. The damaging order is
+> the reverse: dropping the type from `DevitrakBulkWorker` **before** the delete
+> worker runs leaves delete jobs with no fast-poll consumer (the main server
+> excludes the whole `dedicated` set), so every bulk delete degrades to the 202
+> fallback. To remove: `nssm remove DevitrakDeleteWorker confirm`.
+
+Optional, once the delete worker is confirmed: move the other two services to the
+group form as well (the explicit `QUEUE_TYPES` lists keep working, they just have to
+be edited by hand every time a group gains a type):
+
+```powershell
+nssm set DevitrakEmailWorker AppEnvironmentExtra QUEUE_GROUP=email
+nssm set DevitrakServer AppEnvironmentExtra PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2 GO_WORKER_EXTERNAL=true QUEUE_EXCLUDE_GROUPS=dedicated
+nssm restart DevitrakEmailWorker
+nssm restart DevitrakServer
+```
 
 ---
 
