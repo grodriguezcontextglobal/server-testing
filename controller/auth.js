@@ -229,13 +229,23 @@ const getListOfUsersAndTransactionsPerEvent = async (request, response) => {
     );
     const eventInfo = await Event.findOne({ _id: eventID });
     const users = await User.find(check);
+    // Una sola query por TODAS las transacciones del evento, en vez de un
+    // Receivers.find() por usuario esperando al anterior (N+1 secuencial: 200
+    // asistentes = 200 viajes a Mongo). El reparto por usuario va en memoria.
+    const userEmails = [
+      ...new Set(users.map((user) => user.email).filter(Boolean)),
+    ];
+    const allTransactions = userEmails.length
+      ? await Receivers.find({
+          user: { $in: userEmails },
+          eventSelected: eventInfo.eventInfoDetail.eventName,
+          company: companyID,
+        })
+      : [];
+    const transactionsByUser = groupBy(allTransactions, "user");
     let result = [];
     for (let user of users) {
-      const transactions = await Receivers.find({
-        user: user.email,
-        eventSelected: eventInfo.eventInfoDetail.eventName,
-        company: companyID,
-      });
+      const transactions = transactionsByUser[user.email] || [];
 
       let groupingByActiveTransaction = {};
       if (transactions.length > 0) {

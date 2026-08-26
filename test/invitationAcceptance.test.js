@@ -108,15 +108,15 @@ before(() => {
   const root = path.resolve(__dirname, "..");
   const resolve = (rel) => path.join(root, rel);
 
-  const bcryptStub = { genSaltSync: () => "salt", hashSync: (pw) => `hashed:${pw}` };
+  const bcryptStub = { genSalt: async () => "salt", hash: async (pw) => `hashed:${pw}` };
 
   require.cache[resolve("models/AdminUser.js")] = { id: resolve("models/AdminUser.js"), filename: resolve("models/AdminUser.js"), loaded: true, exports: AdminUserStub };
   require.cache[resolve("models/Company.js")]   = { id: resolve("models/Company.js"),   filename: resolve("models/Company.js"),   loaded: true, exports: CompanyStub   };
   require.cache[resolve("mysql/database/config.js")] = { id: resolve("mysql/database/config.js"), filename: resolve("mysql/database/config.js"), loaded: true, exports: () => makeSqlConn() };
   require.cache[resolve("helpers/logger.js")]   = { id: resolve("helpers/logger.js"),   filename: resolve("helpers/logger.js"),   loaded: true, exports: loggerStub    };
   require.cache[resolve("helpers/jwt.js")]      = { id: resolve("helpers/jwt.js"),       filename: resolve("helpers/jwt.js"),       loaded: true, exports: { generateJWT: async () => "tok.test.jwt" } };
-  // bcryptjs se importa directamente en el controlador — stubbear el paquete
-  require.cache[require.resolve("bcryptjs")]    = { id: require.resolve("bcryptjs"),     filename: require.resolve("bcryptjs"),     loaded: true, exports: bcryptStub    };
+  // bcrypt se importa directamente en el controlador — stubbear el paquete
+  require.cache[require.resolve("bcrypt")]      = { id: require.resolve("bcrypt"),       filename: require.resolve("bcrypt"),       loaded: true, exports: bcryptStub    };
 });
 
 afterEach(() => {

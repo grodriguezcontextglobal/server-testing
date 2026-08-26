@@ -9,9 +9,12 @@ const resolve = (rel) => path.join(root, rel);
 const connPath = resolve('mysql/database/config.js');
 const goWorkerPath = resolve('helpers/goWorker.js');
 const controllerPath = resolve('mysql/controllers/item.js');
+const queuePath = resolve('helpers/queue.js');
+const queuedControllerPath = resolve('helpers/queuedController.js');
 
 let poolCalls;
 let goWorkerCalls;
+let enqueueCalls;
 
 function mockRes() {
   const res = {};
@@ -31,6 +34,8 @@ function loadController({ itemRowsByBatch } = {}) {
   delete require.cache[connPath];
   delete require.cache[goWorkerPath];
   delete require.cache[controllerPath];
+  delete require.cache[queuePath];
+  delete require.cache[queuedControllerPath];
 
   let scopeSelectCount = 0;
   const pool = {
@@ -76,12 +81,39 @@ function loadController({ itemRowsByBatch } = {}) {
     ),
   };
 
+  // El borrado real se fue a queue/handlers/deleteBulkItemsByIds.js: el
+  // controller ya no llama al Go worker, encola. Lo que estos tests siguen
+  // verificando es el precomputo que NO puede irse al job (el SELECT de scope
+  // troceado y el filtrado de ids), ahora observado en el payload del job.
+  require.cache[queuePath] = {
+    id: queuePath, filename: queuePath, loaded: true,
+    exports: {
+      enqueue: async (type, payload, opts) => {
+        enqueueCalls.push({ type, payload, opts });
+        return { id: 'JOB-1' };
+      },
+      extractJobContext: () => ({ uid: 'U1' }),
+    },
+  };
+  require.cache[queuedControllerPath] = {
+    id: queuedControllerPath, filename: queuedControllerPath, loaded: true,
+    exports: {
+      waitForJobOutcome: async () => ({
+        outcome: 'done',
+        result: { deletedCount: enqueueCalls.at(-1)?.payload.item_ids.length ?? 0 },
+      }),
+      createQueuedJobController: () => async () => {},
+      createSyncOrQueuedController: () => async () => {},
+    },
+  };
+
   return require('../mysql/controllers/item');
 }
 
 beforeEach(() => {
   poolCalls = [];
   goWorkerCalls = [];
+  enqueueCalls = [];
 });
 
 describe('deleteBulkItems scope-filter batching', () => {
@@ -105,8 +137,10 @@ describe('deleteBulkItems scope-filter batching', () => {
     // 1200 ids / 500-per-batch default => 3 SELECT batches
     assert.equal(scopeSelects.length, 3);
     assert.equal(res._code, 200);
-    assert.equal(goWorkerCalls.length, 1);
-    assert.equal(goWorkerCalls[0].args.item_ids.length, 1200);
+    assert.equal(goWorkerCalls.length, 0, 'el controller ya no llama al Go worker, encola');
+    assert.equal(enqueueCalls.length, 1);
+    assert.equal(enqueueCalls[0].type, 'inventory:bulk-delete-by-ids');
+    assert.equal(enqueueCalls[0].payload.item_ids.length, 1200);
   });
 
   it('drops non-permitted ids across batches and reports skipped_count', async () => {
@@ -129,6 +163,6 @@ describe('deleteBulkItems scope-filter batching', () => {
 
     assert.equal(res._code, 200);
     assert.equal(res._body.skipped_count, 2);
-    assert.deepEqual(goWorkerCalls[0].args.item_ids, [1, 3]);
+    assert.deepEqual(enqueueCalls[0].payload.item_ids, [1, 3]);
   });
 });

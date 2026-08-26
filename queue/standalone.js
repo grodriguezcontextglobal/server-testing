@@ -5,10 +5,14 @@
  * native nssm service on Windows Server 2019 (see DEPLOY.md § Split services).
  *
  * The main Node server (index.js) keeps an in-process worker for every type
- * EXCEPT the ones a dedicated worker owns. Example email split:
- *   DevitrakEmailWorker : node queue/standalone.js
- *       QUEUE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments
- *   DevitrakServer (main): QUEUE_EXCLUDE_TYPES=<those same email types>
+ * EXCEPT the ones a dedicated worker owns. The type lists live in
+ * constants/queueTypeGroups.js, so each service is configured by GROUP:
+ *   DevitrakEmailWorker  : QUEUE_GROUP=email
+ *   DevitrakBulkWorker   : QUEUE_GROUP=bulk    QUEUE_POLL_MS=300
+ *   DevitrakDeleteWorker : QUEUE_GROUP=delete  QUEUE_POLL_MS=300
+ *   DevitrakServer (main): QUEUE_EXCLUDE_GROUPS=dedicated
+ * The older explicit form (QUEUE_TYPES / QUEUE_EXCLUDE_TYPES) still works and
+ * takes precedence.
  *
  * The atomic claim + type filter (queue/core.js buildClaimFilter) guarantees no
  * double-processing across the two workers. The open Mongo connection keeps the

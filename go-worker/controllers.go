@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -1120,15 +1121,34 @@ func UpdateItemWarehouse(db *sql.DB, req UpdateItemWarehouseRequest) (int64, err
 		"location_id":         true,
 		"logistic_status":     true,
 		"enableAssignFeature": true,
+		// Devolución de un ítem rentado: el frontend manda estas dos junto con
+		// warehouse y enableAssignFeature en la misma llamada. Ambas existen en
+		// item_inv y las escribe el INSERT de insertingItem
+		// (mysql/controllers/item.js); faltaban solo acá, así que el camino de
+		// creación las aceptaba y el de actualización masiva las rechazaba.
+		"return_date":         true,
+		"returnedRentedInfo":  true,
 	}
 
 	var setClauses []string
 	var updateValues []interface{}
 
-	for col, val := range req.Updates {
+	// Se juntan TODAS las columnas rechazadas antes de fallar. Antes se
+	// devolvía en la primera, y como el recorrido de un map de Go es aleatorio,
+	// la misma request podía culpar a una columna distinta en cada intento —
+	// con lo cual el cliente arreglaba una y volvía a fallar por la siguiente.
+	var disallowed []string
+	for col := range req.Updates {
 		if !allowedColumns[col] {
-			return 0, fmt.Errorf("disallowed column for update: %s", col)
+			disallowed = append(disallowed, col)
 		}
+	}
+	if len(disallowed) > 0 {
+		sort.Strings(disallowed)
+		return 0, fmt.Errorf("disallowed column(s) for update: %s", strings.Join(disallowed, ", "))
+	}
+
+	for col, val := range req.Updates {
 		setClauses = append(setClauses, fmt.Sprintf("`%s` = ?", col))
 		updateValues = append(updateValues, val)
 	}

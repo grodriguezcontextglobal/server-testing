@@ -76,7 +76,11 @@ const editEvent = async (request, response = response) => {
     cache_connection.del(
       `company=${eventStaffToEdit.company}&type=${eventStaffToEdit.type}`,
     );
-    cache_connection.del(`event_staff_info=${eventStaffToEdit.id}`);
+    // Invalidar con el id de la RUTA, no con `request.body.id`: esta es la única
+    // ruta que modifica el staff del evento (PATCH /edit-staff-event/:id) y el
+    // cliente no manda `id` en el body, así que la clave quedaba
+    // `event_staff_info=undefined` y la entrada real nunca se borraba.
+    cache_connection.del(`event_staff_info=${eventId}`);
     return response.json({
       ok: true,
       event: staffEventEdited,
@@ -250,7 +254,9 @@ const eventStaffDetailInfo = async (request, response) => {
       `event_staff_info=${eventId}`,
     );
     if (cachedEventStaffInfo) {
-      cache_connection.del(`event_staff_info=${eventId}`);
+      // La entrada NO se borra al leerla: se invalida en editEvent (la única
+      // ruta que modifica el staff del evento). Borrarla acá hacía que cada
+      // entrada sirviera una sola petición y que el TTL no se usara nunca.
       return response.status(201).json({
         ok: true,
         cached: true,
@@ -262,27 +268,40 @@ const eventStaffDetailInfo = async (request, response) => {
       ...eventInfo.staff.adminUser,
       ...eventInfo.staff.headsetAttendees,
     ];
-    const result = [];
-    for (const staff of staffEventInfo) {
-      const extraInfo = await AdminUser.findOne({ email: staff.email });
-      if (extraInfo) {
-        result.push({
-          staff,
-          photo: extraInfo.imageProfile,
-          phone: extraInfo.phone,
-          admin_id: extraInfo.id,
-        });
-      } else {
-        result.push({
-          staff,
-          photo: null,
-          phone: "",
-          admin_id: null,
-        });
-      }
-    }
-    cache_connection.set(`event_staff_info=${eventId}`, JSON.stringify(result));
-    cache_connection.expire(`event_staff_info=${eventId}`, 180);
+    // Una sola query por todo el staff en vez de un findOne por persona (era un
+    // N+1 secuencial: 40 personas = 40 viajes a Mongo, uno esperando al otro).
+    const staffEmails = [
+      ...new Set(staffEventInfo.map((staff) => staff.email).filter(Boolean)),
+    ];
+    const adminUsers = staffEmails.length
+      ? await AdminUser.find(
+          { email: { $in: staffEmails } },
+          "email imageProfile phone",
+        )
+      : [];
+    const adminByEmail = new Map(adminUsers.map((admin) => [admin.email, admin]));
+    const result = staffEventInfo.map((staff) => {
+      const extraInfo = adminByEmail.get(staff.email);
+      return extraInfo
+        ? {
+            staff,
+            photo: extraInfo.imageProfile,
+            phone: extraInfo.phone,
+            admin_id: extraInfo.id,
+          }
+        : {
+            staff,
+            photo: null,
+            phone: "",
+            admin_id: null,
+          };
+    });
+    // TTL como red de seguridad si una invalidación se pierde (el borrado real
+    // lo hace editEvent). 30 min en vez de los 180s de antes: ahora la entrada
+    // sí sobrevive a la primera lectura, así que el TTL pasa a importar.
+    cache_connection.set(`event_staff_info=${eventId}`, JSON.stringify(result), {
+      EX: 1800,
+    });
     return response.status(201).json({
       ok: true,
       staff: JSON.stringify(result),

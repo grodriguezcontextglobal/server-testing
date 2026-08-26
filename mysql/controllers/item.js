@@ -20,6 +20,7 @@ const { enqueue, extractJobContext } = require("../../helpers/queue");
 const { createQueuedJobController, waitForJobOutcome } = require("../../helpers/queuedController");
 const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
 const { chunkArray } = require("../../helpers/chunkArray");
+const crypto = require("node:crypto");
 require("dotenv").config();
 
 // Rows per INSERT statement for bulk writes -- see insertBulkItem.
@@ -1657,7 +1658,7 @@ const updateItemInTableAfterBeingAddedToEventFromContainer = async (
     for (let item of database) {
       const query = `
         UPDATE item_inv 
-        SET warehouse = ? AND update_at = NOW()
+        SET warehouse = ?, update_at = NOW()
         WHERE item_id = ?;
       `;
 
@@ -3642,7 +3643,25 @@ const filterSuppliersInfoItems = async (request, response) => {
   }
 };
 
-const deleteBulkItems = async (request, response) => {
+// Migrado a cola (gemelo de deleteBulkItemBasedOnCriteria): el borrado por
+// lista de ids puede llegar con miles de item_ids y el DELETE del lado Go no
+// trocea. Lo que NO se puede mover al job se queda acá: la autorización y el
+// filtrado por scope dependen de `request.sqlStaffId`, y en un job no hay
+// request. El job recibe los ids YA filtrados; `skipped_count` se calcula y se
+// responde en el acto. El DELETE real vive en
+// queue/handlers/deleteBulkItemsByIds.js. Usa waitForJobOutcome para responder
+// con la misma forma de siempre en el caso típico (necesita el worker dedicado
+// de poll rápido: con el genérico de 4s, cada llamada caería al 202).
+function createDeleteBulkItems({
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  getWritableScopeFn = getWritableScope,
+  connectionFn = getConnection,
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  waitForJobOutcomeFn = waitForJobOutcome,
+  maxWaitMs = 4000,
+} = {}) {
+  return async function deleteBulkItems(request, response) {
   try {
     const { item_ids, company_id } = request.body;
 
@@ -3661,7 +3680,7 @@ const deleteBulkItems = async (request, response) => {
       });
     }
 
-    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    const userAccess = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
@@ -3672,9 +3691,9 @@ const deleteBulkItems = async (request, response) => {
     let targetIds = item_ids;
     let skippedCount = 0;
     if (userAccess.scoped) {
-      const writable = await getWritableScope(userAccess, "delete");
+      const writable = await getWritableScopeFn(userAccess, "delete");
       const permitted = new Set((writable.values || []).map(String));
-      const connection = getConnection();
+      const connection = connectionFn();
       // Batched: an unbounded IN (...) for the whole item_ids array risks
       // max_allowed_packet/parameter limits for a large delete request.
       const rows = [];
@@ -3704,18 +3723,49 @@ const deleteBulkItems = async (request, response) => {
       }
     }
 
-    const workerResponse = await runGoWorker("delete-bulk-items", {
-      company_id: company_id,
-      item_ids: targetIds,
-    });
+    // Idempotencia: mismo patrón namespaced que insertBulkItemAlhpanumericFormat.
+    // Sin header, la clave se deriva del contenido (company + ids ordenados), así
+    // que el reintento automático del cliente no encola dos veces el mismo
+    // borrado. Los ids son los YA filtrados por scope, no los del body.
+    const clientKey =
+      typeof request.get === "function"
+        ? request.get("Idempotency-Key") || request.get("idempotency-key")
+        : undefined;
+    const idempotencyKey = clientKey
+      ? `inventory:bulk-delete-by-ids:${String(clientKey).trim()}`
+      : `inventory:bulk-delete-by-ids:${company_id}:${crypto
+          .createHash("sha256")
+          .update([...targetIds].map(String).sort().join(","))
+          .digest("hex")}`;
 
-    if (workerResponse.status === "error") {
-      throw new Error(workerResponse.message);
+    const job = await enqueueFn(
+      "inventory:bulk-delete-by-ids",
+      { company_id, item_ids: targetIds },
+      { context: extractContextFn(request), idempotencyKey }
+    );
+
+    const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
+    if (outcome.outcome === "done") {
+      // `result` llevaba `workerResponse.data`, que era SIEMPRE undefined
+      // (runGoWorker ya devuelve el data desempaquetado, no la respuesta
+      // completa), así que el cliente nunca recibía el conteo. Ahora sí, con la
+      // misma forma que pretendía el código original: { affectedRows }.
+      return response.status(200).json({
+        ok: true,
+        result: { affectedRows: outcome.result?.deletedCount ?? 0 },
+        ...(skippedCount > 0 ? { skipped_count: skippedCount } : {}),
+      });
     }
-
-    return response.status(200).json({
+    if (outcome.outcome === "failed") {
+      return response.status(500).json({
+        ok: false,
+        msg: outcome.job.lastError || "Bulk delete failed",
+      });
+    }
+    return response.status(202).json({
       ok: true,
-      result: workerResponse.data,
+      jobId: job.id,
+      msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
       ...(skippedCount > 0 ? { skipped_count: skippedCount } : {}),
     });
   } catch (error) {
@@ -3725,7 +3775,9 @@ const deleteBulkItems = async (request, response) => {
       ok: false,
     });
   }
-};
+  };
+}
+const deleteBulkItems = createDeleteBulkItems();
 
 const ensureIndexes = async (connection) => {
   try {
@@ -4064,6 +4116,7 @@ module.exports = {
   consultItemDataFromSerialNumber,
   deleteBulkItemBasedOnCriteria,
   createDeleteBulkItemBasedOnCriteria,
+  createDeleteBulkItems,
   deleteBulkItems,
   deleteContainerItem,
   deleteItem,
