@@ -46,13 +46,13 @@ require.cache[sqlConnPath] = {
   }),
 };
 
-// ─── Stub: bcryptjs ───────────────────────────────────────────────────────────
-const bcryptPath = require.resolve('bcryptjs');
+// ─── Stub: bcrypt (nativo, API async) ───────────────────────────────────────────────────────────
+const bcryptPath = require.resolve('bcrypt');
 require.cache[bcryptPath] = {
   id: bcryptPath, filename: bcryptPath, loaded: true,
   exports: {
-    genSaltSync: () => 'salt',
-    hashSync:    (pw) => `hashed:${pw}`,
+    genSalt: async () => 'salt',
+    hash:    async (pw) => `hashed:${pw}`,
   },
 };
 

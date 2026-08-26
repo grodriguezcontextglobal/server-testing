@@ -48,12 +48,12 @@ before(() => {
   stub("helpers/logger.js", loggerStub);
   stub("controller/staffActivityLog.js", { logStaffActivity: async () => {} });
 
-  const bcryptPath = require.resolve("bcryptjs");
+  const bcryptPath = require.resolve("bcrypt");
   require.cache[bcryptPath] = {
     id: bcryptPath,
     filename: bcryptPath,
     loaded: true,
-    exports: { genSaltSync: () => "salt", hashSync: (pw) => `hashed:${pw}` },
+    exports: { genSalt: async () => "salt", hash: async (pw) => `hashed:${pw}` },
   };
 });
 

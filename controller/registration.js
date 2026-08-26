@@ -1,4 +1,6 @@
-const bcrypt = require("bcryptjs");
+// bcrypt NATIVO: hashea en el threadpool de libuv en vez de bloquear el event
+// loop ~150ms por alta. Ver el comentario en controller/admin.js.
+const bcrypt = require("bcrypt");
 const { v4: uuid } = require("uuid");
 const AdminUser = require("../models/AdminUser");
 const Company = require("../models/Company");
@@ -180,12 +182,13 @@ const registerNewUserAndCompany = async (request, response) => {
     const sqlConn = getConnection();
 
     // --- Crear AdminUser en MongoDB ---
-    const salt = bcrypt.genSaltSync();
+    const salt = await bcrypt.genSalt();
+    const hashedPassword = await bcrypt.hash(user.password, salt);
     const adminUser = new AdminUser({
       name: user.name,
       lastName: user.lastName,
       email: user.email,
-      password: bcrypt.hashSync(user.password, salt),
+      password: hashedPassword,
       phone: user.phone || "",
       imageProfile: user.imageProfile || "",
       role: 0,
@@ -488,12 +491,13 @@ const acceptInvitation = async (request, response) => {
           msg: "user.password es requerido para usuarios nuevos.",
         });
       }
-      const salt = bcrypt.genSaltSync();
+      const salt = await bcrypt.genSalt();
+      const hashedPassword = await bcrypt.hash(user.password, salt);
       adminUser = new AdminUser({
         name: user.name || "",
         lastName: user.lastName || "",
         email: user.email,
-        password: bcrypt.hashSync(user.password, salt),
+        password: hashedPassword,
         phone: user.phone || "",
         imageProfile: "",
         // role: 0,
