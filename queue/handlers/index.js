@@ -162,6 +162,16 @@ register(
   createDeleteBulkItemBasedOnCriteriaHandler({ getConnection: getSqlConnection })
 );
 
+const { createDeleteBulkItemsByIdsHandler } = require("./deleteBulkItemsByIds");
+
+// Gemela del anterior, por LISTA DE IDS -- el borrado vive en el Go worker
+// desde antes de migrar, así que el handler solo mueve la llamada y agrega el
+// troceo que faltaba (ver mysql/controllers/item.js § deleteBulkItems).
+register(
+  "inventory:bulk-delete-by-ids",
+  createDeleteBulkItemsByIdsHandler({ runGoWorker })
+);
+
 const { createBulkInsertMembersHandler } = require("./bulkInsertMembers");
 
 // Import de estudiantes/miembros vía CSV -- un import a nivel de distrito
