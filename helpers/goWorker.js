@@ -1,6 +1,32 @@
 const { createCircuitBreaker } = require("./circuitBreaker");
 
 /**
+ * Error que el worker REPORTÓ (HTTP 200 con status:"error"), no un fallo de
+ * transporte. Se distingue porque las dos cosas piden lo contrario:
+ *
+ *  - transporte (ECONNREFUSED, timeout, 5xx): reintentar tiene sentido, y
+ *    acumular fallos debe abrir el circuito para proteger al worker.
+ *  - reportado por el worker ("disallowed column for update: return_date",
+ *    "company_id is required"): es determinista — reintentarlo tres veces da
+ *    tres veces el mismo error, y contarlo en el breaker deja al Go worker
+ *    inalcanzable para TODA la app por 30s (failureThreshold=5) por culpa de
+ *    un payload malo de un solo cliente.
+ *
+ * Antes las dos clases se mezclaban y el mensaje final decía "Go Worker
+ * Connection Failed ... Ensure the Go worker is running and reachable" incluso
+ * cuando el worker había contestado perfectamente — mandando a quien depura a
+ * revisar puertos y servicios en vez de su propio payload.
+ */
+class GoWorkerReportedError extends Error {
+  constructor(message, command) {
+    super(message);
+    this.name = "GoWorkerReportedError";
+    this.workerReported = true;
+    this.command = command;
+  }
+}
+
+/**
  * fetchImpl inyectable para tests (sin red real). breakerOpts se reenvía a
  * createCircuitBreaker (failureThreshold/cooldownMs), por si un caller
  * necesita afinar el umbral para un test o un entorno específico.
@@ -46,10 +72,13 @@ function createRunGoWorker(fetchImpl = fetch, breakerOpts = {}) {
 
         const result = await response.json();
         if (result.status === "error") {
-          throw new Error(result.message);
+          // El worker contestó y rechazó la operación: no se reintenta ni se
+          // reescribe el mensaje. Sale tal cual, nombrando el comando.
+          throw new GoWorkerReportedError(result.message, command);
         }
         return result.data;
       } catch (error) {
+        if (error instanceof GoWorkerReportedError) throw error;
         if (i === retries - 1) {
           // El `cause` trae el código real (ECONNREFUSED/ECONNRESET/...), que
           // `fetch` esconde detrás de un "fetch failed" genérico; y la URL dice
@@ -70,12 +99,20 @@ function createRunGoWorker(fetchImpl = fetch, breakerOpts = {}) {
   // como una sola unidad: "¿esta llamada al Go worker tuvo éxito o no?". Así
   // failureThreshold cuenta invocaciones de runGoWorker fallidas entre
   // distintas requests, no cada intento de fetch individual dentro de una.
-  return createCircuitBreaker(callGoWorker, breakerOpts);
+  //
+  // isFailure excluye los errores que el worker REPORTÓ: el worker está sano,
+  // el que está mal es el payload. Contarlos abriría el circuito y dejaría al
+  // Go worker inalcanzable para toda la app por culpa de un cliente.
+  return createCircuitBreaker(callGoWorker, {
+    isFailure: (error) => !(error && error.workerReported),
+    ...breakerOpts,
+  });
 }
 
 const runGoWorker = createRunGoWorker();
 runGoWorker.createRunGoWorker = createRunGoWorker;
 runGoWorker.resolveWorkerTarget = resolveWorkerTarget;
 runGoWorker.DEFAULT_GO_WORKER_PORT = DEFAULT_GO_WORKER_PORT;
+runGoWorker.GoWorkerReportedError = GoWorkerReportedError;
 
 module.exports = runGoWorker;
