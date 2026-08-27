@@ -250,29 +250,51 @@ test('handler: tolera que el worker no devuelva affectedRows', async () => {
   assert.deepEqual(await handler({ company_id: 'C1', item_ids: [1] }), { deletedCount: 0, batches: 1 });
 });
 
-// ─── La gemela anónima de company.js ────────────────────────────────────────
-// El cliente llama esta ruta, así que conviene dejar fijado en un test qué
-// puede responder hoy: su cadena no tiene auth, y sin `sqlStaffId` el
-// controlador corta en 403 ANTES de encolar. La migración a cola no cambia eso
-// ni para bien ni para mal — el corte pasa antes del enqueue.
+// ─── La gemela de company.js ────────────────────────────────────────────────
+// Iba montada sin ningún middleware mientras el controller exigía
+// `request.sqlStaffId` (que solo setea validateJWT), así que respondía 403
+// "Staff record not found for this company" a toda llamada del cliente desde
+// el 2026-07-20. Ahora lleva la misma cadena que su gemela de item.js.
 
-test('mysql/routes/company.js POST /delete-bulk-items: sin auth en la cadena y 403 antes de encolar', async () => {
+test('mysql/routes/company.js POST /delete-bulk-items: lleva la misma cadena de auth que su gemela', () => {
   const { validateJWT } = require('../middlewares/validate-jwt');
-  const companyRouter = require('../mysql/routes/company');
+  const { checkTokenVersion } = require('../middlewares/checkValidateToken');
 
+  const chainOf = (router, path) => {
+    const layer = router.stack.find(
+      (l) => l.route && l.route.path === path && l.route.methods.post
+    );
+    assert.ok(layer, `la ruta POST ${path} debe estar montada`);
+    return layer.route.stack.map((l) => l.handle);
+  };
+
+  const companyChain = chainOf(require('../mysql/routes/company'), '/delete-bulk-items');
+  const itemChain = chainOf(require('../mysql/routes/item'), '/delete-bulk-items');
+
+  assert.ok(companyChain.includes(validateJWT), 'sin validateJWT no hay sqlStaffId → 403 garantizado');
+  assert.ok(companyChain.includes(checkTokenVersion));
+  assert.equal(
+    companyChain.length,
+    itemChain.length,
+    'las dos rutas apuntan al mismo controller: deben exigir lo mismo'
+  );
+  // authorizePermission se identifica por su firma textual, como en
+  // routeSecurityHardening.test.js (la factory devuelve funciones anónimas).
+  assert.ok(
+    companyChain.some((h) => h.toString().includes('insufficient permissions')),
+    'debe llevar authorizePermission'
+  );
+});
+
+test('el controlador real sigue cortando en 403 si llega sin sqlStaffId, sin encolar nada', async () => {
+  const companyRouter = require('../mysql/routes/company');
   const layer = companyRouter.stack.find(
     (l) => l.route && l.route.path === '/delete-bulk-items' && l.route.methods.post
   );
-  assert.ok(layer, 'la ruta debe seguir montada');
+  const controller = layer.route.stack.at(-1).handle;
 
-  const handlers = layer.route.stack.map((l) => l.handle);
-  assert.equal(handlers.length, 1, 'va directo al controlador: ningún middleware');
-  assert.ok(!handlers.includes(validateJWT), 'no tiene validateJWT');
-
-  // El controlador REAL (no el inyectado): sin sqlStaffId, getStaffCompanyAccess
-  // devuelve null y se responde 403 sin tocar la cola ni el Go worker.
   const res = makeRes();
-  await handlers[0](
+  await controller(
     { body: { company_id: 137, item_ids: [1, 2] }, headers: {}, get: () => undefined },
     res
   );
