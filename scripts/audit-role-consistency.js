@@ -70,9 +70,20 @@ async function main() {
     activeMismatch: [],    // Mongo y SQL discrepan en si está de baja
     noMembership: [],      // hay staff_member pero no fila en company_staff
     noStaffMember: [],     // el email no existe en staff_member
-    noUserAccount: [],     // empleado sin userId en Mongo: nunca se provisionó
     mongoSelfConflict: [], // el propio Mongo se contradice: role vs roleType
     ambiguousCompany: [],  // el nombre de company matchea más de un company_id
+    // ─── Informativo, NO es divergencia ───────────────────────────────────────
+    // Empleado en la lista de Mongo sin `userId`: la invitación no se aceptó y
+    // la cuenta nunca se creó. Es un estado legítimo del flujo de alta, no un
+    // error de sincronización, así que no cuenta para el exit code — si contara,
+    // el cron gritaría todos los días por invitaciones que están esperando y la
+    // gente aprendería a ignorarlo.
+    //
+    // OJO al leer estas filas: `active` y `status` de Mongo NO son confiables
+    // acá. Los cinco casos observados el 2026-08-28 venían con active:true y
+    // status:'Confirmed' aunque ninguno tenía cuenta. La ausencia de `userId`
+    // es la única señal fiable de que la cuenta no existe.
+    pendingInvitation: [],
   };
   let ok = 0;
   let evaluated = 0;
@@ -100,7 +111,7 @@ async function main() {
       }
 
       if (!emp.userId) {
-        findings.noUserAccount.push({ ...base, mongo: emp.roleType, active: emp.active });
+        findings.pendingInvitation.push({ ...base, mongo: emp.roleType });
         continue;
       }
       if (!companyId) continue;
@@ -155,7 +166,7 @@ async function main() {
     activeMismatch: 'BAJA DESALINEADA — uno de los dos lados lo tiene activo y el otro no',
     noMembership: 'SIN FILA EN company_staff — 403 en todo endpoint de inventario con scope',
     noStaffMember: 'SIN staff_member — el email nunca llegó a SQL',
-    noUserAccount: 'SIN userId EN MONGO — empleado agregado pero nunca provisionado como usuario',
+    pendingInvitation: 'INVITACION PENDIENTE — sin userId en Mongo, la cuenta no existe (esperado, informativo)',
     mongoSelfConflict: 'MONGO SE CONTRADICE — role (nivel) y roleType no coinciden',
     ambiguousCompany: 'NOMBRE DE COMPANY AMBIGUO — matchea más de un company_id',
   };
@@ -195,11 +206,10 @@ async function main() {
   }
 
   // Lo que este script NO puede arreglar solo: falta crear el usuario/staff.
-  const manual =
-    findings.noStaffMember.length + findings.noUserAccount.length + findings.noMembership.length;
+  const manual = findings.noStaffMember.length + findings.noMembership.length;
   if (manual) {
     console.log(`\n=== Requiere alta manual (${manual}) ===`);
-    console.log('  Sin staff_member / sin userId / sin membresía: hay que provisionar al usuario,');
+    console.log('  Sin staff_member o sin membresía activa: hay que provisionar al usuario,');
     console.log('  no alcanza un UPDATE. Mientras no exista, esas personas reciben 403 en inventario.');
   }
 
