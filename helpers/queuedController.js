@@ -14,7 +14,7 @@ const defaultLogger = require("./logger");
  * real (los logs) — antes de eso, una sola función bastaba.
  *
  * @param {string} type                                    Type de job (ver queue/handlers/index.js).
- * @param {(body: object) => (object|Promise<object|null>)} buildPayload
+ * @param {(body: object, request?: object) => (object|Promise<object|null>)} buildPayload
  *   Compone el payload del job desde request.body. Puede ser async (ej. una consulta a DB para
  *   armar la lista de destinatarios); sigue corriendo síncronamente en el controller, antes de
  *   enqueue — solo se difiere la llamada de red/DB del handler, no la composición. Si resuelve a
@@ -52,7 +52,7 @@ function createQueuedJobController(
         }
       }
 
-      const payload = await buildPayload(request.body);
+      const payload = await buildPayload(request.body, request);
       if (payload == null) {
         return response.status(200).json(buildSkippedBody(request.body));
       }

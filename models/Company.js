@@ -191,6 +191,54 @@ const Company = new Schema({
     required: false,
     default: "",
   },
+
+  /**
+   * Branding applied to the notification emails Devitrak sends on this
+   * company's behalf. Opt-in: with `enabled` false — the state of every
+   * company that predates this field — mail keeps Devitrak's own look, so
+   * turning the feature on never restyles anyone's email behind their back.
+   *
+   * Every field is optional and falls back to something already on the
+   * company: the logo to `company_logo`, the name to `company_name`, the
+   * reply-to to `main_email`. See nodeMailer/branding.js#normalizeBranding.
+   */
+  email_branding: {
+    enabled: {
+      type: Boolean,
+      required: false,
+      default: false,
+    },
+    display_name: {
+      type: String,
+      required: false,
+      default: "",
+    },
+    logo_url: {
+      type: String,
+      required: false,
+      default: "",
+    },
+    brand_color: {
+      type: String,
+      required: false,
+      default: "",
+    },
+    reply_to: {
+      type: String,
+      required: false,
+      default: "",
+    },
+    footer_note: {
+      type: String,
+      required: false,
+      default: "",
+    },
+    show_powered_by: {
+      type: Boolean,
+      required: false,
+      default: true,
+    },
+  },
   stripe_connected_account: {
     type: Object,
     required: false,

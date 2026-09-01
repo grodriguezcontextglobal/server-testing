@@ -36,7 +36,31 @@ const {
   forcingRevokingActiveSession,
   memberEmailNotification
 } = require("../nodeMailer/notifications");
+const { validateJWT } = require("../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const {
+  attachVerifiedCompany,
+  requireNotificationAuth,
+  notificationRateLimit,
+  publicRouteRateLimit,
+} = require("../middlewares/notificationAuth");
+const { previewBranding, listPreviewTemplates } = require("../nodeMailer/brandingPreview");
 const router = Router();
+
+// Applies to every route below. See middlewares/notificationAuth.js: the first
+// two always run, the third only refuses when NODEMAILER_AUTH_MODE=enforce.
+// Order matters — attachVerifiedCompany decodes the session that the rate
+// limiter keys on and that requireNotificationAuth checks.
+router.use(attachVerifiedCompany());
+router.use(publicRouteRateLimit);
+router.use(notificationRateLimit);
+router.use(requireNotificationAuth);
+
+// Email branding settings preview. Authenticated, unlike the send routes around
+// it: it renders arbitrary caller-supplied branding, so it is not something to
+// leave open. Sends nothing — it only returns the HTML the client would get.
+router.get("/branding-preview/templates", validateJWT, checkTokenVersion, listPreviewTemplates);
+router.post("/branding-preview", validateJWT, checkTokenVersion, previewBranding);
 
 //*email notification to inform about devices assigned to consumer
 router.post("/assignig-device-notification", assingDeviceNotification);

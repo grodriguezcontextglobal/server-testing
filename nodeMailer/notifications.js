@@ -4,6 +4,7 @@ const fs = require("fs");
 const path = require("path");
 sgMail.setApiKey(process.env.SENDGRID_API_KEY_PAID);
 const { createQueuedEmailController } = require("./queueEmail");
+const { resolveBranding, applyBrandedEnvelope } = require("./branding");
 const { createQueuedJobController } = require("../helpers/queuedController");
 const { enqueue } = require("../helpers/queue");
 
@@ -107,53 +108,53 @@ const normalizeLostFeePayload = (body = {}) => {
   };
 };
 // const e = require("express");
-const buildAssignDeviceMessage = (body) => ({
+const buildAssignDeviceMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: `${body.consumer.firstName} ${body.consumer.lastName} <${body.consumer.email}>`,
   subject: "Assignment device notification",
-  html: assigningDeviceMessageHtml(body),
+  html: assigningDeviceMessageHtml(body, branding),
 });
-const assingDeviceNotification = createQueuedEmailController(buildAssignDeviceMessage);
+const assingDeviceNotification = createQueuedEmailController(buildAssignDeviceMessage, { branded: true });
 
-const buildReturningDeviceMessage = (body) => ({
+const buildReturningDeviceMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: `${body.consumer.firstName} ${body.consumer.lastName} <${body.consumer.email}>`,
   subject: "Returned device notification",
-  html: returnConfirmationMessageHtml(body),
+  html: returnConfirmationMessageHtml(body, branding),
 });
-const returningDeviceNotification = createQueuedEmailController(buildReturningDeviceMessage);
+const returningDeviceNotification = createQueuedEmailController(buildReturningDeviceMessage, { branded: true });
 
-const buildReturningDeviceLeaseMemberMessage = (body) => ({
+const buildReturningDeviceLeaseMemberMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: `${body.member.firstName} ${body.member.lastName} <${body.member.email}>`,
   subject: "Returned device notification",
-  html: returnConfirmationLeaseMemberMessageHtml(body),
+  html: returnConfirmationLeaseMemberMessageHtml(body, branding),
 });
-const returningDeviceLeaseMemberNotification = createQueuedEmailController(buildReturningDeviceLeaseMemberMessage);
+const returningDeviceLeaseMemberNotification = createQueuedEmailController(buildReturningDeviceLeaseMemberMessage, { branded: true });
 
-const buildDeviceReportPerTransactionMessage = (body) => ({
+const buildDeviceReportPerTransactionMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: `${body.consumer.firstName} ${body.consumer.lastName} <${body.consumer.email}>`,
   subject: "Device Report Per Transaction",
-  html: deviceReportPerTransactionMessageHtml(body),
+  html: deviceReportPerTransactionMessageHtml(body, branding),
 });
-const deviceReportPerTransaction = createQueuedEmailController(buildDeviceReportPerTransactionMessage);
+const deviceReportPerTransaction = createQueuedEmailController(buildDeviceReportPerTransactionMessage, { branded: true });
 
-const buildCancelDepositMessage = (body) => ({
+const buildCancelDepositMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: body.consumer.email,
   subject: "Deposit returned notification",
-  html: cancelingDepositMessageHtml(body),
+  html: cancelingDepositMessageHtml(body, branding),
 });
-const cancelDepositNotification = createQueuedEmailController(buildCancelDepositMessage);
+const cancelDepositNotification = createQueuedEmailController(buildCancelDepositMessage, { branded: true });
 
-const buildCaptureDepositMessage = (body) => ({
+const buildCaptureDepositMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: body.consumer.email,
   subject: "Deposit captured",
-  html: capturingDepositMessageHtml(body),
+  html: capturingDepositMessageHtml(body, branding),
 });
-const captureDepositNotification = createQueuedEmailController(buildCaptureDepositMessage);
+const captureDepositNotification = createQueuedEmailController(buildCaptureDepositMessage, { branded: true });
 
 // NOTA: el original tenía dos bugs preexistentes (ReferenceError: `msg` no
 // definido — usaba `info`; y `returnReminderMessageHtml` pasado como referencia
@@ -169,13 +170,13 @@ const buildEarlierReturningMessage = (body) => ({
 });
 const earlierReturningNotification = createQueuedEmailController(buildEarlierReturningMessage);
 
-const buildEventStaffMessage = (body) => ({
+const buildEventStaffMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: body.staff,
   subject: "Staff event",
-  html: staffNotificationMessageHtml(body),
+  html: staffNotificationMessageHtml(body, branding),
 });
-const eventStaffNotification = createQueuedEmailController(buildEventStaffMessage);
+const eventStaffNotification = createQueuedEmailController(buildEventStaffMessage, { branded: true });
 
 const buildEditingDeviceAdminMessage = (body) => ({
   to: `${body.contactAdminEmail}`,
@@ -192,33 +193,34 @@ const validateLostDeviceFee = (body) => {
   }
   return null;
 };
-const buildLostDeviceFeeMessage = (body) => {
+const buildLostDeviceFeeMessage = (body, branding) => {
   const data = normalizeLostFeePayload(body);
   return {
     to: data.consumerEmail,
     from: "Devitrak Notifications <noreply@devitrak.com>",
     subject: `Lost device fee receipt - ${data.company}`,
-    html: lostDeviceFeeReceipt(data, normalizeLostFeePayload),
+    html: lostDeviceFeeReceipt(data, normalizeLostFeePayload, branding),
   };
 };
 const lostDeviceFeeCollectedNotification = createQueuedEmailController(buildLostDeviceFeeMessage, {
+  branded: true,
   validate: validateLostDeviceFee,
 });
-const buildConfirmationLinkNewConsumerMessage = (body) => ({
+const buildConfirmationLinkNewConsumerMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: `${body.consumer.email}`,
   subject: "Confirmation link account",
-  html: confirmationNewConsumerAccountMessageHtml(body),
+  html: confirmationNewConsumerAccountMessageHtml(body, branding),
 });
-const confirmationLinkNewConsumerNotification = createQueuedEmailController(buildConfirmationLinkNewConsumerMessage);
+const confirmationLinkNewConsumerNotification = createQueuedEmailController(buildConfirmationLinkNewConsumerMessage, { branded: true });
 
-const buildLoginLinkExistingConsumerMessage = (body) => ({
+const buildLoginLinkExistingConsumerMessage = (body, branding) => ({
   to: `${body.consumer.email}`,
   from: "Devitrak Notifications <noreply@devitrak.com>",
   subject: "Link to login",
-  html: linkToLoginExistingConsumerMessageHtml(body),
+  html: linkToLoginExistingConsumerMessageHtml(body, branding),
 });
-const loginLinkExistingConsumerNotification = createQueuedEmailController(buildLoginLinkExistingConsumerMessage);
+const loginLinkExistingConsumerNotification = createQueuedEmailController(buildLoginLinkExistingConsumerMessage, { branded: true });
 
 // NOTA: el original tenía un bug preexistente — si sgMail.send fallaba, el
 // catch solo logueaba y NUNCA respondía, dejando al cliente colgado hasta el
@@ -232,85 +234,85 @@ const buildLinkToResetPasswordMessage = (body) => ({
 });
 const linkToResetPassword = createQueuedEmailController(buildLinkToResetPasswordMessage);
 
-const buildCustomizedEmailMessage = (body) => ({
+const buildCustomizedEmailMessage = (body, branding) => ({
   to: `${body.consumersList}`,
   from: "Devitrak Notifications <noreply@devitrak.com>",
   subject: `Devitrak Notification - ${body.subject}`,
-  html: customizedEmailMessageHtml(body),
+  html: customizedEmailMessageHtml(body, branding),
 });
-const customizedEmailNotification = createQueuedEmailController(buildCustomizedEmailMessage);
+const customizedEmailNotification = createQueuedEmailController(buildCustomizedEmailMessage, { branded: true });
 
-const buildSingleEmailMessage = (body) => ({
+const buildSingleEmailMessage = (body, branding) => ({
   to: body.consumer,
   from: "Devitrak Notifications <noreply@devitrak.com>", // "notification@devitrak.net",
   subject: `Devitrak Notification - ${body.subject}`,
-  html: singleEmailMessageHtml(body),
+  html: singleEmailMessageHtml(body, branding),
 });
-const singleEmailNotification = createQueuedEmailController(buildSingleEmailMessage);
+const singleEmailNotification = createQueuedEmailController(buildSingleEmailMessage, { branded: true });
 
-const buildNewUserInvitationMessage = (body) => ({
+const buildNewUserInvitationMessage = (body, branding) => ({
   to: body.consumer,
   from: "Devitrak Notifications <noreply@devitrak.com>",
   subject: `Devitrak Notification - ${body.subject}`,
-  html: newUserInvitationMessageHtml(body),
+  html: newUserInvitationMessageHtml(body, branding),
 });
-const newUserInvitationNotification = createQueuedEmailController(buildNewUserInvitationMessage);
+const newUserInvitationNotification = createQueuedEmailController(buildNewUserInvitationMessage, { branded: true });
 
-const buildInternalNotificationMessage = (body) => ({
+const buildInternalNotificationMessage = (body, branding) => ({
   to: body.staff,
   from: "Devitrak Notifications <noreply@devitrak.com>",
   subject: `Devitrak Notification - ${body.subject}`,
-  html: staffNotificationMessageHtml(body),
+  html: staffNotificationMessageHtml(body, branding),
 });
-const internalNotification = createQueuedEmailController(buildInternalNotificationMessage);
+const internalNotification = createQueuedEmailController(buildInternalNotificationMessage, { branded: true });
 
-const buildEventBeginsReminderMessage = (body) => ({
+const buildEventBeginsReminderMessage = (body, branding) => ({
   to: body.staff,
   from: "Devitrak Notifications <noreply@devitrak.com>",
   subject: `Devitrak Notification - ${body.subject}`,
-  html: eventBeginsReminderHtmlMessage(body),
+  html: eventBeginsReminderHtmlMessage(body, branding),
 });
-const eventBeginsReminderNotification = createQueuedEmailController(buildEventBeginsReminderMessage);
+const eventBeginsReminderNotification = createQueuedEmailController(buildEventBeginsReminderMessage, { branded: true });
 
-const buildStaffInternalMessage = (body) => ({
+const buildStaffInternalMessage = (body, branding) => ({
   to: body.staff,
   from: "Devitrak Notifications <noreply@devitrak.com>",
   subject: `Devitrak Notification - ${body.subject}`,
-  html: staffInternalNotificationMessageHtml(body),
+  html: staffInternalNotificationMessageHtml(body, branding),
 });
-const staffInternalNotification = createQueuedEmailController(buildStaffInternalMessage);
+const staffInternalNotification = createQueuedEmailController(buildStaffInternalMessage, { branded: true });
 
-const buildItemInfoStaffMessage = (body) => ({
+const buildItemInfoStaffMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: body.staff,
   subject: `Devitrak Notification - ${body.subject}`,
-  html: itemInfoStaffNotificationMessageHtml(body),
+  html: itemInfoStaffNotificationMessageHtml(body, branding),
 });
-const itemInfoStaffNotification = createQueuedEmailController(buildItemInfoStaffMessage);
+const itemInfoStaffNotification = createQueuedEmailController(buildItemInfoStaffMessage, { branded: true });
 
-const buildEventLinkEventMessage = (body) => ({
+const buildEventLinkEventMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: body.list,
   subject: `Devitrak Notification - Event Link.`,
-  html: eventLinkEventHtml(body),
+  html: eventLinkEventHtml(body, branding),
 });
-const eventLinkEvent = createQueuedEmailController(buildEventLinkEventMessage);
+const eventLinkEvent = createQueuedEmailController(buildEventLinkEventMessage, { branded: true });
 
-const buildChargeInvoiceMessage = (body) => ({
+const buildChargeInvoiceMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: body.email,
   subject: `Devitrak Notification - Payment confirmation.`,
-  html: serviceChargeInvoiceEmailHtml(body),
+  html: serviceChargeInvoiceEmailHtml(body, branding),
 });
-const chargeInvoice = createQueuedEmailController(buildChargeInvoiceMessage);
+const chargeInvoice = createQueuedEmailController(buildChargeInvoiceMessage, { branded: true });
 
-const buildRefundInvoiceMessage = (body) => ({
+const buildRefundInvoiceMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: body.email,
   subject: `Devitrak Notification - Refund confirmation.`,
-  html: serviceRefundConfirmationEmailHtml(body),
+  html: serviceRefundConfirmationEmailHtml(body, branding),
 });
-const refundInvoice = createQueuedEmailController(buildRefundInvoiceMessage);
+const refundInvoice = createQueuedEmailController(buildRefundInvoiceMessage, { branded: true });
 
 // Ambas dependen de una consulta a DB (User.find) para armar la lista de
 // destinatarios, y usan sgMail.sendMultiple — fan-out por PERSONALIZACIÓN (cada
@@ -327,17 +329,18 @@ const refundInvoice = createQueuedEmailController(buildRefundInvoiceMessage);
 function createBuildMassiveEventCustomerMessage(
   findConsumerEmails = (eventID) => User.find({ event_providers: eventID }, "email").lean()
 ) {
-  return async (body) => {
+  return async (body, request) => {
     const { eventID, eventSelected, subject } = body;
     const consumerEventList = await findConsumerEmails(eventID);
     if (!consumerEventList.length) return null;
 
-    return {
+    const branding = await resolveBranding(body, { request });
+    return applyBrandedEnvelope({
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: [...consumerEventList],
       subject: `Event ${eventSelected} - ${subject}`,
-      html: customizedEmailMessageHtml(body),
-    };
+      html: customizedEmailMessageHtml(body, branding),
+    }, branding);
   };
 }
 const buildMassiveEventCustomerMessage = createBuildMassiveEventCustomerMessage();
@@ -487,37 +490,40 @@ const validateLiabilityContractShared = (contract_list, items) => {
 
 const validateLiabilityContractMember = (body) =>
   validateLiabilityContractParty(body.member, "Member") || validateLiabilityContractShared(body.contract_list, body.items);
-const buildLiabilityContractMemberMessage = (body) => ({
+const buildLiabilityContractMemberMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: `${body.member.name} <${body.member.email}>`,
   subject: body.subject || "Device Liability Contract",
-  html: liabilityContractMemberNotificationMessageHtml(body),
+  html: liabilityContractMemberNotificationMessageHtml(body, branding),
 });
 const liabilityContractMemberNotification = createQueuedEmailController(buildLiabilityContractMemberMessage, {
+  branded: true,
   validate: validateLiabilityContractMember,
 });
 
 const validateLiabilityContractConsumer = (body) =>
   validateLiabilityContractParty(body.consumer, "Consumer") || validateLiabilityContractShared(body.contract_list, body.items);
-const buildLiabilityContractConsumerMessage = (body) => ({
+const buildLiabilityContractConsumerMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: `${body.consumer.name} <${body.consumer.email}>`,
   subject: body.subject || "Device Liability Contract",
-  html: liabilityContractConsumerNotificationMessageHtml(body),
+  html: liabilityContractConsumerNotificationMessageHtml(body, branding),
 });
 const liabilityContractConsumerNotification = createQueuedEmailController(buildLiabilityContractConsumerMessage, {
+  branded: true,
   validate: validateLiabilityContractConsumer,
 });
 
 const validateLiabilityContractStaff = (body) =>
   validateLiabilityContractParty(body.staff, "Staff") || validateLiabilityContractShared(body.contract_list, body.items);
-const buildLiabilityContractStaffMessage = (body) => ({
+const buildLiabilityContractStaffMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
   to: `${body.staff.name} <${body.staff.email}>`,
   subject: body.subject || "Device Liability Contract",
-  html: liabilityContractStaffNotificationMessageHtml(body),
+  html: liabilityContractStaffNotificationMessageHtml(body, branding),
 });
 const liabilityContractStaffNotification = createQueuedEmailController(buildLiabilityContractStaffMessage, {
+  branded: true,
   validate: validateLiabilityContractStaff,
 });
 
@@ -574,15 +580,16 @@ const validateReturnedItemsToRenter = (body) => {
 function createBuildReturnedItemsToRenterMessage(
   uploadAttachment = require("../helpers/s3Upload").uploadNotificationAttachment
 ) {
-  return async (body) => {
+  return async (body, request) => {
     const { subject, staffEmails, supplierInfo, attachments } = body;
+    const branding = await resolveBranding(body, { request });
 
-    const msg = {
+    const msg = applyBrandedEnvelope({
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: staffEmails,
       subject: subject,
-      html: returnedItemsToRenterNotificationMessageHtml({ supplierInfo }),
-    };
+      html: returnedItemsToRenterNotificationMessageHtml({ supplierInfo }, branding),
+    }, branding);
 
     if (attachments && attachments.length) {
       msg.attachmentRefs = await Promise.all(
@@ -634,16 +641,17 @@ const validateTermsAndConditionsAcceptance = (body) => {
   }
   return null;
 };
-const buildTermsAndConditionsAcceptanceMessage = (body) => {
+const buildTermsAndConditionsAcceptanceMessage = (body, branding) => {
   const { consumer, event, company, signature } = body;
   return {
     from: "Devitrak Notifications <noreply@devitrak.com>",
     to: `${consumer.name} ${consumer.lastName} <${consumer.email}>`,
     subject: "Terms and Conditions Acceptance Confirmation",
-    html: termsAndConditionsAcceptanceMessageHtml({ consumer, event, company, signature }),
+    html: termsAndConditionsAcceptanceMessageHtml({ consumer, event, company, signature }, branding),
   };
 };
 const termsAndConditionsAcceptanceNotification = createQueuedEmailController(buildTermsAndConditionsAcceptanceMessage, {
+  branded: true,
   validate: validateTermsAndConditionsAcceptance,
 });
 
@@ -666,24 +674,25 @@ const validateDocumentSigningCompletion = (body) => {
   }
   return null;
 };
-const buildDocumentSigningCompletionMessages = (body) => {
+const buildDocumentSigningCompletionMessages = (body, branding) => {
   const { assigner, staff, contract_list, verification_id } = body;
   return [
     {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${assigner.name || "Assigner"} <${assigner.email}>`,
       subject: "Document Signing Complete - Equipment Ready for Delivery",
-      html: documentSigningCompletionMessageHtml({ recipientType: "assigner", staff, contract_list, verification_id }),
+      html: documentSigningCompletionMessageHtml({ recipientType: "assigner", staff, contract_list, verification_id }, branding),
     },
     {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${staff.name || "Staff Member"} <${staff.email}>`,
       subject: "Document Signing Complete - Awaiting Equipment Delivery",
-      html: documentSigningCompletionMessageHtml({ recipientType: "staff", staff, contract_list, verification_id }),
+      html: documentSigningCompletionMessageHtml({ recipientType: "staff", staff, contract_list, verification_id }, branding),
     },
   ];
 };
 const documentSigningCompletionNotification = createQueuedEmailController(buildDocumentSigningCompletionMessages, {
+  branded: true,
   validate: validateDocumentSigningCompletion,
 });
 
@@ -700,24 +709,25 @@ const validateConsumerDocumentSigningCompletion = (body) => {
   }
   return null;
 };
-const buildConsumerDocumentSigningCompletionMessages = (body) => {
+const buildConsumerDocumentSigningCompletionMessages = (body, branding) => {
   const { assigner, consumer, contract_list, verification_id } = body;
   return [
     {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${assigner.name || "Assigner"} <${assigner.email}>`,
       subject: "Document Signing Complete - Equipment Ready for Delivery",
-      html: documentSigningCompletionConsumerLeaseMessageHtml({ recipientType: "assigner", consumer, contract_list, verification_id }),
+      html: documentSigningCompletionConsumerLeaseMessageHtml({ recipientType: "assigner", consumer, contract_list, verification_id }, branding),
     },
     {
       from: "Devitrak Notifications <noreply@devitrak.com>",
       to: `${consumer.name || "Consumer"} <${consumer.email}>`,
       subject: "Document Signing Complete - Awaiting Equipment Delivery",
-      html: documentSigningCompletionConsumerLeaseMessageHtml({ recipientType: "consumer", consumer, contract_list, verification_id }),
+      html: documentSigningCompletionConsumerLeaseMessageHtml({ recipientType: "consumer", consumer, contract_list, verification_id }, branding),
     },
   ];
 };
 const consumerDocumentSigningCompletionNotification = createQueuedEmailController(buildConsumerDocumentSigningCompletionMessages, {
+  branded: true,
   validate: validateConsumerDocumentSigningCompletion,
 });
 
@@ -790,16 +800,17 @@ const validateConsumerLeaseEndedDeviceReturned = (body) => {
   }
   return null;
 };
-const buildConsumerLeaseEndedDeviceReturnedMessage = (body) => {
+const buildConsumerLeaseEndedDeviceReturnedMessage = (body, branding) => {
   const { consumer, devices, returnDate } = body;
   return {
     from: "Devitrak Notifications <noreply@devitrak.com>",
     to: `${consumer.name || "Consumer"} <${consumer.email}>`,
     subject: "Lease - Device Returned Notification",
-    html: consumerLeaseEndedDeviceReturnedNotificationMessageHtml({ consumer, devices, returnDate }),
+    html: consumerLeaseEndedDeviceReturnedNotificationMessageHtml({ consumer, devices, returnDate }, undefined, undefined, branding),
   };
 };
 const consumerLeaseEndedDeviceReturnedNotification = createQueuedEmailController(buildConsumerLeaseEndedDeviceReturnedMessage, {
+  branded: true,
   validate: validateConsumerLeaseEndedDeviceReturned,
 });
 
@@ -827,13 +838,13 @@ const buildForcingRevokingActiveSessionMessage = (body) => ({
 });
 const forcingRevokingActiveSession = createQueuedEmailController(buildForcingRevokingActiveSessionMessage);
 
-const buildMemberEmailMessage = (body) => ({
+const buildMemberEmailMessage = (body, branding) => ({
   to: body.consumer,
   from: "Devitrak Notifications <noreply@devitrak.com>",
   subject: `${body.subject} - Power by Devitrak`,
-  html: memberEmailNotificationHtml(body),
+  html: memberEmailNotificationHtml(body, branding),
 });
-const memberEmailNotification = createQueuedEmailController(buildMemberEmailMessage);
+const memberEmailNotification = createQueuedEmailController(buildMemberEmailMessage, { branded: true });
 
 module.exports = {
   assingDeviceNotification,
