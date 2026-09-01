@@ -1,5 +1,6 @@
 const express = require("express");
 const Company = require("../models/Company");
+const { invalidateBrandingCache } = require("../nodeMailer/branding");
 const AdminUser = require("../models/AdminUser");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const logger = require("../helpers/logger");
@@ -133,6 +134,13 @@ const updatingCompany = async (request, response = express.response) => {
         new: true,
       }
     );
+    // Branding is cached per company for five minutes so every notification
+    // does not re-read Mongo. A client who just saved a new logo would
+    // otherwise keep receiving the old one for the rest of that window, while
+    // the settings-page preview already showed the new one.
+    invalidateBrandingCache(paramsId);
+    invalidateBrandingCache(companyInfo.company_name);
+    invalidateBrandingCache(companyInfoUpdated?.company_name);
     return response.status(201).json({
       ok: true,
       company: companyInfoUpdated,
