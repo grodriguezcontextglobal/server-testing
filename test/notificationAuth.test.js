@@ -162,17 +162,51 @@ test('attachVerifiedCompany: a database failure costs the branding, never the em
   assert.equal(request.verifiedCompanyId, undefined);
 });
 
+/** Reload the module under a given mode; `undefined` means the variable is unset. */
+const loadWithMode = (mode) => {
+  const path = require.resolve('../middlewares/notificationAuth');
+  const previous = process.env.NODEMAILER_AUTH_MODE;
+  if (mode === undefined) delete process.env.NODEMAILER_AUTH_MODE;
+  else process.env.NODEMAILER_AUTH_MODE = mode;
+  delete require.cache[path];
+  const loaded = require('../middlewares/notificationAuth');
+  delete require.cache[path];
+  if (previous === undefined) delete process.env.NODEMAILER_AUTH_MODE;
+  else process.env.NODEMAILER_AUTH_MODE = previous;
+  return loaded;
+};
+
 /* ---------------------------------------------------------------- *
  * requireNotificationAuth
  * ---------------------------------------------------------------- */
 
-test('requireNotificationAuth: warn mode (the default) never blocks', () => {
-  // Deploying straight to enforce could silently stop customer email from
-  // app.devitrak.net, whose source is not in this workspace. Default observes.
-  const request = makeRequest();
+test('requireNotificationAuth: an unset NODEMAILER_AUTH_MODE enforces', () => {
+  // Asserted by reloading with the variable deleted rather than by relying on
+  // the module-level import: a local .env can set it, which would make this
+  // pass for the wrong reason.
+  const { requireNotificationAuth: byDefault } = loadWithMode(undefined);
   const response = makeResponse();
   let nexted = false;
-  requireNotificationAuth(request, response, () => { nexted = true; });
+  byDefault(makeRequest(), response, () => { nexted = true; });
+  assert.equal(nexted, false);
+  assert.equal(response.code, 401);
+});
+
+test('requireNotificationAuth: an unset mode still lets the pre-login routes through', () => {
+  const { requireNotificationAuth: byDefault } = loadWithMode(undefined);
+  for (const route of PUBLIC_ROUTES.keys()) {
+    const response = makeResponse();
+    let nexted = false;
+    byDefault(makeRequest({ path: route }), response, () => { nexted = true; });
+    assert.equal(nexted, true, `${route} must answer even with no mode configured`);
+  }
+});
+
+test('requireNotificationAuth: warn observes without blocking', () => {
+  const { requireNotificationAuth: warn } = loadWithMode('warn');
+  const response = makeResponse();
+  let nexted = false;
+  warn(makeRequest(), response, () => { nexted = true; });
   assert.equal(nexted, true);
   assert.equal(response.code, undefined);
 });
@@ -211,17 +245,6 @@ test('readSession: reads the token whether the request exposes header() or heade
  * different environment rather than mutating a shared value.
  * ---------------------------------------------------------------- */
 
-const loadWithMode = (mode) => {
-  const path = require.resolve('../middlewares/notificationAuth');
-  const previous = process.env.NODEMAILER_AUTH_MODE;
-  process.env.NODEMAILER_AUTH_MODE = mode;
-  delete require.cache[path];
-  const loaded = require('../middlewares/notificationAuth');
-  delete require.cache[path];
-  if (previous === undefined) delete process.env.NODEMAILER_AUTH_MODE;
-  else process.env.NODEMAILER_AUTH_MODE = previous;
-  return loaded;
-};
 
 test('enforce: an unauthenticated send is refused with 401', () => {
   const { requireNotificationAuth: enforce } = loadWithMode('enforce');
