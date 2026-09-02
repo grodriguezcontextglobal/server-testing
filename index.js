@@ -176,6 +176,7 @@ const configureRoutes = (app) => {
     consumer: require("./mysql/routes/consumers"),
     event: require("./mysql/routes/events"),
     item: require("./mysql/routes/item"),
+    identifier: require("./mysql/routes/identifier"),
     record: require("./mysql/routes/recordEvent"),
     staff: require("./mysql/routes/staff"),
     stripe: require("./mysql/routes/stripe"),
