@@ -18,35 +18,35 @@ Contrapartida tipada: **`docs/api-payloads.d.ts`** (interfaces + mapa `ApiEndpoi
 - Los tipos NO están en esta tabla a propósito: viven en el `.d.ts`, donde se marca que
   son inferidos.
 
-Cobertura: **451 de 486** endpoints montados tienen payload detectado.
+Cobertura: **456 de 491** endpoints montados tienen payload detectado.
 Routers presentes en el repo pero **no montados** en `index.js` (no existen en runtime): `routes/twilio.js`, `mysql/routes/location_manager.js`, `routes/cloudinary.js`.
 
 ## `/api/admin`
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DELETE | `/api/admin/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "delete")` | `controller/admin.js:521` |
-| GET | `/api/admin/:id` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:636` |
+| DELETE | `/api/admin/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "delete")` | `controller/admin.js:526` |
+| GET | `/api/admin/:id` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:641` |
 | GET | `/api/admin/activity-logs/vocabulary` | — | — | — | — | `validateJWT` `checkTokenVersion` | `controller/staffActivityLog.js:245` |
 | GET | `/api/admin/activity-logs` | — | — | — | `action` `end_date` `limit` `page` `staff_member_id` `start_date` `target_model` | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/staffActivityLog.js:188` |
 | POST | `/api/admin/activity-logs` | `action` `target_model` | `details` `target_id` | — | — | `validateJWT` `checkTokenVersion` | `controller/staffActivityLog.js:235` |
-| PATCH | `/api/admin/admin-user/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "update")` | `controller/admin.js:479` |
-| GET | `/api/admin/check-online-status/:email` | — | — | `email` | — | — | `controller/admin.js:730` |
-| POST | `/api/admin/invalidate-all-sessions` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `optionalJWT` | `controller/admin.js:884` |
-| POST | `/api/admin/login` | `mfaCode` | `email` `forceLogin` `password` `rememberMe` | — | — | `validateFields` | `controller/admin.js:86` |
-| POST | `/api/admin/logout` | — | `uid` | — | — | — | `controller/admin.js:345` |
-| POST | `/api/admin/manually_logout` | — | `uid` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `controller/admin.js:396` |
-| POST | `/api/admin/mfa/disable` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` | `controller/admin.js:816` |
-| POST | `/api/admin/mfa/generate` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` | `controller/admin.js:763` |
-| POST | `/api/admin/mfa/verify` | — | `token` | — | — | `validateJWT` | `controller/admin.js:790` |
-| POST | `/api/admin/new_admin_user` | — | `email` `imageProfile` `lastName` `name` `password` `phone` | — | — | `check("email", "Email must be provided").isEmail()` `validateFields` | `controller/admin.js:17` |
-| PATCH | `/api/admin/profile/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` | `controller/admin.js:424` |
+| PATCH | `/api/admin/admin-user/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "update")` | `controller/admin.js:484` |
+| GET | `/api/admin/check-online-status/:email` | — | — | `email` | — | — | `controller/admin.js:735` |
+| POST | `/api/admin/invalidate-all-sessions` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `optionalJWT` | `controller/admin.js:889` |
+| POST | `/api/admin/login` | `mfaCode` | `email` `forceLogin` `password` `rememberMe` | — | — | `validateFields` | `controller/admin.js:91` |
+| POST | `/api/admin/logout` | — | `uid` | — | — | — | `controller/admin.js:350` |
+| POST | `/api/admin/manually_logout` | — | `uid` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `controller/admin.js:401` |
+| POST | `/api/admin/mfa/disable` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` | `controller/admin.js:821` |
+| POST | `/api/admin/mfa/generate` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` | `controller/admin.js:768` |
+| POST | `/api/admin/mfa/verify` | — | `token` | — | — | `validateJWT` | `controller/admin.js:795` |
+| POST | `/api/admin/new_admin_user` | — | `email` `imageProfile` `lastName` `name` `password` `phone` | — | — | `check("email", "Email must be provided").isEmail()` `validateFields` | `controller/admin.js:22` |
+| PATCH | `/api/admin/profile/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` | `controller/admin.js:429` |
 | GET | `/api/admin/protected` | — | — | — | — | `validateJWT` | `middlewares/checkValidateToken.js:4` |
 | POST | `/api/admin/receiver-assignation` | — | `active` `adminUser` `company` `device` `eventSelected` `event_id` `paymentIntent` `provider` `timeStamp` `user` ⚠️ el body se pasa completo a `new Receivers()`: los campos son los del esquema `models/Receivers.js` | — | — | — | `controller/receiver.js:24` |
 | GET | `/api/admin/receiver-assigned` | — | `paymentIntent` | — | — | — | `controller/receiver.js:47` |
-| GET | `/api/admin/renew` | — | — | — | — | `validateJWT` | `controller/admin.js:557` |
-| PATCH | `/api/admin/update-password` | — | `email` `password` | — | — | — | `controller/admin.js:587` |
-| POST | `/api/admin/users` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | — | `controller/admin.js:636` |
+| GET | `/api/admin/renew` | — | — | — | — | `validateJWT` | `controller/admin.js:562` |
+| PATCH | `/api/admin/update-password` | — | `email` `password` | — | — | — | `controller/admin.js:592` |
+| POST | `/api/admin/users` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | — | `controller/admin.js:641` |
 
 ## `/api/article`
 
@@ -63,7 +63,7 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | GET | `/api/auth/:id` | — | — | `id` | — | `optionalJWT` | `controller/auth.js:68` |
 | PATCH | `/api/auth/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | — | `controller/auth.js:168` |
-| GET | `/api/auth/all-consumers-based-on-all-events-per-company/:companyID` | — | — | `companyID` | — | `validateJWT` `checkTokenVersion` | `controller/auth.js:282` |
+| GET | `/api/auth/all-consumers-based-on-all-events-per-company/:companyID` | — | — | `companyID` | — | `validateJWT` `checkTokenVersion` | `controller/auth.js:292` |
 | POST | `/api/auth/new` | — | `category` `company_providers` `email` `eventSelected` `event_providers` `groupName` `lastName` `name` `notes` `phoneNumber` `privacyPolicy` `profile_picture` `provider` ⚠️ el body se pasa completo a `new User()`: los campos son los del esquema `models/User.js` | — | — | `check("lastName", "Last name is mandatory").not().isEmpty()` `check("email", "Email is mandatory").isEmail()` `validateFields` | `controller/auth.js:120` |
 | GET | `/api/auth/user-query` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `controller/auth.js:27` |
 | POST | `/api/auth/user-query` | — | `category` `company_providers` `email` `eventSelected` `event_providers` `groupName` `lastName` `name` `notes` `phoneNumber` `privacyPolicy` `profile_picture` `provider` ⚠️ el body se usa como FILTRO Mongo en `User.find()`: cualquier subconjunto de los campos de `models/User.js` (`{}` trae todo) | — | — | — | `controller/auth.js:11` |
@@ -133,42 +133,42 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | DELETE | `/api/db_company/categories/:category_id` | `company_id` | — | `category_id` | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/categories_groups.js:51` |
 | POST | `/api/db_company/categories/upsert` | `category_name` `company_id` | `active` `sub_category_name` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "create")` | `mysql/controllers/categories_groups.js:27` |
 | POST | `/api/db_company/categories` | `company_id` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "read")` | `mysql/controllers/categories_groups.js:5` |
-| GET | `/api/db_company/check-company-exists` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1525` |
-| POST | `/api/db_company/check-item` | — | `preference` `role` ⚠️ rest-spread `...bodyFilters`: acepta campos extra | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:1266` |
+| GET | `/api/db_company/check-company-exists` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1526` |
+| POST | `/api/db_company/check-item` | — | `preference` `role` ⚠️ rest-spread `...bodyFilters`: acepta campos extra | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:1267` |
 | POST | `/api/db_company/companies_information` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/company.js:83` |
 | POST | `/api/db_company/company-inventory-grouped-full` | `company_id` | — | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/categories_groups.js:159` |
-| POST | `/api/db_company/company-inventory-pagination` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | `direction` `lastItemId` | — | `mysql/controllers/item.js:1917` |
-| POST | `/api/db_company/company-inventory-structure` | `company_id` | — | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2405` |
-| POST | `/api/db_company/company-inventory-with-current-warehouse-status` | — | `company_id` | — | — | — | `mysql/controllers/item.js:2444` |
+| POST | `/api/db_company/company-inventory-pagination` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | `direction` `lastItemId` | — | `mysql/controllers/item.js:1918` |
+| POST | `/api/db_company/company-inventory-structure` | `company_id` | — | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2406` |
+| POST | `/api/db_company/company-inventory-with-current-warehouse-status` | — | `company_id` | — | — | — | `mysql/controllers/item.js:2445` |
 | POST | `/api/db_company/consulting-company` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | — | `mysql/controllers/company.js:48` |
-| GET | `/api/db_company/current-inventory/:company_id` | — | — | `company_id` | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:1239` |
-| POST | `/api/db_company/delete-bulk-items` | `company_id` `item_ids` | — | — | — | — | `mysql/controllers/item.js:3645` |
-| POST | `/api/db_company/filter-suppliers-info-items` | — | `company_id` | — | — | — | `mysql/controllers/item.js:3607` |
-| POST | `/api/db_company/get-grouped-inventory-by-search-parameter` | `company_id` `searchParameter` | — | — | — | — | `mysql/controllers/item.js:3476` |
-| POST | `/api/db_company/get-inventory-company` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | — | `mysql/controllers/item.js:1849` |
-| POST | `/api/db_company/get-location-item-types-hierarchy` | `company_id` | — | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:3333` |
+| GET | `/api/db_company/current-inventory/:company_id` | — | — | `company_id` | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:1240` |
+| POST | `/api/db_company/delete-bulk-items` | `company_id` `item_ids` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:3664` |
+| POST | `/api/db_company/filter-suppliers-info-items` | — | `company_id` | — | — | — | `mysql/controllers/item.js:3608` |
+| POST | `/api/db_company/get-grouped-inventory-by-search-parameter` | `company_id` `searchParameter` | — | — | — | — | `mysql/controllers/item.js:3477` |
+| POST | `/api/db_company/get-inventory-company` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | — | `mysql/controllers/item.js:1850` |
+| POST | `/api/db_company/get-location-item-types-hierarchy` | `company_id` | — | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:3334` |
 | DELETE | `/api/db_company/groups/:group_id` | `company_id` | — | `group_id` | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/categories_groups.js:125` |
 | POST | `/api/db_company/groups/upsert` | `company_id` `item_group` | `active` `sub_item_group` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "create")` | `mysql/controllers/categories_groups.js:101` |
 | POST | `/api/db_company/groups` | `company_id` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "read")` | `mysql/controllers/categories_groups.js:79` |
 | POST | `/api/db_company/industry` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/company.js:95` |
-| POST | `/api/db_company/insert-new-single-item` | — | `brand` `category_name` `company` `company_id` `container` `containerSpotLimit` `container_id` `cost` `current_location` `descript_item` `display_item` `extra_serial_number` `image_url` `item_group` `location` `location_name` `main_warehouse` `ownership` `return_date` `returnedRentedInfo` `serial_number` `sub_category_name` `sub_item_group` `sub_location` `sub_location_name` `sub_location_parent_id` `supplier_info` `warehouse` | — | — | — | `mysql/controllers/item.js:159` |
-| POST | `/api/db_company/inventory-based-on-location-and-sublocation` | — | `company_id` `location` `location_id` ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | `sub_location` | — | `mysql/controllers/item.js:1994` |
-| POST | `/api/db_company/inventory-based-on-submitted-parameters` | — | `query` `values` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2358` |
-| POST | `/api/db_company/inventory-query` | `queryName` | `params` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2318` |
+| POST | `/api/db_company/insert-new-single-item` | — | `brand` `category_name` `company` `company_id` `container` `containerSpotLimit` `container_id` `cost` `current_location` `descript_item` `display_item` `extra_serial_number` `image_url` `item_group` `location` `location_name` `main_warehouse` `ownership` `return_date` `returnedRentedInfo` `serial_number` `sub_category_name` `sub_item_group` `sub_location` `sub_location_name` `sub_location_parent_id` `supplier_info` `warehouse` | — | — | — | `mysql/controllers/item.js:160` |
+| POST | `/api/db_company/inventory-based-on-location-and-sublocation` | — | `company_id` `location` `location_id` ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | `sub_location` | — | `mysql/controllers/item.js:1995` |
+| POST | `/api/db_company/inventory-based-on-submitted-parameters` | — | `query` `values` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2359` |
+| POST | `/api/db_company/inventory-query` | `queryName` | `params` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2319` |
 | POST | `/api/db_company/locations` | `company_id` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "read")` | `mysql/controllers/location.js:559` |
 | POST | `/api/db_company/new_company` | — | `city_address` `company_name` `email_company` `industry` `phone_number` `state_address` `street_address` `zip_address` | — | — | — | `mysql/controllers/company.js:11` |
-| POST | `/api/db_company/retrieve-company-inventory` | `company_id` `location` | `category_name` `expected` `item_group` `limit` | — | — | — | `mysql/controllers/item.js:4011` |
-| POST | `/api/db_company/retrieve-company-items-with-locations` | — | `company_id` | — | — | — | `mysql/controllers/item.js:2444` |
-| POST | `/api/db_company/return-event-devices` | `category_name` `event_id` `item_group` | `serial_numbers` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2153` |
-| POST | `/api/db_company/returning-leased-equipment` | — | `enableAssignFeature` `item_id` `return_date` `returnedRentedInfo` | — | — | — | `mysql/controllers/item.js:832` |
-| GET | `/api/db_company/search-inventory` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1361` |
-| POST | `/api/db_company/search-inventory` | — | `company_id` `searchValue` | — | — | — | `mysql/controllers/item.js:1314` |
+| POST | `/api/db_company/retrieve-company-inventory` | `company_id` `location` | `category_name` `expected` `item_group` `limit` | — | — | — | `mysql/controllers/item.js:4063` |
+| POST | `/api/db_company/retrieve-company-items-with-locations` | — | `company_id` | — | — | — | `mysql/controllers/item.js:2445` |
+| POST | `/api/db_company/return-event-devices` | `category_name` `event_id` `item_group` | `serial_numbers` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2154` |
+| POST | `/api/db_company/returning-leased-equipment` | — | `enableAssignFeature` `item_id` `return_date` `returnedRentedInfo` | — | — | — | `mysql/controllers/item.js:833` |
+| GET | `/api/db_company/search-inventory` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1362` |
+| POST | `/api/db_company/search-inventory` | — | `company_id` `searchValue` | — | — | — | `mysql/controllers/item.js:1315` |
 | POST | `/api/db_company/update_company` | `company_id` | — ⚠️ rest-spread `...updateFields`: acepta campos extra | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("company", "update")` | `mysql/controllers/company.js:151` |
-| POST | `/api/db_company/update-all-items-in-inventory` | — | `brand` `category_name` `company_id` `container` `containerSpotLimit` `cost` `current_location` `descript_item` `display_item` `enableAssignFeature` `extra_serial_number` `image_url` `item_group` `location` `main_warehouse` `originalTemplate` `ownership` `return_date` `returnedRentedInfo` `sub_location` `supplier_info` `update_at` `warehouse` | — | — | — | `mysql/controllers/item.js:2537` |
-| POST | `/api/db_company/update-content-in-container` | — | `container_items` `item_id` `ref` | — | — | — | `mysql/controllers/item.js:1618` |
+| POST | `/api/db_company/update-all-items-in-inventory` | — | `brand` `category_name` `company_id` `container` `containerSpotLimit` `cost` `current_location` `descript_item` `display_item` `enableAssignFeature` `extra_serial_number` `image_url` `item_group` `location` `main_warehouse` `originalTemplate` `ownership` `return_date` `returnedRentedInfo` `sub_location` `supplier_info` `update_at` `warehouse` | — | — | — | `mysql/controllers/item.js:2538` |
+| POST | `/api/db_company/update-content-in-container` | — | `container_items` `item_id` `ref` | — | — | — | `mysql/controllers/item.js:1619` |
 | POST | `/api/db_company/update-group-items` | — | `brand` `category_name` `company` `company_id` `container` `containerSpotLimit` `cost` `current_location` `data` `descript_item` `enableAssignFeature` `extra_serial_number` `image_url` `item_group` `location` `main_warehouse` `ownership` `return_date` `sub_location` `update_at` `warehouse` | — | — | — | `mysql/controllers/company.js:193` |
-| POST | `/api/db_company/update-items-based-on-alphanumeric-serial-number` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2743` |
-| POST | `/api/db_company/update-items-based-on-serial-number` | — | `brand` `category_name` `container` `containerSpotLimit` `cost` `current_location` `descript_item` `display_item` `enableAssignFeature` `extra_serial_number` `image_url` `item_group` `location` `main_warehouse` `originalTemplate` `ownership` `return_date` `returnedRentedInfo` `sub_location` `supplier_info` `warehouse` | — | — | — | `mysql/controllers/item.js:2625` |
+| POST | `/api/db_company/update-items-based-on-alphanumeric-serial-number` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2744` |
+| POST | `/api/db_company/update-items-based-on-serial-number` | — | `brand` `category_name` `container` `containerSpotLimit` `cost` `current_location` `descript_item` `display_item` `enableAssignFeature` `extra_serial_number` `image_url` `item_group` `location` `main_warehouse` `originalTemplate` `ownership` `return_date` `returnedRentedInfo` `sub_location` `supplier_info` `warehouse` | — | — | — | `mysql/controllers/item.js:2626` |
 
 ## `/api/db_consumer`
 
@@ -194,89 +194,99 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | DELETE | `/api/db_event/:id` | — | `email` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("event", "delete")` | `mysql/controllers/events.js:239` |
 | POST | `/api/db_event/allocate-device-container-event` | `company_id` `data` `event_id` | `company_id_nosql` `eventName` `logistic_status` `warehouse` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/items_events.js:655` |
 | POST | `/api/db_event/allocate-device-event` | `data` | `category_name` `company_id` `event_id` `item_group` `logistic_status` `warehouse` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("event", "update")` | `mysql/controllers/items_events.js:558` |
-| POST | `/api/db_event/confirm-item-return` | `company_id` `noSqlEventName` `serial_numbers` `user_id` | `location` `noSqlCompanyId` `sub_location` | — | — | — | `mysql/controllers/item.js:3824` |
+| POST | `/api/db_event/confirm-item-return` | `company_id` `noSqlEventName` `serial_numbers` `user_id` | `location` `noSqlCompanyId` `sub_location` | — | — | — | `mysql/controllers/item.js:3876` |
 | POST | `/api/db_event/consulting-event` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/events.js:145` |
-| POST | `/api/db_event/device-final-status-refactored` | — | `allInventoryOfEvent` `eventId` `groupingDevicesFromNoSQL` `update_at` | — | — | — | `mysql/controllers/item.js:1179` |
-| POST | `/api/db_event/device-final-status` | — | `condition` `event_id` `serial_number` `status` `updated_at` | — | — | — | `mysql/controllers/item.js:1152` |
+| POST | `/api/db_event/device-final-status-refactored` | — | `allInventoryOfEvent` `eventId` `groupingDevicesFromNoSQL` `update_at` | — | — | — | `mysql/controllers/item.js:1180` |
+| POST | `/api/db_event/device-final-status` | — | `condition` `event_id` `serial_number` `status` `updated_at` | — | — | — | `mysql/controllers/item.js:1153` |
 | POST | `/api/db_event/event_device_directly` | — | `event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:280` |
 | POST | `/api/db_event/event_device` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/items_events.js:46` |
 | POST | `/api/db_event/event_staff` | — | `event_id` `role` `staff_id` | — | — | — | `mysql/controllers/events.js:261` |
+| POST | `/api/db_event/event-count/close` | — | `company_id` `event_id` `scanned` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "update")` | `mysql/controllers/eventCount.js:242` |
+| POST | `/api/db_event/event-count/reconcile` | — | `company_id` `event_id` `scanned` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "read")` | `mysql/controllers/eventCount.js:205` |
 | GET | `/api/db_event/event-inventory/:id` | — | — | `id` | — | — | `mysql/controllers/events.js:290` |
 | POST | `/api/db_event/event-inventory/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `mysql/controllers/items_events.js:413` |
 | POST | `/api/db_event/events_company` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/events.js:211` |
 | POST | `/api/db_event/events_information` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/events.js:178` |
 | POST | `/api/db_event/inserting-items-in-event-from-container` | — | `event_id` `refDatabase` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/items_events.js:498` |
-| POST | `/api/db_event/inventory-based-on-submitted-parameters` | — | `query` `values` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2358` |
-| POST | `/api/db_event/inventory-query` | `queryName` | `params` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2318` |
+| POST | `/api/db_event/inventory-based-on-submitted-parameters` | — | `query` `values` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2359` |
+| POST | `/api/db_event/inventory-query` | `queryName` | `params` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2319` |
 | POST | `/api/db_event/lock-items-for-event` | `company_id` `event_id` `items` | — | — | — | — | `mysql/controllers/items_events.js:823` |
 | POST | `/api/db_event/new_event` | — | `city_address` `company_assigned_event_id` `email_company` `event_name` `phone_number` `state_address` `street_address` `venue_name` `zip_address` | — | — | — | `mysql/controllers/events.js:32` |
 | POST | `/api/db_event/remove-item-inventory-event` | — | `category_name` `event_id` `item_group` `serial_number` | — | — | — | `mysql/controllers/items_events.js:301` |
 | POST | `/api/db_event/remove-reserved-items-for-event` | — | `company_id` `event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:917` |
 | POST | `/api/db_event/reserve-items-for-event` | — | `company_id` `items` | — | — | `validateJWT` `authorizePermission("event", "update")` | `mysql/controllers/items_events.js:875` |
-| POST | `/api/db_event/retrieve-item-group-location-quantity` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | `validateJWT` `authorizePermission("event", "read")` | `mysql/controllers/item.js:1849` |
-| POST | `/api/db_event/retrieve-item-group-quantity-with-format` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/item.js:2059` |
-| POST | `/api/db_event/retrieve-item-location-quantity-full-details` | `company_id` `item_group` `location` `quantity` | `category_name` `enableAssignFeature` `serial_number` `warehouse` | — | — | — | `mysql/controllers/item.js:1778` |
-| POST | `/api/db_event/retrieve-item-location-quantity` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/item.js:1704` |
-| POST | `/api/db_event/return-event-devices` | `category_name` `event_id` `item_group` | `serial_numbers` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2153` |
-| POST | `/api/db_event/returning-item-refactored` | `allInventoryOfEvent` `groupingDevicesFromNoSQL` | `companyId` `update_at` | — | — | — | `mysql/controllers/item.js:1052` |
-| POST | `/api/db_event/returning-item` | — | `category_name` `company_id` `item_group` `serial_number` `status` `update_at` | — | — | — | `mysql/controllers/item.js:1005` |
+| POST | `/api/db_event/retrieve-item-group-location-quantity` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | `validateJWT` `authorizePermission("event", "read")` | `mysql/controllers/item.js:1850` |
+| POST | `/api/db_event/retrieve-item-group-quantity-with-format` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/item.js:2060` |
+| POST | `/api/db_event/retrieve-item-location-quantity-full-details` | `company_id` `item_group` `location` `quantity` | `category_name` `enableAssignFeature` `serial_number` `warehouse` | — | — | — | `mysql/controllers/item.js:1779` |
+| POST | `/api/db_event/retrieve-item-location-quantity` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/item.js:1705` |
+| POST | `/api/db_event/return-event-devices` | `category_name` `event_id` `item_group` | `serial_numbers` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2154` |
+| POST | `/api/db_event/returning-item-refactored` | `allInventoryOfEvent` `groupingDevicesFromNoSQL` | `companyId` `update_at` | — | — | — | `mysql/controllers/item.js:1053` |
+| POST | `/api/db_event/returning-item` | — | `category_name` `company_id` `item_group` `serial_number` `status` `update_at` | — | — | — | `mysql/controllers/item.js:1006` |
 | POST | `/api/db_event/update-event/:event_id` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | `event_id` | — | — | `mysql/controllers/events.js:81` |
-| POST | `/api/db_event/update-item-in-table-after-being-added-to-event-from-container` | — | `refDatabase` `warehouse` | — | — | — | `mysql/controllers/item.js:1648` |
+| POST | `/api/db_event/update-item-in-table-after-being-added-to-event-from-container` | — | `refDatabase` `warehouse` | — | — | — | `mysql/controllers/item.js:1649` |
 | POST | `/api/db_event/update-status-item-based-on-event` | — | `event_id` `status` `update_at` | — | — | — | `mysql/controllers/events.js:325` |
+
+## `/api/db_identifier`
+
+| Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| POST | `/api/db_identifier/by-items` | `item_ids` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "read")` | `mysql/controllers/identifier.js:311` |
+| POST | `/api/db_identifier/register-bulk` | `identifiers` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "update")` | `mysql/controllers/identifier.js:181` |
+| POST | `/api/db_identifier/register` | — | `id_type` `id_value` `item_id` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "update")` | `mysql/controllers/identifier.js:76` |
 
 ## `/api/db_inventory`
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/api/db_inventory/check-item` | — | `preference` `role` ⚠️ rest-spread `...bodyFilters`: acepta campos extra | — | — | `validateJWT` | `mysql/controllers/item.js:1266` |
-| POST | `/api/db_inventory/check-large-data` | `company_id` `item_ids` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "read")` | `mysql/controllers/item.js:3064` |
-| GET | `/api/db_inventory/container-items/:container_item_id` | — | — | `container_item_id` | — | — | `mysql/controllers/item.js:2822` |
-| POST | `/api/db_inventory/container-items` | `child_ids` `container_item_id` | — | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2755` |
-| DELETE | `/api/db_inventory/container/:container_item_id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `container_item_id` | — | — | `mysql/controllers/item.js:2935` |
-| PUT | `/api/db_inventory/container/:container_item_id` | `child_ids` | — | `container_item_id` | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2991` |
-| POST | `/api/db_inventory/update-large-data` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "update")` | `mysql/controllers/item.js:3153` |
-| POST | `/api/db_inventory/update-location-sub-location` | `company_id` `currentIndex` `newName` `path` | — | — | — | — | `mysql/controllers/item.js:3171` |
+| POST | `/api/db_inventory/check-item` | — | `preference` `role` ⚠️ rest-spread `...bodyFilters`: acepta campos extra | — | — | `validateJWT` | `mysql/controllers/item.js:1267` |
+| POST | `/api/db_inventory/check-large-data` | `company_id` `item_ids` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "read")` | `mysql/controllers/item.js:3065` |
+| GET | `/api/db_inventory/container-items/:container_item_id` | — | — | `container_item_id` | — | — | `mysql/controllers/item.js:2823` |
+| POST | `/api/db_inventory/container-items` | `child_ids` `container_item_id` | — | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2756` |
+| DELETE | `/api/db_inventory/container/:container_item_id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `container_item_id` | — | — | `mysql/controllers/item.js:2936` |
+| PUT | `/api/db_inventory/container/:container_item_id` | `child_ids` | — | `container_item_id` | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2992` |
+| POST | `/api/db_inventory/update-large-data` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "update")` | `mysql/controllers/item.js:3154` |
+| POST | `/api/db_inventory/update-location-sub-location` | `company_id` `currentIndex` `newName` `path` | — | — | — | — | `mysql/controllers/item.js:3172` |
 
 ## `/api/db_item`
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/api/db_item/:id` | `company_id` `item_id` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:606` |
-| POST | `/api/db_item/bulk-item-alphanumeric` | `company_id` | `category_name` `location` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "create")` | `mysql/controllers/item.js:514` |
-| POST | `/api/db_item/bulk-item` | `company_id` `max_serial_number` `min_serial_number` | `category_name` `location` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "create")` | `mysql/controllers/item.js:429` |
-| GET | `/api/db_item/check-company-has-inventory` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1681` |
+| POST | `/api/db_item/:id` | `company_id` `item_id` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:607` |
+| POST | `/api/db_item/bulk-item-alphanumeric` | `company_id` | `category_name` `location` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "create")` | `mysql/controllers/item.js:515` |
+| POST | `/api/db_item/bulk-item` | `company_id` `max_serial_number` `min_serial_number` | `category_name` `location` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "create")` | `mysql/controllers/item.js:430` |
+| GET | `/api/db_item/check-company-has-inventory` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1682` |
 | GET | `/api/db_item/check-inventory/:company_id` | — | — | `company_id` | — | `validateJWT` | `mysql/controllers/items_events.js:357` |
-| POST | `/api/db_item/check-item` | — | `preference` `role` ⚠️ rest-spread `...bodyFilters`: acepta campos extra | — | — | `validateJWT` | `mysql/controllers/item.js:1266` |
-| POST | `/api/db_item/consulting-item` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/item.js:580` |
+| POST | `/api/db_item/check-item` | — | `preference` `role` ⚠️ rest-spread `...bodyFilters`: acepta campos extra | — | — | `validateJWT` | `mysql/controllers/item.js:1267` |
+| POST | `/api/db_item/consulting-item` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/item.js:581` |
 | POST | `/api/db_item/consulting-row-item-assigned-event` | — | `company_assigned_event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:438` |
 | POST | `/api/db_item/current-inventory` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/items_events.js:330` |
-| POST | `/api/db_item/delete-bulk-items-criteria` | `category_name` `company_id` | `item_group` `serial_number` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:3923` |
-| POST | `/api/db_item/delete-bulk-items` | `company_id` `item_ids` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:3645` |
-| POST | `/api/db_item/delete-item` | `company_id` `item_id` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:606` |
-| POST | `/api/db_item/edit-item` | — | `brand` `category_name` `company` `company_id` `container` `containerSpotLimit` `container_id` `container_items` `cost` `current_location` `descript_item` `display_item` `enableAssignFeature` `extra_serial_number` `image_url` `isItInContainer` `item_group` `item_id` `location` `location_id` `logistic_status` `main_warehouse` `ownership` `return_date` `returnedRentedInfo` `serial_number` `status` `sub_category_name` `sub_item_group` `sub_location` `supplier_info` `update_at` `warehouse` ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL · identificadores (al menos uno): `company_id` `item_id` `serial_number` · campos actualizables por lista blanca (el resto se ignora) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "update")` | `mysql/controllers/item.js:705` |
+| POST | `/api/db_item/delete-bulk-items-criteria` | `category_name` `company_id` | `item_group` `serial_number` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:3975` |
+| POST | `/api/db_item/delete-bulk-items` | `company_id` `item_ids` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:3664` |
+| POST | `/api/db_item/delete-item` | `company_id` `item_id` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:607` |
+| POST | `/api/db_item/edit-item` | — | `brand` `category_name` `company` `company_id` `container` `containerSpotLimit` `container_id` `container_items` `cost` `current_location` `descript_item` `display_item` `enableAssignFeature` `extra_serial_number` `image_url` `isItInContainer` `item_group` `item_id` `location` `location_id` `logistic_status` `main_warehouse` `ownership` `return_date` `returnedRentedInfo` `serial_number` `status` `sub_category_name` `sub_item_group` `sub_location` `supplier_info` `update_at` `warehouse` ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL · identificadores (al menos uno): `company_id` `item_id` `serial_number` · campos actualizables por lista blanca (el resto se ignora) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "update")` | `mysql/controllers/item.js:706` |
 | PUT | `/api/db_item/event-items/bulk-update` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/items_events.js:67` |
 | POST | `/api/db_item/event-items/search` | `company_id` | — ⚠️ rest-spread `...filters`: acepta campos extra | — | — | — | `mysql/controllers/items_events.js:136` |
 | DELETE | `/api/db_item/event-items` | `event_id` `items` | — | — | — | — | `mysql/controllers/items_events.js:83` |
 | PUT | `/api/db_item/event-items` | `company_id` `event_id` `items` `updates` | — | — | — | — | `mysql/controllers/items_events.js:205` |
-| GET | `/api/db_item/fragment-data` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1408` |
-| POST | `/api/db_item/get-inventory-company` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | — | `mysql/controllers/item.js:1849` |
+| GET | `/api/db_item/fragment-data` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1409` |
+| POST | `/api/db_item/get-inventory-company` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | — | `mysql/controllers/item.js:1850` |
 | POST | `/api/db_item/inventory_event/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `mysql/controllers/items_events.js:413` |
-| POST | `/api/db_item/inventory-based-on-location-and-sublocation` | — | `company_id` `location` `location_id` ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | `sub_location` | — | `mysql/controllers/item.js:1994` |
-| POST | `/api/db_item/inventory-based-on-submitted-parameters` | — | `query` `values` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2358` |
-| POST | `/api/db_item/inventory-pagination` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | `direction` `lastItemId` | — | `mysql/controllers/item.js:1917` |
-| POST | `/api/db_item/inventory-query` | `queryName` | `params` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2318` |
-| POST | `/api/db_item/item-out-warehouse` | `category_name` `company_id` `data` `item_group` `logistic_status` | `warehouse` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "update")` | `mysql/controllers/item.js:890` |
-| POST | `/api/db_item/items_information` | — | `company` | — | — | — | `mysql/controllers/item.js:654` |
-| GET | `/api/db_item/location-count` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1473` |
-| POST | `/api/db_item/new_item` | — | `brand` `category_name` `company` `company_id` `container` `containerSpotLimit` `container_id` `cost` `current_location` `descript_item` `display_item` `extra_serial_number` `image_url` `item_group` `location` `location_name` `main_warehouse` `ownership` `return_date` `returnedRentedInfo` `serial_number` `sub_category_name` `sub_item_group` `sub_location` `sub_location_name` `sub_location_parent_id` `supplier_info` `warehouse` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "create")` | `mysql/controllers/item.js:159` |
-| POST | `/api/db_item/retrieve-item-data` | `company_id` | — | — | — | `validateJWT` | `mysql/controllers/item.js:2405` |
-| POST | `/api/db_item/retrieve-item-location-quantity` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/item.js:1704` |
-| POST | `/api/db_item/return-event-devices` | `category_name` `event_id` `item_group` | `serial_numbers` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2153` |
-| POST | `/api/db_item/returning-item-refactored` | `allInventoryOfEvent` `groupingDevicesFromNoSQL` | `companyId` `update_at` | — | — | — | `mysql/controllers/item.js:1052` |
-| GET | `/api/db_item/search-inventory` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1361` |
-| POST | `/api/db_item/search-inventory` | — | `company_id` `searchValue` | — | — | — | `mysql/controllers/item.js:1314` |
-| POST | `/api/db_item/tracking_item/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `mysql/controllers/item.js:1212` |
-| POST | `/api/db_item/warehouse-items` | — | `preference` `role` ⚠️ rest-spread `...filters`: acepta campos extra | — | — | `validateJWT` | `mysql/controllers/item.js:673` |
+| POST | `/api/db_item/inventory-based-on-location-and-sublocation` | — | `company_id` `location` `location_id` ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | `sub_location` | — | `mysql/controllers/item.js:1995` |
+| POST | `/api/db_item/inventory-based-on-submitted-parameters` | — | `query` `values` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2359` |
+| POST | `/api/db_item/inventory-pagination` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | `direction` `lastItemId` | — | `mysql/controllers/item.js:1918` |
+| POST | `/api/db_item/inventory-query` | `queryName` | `params` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2319` |
+| POST | `/api/db_item/item-out-warehouse` | `category_name` `company_id` `data` `item_group` `logistic_status` | `warehouse` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "update")` | `mysql/controllers/item.js:891` |
+| POST | `/api/db_item/items_information` | — | `company` | — | — | — | `mysql/controllers/item.js:655` |
+| GET | `/api/db_item/location-count` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1474` |
+| POST | `/api/db_item/new_item` | — | `brand` `category_name` `company` `company_id` `container` `containerSpotLimit` `container_id` `cost` `current_location` `descript_item` `display_item` `extra_serial_number` `image_url` `item_group` `location` `location_name` `main_warehouse` `ownership` `return_date` `returnedRentedInfo` `serial_number` `sub_category_name` `sub_item_group` `sub_location` `sub_location_name` `sub_location_parent_id` `supplier_info` `warehouse` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "create")` | `mysql/controllers/item.js:160` |
+| POST | `/api/db_item/retrieve-item-data` | `company_id` | — | — | — | `validateJWT` | `mysql/controllers/item.js:2406` |
+| POST | `/api/db_item/retrieve-item-location-quantity` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/item.js:1705` |
+| POST | `/api/db_item/return-event-devices` | `category_name` `event_id` `item_group` | `serial_numbers` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2154` |
+| POST | `/api/db_item/returning-item-refactored` | `allInventoryOfEvent` `groupingDevicesFromNoSQL` | `companyId` `update_at` | — | — | — | `mysql/controllers/item.js:1053` |
+| GET | `/api/db_item/search-inventory` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1362` |
+| POST | `/api/db_item/search-inventory` | — | `company_id` `searchValue` | — | — | — | `mysql/controllers/item.js:1315` |
+| POST | `/api/db_item/tracking_item/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `mysql/controllers/item.js:1213` |
+| POST | `/api/db_item/warehouse-items` | — | `preference` `role` ⚠️ rest-spread `...filters`: acepta campos extra | — | — | `validateJWT` | `mysql/controllers/item.js:674` |
 
 ## `/api/db_lease`
 
@@ -422,19 +432,19 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | GET | `/api/event/all-users-and-transactions-per-event` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `controller/auth.js:219` |
 | POST | `/api/event/create-event` | — | `active` `company` `company_id` `configuration` `contactInfo` `contract_for` `deviceSetup` `eventInfoDetail` `extraServices` `extraServicesNeeded` `legal_contract` `legal_documents_list` `logistic_inventory_status` `qrCodeLink` `show` `staff` `subscription` `type` `user` ⚠️ el body se pasa completo a `new Event()`: los campos son los del esquema `models/Event.js` | — | — | `validateJWT` | `controller/event.js:11` |
-| DELETE | `/api/event/delete-event/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` | `controller/event.js:138` |
-| PATCH | `/api/event/edit-event/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` | `controller/event.js:93` |
-| PUT | `/api/event/edit-event/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` | `controller/event.js:93` |
+| DELETE | `/api/event/delete-event/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` | `controller/event.js:142` |
+| PATCH | `/api/event/edit-event/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` | `controller/event.js:97` |
+| PUT | `/api/event/edit-event/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` | `controller/event.js:97` |
 | PATCH | `/api/event/edit-staff-event/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` | `controller/event.js:42` |
-| GET | `/api/event/event-inventory-based-on-period` | — | — | — | `company_id` `company_sql_id` `date2` | — | `controller/event.js:419` |
-| GET | `/api/event/event-list-per-company` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `controller/event.js:190` |
-| GET | `/api/event/event-list` | — | `active` `company` `company_id` `configuration` `contactInfo` `contract_for` `deviceSetup` `eventInfoDetail` `extraServices` `extraServicesNeeded` `legal_contract` `legal_documents_list` `logistic_inventory_status` `qrCodeLink` `show` `staff` `subscription` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `Event.find()`: cualquier subconjunto de los campos de `models/Event.js` (`{}` trae todo) | — | — | — | `controller/event.js:174` |
-| POST | `/api/event/event-list` | — | `active` `company` `company_id` `configuration` `contactInfo` `contract_for` `deviceSetup` `eventInfoDetail` `extraServices` `extraServicesNeeded` `legal_contract` `legal_documents_list` `logistic_inventory_status` `qrCodeLink` `show` `staff` `subscription` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `Event.find()`: cualquier subconjunto de los campos de `models/Event.js` (`{}` trae todo) | — | — | — | `controller/event.js:174` |
-| GET | `/api/event/event-staff-detail/:id` | — | — | `id` | — | — | `controller/event.js:245` |
-| POST | `/api/event/staff-all-events` | — | `email` | — | — | — | `controller/event.js:228` |
-| POST | `/api/event/update-event-inventory-freshest-data` | `event_id` | `updatedBy` | — | — | — | `controller/event.js:596` |
-| PATCH | `/api/event/update-events` | `ids` `newValues` | — | — | — | — | `controller/event.js:465` |
-| POST | `/api/event/update-global-state` | — | `event_id` | — | — | — | `controller/event.js:530` |
+| GET | `/api/event/event-inventory-based-on-period` | — | — | — | `company_id` `company_sql_id` `date2` | — | `controller/event.js:438` |
+| GET | `/api/event/event-list-per-company` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `controller/event.js:194` |
+| GET | `/api/event/event-list` | — | `active` `company` `company_id` `configuration` `contactInfo` `contract_for` `deviceSetup` `eventInfoDetail` `extraServices` `extraServicesNeeded` `legal_contract` `legal_documents_list` `logistic_inventory_status` `qrCodeLink` `show` `staff` `subscription` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `Event.find()`: cualquier subconjunto de los campos de `models/Event.js` (`{}` trae todo) | — | — | — | `controller/event.js:178` |
+| POST | `/api/event/event-list` | — | `active` `company` `company_id` `configuration` `contactInfo` `contract_for` `deviceSetup` `eventInfoDetail` `extraServices` `extraServicesNeeded` `legal_contract` `legal_documents_list` `logistic_inventory_status` `qrCodeLink` `show` `staff` `subscription` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `Event.find()`: cualquier subconjunto de los campos de `models/Event.js` (`{}` trae todo) | — | — | — | `controller/event.js:178` |
+| GET | `/api/event/event-staff-detail/:id` | — | — | `id` | — | — | `controller/event.js:249` |
+| POST | `/api/event/staff-all-events` | — | `email` | — | — | — | `controller/event.js:232` |
+| POST | `/api/event/update-event-inventory-freshest-data` | `event_id` | `updatedBy` | — | — | — | `controller/event.js:615` |
+| PATCH | `/api/event/update-events` | `ids` `newValues` | — | — | — | — | `controller/event.js:484` |
+| POST | `/api/event/update-global-state` | — | `event_id` | — | — | — | `controller/event.js:549` |
 
 ## `/api/event-log`
 
@@ -603,9 +613,9 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/api/registration/accept-invitation` | `company` `user` | — | — | — | `check("company.company_name", "company.company_name es requerido").not().isEmpty()` `validateFields` | `controller/registration.js:440` |
-| POST | `/api/registration/add-company` | `company` | `user` | — | — | `check("company.company_name", "company.company_name es requerido").not().isEmpty()` `check("company.website", "company.website es requerido").not().isEmpty()` `validateFields` | `controller/registration.js:299` |
-| POST | `/api/registration/new` | `company` `user` | `terms` | — | — | `check("user.lastName", "user.lastName es requerido").not().isEmpty()` `check("user.email", "user.email debe ser un email válido").isEmail()` `check("user.password", "user.password debe tener al menos 6 caracteres").isLength({ min: 6 })` `check("company.company_name", "company.company_name es requerido").not().isEmpty()` `check("company.website", "company.website es requerido").not().isEmpty()` `validateFields` | `controller/registration.js:143` |
+| POST | `/api/registration/accept-invitation` | `company` `user` | — | — | — | `check("company.company_name", "company.company_name es requerido").not().isEmpty()` `validateFields` | `controller/registration.js:443` |
+| POST | `/api/registration/add-company` | `company` | `user` | — | — | `check("company.company_name", "company.company_name es requerido").not().isEmpty()` `check("company.website", "company.website es requerido").not().isEmpty()` `validateFields` | `controller/registration.js:302` |
+| POST | `/api/registration/new` | `company` `user` | `terms` | — | — | `check("user.lastName", "user.lastName es requerido").not().isEmpty()` `check("user.email", "user.email debe ser un email válido").isEmail()` `check("user.password", "user.password debe tener al menos 6 caracteres").isLength({ min: 6 })` `check("company.company_name", "company.company_name es requerido").not().isEmpty()` `check("company.website", "company.website es requerido").not().isEmpty()` `validateFields` | `controller/registration.js:145` |
 
 ## `/api/school`
 
@@ -646,13 +656,13 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/api/staff/__staff-search` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | — | `controller/admin.js:671` |
-| POST | `/api/staff/__staff-search` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | — | `controller/admin.js:671` |
-| GET | `/api/staff/admin-users` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:671` |
-| POST | `/api/staff/admin-users` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:671` |
+| GET | `/api/staff/__staff-search` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | — | `controller/admin.js:676` |
+| POST | `/api/staff/__staff-search` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | — | `controller/admin.js:676` |
+| GET | `/api/staff/admin-users` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:676` |
+| POST | `/api/staff/admin-users` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:676` |
 | GET | `/api/staff/consumers/search` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `controller/stripe.js:1017` |
-| PATCH | `/api/staff/edit-admin/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "update")` | `controller/admin.js:479` |
-| POST | `/api/staff/force-logout` | `email` `password` | — | — | — | — | `controller/admin.js:828` |
+| PATCH | `/api/staff/edit-admin/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "update")` | `controller/admin.js:484` |
+| POST | `/api/staff/force-logout` | `email` `password` | — | — | — | — | `controller/admin.js:833` |
 
 ## `/api/staff-activity-log`
 

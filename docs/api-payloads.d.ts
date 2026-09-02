@@ -18,7 +18,7 @@
 
 /**
  * `DELETE /api/admin/:id`
- * handler: deleteAdminUser — controller/admin.js:521
+ * handler: deleteAdminUser — controller/admin.js:526
  * ruta: routes/admin.js:103
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "delete")
  * headers: user-agent
@@ -31,7 +31,7 @@ export interface DeleteAdminByIdParams {
 
 /**
  * `GET /api/admin/:id`
- * handler: showAllUsers — controller/admin.js:636
+ * handler: showAllUsers — controller/admin.js:641
  * ruta: routes/admin.js:91
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read")
  * NOTA: el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo)
@@ -84,7 +84,7 @@ export interface PostAdminActivityLogsBody {
 
 /**
  * `PATCH /api/admin/admin-user/:id`
- * handler: editOtherAdminUser — controller/admin.js:479
+ * handler: editOtherAdminUser — controller/admin.js:484
  * ruta: routes/admin.js:100
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "update")
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
@@ -97,7 +97,7 @@ export interface PatchAdminAdminUserByIdParams {
 
 /**
  * `GET /api/admin/check-online-status/:email`
- * handler: checkStatus — controller/admin.js:730
+ * handler: checkStatus — controller/admin.js:735
  * ruta: routes/admin.js:115
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
@@ -108,7 +108,7 @@ export interface GetAdminCheckOnlineStatusByEmailParams {
 
 /**
  * `POST /api/admin/invalidate-all-sessions`
- * handler: invalidateAllSessions — controller/admin.js:884
+ * handler: invalidateAllSessions — controller/admin.js:889
  * ruta: routes/admin.js:42
  * auth: optionalJWT
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -117,7 +117,7 @@ export interface GetAdminCheckOnlineStatusByEmailParams {
 
 /**
  * `POST /api/admin/login`
- * handler: loginUser — controller/admin.js:86
+ * handler: loginUser — controller/admin.js:91
  * ruta: routes/admin.js:68
  * auth: validateFields
  * headers: accept-language, cf-ipcountry, timezone, user-agent, x-client-ip, x-forwarded-for, x-location, x-real-ip, x-request-id, x-request-timestamp, x-timezone
@@ -133,7 +133,7 @@ export interface PostAdminLoginBody {
 
 /**
  * `POST /api/admin/logout`
- * handler: logoutUser — controller/admin.js:345
+ * handler: logoutUser — controller/admin.js:350
  * ruta: routes/admin.js:82
  * auth: sin middleware de auth en la ruta
  * headers: x-token
@@ -145,7 +145,7 @@ export interface PostAdminLogoutBody {
 
 /**
  * `POST /api/admin/manually_logout`
- * handler: manuallyLogoutUser — controller/admin.js:396
+ * handler: manuallyLogoutUser — controller/admin.js:401
  * ruta: routes/admin.js:85
  * auth: sin middleware de auth en la ruta
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
@@ -157,7 +157,7 @@ export interface PostAdminManuallyLogoutBody {
 
 /**
  * `POST /api/admin/mfa/disable`
- * handler: disableMfa — controller/admin.js:816
+ * handler: disableMfa — controller/admin.js:821
  * ruta: routes/admin.js:120
  * auth: validateJWT
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -166,7 +166,7 @@ export interface PostAdminManuallyLogoutBody {
 
 /**
  * `POST /api/admin/mfa/generate`
- * handler: generateMfaSecret — controller/admin.js:763
+ * handler: generateMfaSecret — controller/admin.js:768
  * ruta: routes/admin.js:118
  * auth: validateJWT
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -175,7 +175,7 @@ export interface PostAdminManuallyLogoutBody {
 
 /**
  * `POST /api/admin/mfa/verify`
- * handler: verifyMfaSetup — controller/admin.js:790
+ * handler: verifyMfaSetup — controller/admin.js:795
  * ruta: routes/admin.js:119
  * auth: validateJWT
  * status: 400, 404, 500
@@ -186,7 +186,7 @@ export interface PostAdminMfaVerifyBody {
 
 /**
  * `POST /api/admin/new_admin_user`
- * handler: createAdminUser — controller/admin.js:17
+ * handler: createAdminUser — controller/admin.js:22
  * ruta: routes/admin.js:53
  * auth: check("email", "Email must be provided").isEmail(), validateFields
  * status: 201, 400, 500
@@ -202,7 +202,7 @@ export interface PostAdminNewAdminUserBody {
 
 /**
  * `PATCH /api/admin/profile/:id`
- * handler: editAdminUser — controller/admin.js:424
+ * handler: editAdminUser — controller/admin.js:429
  * ruta: routes/admin.js:97
  * auth: validateJWT
  * headers: user-agent
@@ -248,7 +248,7 @@ export interface GetAdminReceiverAssignedBody {
 
 /**
  * `PATCH /api/admin/update-password`
- * handler: updatePassword — controller/admin.js:587
+ * handler: updatePassword — controller/admin.js:592
  * ruta: routes/admin.js:106
  * auth: sin middleware de auth en la ruta
  * status: 201, 400, 500
@@ -260,7 +260,7 @@ export interface PatchAdminUpdatePasswordBody {
 
 /**
  * `POST /api/admin/users`
- * handler: showAllUsers — controller/admin.js:636
+ * handler: showAllUsers — controller/admin.js:641
  * ruta: routes/admin.js:94
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo)
@@ -364,7 +364,7 @@ export interface PatchAuthByIdParams {
 
 /**
  * `GET /api/auth/all-consumers-based-on-all-events-per-company/:companyID`
- * handler: getAllConsumersBasedOnAllEventsPerCompany — controller/auth.js:282
+ * handler: getAllConsumersBasedOnAllEventsPerCompany — controller/auth.js:292
  * ruta: routes/auth.js:59
  * auth: validateJWT, checkTokenVersion
  * status: 200, 500
@@ -975,7 +975,7 @@ export interface DeleteDbCompanyByIdBody {
 /**
  * `DELETE /api/db_company/categories/:category_id`
  * handler: deleteCategory — mysql/controllers/categories_groups.js:51
- * ruta: mysql/routes/company.js:205
+ * ruta: mysql/routes/company.js:211
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "delete")
  * status: 200, 400, 404, 500
  */
@@ -989,7 +989,7 @@ export interface DeleteDbCompanyCategoriesByCategoryIdParams {
 /**
  * `POST /api/db_company/categories/upsert`
  * handler: upsertCategory — mysql/controllers/categories_groups.js:27
- * ruta: mysql/routes/company.js:204
+ * ruta: mysql/routes/company.js:210
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "create")
  * status: 200, 400, 500
  */
@@ -1003,7 +1003,7 @@ export interface PostDbCompanyCategoriesUpsertBody {
 /**
  * `POST /api/db_company/categories`
  * handler: listCompanyCategories — mysql/controllers/categories_groups.js:5
- * ruta: mysql/routes/company.js:202
+ * ruta: mysql/routes/company.js:208
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "read")
  * status: 200, 400, 500
  */
@@ -1013,7 +1013,7 @@ export interface PostDbCompanyCategoriesBody {
 
 /**
  * `GET /api/db_company/check-company-exists`
- * handler: checkInventoryCompanyExists — mysql/controllers/item.js:1525
+ * handler: checkInventoryCompanyExists — mysql/controllers/item.js:1526
  * ruta: mysql/routes/company.js:98
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
@@ -1026,8 +1026,8 @@ export interface GetDbCompanyCheckCompanyExistsBody {
 
 /**
  * `POST /api/db_company/check-item`
- * handler: checkingItem — mysql/controllers/item.js:1266
- * ruta: mysql/routes/company.js:196
+ * handler: checkingItem — mysql/controllers/item.js:1267
+ * ruta: mysql/routes/company.js:202
  * auth: validateJWT, checkTokenVersion
  * NOTA: rest-spread `...bodyFilters`: acepta campos extra
  * status: 201, 400, 403, 500
@@ -1049,7 +1049,7 @@ export interface PostDbCompanyCheckItemBody {
 /**
  * `POST /api/db_company/company-inventory-grouped-full`
  * handler: getInventoryGroupedFull — mysql/controllers/categories_groups.js:159
- * ruta: mysql/routes/company.js:213
+ * ruta: mysql/routes/company.js:219
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 500
  */
@@ -1059,7 +1059,7 @@ export interface PostDbCompanyCompanyInventoryGroupedFullBody {
 
 /**
  * `POST /api/db_company/company-inventory-pagination`
- * handler: consultingCompanyInventoryWithPagination — mysql/controllers/item.js:1917
+ * handler: consultingCompanyInventoryWithPagination — mysql/controllers/item.js:1918
  * ruta: mysql/routes/company.js:104
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -1072,7 +1072,7 @@ export interface PostDbCompanyCompanyInventoryPaginationQuery {
 
 /**
  * `POST /api/db_company/company-inventory-structure`
- * handler: retrieveItemData — mysql/controllers/item.js:2405
+ * handler: retrieveItemData — mysql/controllers/item.js:2406
  * ruta: mysql/routes/company.js:116
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 403, 500
@@ -1083,7 +1083,7 @@ export interface PostDbCompanyCompanyInventoryStructureBody {
 
 /**
  * `POST /api/db_company/company-inventory-with-current-warehouse-status`
- * handler: retrieveCompanyInventory — mysql/controllers/item.js:2444
+ * handler: retrieveCompanyInventory — mysql/controllers/item.js:2445
  * ruta: mysql/routes/company.js:119
  * auth: sin middleware de auth en la ruta
  * status: 200, 500
@@ -1107,7 +1107,7 @@ export interface PostDbCompanyConsultingCompanyBody {
 
 /**
  * `GET /api/db_company/current-inventory/:company_id`
- * handler: checkingInventoryCurrentState — mysql/controllers/item.js:1239
+ * handler: checkingInventoryCurrentState — mysql/controllers/item.js:1240
  * ruta: mysql/routes/company.js:128
  * auth: validateJWT, checkTokenVersion
  * status: 201, 403, 500
@@ -1118,10 +1118,11 @@ export interface GetDbCompanyCurrentInventoryByCompanyIdParams {
 
 /**
  * `POST /api/db_company/delete-bulk-items`
- * handler: deleteBulkItems — mysql/controllers/item.js:3645
- * ruta: mysql/routes/company.js:193
- * auth: sin middleware de auth en la ruta
- * status: 200, 400, 403, 500
+ * handler: deleteBulkItems — mysql/controllers/item.js:3664
+ * ruta: mysql/routes/company.js:199
+ * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "delete")
+ * headers: Idempotency-Key, idempotency-key
+ * status: 200, 202, 400, 403, 500
  */
 export interface PostDbCompanyDeleteBulkItemsBody {
   company_id: number;
@@ -1130,7 +1131,7 @@ export interface PostDbCompanyDeleteBulkItemsBody {
 
 /**
  * `POST /api/db_company/filter-suppliers-info-items`
- * handler: filterSuppliersInfoItems — mysql/controllers/item.js:3607
+ * handler: filterSuppliersInfoItems — mysql/controllers/item.js:3608
  * ruta: mysql/routes/company.js:190
  * auth: sin middleware de auth en la ruta
  * status: 200, 500
@@ -1141,7 +1142,7 @@ export interface PostDbCompanyFilterSuppliersInfoItemsBody {
 
 /**
  * `POST /api/db_company/get-grouped-inventory-by-search-parameter`
- * handler: getGroupedInventoryBySearchParameter — mysql/controllers/item.js:3476
+ * handler: getGroupedInventoryBySearchParameter — mysql/controllers/item.js:3477
  * ruta: mysql/routes/company.js:187
  * auth: sin middleware de auth en la ruta
  * status: 200, 400, 500
@@ -1153,7 +1154,7 @@ export interface PostDbCompanyGetGroupedInventoryBySearchParameterBody {
 
 /**
  * `POST /api/db_company/get-inventory-company`
- * handler: getGroupedItemInventory — mysql/controllers/item.js:1849
+ * handler: getGroupedItemInventory — mysql/controllers/item.js:1850
  * ruta: mysql/routes/company.js:131
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL
@@ -1166,7 +1167,7 @@ export interface PostDbCompanyGetInventoryCompanyBody {
 
 /**
  * `POST /api/db_company/get-location-item-types-hierarchy`
- * handler: getInventoryHierarchyWithTypes — mysql/controllers/item.js:3333
+ * handler: getInventoryHierarchyWithTypes — mysql/controllers/item.js:3334
  * ruta: mysql/routes/company.js:179
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 403, 500
@@ -1178,7 +1179,7 @@ export interface PostDbCompanyGetLocationItemTypesHierarchyBody {
 /**
  * `DELETE /api/db_company/groups/:group_id`
  * handler: deleteGroup — mysql/controllers/categories_groups.js:125
- * ruta: mysql/routes/company.js:210
+ * ruta: mysql/routes/company.js:216
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "delete")
  * status: 200, 400, 404, 500
  */
@@ -1192,7 +1193,7 @@ export interface DeleteDbCompanyGroupsByGroupIdParams {
 /**
  * `POST /api/db_company/groups/upsert`
  * handler: upsertGroup — mysql/controllers/categories_groups.js:101
- * ruta: mysql/routes/company.js:209
+ * ruta: mysql/routes/company.js:215
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "create")
  * status: 200, 400, 500
  */
@@ -1206,7 +1207,7 @@ export interface PostDbCompanyGroupsUpsertBody {
 /**
  * `POST /api/db_company/groups`
  * handler: listCompanyGroups — mysql/controllers/categories_groups.js:79
- * ruta: mysql/routes/company.js:208
+ * ruta: mysql/routes/company.js:214
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "read")
  * status: 200, 400, 500
  */
@@ -1225,7 +1226,7 @@ export interface PostDbCompanyGroupsBody {
 
 /**
  * `POST /api/db_company/insert-new-single-item`
- * handler: insertingItem — mysql/controllers/item.js:159
+ * handler: insertingItem — mysql/controllers/item.js:160
  * ruta: mysql/routes/company.js:125
  * auth: sin middleware de auth en la ruta
  * status: 201, 403
@@ -1263,7 +1264,7 @@ export interface PostDbCompanyInsertNewSingleItemBody {
 
 /**
  * `POST /api/db_company/inventory-based-on-location-and-sublocation`
- * handler: consultingCompanyInventoryBasedOnLocationAndSubLocation — mysql/controllers/item.js:1994
+ * handler: consultingCompanyInventoryBasedOnLocationAndSubLocation — mysql/controllers/item.js:1995
  * ruta: mysql/routes/company.js:110
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
@@ -1282,7 +1283,7 @@ export interface PostDbCompanyInventoryBasedOnLocationAndSublocationQuery {
 
 /**
  * `POST /api/db_company/inventory-based-on-submitted-parameters`
- * handler: consultingCompanyInventoryBasedOnSubmittedParameters — mysql/controllers/item.js:2358
+ * handler: consultingCompanyInventoryBasedOnSubmittedParameters — mysql/controllers/item.js:2359
  * ruta: mysql/routes/company.js:134
  * auth: validateJWT, checkTokenVersion
  * status: 200, 500
@@ -1294,7 +1295,7 @@ export interface PostDbCompanyInventoryBasedOnSubmittedParametersBody {
 
 /**
  * `POST /api/db_company/inventory-query`
- * handler: runNamedInventoryQuery — mysql/controllers/item.js:2318
+ * handler: runNamedInventoryQuery — mysql/controllers/item.js:2319
  * ruta: mysql/routes/company.js:144
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 500
@@ -1307,7 +1308,7 @@ export interface PostDbCompanyInventoryQueryBody {
 /**
  * `POST /api/db_company/locations`
  * handler: listCompanyLocations — mysql/controllers/location.js:559
- * ruta: mysql/routes/company.js:203
+ * ruta: mysql/routes/company.js:209
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "read")
  * status: 200, 400, 500
  */
@@ -1335,7 +1336,7 @@ export interface PostDbCompanyNewCompanyBody {
 
 /**
  * `POST /api/db_company/retrieve-company-inventory`
- * handler: retrieveCompanyInventoryBasedOnParams — mysql/controllers/item.js:4011
+ * handler: retrieveCompanyInventoryBasedOnParams — mysql/controllers/item.js:4063
  * ruta: mysql/routes/company.js:74
  * auth: sin middleware de auth en la ruta
  * status: 200, 400, 500
@@ -1351,8 +1352,8 @@ export interface PostDbCompanyRetrieveCompanyInventoryBody {
 
 /**
  * `POST /api/db_company/retrieve-company-items-with-locations`
- * handler: retrieveCompanyInventory — mysql/controllers/item.js:2444
- * ruta: mysql/routes/company.js:199
+ * handler: retrieveCompanyInventory — mysql/controllers/item.js:2445
+ * ruta: mysql/routes/company.js:205
  * auth: sin middleware de auth en la ruta
  * status: 200, 500
  */
@@ -1362,7 +1363,7 @@ export interface PostDbCompanyRetrieveCompanyItemsWithLocationsBody {
 
 /**
  * `POST /api/db_company/return-event-devices`
- * handler: returnEventDevicesToWarehouse — mysql/controllers/item.js:2153
+ * handler: returnEventDevicesToWarehouse — mysql/controllers/item.js:2154
  * ruta: mysql/routes/company.js:154
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 404, 500
@@ -1376,7 +1377,7 @@ export interface PostDbCompanyReturnEventDevicesBody {
 
 /**
  * `POST /api/db_company/returning-leased-equipment`
- * handler: returningLeasedEquipmentToCompany — mysql/controllers/item.js:832
+ * handler: returningLeasedEquipmentToCompany — mysql/controllers/item.js:833
  * ruta: mysql/routes/company.js:87
  * auth: sin middleware de auth en la ruta
  * status: 200, 201, 401, 500
@@ -1390,7 +1391,7 @@ export interface PostDbCompanyReturningLeasedEquipmentBody {
 
 /**
  * `GET /api/db_company/search-inventory`
- * handler: searchingGetInventoryTracking — mysql/controllers/item.js:1361
+ * handler: searchingGetInventoryTracking — mysql/controllers/item.js:1362
  * ruta: mysql/routes/company.js:95
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
@@ -1403,7 +1404,7 @@ export interface GetDbCompanySearchInventoryBody {
 
 /**
  * `POST /api/db_company/search-inventory`
- * handler: searchingInventoryTracking — mysql/controllers/item.js:1314
+ * handler: searchingInventoryTracking — mysql/controllers/item.js:1315
  * ruta: mysql/routes/company.js:92
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
@@ -1427,7 +1428,7 @@ export interface PostDbCompanyUpdateCompanyBody {
 
 /**
  * `POST /api/db_company/update-all-items-in-inventory`
- * handler: updateAllItemsInInventory — mysql/controllers/item.js:2537
+ * handler: updateAllItemsInInventory — mysql/controllers/item.js:2538
  * ruta: mysql/routes/company.js:162
  * auth: sin middleware de auth en la ruta
  * status: 200, 500
@@ -1460,7 +1461,7 @@ export interface PostDbCompanyUpdateAllItemsInInventoryBody {
 
 /**
  * `POST /api/db_company/update-content-in-container`
- * handler: updateContentInContainerItem — mysql/controllers/item.js:1618
+ * handler: updateContentInContainerItem — mysql/controllers/item.js:1619
  * ruta: mysql/routes/company.js:101
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
@@ -1504,7 +1505,7 @@ export interface PostDbCompanyUpdateGroupItemsBody {
 
 /**
  * `POST /api/db_company/update-items-based-on-alphanumeric-serial-number`
- * handler: updateItemsBasedOnAlphanumericSerialNumber — mysql/controllers/item.js:2743
+ * handler: updateItemsBasedOnAlphanumericSerialNumber — mysql/controllers/item.js:2744
  * ruta: mysql/routes/company.js:165
  * auth: validateJWT, checkTokenVersion
  * generado por factory: createQueuedJobController
@@ -1514,7 +1515,7 @@ export interface PostDbCompanyUpdateGroupItemsBody {
 
 /**
  * `POST /api/db_company/update-items-based-on-serial-number`
- * handler: updateItemsBasedOnSerialNumber — mysql/controllers/item.js:2625
+ * handler: updateItemsBasedOnSerialNumber — mysql/controllers/item.js:2626
  * ruta: mysql/routes/company.js:173
  * auth: sin middleware de auth en la ruta
  * status: 200, 400, 500
@@ -1626,7 +1627,7 @@ export interface PostDbConsumerNewConsumerBody {
 /**
  * `DELETE /api/db_event/:id`
  * handler: deleteEvent — mysql/controllers/events.js:239
- * ruta: mysql/routes/events.js:97
+ * ruta: mysql/routes/events.js:98
  * auth: validateJWT, checkTokenVersion, authorizePermission("event", "delete")
  * status: 201
  */
@@ -1637,7 +1638,7 @@ export interface DeleteDbEventByIdBody {
 /**
  * `POST /api/db_event/allocate-device-container-event`
  * handler: allocateDeviceMarkedAsContainerInEvent — mysql/controllers/items_events.js:655
- * ruta: mysql/routes/events.js:197
+ * ruta: mysql/routes/events.js:198
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 404, 500
  */
@@ -1654,7 +1655,7 @@ export interface PostDbEventAllocateDeviceContainerEventBody {
 /**
  * `POST /api/db_event/allocate-device-event`
  * handler: allocateDeviceToEvent — mysql/controllers/items_events.js:558
- * ruta: mysql/routes/events.js:189
+ * ruta: mysql/routes/events.js:190
  * auth: validateJWT, checkTokenVersion, authorizePermission("event", "update")
  * status: 200, 400, 422
  */
@@ -1670,8 +1671,8 @@ export interface PostDbEventAllocateDeviceEventBody {
 
 /**
  * `POST /api/db_event/confirm-item-return`
- * handler: confirmItemsReturnedToStock — mysql/controllers/item.js:3824
- * ruta: mysql/routes/events.js:86
+ * handler: confirmItemsReturnedToStock — mysql/controllers/item.js:3876
+ * ruta: mysql/routes/events.js:87
  * auth: sin middleware de auth en la ruta
  * status: 200, 400, 500
  */
@@ -1688,7 +1689,7 @@ export interface PostDbEventConfirmItemReturnBody {
 /**
  * `POST /api/db_event/consulting-event`
  * handler: consultingEventInformation — mysql/controllers/events.js:145
- * ruta: mysql/routes/events.js:51
+ * ruta: mysql/routes/events.js:52
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
@@ -1701,8 +1702,8 @@ export interface PostDbEventConsultingEventBody {
 
 /**
  * `POST /api/db_event/device-final-status-refactored`
- * handler: itemFinalStatusWhenEventIsFinishedRefactored — mysql/controllers/item.js:1179
- * ruta: mysql/routes/events.js:92
+ * handler: itemFinalStatusWhenEventIsFinishedRefactored — mysql/controllers/item.js:1180
+ * ruta: mysql/routes/events.js:93
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -1715,8 +1716,8 @@ export interface PostDbEventDeviceFinalStatusRefactoredBody {
 
 /**
  * `POST /api/db_event/device-final-status`
- * handler: itemFinalStatusWhenEventIsFinished — mysql/controllers/item.js:1152
- * ruta: mysql/routes/events.js:89
+ * handler: itemFinalStatusWhenEventIsFinished — mysql/controllers/item.js:1153
+ * ruta: mysql/routes/events.js:90
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -1731,7 +1732,7 @@ export interface PostDbEventDeviceFinalStatusBody {
 /**
  * `POST /api/db_event/event_device_directly`
  * handler: insertingDeviceInEventDirectly — mysql/controllers/items_events.js:280
- * ruta: mysql/routes/events.js:72
+ * ruta: mysql/routes/events.js:73
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -1743,7 +1744,7 @@ export interface PostDbEventEventDeviceDirectlyBody {
 /**
  * `POST /api/db_event/event_device`
  * handler: insertingItemInEvent — mysql/controllers/items_events.js:46
- * ruta: mysql/routes/events.js:69
+ * ruta: mysql/routes/events.js:70
  * auth: sin middleware de auth en la ruta
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -1753,7 +1754,7 @@ export interface PostDbEventEventDeviceDirectlyBody {
 /**
  * `POST /api/db_event/event_staff`
  * handler: insertingStaffInEvent — mysql/controllers/events.js:261
- * ruta: mysql/routes/events.js:66
+ * ruta: mysql/routes/events.js:67
  * auth: sin middleware de auth en la ruta
  * status: 201
  */
@@ -1764,9 +1765,35 @@ export interface PostDbEventEventStaffBody {
 }
 
 /**
+ * `POST /api/db_event/event-count/close`
+ * handler: closeEventCount — mysql/controllers/eventCount.js:242
+ * ruta: mysql/routes/events.js:232
+ * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "update")
+ * status: 200, 500
+ */
+export interface PostDbEventEventCountCloseBody {
+  company_id?: number;
+  event_id?: number;
+  scanned?: string;
+}
+
+/**
+ * `POST /api/db_event/event-count/reconcile`
+ * handler: reconcileEventCount — mysql/controllers/eventCount.js:205
+ * ruta: mysql/routes/events.js:224
+ * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "read")
+ * status: 200, 500
+ */
+export interface PostDbEventEventCountReconcileBody {
+  company_id?: number;
+  event_id?: number;
+  scanned?: string;
+}
+
+/**
  * `GET /api/db_event/event-inventory/:id`
  * handler: consultingInventoryEvent — mysql/controllers/events.js:290
- * ruta: mysql/routes/events.js:100
+ * ruta: mysql/routes/events.js:101
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -1777,7 +1804,7 @@ export interface GetDbEventEventInventoryByIdParams {
 /**
  * `POST /api/db_event/event-inventory/:id`
  * handler: consultingInventoryInEvent — mysql/controllers/items_events.js:413
- * ruta: mysql/routes/events.js:75
+ * ruta: mysql/routes/events.js:76
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 200, 500
@@ -1789,7 +1816,7 @@ export interface PostDbEventEventInventoryByIdParams {
 /**
  * `POST /api/db_event/events_company`
  * handler: consultingEventsPerCompany — mysql/controllers/events.js:211
- * ruta: mysql/routes/events.js:57
+ * ruta: mysql/routes/events.js:58
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 201, 500
@@ -1798,7 +1825,7 @@ export interface PostDbEventEventInventoryByIdParams {
 /**
  * `POST /api/db_event/events_information`
  * handler: consultingEventTable — mysql/controllers/events.js:178
- * ruta: mysql/routes/events.js:54
+ * ruta: mysql/routes/events.js:55
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
@@ -1812,7 +1839,7 @@ export interface PostDbEventEventsInformationBody {
 /**
  * `POST /api/db_event/inserting-items-in-event-from-container`
  * handler: insertingDeviceInEventDirectlyFromContainer — mysql/controllers/items_events.js:498
- * ruta: mysql/routes/events.js:122
+ * ruta: mysql/routes/events.js:123
  * auth: validateJWT, checkTokenVersion
  * headers: Idempotency-Key, idempotency-key
  * generado por factory: createQueuedJobController
@@ -1825,8 +1852,8 @@ export interface PostDbEventInsertingItemsInEventFromContainerBody {
 
 /**
  * `POST /api/db_event/inventory-based-on-submitted-parameters`
- * handler: consultingCompanyInventoryBasedOnSubmittedParameters — mysql/controllers/item.js:2358
- * ruta: mysql/routes/events.js:161
+ * handler: consultingCompanyInventoryBasedOnSubmittedParameters — mysql/controllers/item.js:2359
+ * ruta: mysql/routes/events.js:162
  * auth: validateJWT, checkTokenVersion
  * status: 200, 500
  */
@@ -1837,8 +1864,8 @@ export interface PostDbEventInventoryBasedOnSubmittedParametersBody {
 
 /**
  * `POST /api/db_event/inventory-query`
- * handler: runNamedInventoryQuery — mysql/controllers/item.js:2318
- * ruta: mysql/routes/events.js:171
+ * handler: runNamedInventoryQuery — mysql/controllers/item.js:2319
+ * ruta: mysql/routes/events.js:172
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 500
  */
@@ -1850,7 +1877,7 @@ export interface PostDbEventInventoryQueryBody {
 /**
  * `POST /api/db_event/lock-items-for-event`
  * handler: lockItemsForEvent — mysql/controllers/items_events.js:823
- * ruta: mysql/routes/events.js:217
+ * ruta: mysql/routes/events.js:218
  * auth: sin middleware de auth en la ruta
  * status: 201, 400, 500
  */
@@ -1863,7 +1890,7 @@ export interface PostDbEventLockItemsForEventBody {
 /**
  * `POST /api/db_event/new_event`
  * handler: insertingEvent — mysql/controllers/events.js:32
- * ruta: mysql/routes/events.js:60
+ * ruta: mysql/routes/events.js:61
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -1882,7 +1909,7 @@ export interface PostDbEventNewEventBody {
 /**
  * `POST /api/db_event/remove-item-inventory-event`
  * handler: deletingItemsInEventAfterDeviceInventoryIsUpdated — mysql/controllers/items_events.js:301
- * ruta: mysql/routes/events.js:103
+ * ruta: mysql/routes/events.js:104
  * auth: sin middleware de auth en la ruta
  * status: 200, 500
  */
@@ -1896,7 +1923,7 @@ export interface PostDbEventRemoveItemInventoryEventBody {
 /**
  * `POST /api/db_event/remove-reserved-items-for-event`
  * handler: removeReservedItemsInInventoryForEvent — mysql/controllers/items_events.js:917
- * ruta: mysql/routes/events.js:214
+ * ruta: mysql/routes/events.js:215
  * auth: sin middleware de auth en la ruta
  * status: 200, 404
  */
@@ -1909,7 +1936,7 @@ export interface PostDbEventRemoveReservedItemsForEventBody {
 /**
  * `POST /api/db_event/reserve-items-for-event`
  * handler: reserveItemsInInventoryForEvent — mysql/controllers/items_events.js:875
- * ruta: mysql/routes/events.js:206
+ * ruta: mysql/routes/events.js:207
  * auth: validateJWT, authorizePermission("event", "update")
  * status: 200, 404, 500
  */
@@ -1920,8 +1947,8 @@ export interface PostDbEventReserveItemsForEventBody {
 
 /**
  * `POST /api/db_event/retrieve-item-group-location-quantity`
- * handler: getGroupedItemInventory — mysql/controllers/item.js:1849
- * ruta: mysql/routes/events.js:143
+ * handler: getGroupedItemInventory — mysql/controllers/item.js:1850
+ * ruta: mysql/routes/events.js:144
  * auth: validateJWT, authorizePermission("event", "read")
  * NOTA: cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL
  * status: 200, 500
@@ -1933,8 +1960,8 @@ export interface PostDbEventRetrieveItemGroupLocationQuantityBody {
 
 /**
  * `POST /api/db_event/retrieve-item-group-quantity-with-format`
- * handler: getGroupedItemWithFormatInventory — mysql/controllers/item.js:2059
- * ruta: mysql/routes/events.js:151
+ * handler: getGroupedItemWithFormatInventory — mysql/controllers/item.js:2060
+ * ruta: mysql/routes/events.js:152
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 200, 500
@@ -1942,8 +1969,8 @@ export interface PostDbEventRetrieveItemGroupLocationQuantityBody {
 
 /**
  * `POST /api/db_event/retrieve-item-location-quantity-full-details`
- * handler: consultItemDataFromSerialNumber — mysql/controllers/item.js:1778
- * ruta: mysql/routes/events.js:136
+ * handler: consultItemDataFromSerialNumber — mysql/controllers/item.js:1779
+ * ruta: mysql/routes/events.js:137
  * auth: sin middleware de auth en la ruta
  * status: 200, 400, 500
  */
@@ -1960,8 +1987,8 @@ export interface PostDbEventRetrieveItemLocationQuantityFullDetailsBody {
 
 /**
  * `POST /api/db_event/retrieve-item-location-quantity`
- * handler: retrieveItemLocationQuantityForEvent — mysql/controllers/item.js:1704
- * ruta: mysql/routes/events.js:130
+ * handler: retrieveItemLocationQuantityForEvent — mysql/controllers/item.js:1705
+ * ruta: mysql/routes/events.js:131
  * auth: sin middleware de auth en la ruta
  * headers: accept-encoding
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
@@ -1975,8 +2002,8 @@ export interface PostDbEventRetrieveItemLocationQuantityBody {
 
 /**
  * `POST /api/db_event/return-event-devices`
- * handler: returnEventDevicesToWarehouse — mysql/controllers/item.js:2153
- * ruta: mysql/routes/events.js:181
+ * handler: returnEventDevicesToWarehouse — mysql/controllers/item.js:2154
+ * ruta: mysql/routes/events.js:182
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 404, 500
  */
@@ -1989,8 +2016,8 @@ export interface PostDbEventReturnEventDevicesBody {
 
 /**
  * `POST /api/db_event/returning-item-refactored`
- * handler: returningItemToStockWhenEventIsFinishedRefactored — mysql/controllers/item.js:1052
- * ruta: mysql/routes/events.js:81
+ * handler: returningItemToStockWhenEventIsFinishedRefactored — mysql/controllers/item.js:1053
+ * ruta: mysql/routes/events.js:82
  * auth: sin middleware de auth en la ruta
  * status: 200, 201, 400, 500
  */
@@ -2003,8 +2030,8 @@ export interface PostDbEventReturningItemRefactoredBody {
 
 /**
  * `POST /api/db_event/returning-item`
- * handler: returningItemToStockWhenEventIsFinished — mysql/controllers/item.js:1005
- * ruta: mysql/routes/events.js:78
+ * handler: returningItemToStockWhenEventIsFinished — mysql/controllers/item.js:1006
+ * ruta: mysql/routes/events.js:79
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -2020,7 +2047,7 @@ export interface PostDbEventReturningItemBody {
 /**
  * `POST /api/db_event/update-event/:event_id`
  * handler: updateEventInfo — mysql/controllers/events.js:81
- * ruta: mysql/routes/events.js:63
+ * ruta: mysql/routes/events.js:64
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL
  * status: 200, 400, 404, 500
@@ -2035,8 +2062,8 @@ export interface PostDbEventUpdateEventByEventIdParams {
 
 /**
  * `POST /api/db_event/update-item-in-table-after-being-added-to-event-from-container`
- * handler: updateItemInTableAfterBeingAddedToEventFromContainer — mysql/controllers/item.js:1648
- * ruta: mysql/routes/events.js:112
+ * handler: updateItemInTableAfterBeingAddedToEventFromContainer — mysql/controllers/item.js:1649
+ * ruta: mysql/routes/events.js:113
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -2048,7 +2075,7 @@ export interface PostDbEventUpdateItemInTableAfterBeingAddedToEventFromContainer
 /**
  * `POST /api/db_event/update-status-item-based-on-event`
  * handler: updateStatusItemBasedOnEvent — mysql/controllers/events.js:325
- * ruta: mysql/routes/events.js:109
+ * ruta: mysql/routes/events.js:110
  * auth: sin middleware de auth en la ruta
  * status: 200
  */
@@ -2059,8 +2086,43 @@ export interface PostDbEventUpdateStatusItemBasedOnEventBody {
 }
 
 /**
+ * `POST /api/db_identifier/by-items`
+ * handler: getIdentifiersByItems — mysql/controllers/identifier.js:311
+ * ruta: mysql/routes/identifier.js:39
+ * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "read")
+ * status: 200, 400, 500
+ */
+export interface PostDbIdentifierByItemsBody {
+  item_ids: number;
+}
+
+/**
+ * `POST /api/db_identifier/register-bulk`
+ * handler: registerIdentifiersBulk — mysql/controllers/identifier.js:181
+ * ruta: mysql/routes/identifier.js:36
+ * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "update")
+ * status: 200, 400, 500
+ */
+export interface PostDbIdentifierRegisterBulkBody {
+  identifiers: string;
+}
+
+/**
+ * `POST /api/db_identifier/register`
+ * handler: registerIdentifier — mysql/controllers/identifier.js:76
+ * ruta: mysql/routes/identifier.js:33
+ * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "update")
+ * status: 200, 201, 400, 404, 409, 500
+ */
+export interface PostDbIdentifierRegisterBody {
+  id_type?: string;
+  id_value?: string;
+  item_id?: number;
+}
+
+/**
  * `POST /api/db_inventory/check-item`
- * handler: checkingItem — mysql/controllers/item.js:1266
+ * handler: checkingItem — mysql/controllers/item.js:1267
  * ruta: mysql/routes/inventory.js:33
  * auth: validateJWT
  * NOTA: rest-spread `...bodyFilters`: acepta campos extra
@@ -2073,7 +2135,7 @@ export interface PostDbInventoryCheckItemBody {
 
 /**
  * `POST /api/db_inventory/check-large-data`
- * handler: checkLargeData — mysql/controllers/item.js:3064
+ * handler: checkLargeData — mysql/controllers/item.js:3065
  * ruta: mysql/routes/inventory.js:41
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "read")
  * status: 200, 400, 500
@@ -2085,7 +2147,7 @@ export interface PostDbInventoryCheckLargeDataBody {
 
 /**
  * `GET /api/db_inventory/container-items/:container_item_id`
- * handler: getContainerItems — mysql/controllers/item.js:2822
+ * handler: getContainerItems — mysql/controllers/item.js:2823
  * ruta: mysql/routes/inventory.js:35
  * auth: sin middleware de auth en la ruta
  * status: 400, 404, 500
@@ -2096,7 +2158,7 @@ export interface GetDbInventoryContainerItemsByContainerItemIdParams {
 
 /**
  * `POST /api/db_inventory/container-items`
- * handler: insertContainerItems — mysql/controllers/item.js:2755
+ * handler: insertContainerItems — mysql/controllers/item.js:2756
  * ruta: mysql/routes/inventory.js:31
  * auth: validateJWT, checkTokenVersion
  * status: 400, 500
@@ -2108,7 +2170,7 @@ export interface PostDbInventoryContainerItemsBody {
 
 /**
  * `DELETE /api/db_inventory/container/:container_item_id`
- * handler: deleteContainerItem — mysql/controllers/item.js:2935
+ * handler: deleteContainerItem — mysql/controllers/item.js:2936
  * ruta: mysql/routes/inventory.js:37
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -2120,7 +2182,7 @@ export interface DeleteDbInventoryContainerByContainerItemIdParams {
 
 /**
  * `PUT /api/db_inventory/container/:container_item_id`
- * handler: updateContainerItems — mysql/controllers/item.js:2991
+ * handler: updateContainerItems — mysql/controllers/item.js:2992
  * ruta: mysql/routes/inventory.js:39
  * auth: validateJWT, checkTokenVersion
  * status: 400, 404, 500
@@ -2134,7 +2196,7 @@ export interface PutDbInventoryContainerByContainerItemIdParams {
 
 /**
  * `POST /api/db_inventory/update-large-data`
- * handler: updateLargeData — mysql/controllers/item.js:3153
+ * handler: updateLargeData — mysql/controllers/item.js:3154
  * ruta: mysql/routes/inventory.js:46
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "update")
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
@@ -2144,7 +2206,7 @@ export interface PutDbInventoryContainerByContainerItemIdParams {
 
 /**
  * `POST /api/db_inventory/update-location-sub-location`
- * handler: updateSubLocation — mysql/controllers/item.js:3171
+ * handler: updateSubLocation — mysql/controllers/item.js:3172
  * ruta: mysql/routes/inventory.js:43
  * auth: sin middleware de auth en la ruta
  * status: 200, 400, 404, 500
@@ -2158,7 +2220,7 @@ export interface PostDbInventoryUpdateLocationSubLocationBody {
 
 /**
  * `POST /api/db_item/:id`
- * handler: deleteItem — mysql/controllers/item.js:606
+ * handler: deleteItem — mysql/controllers/item.js:607
  * ruta: mysql/routes/item.js:101
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "delete")
  * status: 201, 400, 403, 404, 500
@@ -2170,7 +2232,7 @@ export interface PostDbItemByIdBody {
 
 /**
  * `POST /api/db_item/bulk-item-alphanumeric`
- * handler: insertBulkItemAlhpanumericFormat — mysql/controllers/item.js:514
+ * handler: insertBulkItemAlhpanumericFormat — mysql/controllers/item.js:515
  * ruta: mysql/routes/item.js:87
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "create")
  * headers: Idempotency-Key, idempotency-key
@@ -2185,7 +2247,7 @@ export interface PostDbItemBulkItemAlphanumericBody {
 
 /**
  * `POST /api/db_item/bulk-item`
- * handler: insertBulkItem — mysql/controllers/item.js:429
+ * handler: insertBulkItem — mysql/controllers/item.js:430
  * ruta: mysql/routes/item.js:84
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "create")
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
@@ -2201,7 +2263,7 @@ export interface PostDbItemBulkItemBody {
 
 /**
  * `GET /api/db_item/check-company-has-inventory`
- * handler: checkingIfCompanyHasInventory — mysql/controllers/item.js:1681
+ * handler: checkingIfCompanyHasInventory — mysql/controllers/item.js:1682
  * ruta: mysql/routes/item.js:140
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
@@ -2225,7 +2287,7 @@ export interface GetDbItemCheckInventoryByCompanyIdParams {
 
 /**
  * `POST /api/db_item/check-item`
- * handler: checkingItem — mysql/controllers/item.js:1266
+ * handler: checkingItem — mysql/controllers/item.js:1267
  * ruta: mysql/routes/item.js:122
  * auth: validateJWT
  * NOTA: rest-spread `...bodyFilters`: acepta campos extra
@@ -2238,7 +2300,7 @@ export interface PostDbItemCheckItemBody {
 
 /**
  * `POST /api/db_item/consulting-item`
- * handler: consultingItem — mysql/controllers/item.js:580
+ * handler: consultingItem — mysql/controllers/item.js:581
  * ruta: mysql/routes/item.js:63
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
@@ -2278,7 +2340,7 @@ export interface PostDbItemCurrentInventoryBody {
 
 /**
  * `POST /api/db_item/delete-bulk-items-criteria`
- * handler: deleteBulkItemBasedOnCriteria — mysql/controllers/item.js:3923
+ * handler: deleteBulkItemBasedOnCriteria — mysql/controllers/item.js:3975
  * ruta: mysql/routes/item.js:57
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "delete")
  * status: 200, 202, 400, 403, 500
@@ -2292,10 +2354,11 @@ export interface PostDbItemDeleteBulkItemsCriteriaBody {
 
 /**
  * `POST /api/db_item/delete-bulk-items`
- * handler: deleteBulkItems — mysql/controllers/item.js:3645
+ * handler: deleteBulkItems — mysql/controllers/item.js:3664
  * ruta: mysql/routes/item.js:107
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "delete")
- * status: 200, 400, 403, 500
+ * headers: Idempotency-Key, idempotency-key
+ * status: 200, 202, 400, 403, 500
  */
 export interface PostDbItemDeleteBulkItemsBody {
   company_id: number;
@@ -2304,7 +2367,7 @@ export interface PostDbItemDeleteBulkItemsBody {
 
 /**
  * `POST /api/db_item/delete-item`
- * handler: deleteItem — mysql/controllers/item.js:606
+ * handler: deleteItem — mysql/controllers/item.js:607
  * ruta: mysql/routes/item.js:104
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "delete")
  * status: 201, 400, 403, 404, 500
@@ -2316,7 +2379,7 @@ export interface PostDbItemDeleteItemBody {
 
 /**
  * `POST /api/db_item/edit-item`
- * handler: updateItemInTable — mysql/controllers/item.js:705
+ * handler: updateItemInTable — mysql/controllers/item.js:706
  * ruta: mysql/routes/item.js:90
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "update")
  * NOTA: cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL
@@ -2411,7 +2474,7 @@ export interface PutDbItemEventItemsBody {
 
 /**
  * `GET /api/db_item/fragment-data`
- * handler: fragmentData — mysql/controllers/item.js:1408
+ * handler: fragmentData — mysql/controllers/item.js:1409
  * ruta: mysql/routes/item.js:128
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
@@ -2424,7 +2487,7 @@ export interface GetDbItemFragmentDataBody {
 
 /**
  * `POST /api/db_item/get-inventory-company`
- * handler: getGroupedItemInventory — mysql/controllers/item.js:1849
+ * handler: getGroupedItemInventory — mysql/controllers/item.js:1850
  * ruta: mysql/routes/item.js:190
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL
@@ -2449,7 +2512,7 @@ export interface PostDbItemInventoryEventByIdParams {
 
 /**
  * `POST /api/db_item/inventory-based-on-location-and-sublocation`
- * handler: consultingCompanyInventoryBasedOnLocationAndSubLocation — mysql/controllers/item.js:1994
+ * handler: consultingCompanyInventoryBasedOnLocationAndSubLocation — mysql/controllers/item.js:1995
  * ruta: mysql/routes/item.js:152
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
@@ -2468,7 +2531,7 @@ export interface PostDbItemInventoryBasedOnLocationAndSublocationQuery {
 
 /**
  * `POST /api/db_item/inventory-based-on-submitted-parameters`
- * handler: consultingCompanyInventoryBasedOnSubmittedParameters — mysql/controllers/item.js:2358
+ * handler: consultingCompanyInventoryBasedOnSubmittedParameters — mysql/controllers/item.js:2359
  * ruta: mysql/routes/item.js:162
  * auth: validateJWT, checkTokenVersion
  * status: 200, 500
@@ -2480,7 +2543,7 @@ export interface PostDbItemInventoryBasedOnSubmittedParametersBody {
 
 /**
  * `POST /api/db_item/inventory-pagination`
- * handler: consultingCompanyInventoryWithPagination — mysql/controllers/item.js:1917
+ * handler: consultingCompanyInventoryWithPagination — mysql/controllers/item.js:1918
  * ruta: mysql/routes/item.js:149
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -2493,7 +2556,7 @@ export interface PostDbItemInventoryPaginationQuery {
 
 /**
  * `POST /api/db_item/inventory-query`
- * handler: runNamedInventoryQuery — mysql/controllers/item.js:2318
+ * handler: runNamedInventoryQuery — mysql/controllers/item.js:2319
  * ruta: mysql/routes/item.js:172
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 500
@@ -2505,7 +2568,7 @@ export interface PostDbItemInventoryQueryBody {
 
 /**
  * `POST /api/db_item/item-out-warehouse`
- * handler: updateItemInWarehouseAfterBeingAddedToEvent — mysql/controllers/item.js:890
+ * handler: updateItemInWarehouseAfterBeingAddedToEvent — mysql/controllers/item.js:891
  * ruta: mysql/routes/item.js:97
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "update")
  * status: 201, 400, 403, 404, 500
@@ -2521,7 +2584,7 @@ export interface PostDbItemItemOutWarehouseBody {
 
 /**
  * `POST /api/db_item/items_information`
- * handler: consultingItemTable — mysql/controllers/item.js:654
+ * handler: consultingItemTable — mysql/controllers/item.js:655
  * ruta: mysql/routes/item.js:69
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
@@ -2532,7 +2595,7 @@ export interface PostDbItemItemsInformationBody {
 
 /**
  * `GET /api/db_item/location-count`
- * handler: gettingDataFromLocationOption — mysql/controllers/item.js:1473
+ * handler: gettingDataFromLocationOption — mysql/controllers/item.js:1474
  * ruta: mysql/routes/item.js:131
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
@@ -2545,7 +2608,7 @@ export interface GetDbItemLocationCountBody {
 
 /**
  * `POST /api/db_item/new_item`
- * handler: insertingItem — mysql/controllers/item.js:159
+ * handler: insertingItem — mysql/controllers/item.js:160
  * ruta: mysql/routes/item.js:81
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "create")
  * status: 201, 403
@@ -2583,7 +2646,7 @@ export interface PostDbItemNewItemBody {
 
 /**
  * `POST /api/db_item/retrieve-item-data`
- * handler: retrieveItemData — mysql/controllers/item.js:2405
+ * handler: retrieveItemData — mysql/controllers/item.js:2406
  * ruta: mysql/routes/item.js:192
  * auth: validateJWT
  * status: 200, 400, 403, 500
@@ -2594,7 +2657,7 @@ export interface PostDbItemRetrieveItemDataBody {
 
 /**
  * `POST /api/db_item/retrieve-item-location-quantity`
- * handler: retrieveItemLocationQuantityForEvent — mysql/controllers/item.js:1704
+ * handler: retrieveItemLocationQuantityForEvent — mysql/controllers/item.js:1705
  * ruta: mysql/routes/item.js:143
  * auth: sin middleware de auth en la ruta
  * headers: accept-encoding
@@ -2609,7 +2672,7 @@ export interface PostDbItemRetrieveItemLocationQuantityBody {
 
 /**
  * `POST /api/db_item/return-event-devices`
- * handler: returnEventDevicesToWarehouse — mysql/controllers/item.js:2153
+ * handler: returnEventDevicesToWarehouse — mysql/controllers/item.js:2154
  * ruta: mysql/routes/item.js:182
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 404, 500
@@ -2623,7 +2686,7 @@ export interface PostDbItemReturnEventDevicesBody {
 
 /**
  * `POST /api/db_item/returning-item-refactored`
- * handler: returningItemToStockWhenEventIsFinishedRefactored — mysql/controllers/item.js:1052
+ * handler: returningItemToStockWhenEventIsFinishedRefactored — mysql/controllers/item.js:1053
  * ruta: mysql/routes/item.js:134
  * auth: sin middleware de auth en la ruta
  * status: 200, 201, 400, 500
@@ -2637,7 +2700,7 @@ export interface PostDbItemReturningItemRefactoredBody {
 
 /**
  * `GET /api/db_item/search-inventory`
- * handler: searchingGetInventoryTracking — mysql/controllers/item.js:1361
+ * handler: searchingGetInventoryTracking — mysql/controllers/item.js:1362
  * ruta: mysql/routes/item.js:119
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
@@ -2650,7 +2713,7 @@ export interface GetDbItemSearchInventoryBody {
 
 /**
  * `POST /api/db_item/search-inventory`
- * handler: searchingInventoryTracking — mysql/controllers/item.js:1314
+ * handler: searchingInventoryTracking — mysql/controllers/item.js:1315
  * ruta: mysql/routes/item.js:116
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
@@ -2662,7 +2725,7 @@ export interface PostDbItemSearchInventoryBody {
 
 /**
  * `POST /api/db_item/tracking_item/:id`
- * handler: consultingInventoryTracking — mysql/controllers/item.js:1212
+ * handler: consultingInventoryTracking — mysql/controllers/item.js:1213
  * ruta: mysql/routes/item.js:78
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -2674,7 +2737,7 @@ export interface PostDbItemTrackingItemByIdParams {
 
 /**
  * `POST /api/db_item/warehouse-items`
- * handler: consultingItemInWarehouseTable — mysql/controllers/item.js:673
+ * handler: consultingItemInWarehouseTable — mysql/controllers/item.js:674
  * ruta: mysql/routes/item.js:66
  * auth: validateJWT
  * NOTA: rest-spread `...filters`: acepta campos extra
@@ -3858,7 +3921,7 @@ export interface PostEventCreateEventBody {
 
 /**
  * `DELETE /api/event/delete-event/:id`
- * handler: deleteEvent — controller/event.js:138
+ * handler: deleteEvent — controller/event.js:142
  * ruta: routes/event.js:61
  * auth: validateJWT
  * headers: user-agent
@@ -3871,7 +3934,7 @@ export interface DeleteEventDeleteEventByIdParams {
 
 /**
  * `PATCH /api/event/edit-event/:id`
- * handler: editSubscriptionEvent — controller/event.js:93
+ * handler: editSubscriptionEvent — controller/event.js:97
  * ruta: routes/event.js:32
  * auth: validateJWT
  * headers: user-agent
@@ -3885,7 +3948,7 @@ export interface PatchEventEditEventByIdParams {
 
 /**
  * `PUT /api/event/edit-event/:id`
- * handler: editSubscriptionEvent — controller/event.js:93
+ * handler: editSubscriptionEvent — controller/event.js:97
  * ruta: routes/event.js:29
  * auth: validateJWT
  * headers: user-agent
@@ -3913,7 +3976,7 @@ export interface PatchEventEditStaffEventByIdParams {
 
 /**
  * `GET /api/event/event-inventory-based-on-period`
- * handler: inventoryEventBasedOnPeriod — controller/event.js:419
+ * handler: inventoryEventBasedOnPeriod — controller/event.js:438
  * ruta: routes/event.js:58
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
@@ -3926,7 +3989,7 @@ export interface GetEventEventInventoryBasedOnPeriodQuery {
 
 /**
  * `GET /api/event/event-list-per-company`
- * handler: gettingEventListPerCompany — controller/event.js:190
+ * handler: gettingEventListPerCompany — controller/event.js:194
  * ruta: routes/event.js:44
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
@@ -3939,7 +4002,7 @@ export interface GetEventEventListPerCompanyBody {
 
 /**
  * `GET /api/event/event-list`
- * handler: eventList — controller/event.js:174
+ * handler: eventList — controller/event.js:178
  * ruta: routes/event.js:38
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se usa como FILTRO Mongo en `Event.find()`: cualquier subconjunto de los campos de `models/Event.js` (`{}` trae todo)
@@ -3969,7 +4032,7 @@ export interface GetEventEventListBody {
 
 /**
  * `POST /api/event/event-list`
- * handler: eventList — controller/event.js:174
+ * handler: eventList — controller/event.js:178
  * ruta: routes/event.js:41
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se usa como FILTRO Mongo en `Event.find()`: cualquier subconjunto de los campos de `models/Event.js` (`{}` trae todo)
@@ -3999,7 +4062,7 @@ export interface PostEventEventListBody {
 
 /**
  * `GET /api/event/event-staff-detail/:id`
- * handler: eventStaffDetailInfo — controller/event.js:245
+ * handler: eventStaffDetailInfo — controller/event.js:249
  * ruta: routes/event.js:55
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
@@ -4010,7 +4073,7 @@ export interface GetEventEventStaffDetailByIdParams {
 
 /**
  * `POST /api/event/staff-all-events`
- * handler: searchStaffAllEvents — controller/event.js:228
+ * handler: searchStaffAllEvents — controller/event.js:232
  * ruta: routes/event.js:46
  * auth: sin middleware de auth en la ruta
  * status: 200, 500
@@ -4021,7 +4084,7 @@ export interface PostEventStaffAllEventsBody {
 
 /**
  * `POST /api/event/update-event-inventory-freshest-data`
- * handler: updateEventInventoryFreshestData — controller/event.js:596
+ * handler: updateEventInventoryFreshestData — controller/event.js:615
  * ruta: routes/event.js:68
  * auth: sin middleware de auth en la ruta
  * status: 200, 400, 404, 500
@@ -4033,7 +4096,7 @@ export interface PostEventUpdateEventInventoryFreshestDataBody {
 
 /**
  * `PATCH /api/event/update-events`
- * handler: updateLargeNumberOfEventsAtOnce — controller/event.js:465
+ * handler: updateLargeNumberOfEventsAtOnce — controller/event.js:484
  * ruta: routes/event.js:64
  * auth: sin middleware de auth en la ruta
  * status: 200, 400, 500
@@ -4045,7 +4108,7 @@ export interface PatchEventUpdateEventsBody {
 
 /**
  * `POST /api/event/update-global-state`
- * handler: updateGlobalStateOfEvent — controller/event.js:530
+ * handler: updateGlobalStateOfEvent — controller/event.js:549
  * ruta: routes/event.js:66
  * auth: sin middleware de auth en la ruta
  * status: 200, 400, 404, 500
@@ -5478,7 +5541,7 @@ export interface PatchReceiverUpdateBulkItemsInTransactionBody {
 
 /**
  * `POST /api/registration/accept-invitation`
- * handler: acceptInvitation — controller/registration.js:440
+ * handler: acceptInvitation — controller/registration.js:443
  * ruta: routes/registration.js:43
  * auth: check("company.company_name", "company.company_name es requerido").not().isEmpty(), validateFields
  * status: 400, 404, 500
@@ -5490,7 +5553,7 @@ export interface PostRegistrationAcceptInvitationBody {
 
 /**
  * `POST /api/registration/add-company`
- * handler: registerExistingUserNewCompany — controller/registration.js:299
+ * handler: registerExistingUserNewCompany — controller/registration.js:302
  * ruta: routes/registration.js:30
  * auth: check("company.company_name", "company.company_name es requerido").not().isEmpty(), check("company.website", "company.website es requerido").not().isEmpty(), validateFields
  * status: 201, 400, 404, 500
@@ -5502,7 +5565,7 @@ export interface PostRegistrationAddCompanyBody {
 
 /**
  * `POST /api/registration/new`
- * handler: registerNewUserAndCompany — controller/registration.js:143
+ * handler: registerNewUserAndCompany — controller/registration.js:145
  * ruta: routes/registration.js:14
  * auth: check("user.lastName", "user.lastName es requerido").not().isEmpty(), check("user.email", "user.email debe ser un email válido").isEmail(), check("user.password", "user.password debe tener al menos 6 caracteres").isLength({ min: 6 }), check("company.company_name", "company.company_name es requerido").not().isEmpty(), check("company.website", "company.website es requerido").not().isEmpty(), validateFields
  * status: 201, 400, 500
@@ -5871,7 +5934,7 @@ export interface GetStaffActivityLogQuery {
 
 /**
  * `GET /api/staff/__staff-search`
- * handler: displayAllAdminUser — controller/admin.js:671
+ * handler: displayAllAdminUser — controller/admin.js:676
  * ruta: routes/staff.js:32
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo)
@@ -5903,7 +5966,7 @@ export interface GetStaffStaffSearchBody {
 
 /**
  * `POST /api/staff/__staff-search`
- * handler: displayAllAdminUser — controller/admin.js:671
+ * handler: displayAllAdminUser — controller/admin.js:676
  * ruta: routes/staff.js:29
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo)
@@ -5935,7 +5998,7 @@ export interface PostStaffStaffSearchBody {
 
 /**
  * `GET /api/staff/admin-users`
- * handler: displayAllAdminUser — controller/admin.js:671
+ * handler: displayAllAdminUser — controller/admin.js:676
  * ruta: routes/staff.js:18
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read")
  * NOTA: el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo)
@@ -5967,7 +6030,7 @@ export interface GetStaffAdminUsersBody {
 
 /**
  * `POST /api/staff/admin-users`
- * handler: displayAllAdminUser — controller/admin.js:671
+ * handler: displayAllAdminUser — controller/admin.js:676
  * ruta: routes/staff.js:21
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read")
  * NOTA: el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo)
@@ -6012,7 +6075,7 @@ export interface GetStaffConsumersSearchBody {
 
 /**
  * `PATCH /api/staff/edit-admin/:id`
- * handler: editOtherAdminUser — controller/admin.js:479
+ * handler: editOtherAdminUser — controller/admin.js:484
  * ruta: routes/staff.js:23
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "update")
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
@@ -6025,7 +6088,7 @@ export interface PatchStaffEditAdminByIdParams {
 
 /**
  * `POST /api/staff/force-logout`
- * handler: forceEndSession — controller/admin.js:828
+ * handler: forceEndSession — controller/admin.js:833
  * ruta: routes/staff.js:35
  * auth: sin middleware de auth en la ruta
  * status: 200, 400, 401, 404, 500
@@ -7077,6 +7140,8 @@ export interface ApiEndpoints {
   "POST /api/db_event/event_device_directly": { body: PostDbEventEventDeviceDirectlyBody };
   "POST /api/db_event/event_device": {  };
   "POST /api/db_event/event_staff": { body: PostDbEventEventStaffBody };
+  "POST /api/db_event/event-count/close": { body: PostDbEventEventCountCloseBody };
+  "POST /api/db_event/event-count/reconcile": { body: PostDbEventEventCountReconcileBody };
   "GET /api/db_event/event-inventory/:id": { params: GetDbEventEventInventoryByIdParams };
   "POST /api/db_event/event-inventory/:id": { params: PostDbEventEventInventoryByIdParams };
   "POST /api/db_event/events_company": {  };
@@ -7099,6 +7164,9 @@ export interface ApiEndpoints {
   "POST /api/db_event/update-event/:event_id": { body: PostDbEventUpdateEventByEventIdBody; params: PostDbEventUpdateEventByEventIdParams };
   "POST /api/db_event/update-item-in-table-after-being-added-to-event-from-container": { body: PostDbEventUpdateItemInTableAfterBeingAddedToEventFromContainerBody };
   "POST /api/db_event/update-status-item-based-on-event": { body: PostDbEventUpdateStatusItemBasedOnEventBody };
+  "POST /api/db_identifier/by-items": { body: PostDbIdentifierByItemsBody };
+  "POST /api/db_identifier/register-bulk": { body: PostDbIdentifierRegisterBulkBody };
+  "POST /api/db_identifier/register": { body: PostDbIdentifierRegisterBody };
   "POST /api/db_inventory/check-item": { body: PostDbInventoryCheckItemBody };
   "POST /api/db_inventory/check-large-data": { body: PostDbInventoryCheckLargeDataBody };
   "GET /api/db_inventory/container-items/:container_item_id": { params: GetDbInventoryContainerItemsByContainerItemIdParams };
