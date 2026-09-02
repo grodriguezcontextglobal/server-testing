@@ -22,19 +22,21 @@
  *    handful of routes that must stay reachable before login, since those are
  *    the spam and account-enumeration surface.
  *
- * 3. `requireNotificationAuth` — the actual lock. Defaults to `enforce`: a
- *    caller with no valid session gets a 401, except on the four routes that
- *    run before a token can exist.
+ * 3. `requireNotificationAuth` — the actual lock. `enforce` answers 401 to a
+ *    caller with no valid session, except on the four routes that run before a
+ *    token can exist.
  *
- *    Know what this costs before deploying it somewhere with live traffic. Two
+ *    It defaults to `warn` instead, which logs those calls and blocks nothing.
+ *    Not because warn is the goal — enforce is, and .env.example ships it — but
+ *    because this is what an environment gets when nobody configured anything,
+ *    and that environment should not start refusing traffic on its own. Two
  *    origins call this API: admin.devitrak.net (this repo, always authenticated)
  *    and app.devitrak.net, a consumer app whose source is not in this workspace,
  *    so which routes it uses is not knowable from here. If it sends anything
  *    outside PUBLIC_ROUTES, enforce stops that mail, and the failure is silent
  *    from its side — a 401 on a fire-and-forget notification looks like nothing
- *    at all. `warn` exists for that case: it logs every unauthenticated call
- *    with route and origin and blocks nothing, so a day of it tells you whether
- *    enforce is safe. `off` disables the check without a code change.
+ *    at all. A day of warn logs is what tells you enforce is safe; set it
+ *    deliberately once that list is clean. `off` disables the check entirely.
  */
 
 const jwt = require("jsonwebtoken");
@@ -44,7 +46,7 @@ const Company = require("../models/Company");
 const logger = require("../helpers/logger");
 
 /** off | warn | enforce — see the header comment. */
-const MODE = String(process.env.NODEMAILER_AUTH_MODE || "enforce").toLowerCase();
+const MODE = String(process.env.NODEMAILER_AUTH_MODE || "warn").toLowerCase();
 
 /**
  * Routes that must answer without a session token, and why. Each one runs
