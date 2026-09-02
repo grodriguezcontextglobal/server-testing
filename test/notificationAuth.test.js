@@ -180,26 +180,17 @@ const loadWithMode = (mode) => {
  * requireNotificationAuth
  * ---------------------------------------------------------------- */
 
-test('requireNotificationAuth: an unset NODEMAILER_AUTH_MODE enforces', () => {
-  // Asserted by reloading with the variable deleted rather than by relying on
-  // the module-level import: a local .env can set it, which would make this
-  // pass for the wrong reason.
+test('requireNotificationAuth: an unset NODEMAILER_AUTH_MODE observes, it does not refuse', () => {
+  // An environment nobody configured must not start refusing traffic on its
+  // own. Asserted by reloading with the variable deleted rather than by relying
+  // on the module-level import: a local .env sets it, which would otherwise make
+  // this pass for the wrong reason.
   const { requireNotificationAuth: byDefault } = loadWithMode(undefined);
   const response = makeResponse();
   let nexted = false;
   byDefault(makeRequest(), response, () => { nexted = true; });
-  assert.equal(nexted, false);
-  assert.equal(response.code, 401);
-});
-
-test('requireNotificationAuth: an unset mode still lets the pre-login routes through', () => {
-  const { requireNotificationAuth: byDefault } = loadWithMode(undefined);
-  for (const route of PUBLIC_ROUTES.keys()) {
-    const response = makeResponse();
-    let nexted = false;
-    byDefault(makeRequest({ path: route }), response, () => { nexted = true; });
-    assert.equal(nexted, true, `${route} must answer even with no mode configured`);
-  }
+  assert.equal(nexted, true);
+  assert.equal(response.code, undefined);
 });
 
 test('requireNotificationAuth: warn observes without blocking', () => {
