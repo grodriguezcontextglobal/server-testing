@@ -278,3 +278,104 @@ test('off: nothing is refused, for a fast rollback without a deploy', () => {
   off(makeRequest(), makeResponse(), () => { nexted = true; });
   assert.equal(nexted, true);
 });
+
+// ─── Límite de las rutas públicas de asistente ──────────────────────────────
+// El limitador público iba por IP para las cuatro rutas. En un evento todos los
+// asistentes están detrás del wifi del venue, o sea UNA sola IP pública, así que
+// 10/15min bloqueaba al asistente número once. Las dos rutas de asistente ahora
+// se cuentan por email destino; las dos de staff siguen por IP.
+
+const {
+  CONSUMER_PUBLIC_ROUTES,
+  isConsumerPublicRoute,
+  consumerRateLimitKey,
+  publicRouteRateLimit,
+} = require('../middlewares/notificationAuth');
+
+const VENUE_IP = '198.51.100.20';
+
+function makeLimiterRequest({ path, email, ip = VENUE_IP } = {}) {
+  return {
+    path,
+    ip,
+    method: 'POST',
+    headers: {},
+    header: () => undefined,
+    body: email === undefined ? {} : { consumer: { email } },
+  };
+}
+
+function makeLimiterResponse() {
+  const res = { headersSent: false, blocked: false };
+  res.status = (code) => { res.code = code; return res; };
+  res.json = (body) => { res.body = body; res.blocked = true; return res; };
+  res.send = res.json;
+  res.setHeader = () => res;
+  res.getHeader = () => undefined;
+  res.removeHeader = () => res;
+  return res;
+}
+
+const runLimiter = (request) =>
+  new Promise((resolve) => {
+    const response = makeLimiterResponse();
+    const done = () => resolve({ response, passed: !response.blocked });
+    const result = publicRouteRateLimit(request, response, done);
+    if (result && typeof result.then === 'function') result.then(() => { if (response.blocked) done(); });
+  });
+
+test('las dos rutas de asistente están marcadas, las de staff no', () => {
+  assert.equal(CONSUMER_PUBLIC_ROUTES.size, 2);
+  assert.equal(isConsumerPublicRoute({ path: '/confirmation-account' }), true);
+  assert.equal(isConsumerPublicRoute({ path: '/login-existing-consumer' }), true);
+  assert.equal(isConsumerPublicRoute({ path: '/reset-admin-password' }), false);
+  // Y siguen siendo públicas: el cambio es de clave, no de acceso.
+  for (const route of CONSUMER_PUBLIC_ROUTES) {
+    assert.equal(isPublicRoute({ path: route }), true);
+  }
+});
+
+test('la clave sale del email destino, normalizado', () => {
+  assert.equal(
+    consumerRateLimitKey(makeLimiterRequest({ email: '  Ana@Example.COM ' })),
+    'email:ana@example.com'
+  );
+});
+
+test('sin email usable cae a la IP: un body malformado no compra una ruta ilimitada', () => {
+  assert.equal(consumerRateLimitKey(makeLimiterRequest({})), `ip:${VENUE_IP}`);
+  assert.equal(consumerRateLimitKey(makeLimiterRequest({ email: '   ' })), `ip:${VENUE_IP}`);
+  assert.equal(consumerRateLimitKey({ ip: VENUE_IP, body: undefined }), `ip:${VENUE_IP}`);
+});
+
+test('LA REGRESIÓN: 12 asistentes distintos en el wifi del venue pasan todos', async () => {
+  for (let i = 0; i < 12; i += 1) {
+    const { passed } = await runLimiter(
+      makeLimiterRequest({ path: '/login-existing-consumer', email: `asistente${i}@example.com` })
+    );
+    assert.equal(passed, true, `el asistente ${i + 1} debe recibir su link de login`);
+  }
+});
+
+test('martillar UNA dirección sigue bloqueado: es la señal de abuso real', async () => {
+  const victim = 'objetivo@example.com';
+  let blockedAt = null;
+  for (let i = 1; i <= 8 && blockedAt === null; i += 1) {
+    const { passed } = await runLimiter(
+      makeLimiterRequest({ path: '/confirmation-account', email: victim })
+    );
+    if (!passed) blockedAt = i;
+  }
+  assert.ok(blockedAt !== null, 'repetir la misma dirección debe cortarse');
+  assert.ok(blockedAt <= 6, `debía cortarse dentro del presupuesto de 5, cortó en ${blockedAt}`);
+});
+
+test('las rutas de staff siguen contando por IP', async () => {
+  let blockedAt = null;
+  for (let i = 1; i <= 14 && blockedAt === null; i += 1) {
+    const { passed } = await runLimiter(makeLimiterRequest({ path: '/reset-admin-password' }));
+    if (!passed) blockedAt = i;
+  }
+  assert.ok(blockedAt !== null, 'la ruta de staff debe seguir limitada por IP');
+  assert.ok(blockedAt <= 11, `debía cortarse dentro del presupuesto de 10, cortó en ${blockedAt}`);
+});
