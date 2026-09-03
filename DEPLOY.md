@@ -62,6 +62,40 @@ git pull
 nssm restart DevitrakServer
 ```
 
+### Notificaciones: pasar a `NODEMAILER_AUTH_MODE=enforce`
+
+El primer deploy que traiga `middlewares/notificationAuth.js` **no requiere nada**:
+sin la variable en el `.env`, el default del código es `warn`, que registra los
+envíos sin sesión pero no bloquea ninguno. Un ambiente que nadie configuró no se
+pone a rechazar tráfico solo.
+
+`enforce` es a dónde queremos llegar, y hay que ponerlo a mano. Antes de hacerlo,
+mirá un día de tráfico real:
+
+```powershell
+Select-String -Path "C:\Users\CGAdmin\Documents\Github\server-testing\logs\*.log" `
+  -Pattern "unauthenticated notification allowed"
+```
+
+Cada línea trae la ruta, el origin y la IP. Lo que estamos buscando es si
+`app.devitrak.net` (la app de consumidores, cuyo código no está en este repo)
+llama a alguna ruta que no sea una de las cuatro públicas — reset de contraseña,
+force-logout, confirmación de cuenta de consumidor, link de login de consumidor.
+Esas cuatro están exentas en todos los modos.
+
+- **Si no aparece nada legítimo**, agregá `NODEMAILER_AUTH_MODE=enforce` al `.env`
+  y reiniciá. A partir de ahí, todo `POST /api/nodemailer/*` sin sesión válida
+  responde 401.
+- **Si aparece algo**, esa es la lista de lo que hay que autenticar primero. No
+  pongas enforce todavía: un 401 sobre una notificación fire-and-forget no se
+  nota del lado del que la mandó, el correo simplemente deja de llegar.
+
+`off` desactiva el chequeo por completo, como rollback sin tocar código.
+
+> El spoofing de marca está cerrado en los tres modos: el branding sale siempre
+> de la sesión verificada, nunca del header `x-company-id`. El modo solo decide
+> si además se rechazan los envíos sin sesión.
+
 Verify it's back up:
 
 ```powershell
