@@ -190,7 +190,13 @@ router.post("/get-grouped-inventory-by-search-parameter", getGroupedInventoryByS
 router.post("/filter-suppliers-info-items", filterSuppliersInfoItems);
 
 //bulk delete items
-router.post("/delete-bulk-items", deleteBulkItems);
+// Misma cadena que su gemela de mysql/routes/item.js:107. Iba sin middleware, y
+// desde 61edc32 (2026-07-20, "enforce can_* write flags on bulk/queue item
+// ops") el controller exige `request.sqlStaffId` para resolver el scope de
+// borrado. Ese commit toco el controller pero no las rutas, asi que esta quedo
+// atras: sin validateJWT no hay sqlStaffId, getStaffCompanyAccess devuelve null
+// y respondia 403 "Staff record not found for this company" a TODA llamada.
+router.post("/delete-bulk-items", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteBulkItems);
 
 //checking item info
 router.post("/check-item", validateJWT, checkTokenVersion, checkingItem);

@@ -45,6 +45,7 @@ const {
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
 const { authorizePermission } = require("../../middlewares/authorizePermission");
+const { reconcileEventCount, closeEventCount } = require("../controllers/eventCount");
 const router = Router();
 
 //check event info
@@ -215,5 +216,25 @@ router.post("/remove-reserved-items-for-event", removeReservedItemsInInventoryFo
 
 //lock items to be used in event
 router.post("/lock-items-for-event", lockItemsForEvent);
+
+// ─── Conteo de cierre de evento por identificador (RFID / código de barras) ───
+// Ver DESIGN_rfid_event_count.md § 8. Dos operaciones separadas a propósito:
+// `reconcile` es solo lectura y repetible (el operador barre, ve qué falta, va a
+// buscarlo y barre otra vez); `close` es la que escribe.
+router.post(
+  "/event-count/reconcile",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("inventory", "read"),
+  reconcileEventCount,
+);
+
+router.post(
+  "/event-count/close",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("inventory", "update"),
+  closeEventCount,
+);
 
 module.exports = router;

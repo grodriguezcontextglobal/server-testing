@@ -73,6 +73,7 @@ const MOUNTS = {
   'mysql/routes/consumers.js': '/api/db_consumer',
   'mysql/routes/events.js': '/api/db_event',
   'mysql/routes/item.js': '/api/db_item',
+  'mysql/routes/identifier.js': '/api/db_identifier',
   'mysql/routes/recordEvent.js': '/api/db_record',
   'mysql/routes/staff.js': '/api/db_staff',
   'mysql/routes/stripe.js': '/api/db_stripe',
