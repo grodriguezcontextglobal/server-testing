@@ -1335,13 +1335,11 @@ const customizeMessageHtml = (props) => {
 // The condition note is staff free text and the reason lines are typed by hand;
 // both land inside markup. Escaped so an apostrophe or an angle bracket cannot
 // break the email — or inject into it.
-const escapeHtml = (value) =>
-  String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+//
+// `escapeHtml` ya no se define acá: viene de nodeMailer/emailLayout.js (ver el
+// import arriba), que es de donde lo toma el chasis de plantillas. Las dos
+// implementaciones eran identicas --mismo manejo de null, los mismos cinco
+// caracteres y el & primero-- asi que unificar no cambia lo que se envia.
 
 // Dollars in, dollars on the page. Cents never reach this layer.
 const formatUsd = (amount) =>
