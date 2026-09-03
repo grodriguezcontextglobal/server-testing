@@ -30,15 +30,83 @@
  * colgarlo de un cron o de CI.
  */
 
-require('dotenv').config();
-const { dbConnection } = require('../database/config');
-const Company = require('../models/Company');
-const getConnection = require('../mysql/database/config');
+// Los require pesados (dotenv, mongoose, el pool de MySQL) viven DENTRO de
+// main(): requerir este módulo desde un test tiene que dar las funciones puras
+// sin abrir una conexión ni cargar un modelo. Arriba, el solo `require` del
+// script costaba ~30s en la suite.
 
 const APPLY = process.argv.includes('--apply');
 const norm = (v) => String(v ?? '').trim().toLowerCase();
 
+// ─── Lógica pura (sin DB) — exportada al final para poder testearla ──────────
+
+/** Hallazgos que `--apply` sí sabe arreglar con un UPDATE. */
+const FIXABLE_BY_APPLY = ['roleMismatch', 'activeMismatch'];
+
+/** Hallazgos que necesitan a una persona: ningún UPDATE los resuelve. */
+const NEEDS_HUMAN = [
+  'noStaffMember',
+  'noMembership',
+  'mongoSelfConflict',
+  'ambiguousCompany',
+  'unmatchedCompany',
+];
+
+/**
+ * Decide si una compañía de Mongo se puede auditar, según cuántos `company_id`
+ * de SQL matchean su nombre.
+ *
+ * El matcheo es POR NOMBRE, que es inherentemente frágil, así que la respuesta
+ * tiene que ser explícita en los tres casos:
+ *   - exactamente 1  → auditable contra ese id.
+ *   - más de 1       → AMBIGUO. Antes se registraba el hallazgo y se seguía
+ *                      igual con `candidates[0]`, así que los UPDATE de
+ *                      `--apply` podían caer en la compañía EQUIVOCADA.
+ *   - 0              → SIN CORRESPONDENCIA. Antes sus empleados se descartaban
+ *                      con un `continue` mudo: no aparecían ni en `ok` ni en
+ *                      ningún hallazgo. En una herramienta de auditoría el
+ *                      silencio se lee como éxito.
+ */
+function resolveCompanyMatch(candidates) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  if (list.length === 1) return { auditable: true, companyId: list[0], company_ids: list };
+  if (list.length > 1) return { auditable: false, reason: 'ambiguous', company_ids: list };
+  return { auditable: false, reason: 'unmatched', company_ids: [] };
+}
+
+/**
+ * `is_active` que SQL debería tener según Mongo, o `null` si Mongo no opina.
+ *
+ * `active` ausente NO significa "activo": significa que el dato no está. La
+ * versión anterior (`emp.active === false ? 0 : 1`) lo asumía activo, así que
+ * `--apply` podía REACTIVAR en SQL a alguien correctamente dado de baja. Con
+ * `null` no se compara ni se propone ningún UPDATE.
+ */
+function resolveDesiredActive(emp) {
+  if (typeof emp?.active !== 'boolean') return null;
+  return emp.active ? 1 : 0;
+}
+
+/**
+ * Exit code del script. `--apply` arregla los de FIXABLE_BY_APPLY, pero todo lo
+ * demás sigue ahí después de aplicar y necesita intervención manual.
+ *
+ * Antes con `--apply` el exit era SIEMPRE 0, así que un cron que corriera con
+ * esa bandera nunca reportaba justamente lo que el script no puede arreglar
+ * solo.
+ */
+function computeExitCode(findings, { apply = false } = {}) {
+  const count = (keys) => keys.reduce((n, key) => n + (findings?.[key]?.length || 0), 0);
+  const pending = count(NEEDS_HUMAN) + (apply ? 0 : count(FIXABLE_BY_APPLY));
+  return pending > 0 ? 1 : 0;
+}
+
 async function main() {
+  require('dotenv').config();
+  const { dbConnection } = require('../database/config');
+  const Company = require('../models/Company');
+  const getConnection = require('../mysql/database/config');
+
   await dbConnection();
   const sql = getConnection();
 
@@ -72,6 +140,7 @@ async function main() {
     noStaffMember: [],     // el email no existe en staff_member
     mongoSelfConflict: [], // el propio Mongo se contradice: role vs roleType
     ambiguousCompany: [],  // el nombre de company matchea más de un company_id
+    unmatchedCompany: [],  // el nombre de company no matchea ninguno en SQL
     // ─── Informativo, NO es divergencia ───────────────────────────────────────
     // Empleado en la lista de Mongo sin `userId`: la invitación no se aceptó y
     // la cuenta nunca se creó. Es un estado legítimo del flujo de alta, no un
@@ -89,14 +158,25 @@ async function main() {
   let evaluated = 0;
 
   for (const company of companies) {
-    const candidates = sqlCompanyIds.get(norm(company.company_name)) || [];
-    if (candidates.length > 1) {
-      findings.ambiguousCompany.push({ company: company.company_name, company_ids: candidates });
-    }
-    const companyId = candidates[0];
+    const match = resolveCompanyMatch(sqlCompanyIds.get(norm(company.company_name)));
+    const employees = (company.employees || []).filter((emp) => emp?.user);
 
-    for (const emp of company.employees || []) {
-      if (!emp?.user) continue;
+    // Una compañía que no se puede resolver a UN company_id se reporta a nivel
+    // compañía, con cuántos empleados quedaron sin auditar. Reportar cada
+    // empleado por separado inundaría la salida; no reportar nada los hacía
+    // desaparecer.
+    if (!match.auditable) {
+      const bucket = match.reason === 'ambiguous' ? 'ambiguousCompany' : 'unmatchedCompany';
+      findings[bucket].push({
+        company: company.company_name,
+        company_ids: match.company_ids,
+        empleados_sin_auditar: employees.length,
+      });
+    }
+
+    const companyId = match.companyId;
+
+    for (const emp of employees) {
       evaluated += 1;
       const base = { company: company.company_name, company_id: companyId, email: emp.user };
 
@@ -114,7 +194,10 @@ async function main() {
         findings.pendingInvitation.push({ ...base, mongo: emp.roleType });
         continue;
       }
-      if (!companyId) continue;
+      // La compañía ya se reportó arriba; comparar contra un company_id
+      // arbitrario produciría hallazgos falsos y, con --apply, UPDATEs en la
+      // compañía equivocada.
+      if (!match.auditable) continue;
 
       const staffId = staffIdByEmail.get(norm(emp.user));
       if (!staffId) {
@@ -143,8 +226,10 @@ async function main() {
           fix_role_id: wantRoleId,
         });
       }
-      const wantActive = emp.active === false ? 0 : 1;
-      if (Number(row.is_active) !== wantActive) {
+      // `null` = Mongo no dice nada sobre la baja. No se compara ni se propone
+      // UPDATE: asumir "activo" reactivaría a quien esté correctamente de baja.
+      const wantActive = resolveDesiredActive(emp);
+      if (wantActive !== null && Number(row.is_active) !== wantActive) {
         clean = false;
         findings.activeMismatch.push({
           ...base, staff_id: staffId,
@@ -168,7 +253,8 @@ async function main() {
     noStaffMember: 'SIN staff_member — el email nunca llegó a SQL',
     pendingInvitation: 'INVITACION PENDIENTE — sin userId en Mongo, la cuenta no existe (esperado, informativo)',
     mongoSelfConflict: 'MONGO SE CONTRADICE — role (nivel) y roleType no coinciden',
-    ambiguousCompany: 'NOMBRE DE COMPANY AMBIGUO — matchea más de un company_id',
+    ambiguousCompany: 'NOMBRE DE COMPANY AMBIGUO — matchea más de un company_id; sus empleados NO se auditaron',
+    unmatchedCompany: 'COMPANY SIN CORRESPONDENCIA EN SQL — sus empleados NO se auditaron',
   };
   for (const [key, rows] of Object.entries(findings)) {
     if (!rows.length) continue;
@@ -205,19 +291,35 @@ async function main() {
     }
   }
 
-  // Lo que este script NO puede arreglar solo: falta crear el usuario/staff.
-  const manual = findings.noStaffMember.length + findings.noMembership.length;
+  // Lo que este script NO puede arreglar solo. Sigue pendiente DESPUÉS de
+  // --apply, así que es lo que decide el exit code en ese modo.
+  const manual = NEEDS_HUMAN.reduce((n, key) => n + findings[key].length, 0);
   if (manual) {
-    console.log(`\n=== Requiere alta manual (${manual}) ===`);
+    console.log(`\n=== Requiere intervención manual (${manual}) ===`);
     console.log('  Sin staff_member o sin membresía activa: hay que provisionar al usuario,');
     console.log('  no alcanza un UPDATE. Mientras no exista, esas personas reciben 403 en inventario.');
+    console.log('  Company ambigua o sin correspondencia: hay que resolver el nombre contra');
+    console.log('  company_info; hasta entonces esos empleados quedan SIN auditar.');
+    console.log('  Mongo contradictorio: hay que corregir el dato en Mongo, que es la fuente.');
   }
 
-  const drift = fixes.length + manual + findings.mongoSelfConflict.length;
-  process.exit(drift > 0 && !APPLY ? 1 : 0);
+  process.exit(computeExitCode(findings, { apply: APPLY }));
 }
 
-main().catch((error) => {
-  console.error('ERROR:', error.message);
-  process.exit(1);
-});
+// Solo corre cuando se invoca como script. Al requerirlo desde un test se
+// obtienen las funciones puras sin abrir conexiones — mismo patrón que
+// scripts/migrateMongoRoleTypes.js.
+if (require.main === module) {
+  main().catch((error) => {
+    console.error('ERROR:', error.message);
+    process.exit(1);
+  });
+}
+
+module.exports = {
+  FIXABLE_BY_APPLY,
+  NEEDS_HUMAN,
+  resolveCompanyMatch,
+  resolveDesiredActive,
+  computeExitCode,
+};
