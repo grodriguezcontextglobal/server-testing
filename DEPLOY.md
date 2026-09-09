@@ -36,7 +36,7 @@ before anyone logs in) and automatic restart if the process dies. We use `pm2-ru
 
 ## ⚠️ Critical gotcha: `PM2_HOME` is mandatory on Windows
 
-`pm2-runtime` has a bug on Windows: in `node_modules/pm2/lib/binaries/Runtime4Docker.js:68` it uses
+`pm2-runtime` has a bug on Windows: in `node_modules/pm2/lib/binaries/Runtime4Docker.js:67` it uses
 `process.env.HOME` (a **Linux** variable, nonexistent on Windows) to locate its data folder.
 Without `PM2_HOME` set, it starts up and **crashes instantly** with:
 
@@ -93,7 +93,8 @@ git pull
 
 nssm stop DevitrakServer
 nssm stop DevitrakEmailWorker
-# plus DevitrakBulkWorker / DevitrakDeleteWorker once those exist
+nssm stop DevitrakBulkWorker
+nssm stop DevitrakDeleteWorker
 
 # Stopping the services is NOT enough: the pm2 daemon is a separate process that
 # survives `nssm stop` and keeps handles inside node_modules. Leave it alive and
@@ -106,6 +107,8 @@ npm ci --omit=dev
 
 nssm start DevitrakServer
 nssm start DevitrakEmailWorker
+nssm start DevitrakBulkWorker
+nssm start DevitrakDeleteWorker
 nssm status DevitrakServer                # SERVICE_RUNNING
 (Invoke-WebRequest -Uri "http://localhost:34001/health" -UseBasicParsing).Content
 ```
@@ -404,7 +407,7 @@ Production runs as **separate native nssm services** (no containers; Windows Ser
 | `DevitrakGoWorker` | `go-worker\worker.exe` | inventory Go operations (see the Go worker section) |
 | `DevitrakEmailWorker` | `node queue\standalone.js` | **email** jobs only |
 | `DevitrakBulkWorker` | `node queue\standalone.js` | **bulk-write** jobs only (see below) — fast poll |
-| `DevitrakDeleteWorker` | `node queue\standalone.js` | **delete** jobs only (see below) — fast poll, not yet deployed |
+| `DevitrakDeleteWorker` | `node queue\standalone.js` | **delete** jobs only (see below) — fast poll |
 
 The split is driven entirely by env — the code is identical across services. The type
 lists live in **`constants/queueTypeGroups.js`** (groups `email`, `bulk`, `delete`), so a
@@ -462,7 +465,7 @@ nssm restart DevitrakServer
 > jobs; only then set `QUEUE_EXCLUDE_TYPES` on the main server. Otherwise email jobs would
 > sit unclaimed in the gap. To remove: `nssm remove DevitrakEmailWorker confirm`.
 
-### Create the bulk worker service (fast poll — NOT YET DEPLOYED)
+### Create the bulk worker service (fast poll)
 
 Backs the 4 queue-migrated bulk-write endpoints (see
 `project_bulk_queue_migration_plan.md` in the AI memory store):
@@ -516,7 +519,7 @@ nssm restart DevitrakServer
 > with the normal (non-202) body quickly; only then set `QUEUE_EXCLUDE_TYPES` on
 > the main server. To remove: `nssm remove DevitrakBulkWorker confirm`.
 
-### Create the delete worker service (fast poll — NOT YET DEPLOYED)
+### Create the delete worker service (fast poll)
 
 Owns the `delete` group of `constants/queueTypeGroups.js`:
 `inventory:bulk-delete-by-criteria` (`deleteBulkItemBasedOnCriteria`, which with
