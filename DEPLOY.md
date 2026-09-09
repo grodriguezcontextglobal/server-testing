@@ -95,6 +95,13 @@ nssm stop DevitrakServer
 nssm stop DevitrakEmailWorker
 # plus DevitrakBulkWorker / DevitrakDeleteWorker once those exist
 
+# Stopping the services is NOT enough: the pm2 daemon is a separate process that
+# survives `nssm stop` and keeps handles inside node_modules. Leave it alive and
+# `npm ci` dies with ENOTEMPTY/EPERM trying to rmdir some package folder.
+Get-Process node -ErrorAction SilentlyContinue | Select-Object Id, StartTime, Path
+Get-Process node -ErrorAction SilentlyContinue | Stop-Process -Force
+# The Go worker is not a node process — it stays up, untouched.
+
 npm ci --omit=dev
 
 nssm start DevitrakServer
@@ -102,6 +109,11 @@ nssm start DevitrakEmailWorker
 nssm status DevitrakServer                # SERVICE_RUNNING
 (Invoke-WebRequest -Uri "http://localhost:34001/health" -UseBasicParsing).Content
 ```
+
+> If a previous `npm ci` already failed halfway, the tree is in a state npm cannot repair on its
+> own — delete it by hand before retrying: `Remove-Item -Recurse -Force node_modules` (or
+> `cmd /c "rmdir /s /q node_modules"` when PowerShell trips over long paths). A single file that
+> keeps refusing to go is usually Defender mid-scan: wait a few seconds and retry.
 
 > **Node >= 20.11.0 is required** (`package.json` -> `engines`), and `.npmrc` sets
 > `engine-strict=true`, so npm **fails** — it does not warn — on an older Node. Production runs
