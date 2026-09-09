@@ -96,13 +96,28 @@ foreach ($attempt in 1..10) {
 Write-Host "    status: $status"
 
 Write-Host "==> Health check on port $port" -ForegroundColor Cyan
-try {
-    $health = Invoke-WebRequest -Uri "http://localhost:$port/health" `
-                                -UseBasicParsing -TimeoutSec 10
+# A freshly replaced worker.exe is a new binary to Windows Defender, which scans it before
+# letting it run: the first start after a rebuild can take well over the 10s polled above.
+# Retry for ~30s so a slow-but-healthy start stops looking like a broken deploy.
+$health    = $null
+$lastError = ''
+foreach ($attempt in 1..10) {
+    try {
+        $health = Invoke-WebRequest -Uri "http://localhost:$port/health" `
+                                    -UseBasicParsing -TimeoutSec 5
+        break
+    } catch {
+        $lastError = $_.Exception.Message
+        if ($attempt -lt 10) { Start-Sleep -Seconds 3 }
+    }
+}
+if ($health) {
     Write-Host "    $($health.Content)" -ForegroundColor Green
-} catch {
-    Write-Host "    health check failed: $($_.Exception.Message)" -ForegroundColor Red
+    $status = (& nssm status $service) -join ''
+} else {
+    Write-Host "    health check failed after ~30s: $lastError" -ForegroundColor Red
     Write-Host "    Check logs\go-worker-err.log and confirm GO_WORKER_PORT matches on BOTH services." -ForegroundColor Red
+    Write-Host "    Current service status: $((& nssm status $service) -join '')" -ForegroundColor Red
     exit 1
 }
 
