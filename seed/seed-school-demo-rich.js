@@ -16,7 +16,7 @@
  */
 const { MongoClient, ObjectId } = require("mongodb");
 const mysql = require("mysql2/promise");
-const bcrypt = require("bcryptjs");
+const bcrypt = require("bcrypt");
 
 const MONGO_URI = process.env.MONGO_URI || "mongodb://127.0.0.1:27017";
 const MONGO_DB = process.env.MONGO_DB || "devitrak_demo";
