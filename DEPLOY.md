@@ -59,8 +59,14 @@ Replaces the old `pm2-pull-run` script from `package.json`. From PowerShell **as
 ```powershell
 cd "C:\Users\CGAdmin\Documents\Github\server-testing"
 git pull
+npm ci --omit=dev                 # only when the pull changed package-lock.json
 nssm restart DevitrakServer
 ```
+
+> **Node >= 20.11.0 is required** (`package.json` -> `engines`), and `.npmrc` sets
+> `engine-strict=true`, so npm **fails** — it does not warn — on an older Node. Production runs
+> 20.11.0. Install with `--omit=dev`: nothing in `devDependencies` (`jsdoc`, `nodemon`,
+> `response-time`) is used at runtime, and skipping them keeps 41 packages out of production.
 
 ### Notificaciones: pasar a `NODEMAILER_AUTH_MODE=enforce`
 
@@ -198,7 +204,49 @@ Test-NetConnection -ComputerName localhost -Port 7453 | Select-Object -ExpandPro
 
 To remove it entirely: `nssm remove DevitrakGoWorker confirm`.
 
+### Installing / upgrading the Go toolchain on the box
+
+Production ran `go1.24.11` until 2026-09-08, which is **below the floor** the worker now needs (see
+the note in the next section). Last done: **not yet — pending**. The current stable is `go1.27.1`;
+grab the matching SHA-256 for any other version from <https://go.dev/dl/>.
+
+```powershell
+# 1. Download and VERIFY before running anything
+Invoke-WebRequest -Uri "https://go.dev/dl/go1.27.1.windows-amd64.msi" -OutFile "$env:TEMP\go1.27.1.msi"
+(Get-FileHash "$env:TEMP\go1.27.1.msi" -Algorithm SHA256).Hash -eq `
+  "54DBABBC910840FCE0028779E896CD99A22BDF89463354A1CA0D9288044DC6E7"
+# must print True — do not install otherwise
+
+# 2. Install (the MSI removes the previous version and fixes the system PATH itself)
+msiexec /i "$env:TEMP\go1.27.1.msi" /qb
+
+# 3. CLOSE AND REOPEN PowerShell — the open session keeps the old PATH
+go version        # go1.27.1 windows/amd64
+
+# 4. Rebuild the worker with the new toolchain
+powershell -ExecutionPolicy Bypass -File .\scripts\restart-go-worker.ps1
+
+# 5. Confirm it came back up
+nssm status DevitrakGoWorker      # SERVICE_RUNNING
+curl http://localhost:7453/health
+```
+
+> ⚠️ Step 3 is not optional bookkeeping: the MSI updates the **system** PATH, but the session you
+> ran it from still resolves the old `go.exe`. Skipping the reopen shows `go1.24.11` and looks like
+> a failed install when it isn't.
+
+The `go` directive in `go-worker/go.mod` (`go 1.25.0`) is a **language minimum, not a toolchain
+pin** — a 1.27.1 toolchain compiles it, which is exactly the point: no toolchain downloads during
+the production build.
+
 ### Updating the worker after a deploy
+
+> **Go >= 1.25.0 is required** to build the worker: `go-worker/go.mod` declares `go 1.25.0`,
+> pulled in by `golang.org/x/crypto` v0.52.0. With an older toolchain and the default
+> `GOTOOLCHAIN=auto`, `go build` does **not** fail — it silently downloads Go 1.25.0 and carries on,
+> so the compiler that produces the production binary becomes whatever the network hands over
+> (and it breaks outright under an account with no network or no module-cache write access).
+> Keep an explicit `go version` >= 1.25.0 on the box.
 
 Once the service exists, a worker update is: rebuild the binary, then restart the service. Prefer
 [`scripts/restart-go-worker.ps1`](scripts/restart-go-worker.ps1) (next section), which does all of
