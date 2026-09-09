@@ -30,6 +30,10 @@ payload.json
 pnpm-lock.yaml
 pnpm-workspace.yaml
 
+# PM2_HOME points inside the repo on the production box (see DEPLOY.md), so pm2's
+# runtime data lives here. It is per-machine state, never source.
+.pm2/
+
 # Herramientas locales y artefactos de sesión: se regeneran por máquina, no son
 # parte del servidor.
 .claude/

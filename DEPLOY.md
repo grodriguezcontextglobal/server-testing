@@ -36,7 +36,7 @@ before anyone logs in) and automatic restart if the process dies. We use `pm2-ru
 
 ## ⚠️ Critical gotcha: `PM2_HOME` is mandatory on Windows
 
-`pm2-runtime` has a bug on Windows: in `node_modules/pm2/lib/binaries/Runtime4Docker.js:67` it uses
+`pm2-runtime` has a bug on Windows: in `node_modules/pm2/lib/binaries/Runtime4Docker.js:68` it uses
 `process.env.HOME` (a **Linux** variable, nonexistent on Windows) to locate its data folder.
 Without `PM2_HOME` set, it starts up and **crashes instantly** with:
 
@@ -50,6 +50,25 @@ The service ends up in `SERVICE_PAUSED` state (nssm pauses it after several fail
 **Fix:** the service defines `PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2`.
 With that variable set, `pm2-runtime` uses it directly and never reaches the broken code path.
 
+> Still true on **pm2 7.0.4**: the line is byte-for-byte the same, it just moved from 67 to 68.
+> Verified by running `pm2-runtime -i 2` against a throwaway `PM2_HOME`: two instances came up
+> `online` in cluster mode and the daemon used the given folder. Do **not** drop `PM2_HOME` from
+> the service on the assumption that a newer pm2 fixed it.
+
+### ⚠️ When upgrading pm2 across a major
+
+The pm2 **daemon** is a separate process from the `pm2-runtime` that nssm supervises, so
+`nssm restart` does **not** replace it: a pm2 5 daemon can stay alive talking to a pm2 7 CLI.
+After an `npm ci` that changes the pm2 major, clear the daemon before starting the service:
+
+```powershell
+nssm stop DevitrakServer
+$env:PM2_HOME = "C:\Users\CGAdmin\Documents\Github\server-testing\.pm2"
+node .\node_modules\pm2\bin\pm2 kill      # drops the old daemon; ignore "not running"
+nssm start DevitrakServer
+nssm status DevitrakServer                # SERVICE_RUNNING
+```
+
 ---
 
 ## Deploy (update production code)
@@ -59,8 +78,29 @@ Replaces the old `pm2-pull-run` script from `package.json`. From PowerShell **as
 ```powershell
 cd "C:\Users\CGAdmin\Documents\Github\server-testing"
 git pull
-npm ci --omit=dev                 # only when the pull changed package-lock.json
 nssm restart DevitrakServer
+```
+
+**If the pull changed `package-lock.json`**, the dependencies have to be reinstalled — and on
+Windows that cannot be done with the services running: `npm ci` deletes `node_modules`, and every
+Node service holds files open in there, so the install dies with `EBUSY`/`EPERM` halfway and
+leaves a half-populated tree. Stop every **Node** service first (the Go worker does not use
+`node_modules`, leave it alone):
+
+```powershell
+cd "C:\Users\CGAdmin\Documents\Github\server-testing"
+git pull
+
+nssm stop DevitrakServer
+nssm stop DevitrakEmailWorker
+# plus DevitrakBulkWorker / DevitrakDeleteWorker once those exist
+
+npm ci --omit=dev
+
+nssm start DevitrakServer
+nssm start DevitrakEmailWorker
+nssm status DevitrakServer                # SERVICE_RUNNING
+(Invoke-WebRequest -Uri "http://localhost:34001/health" -UseBasicParsing).Content
 ```
 
 > **Node >= 20.11.0 is required** (`package.json` -> `engines`), and `.npmrc` sets
@@ -223,10 +263,17 @@ msiexec /i "$env:TEMP\go1.27.1.msi" /qb
 # 3. CLOSE AND REOPEN PowerShell — the open session keeps the old PATH
 go version        # go1.27.1 windows/amd64
 
-# 4. Rebuild the worker with the new toolchain
-powershell -ExecutionPolicy Bypass -File .\scripts\restart-go-worker.ps1
+# 4. Make sure the new go.mod is actually on disk before rebuilding
+cd "C:\Users\CGAdmin\Documents\Github\server-testing"
+git pull
+git log --oneline -1
 
-# 5. Confirm it came back up
+# 5. Rebuild the worker with the new toolchain. Absolute path on purpose: the script resolves
+#    everything from $PSScriptRoot, so it does not care about the working directory — and
+#    pasting a relative path from another folder is how this step usually gets fumbled.
+powershell -ExecutionPolicy Bypass -File "C:\Users\CGAdmin\Documents\Github\server-testing\scripts\restart-go-worker.ps1"
+
+# 6. Confirm it came back up
 nssm status DevitrakGoWorker      # SERVICE_RUNNING
 curl http://localhost:7453/health
 ```
