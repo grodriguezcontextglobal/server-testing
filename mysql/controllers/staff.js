@@ -1,6 +1,6 @@
 require("dotenv").config();
 const getConnection = require("../database/config");
-const { v4: uuid } = require("uuid");
+const { randomUUID: uuid } = require("crypto");
 
 const connection = getConnection();
 

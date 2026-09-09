@@ -4,7 +4,7 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') })
 const { MongoClient } = require('mongodb')
 const mysql = require('mysql2/promise')
-const { v4: uuid } = require('uuid')
+const { randomUUID: uuid } = require('crypto')
 
 // ─── Constantes de roles ──────────────────────────────────────────────────────
 

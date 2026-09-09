@@ -5,7 +5,7 @@ const AdminUser = require("../models/AdminUser");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const logger = require("../helpers/logger");
 const getConnection = require("../mysql/database/config");
-const { v4: uuid } = require("uuid");
+const { randomUUID: uuid } = require("crypto");
 
 const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
 

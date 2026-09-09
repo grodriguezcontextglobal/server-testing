@@ -1,7 +1,7 @@
 // bcrypt NATIVO: hashea en el threadpool de libuv en vez de bloquear el event
 // loop ~150ms por alta. Ver el comentario en controller/admin.js.
 const bcrypt = require("bcrypt");
-const { v4: uuid } = require("uuid");
+const { randomUUID: uuid } = require("crypto");
 const AdminUser = require("../models/AdminUser");
 const Company = require("../models/Company");
 const getConnection = require("../mysql/database/config");

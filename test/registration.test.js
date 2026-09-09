@@ -56,13 +56,6 @@ require.cache[bcryptPath] = {
   },
 };
 
-// ─── Stub: uuid ───────────────────────────────────────────────────────────────
-const uuidPath = require.resolve('uuid');
-require.cache[uuidPath] = {
-  id: uuidPath, filename: uuidPath, loaded: true,
-  exports: { v4: () => 'fixed-uuid' },
-};
-
 // ─── Stub: generateJWT ───────────────────────────────────────────────────────
 const jwtPath = require.resolve('../helpers/jwt');
 require.cache[jwtPath] = {
