@@ -81,11 +81,24 @@ git pull
 nssm restart DevitrakServer
 ```
 
-**If the pull changed `package-lock.json`**, the dependencies have to be reinstalled — and on
-Windows that cannot be done with the services running: `npm ci` deletes `node_modules`, and every
-Node service holds files open in there, so the install dies with `EBUSY`/`EPERM` halfway and
-leaves a half-populated tree. Stop every **Node** service first (the Go worker does not use
-`node_modules`, leave it alone):
+**If the pull changed `package-lock.json`**, use the script — it is the supported path and it
+handles the five traps this box has, in the right order:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Users\CGAdmin\Documents\Github\server-testing\scripts\deploy-node.ps1"
+```
+
+It stops the four Node services, kills the pm2 daemon (which `nssm stop` does not), deletes
+`node_modules` outright, installs, checks that no direct dependency is ESM-only, starts everything
+back in reverse order and polls the health endpoint for ~30s. On a failed install it leaves the
+services **stopped on purpose** rather than bringing the cluster up on a half-installed tree. Pass
+`-SkipInstall` for a code-only deploy. It logs to `logs\deploy-node.log`, and it never runs `git`,
+so pull first.
+
+The rest of this section is what the script does and why, kept because the deploy of 2026-09-09
+hit four of these in a row. `npm ci` deletes `node_modules`, and every Node service holds files
+open in there, so the install dies with `EBUSY`/`EPERM` halfway and leaves a half-populated tree.
+Stop every **Node** service first (the Go worker does not use `node_modules`, leave it alone):
 
 ```powershell
 cd "C:\Users\CGAdmin\Documents\Github\server-testing"
