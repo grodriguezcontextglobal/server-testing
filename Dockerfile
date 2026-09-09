@@ -1,11 +1,11 @@
 # Stage 1: compile Go worker
-FROM golang:1.24-bullseye AS go-builder
+FROM golang:1.26-bookworm AS go-builder
 WORKDIR /go-worker
 COPY go-worker/ .
-RUN go build -o worker .
+RUN CGO_ENABLED=0 go build -o worker .
 
 # Stage 2: Node production image
-FROM node:18.18.0-bullseye
+FROM node:20.11.0-bookworm
 WORKDIR /app
 
 # native deps for canvas + curl for HEALTHCHECK
