@@ -233,6 +233,24 @@ Tres cosas que conviene saber antes de interpretarlos:
 - **`/ready` cachea 2 s.** Pedirlo en bucle no multiplica la carga sobre la base
   de datos, que es como un endpoint de salud se convierte en un vector de DoS.
   `?force=1` salta la caché para mirar a mano.
+- **Y tiene rate limit propio, en dos niveles**: 120/min por IP en total y solo
+  **6/min para `?force=1`**, porque el force salta la caché y golpea las cuatro
+  dependencias en cada llamada — ahí es donde 200 bytes de petición se
+  convierten en cuatro consultas. Al pasarse responde `429` **sin ejecutar las
+  comprobaciones**, que es todo el objetivo. Ajustables con
+  `READINESS_RATE_MAX` y `READINESS_RATE_MAX_FORCED`.
+  El store es en memoria a propósito: un limitador respaldado por Redis
+  fallaría justo cuando Redis se cae, que es cuando hace falta consultar el
+  readiness. Y como es por proceso, el presupuesto real de la máquina es
+  ×4 — correcto aquí, porque lo que se protege (el event loop de cada proceso
+  y su tanda de comprobaciones) también es por proceso.
+- **`/health` y `/ready` no pasan por el middleware global.** Se registran en
+  `index.js` antes de que `configureMiddleware` monte nada, así que quedan fuera
+  del limitador de 300/15min, de helmet y de cors. Es deliberado en el caso del
+  limitador: ese es por IP y lo comparte con el tráfico de la API, así que un
+  pico contra la API dejaría a nssm y al balanceador sin poder sondear, y el
+  supervisor concluiría que el proceso está muerto. Por eso el readiness lleva
+  su propio presupuesto y las métricas se le enganchan a la ruta.
 - **Redis y el worker de Go DEGRADAN, no descalifican.** Si se caen, `/ready`
   sigue devolviendo `200` con `status: "degraded"`: sin ellos se pierden cachés
   y las operaciones masivas, pero el resto de la API responde, y sacar el

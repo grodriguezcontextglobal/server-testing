@@ -138,9 +138,16 @@
 <script>
 (function () {
   var MAX_HISTORY = 60;
-  var PERIOD_MS = 5000;
+  // Con «forzar» cada llamada salta la cache del servidor y golpea las cuatro
+  // dependencias, asi que su presupuesto es de 6/min. Sondear cada 5s serian
+  // 12/min y la pagina se limitaria a si misma, mostrando 429 la mitad del
+  // tiempo por su propia culpa.
+  var PERIOD_NORMAL_MS = 5000;
+  var PERIOD_FORCED_MS = 15000;
   var history = [];
-  var timer = null, countdown = null, remaining = PERIOD_MS / 1000;
+  var timer = null, countdown = null;
+  var period = function () { return document.getElementById('force').checked ? PERIOD_FORCED_MS : PERIOD_NORMAL_MS; };
+  var remaining = PERIOD_NORMAL_MS / 1000;
 
   var $ = function (id) { return document.getElementById(id); };
   $('host').textContent = location.host;
@@ -149,7 +156,11 @@
     ready:    { cls: 'v-ready',    label: 'Listo',       means: 'Puede recibir tráfico. Todas las dependencias responden.' },
     degraded: { cls: 'v-degraded', label: 'Degradado',   means: 'Sigue apto para tráfico, pero algo no crítico está caído.' },
     unready:  { cls: 'v-unready',  label: 'No listo',    means: 'Falla una dependencia crítica. El servidor responde 503 y debería salir de rotación.' },
-    nores:    { cls: 'v-nores',    label: 'Sin respuesta', means: 'El endpoint no contestó. O el proceso está caído, o no hay ruta hasta él — y eso ya es información.' }
+    nores:    { cls: 'v-nores',    label: 'Sin respuesta', means: 'El endpoint no contestó. O el proceso está caído, o no hay ruta hasta él — y eso ya es información.' },
+    // Un 429 NO dice nada del estado del servidor: dice que preguntamos
+    // demasiado. Sin esta entrada caeria en "sin respuesta" y la pagina
+    // afirmaria que el servidor esta caido cuando esta perfectamente sano.
+    rate_limited: { cls: 'v-nores', label: 'Límite alcanzado', means: 'El servidor está sano; somos nosotros los que preguntamos de más. Con «forzar» el presupuesto es de 6/min porque cada una golpea las cuatro dependencias.' }
   };
 
   function esc(value) {
@@ -242,22 +253,24 @@
     history.push(kind);
     if (history.length > MAX_HISTORY) history.shift();
     renderHistory();
-    remaining = PERIOD_MS / 1000;
+    remaining = period() / 1000;
   }
 
   function loop() {
     clearInterval(timer); clearInterval(countdown);
     if (!$('auto').checked) { $('tick').textContent = 'off'; return; }
-    timer = setInterval(check, PERIOD_MS);
+    timer = setInterval(check, period());
     countdown = setInterval(function () {
-      remaining = remaining <= 1 ? PERIOD_MS / 1000 : remaining - 1;
+      remaining = remaining <= 1 ? period() / 1000 : remaining - 1;
       $('tick').textContent = remaining + 's';
     }, 1000);
   }
 
   $('now').addEventListener('click', check);
   $('auto').addEventListener('change', loop);
-  $('force').addEventListener('change', check);
+  // Cambiar «forzar» cambia tambien el periodo, asi que hay que rearmar el
+  // temporizador, no solo comprobar una vez.
+  $('force').addEventListener('change', function () { check(); loop(); });
 
   renderHistory();
   check();
