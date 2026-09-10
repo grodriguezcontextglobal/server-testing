@@ -17,6 +17,9 @@ const {
   requestLogger,
   securityLogger,
 } = require("./middlewares/requestLogger");
+const { requestMetrics } = require("./middlewares/requestMetrics");
+const metrics = require("./helpers/metrics");
+const { getReadiness } = require("./helpers/readiness");
 const logger = require("./helpers/logger");
 
 // Constants
@@ -70,6 +73,12 @@ const configureMiddleware = (app) => {
   // Request logging middleware (should be first to capture all requests)
   app.use(requestLogger);
   app.use(securityLogger);
+
+  // Per-endpoint counters and latency. Goes here, before everything else, so it
+  // also sees the requests that a middleware rejects (rate limit, CORS, body
+  // too large) — those are precisely the ones you need to count when the server
+  // is under pressure, and they never reach the router.
+  app.use(requestMetrics);
 
   // Trust proxy (required for correct IP rate limiting behind load balancers)
   app.set("trust proxy", 1);
@@ -216,15 +225,49 @@ const configureRoutes = (app) => {
   app.use("/api/school", require("./mysql/routes/school"));
 
   app.use("/api", require("./routes/status"));
+
+  // Vista agregada del CLUSTER, no de este proceso: sale de Redis, donde los
+  // cuatro vuelcan. Protegida como /api/jobs/stats — es informacion operativa,
+  // e incluye un top de clientes por volumen.
+  const { requireSuperUser } = require("./middlewares/requireSuperUser");
+  app.get("/api/metrics", requireSuperUser, async (req, res) => {
+    try {
+      const hours = Math.min(3, Math.max(1, Number(req.query.hours) || 2));
+      const snapshot = await metrics.snapshot({ hours });
+      return res.json({ ok: true, ...snapshot });
+    } catch (error) {
+      logger.error("metrics snapshot failed", { error: error.message });
+      return res.status(503).json({ ok: false, msg: "metrics unavailable", error: error.message });
+    }
+  });
 };
 
-//route health endpoint
+// LIVENESS. Deliberadamente plano y sin dependencias: responde mientras el
+// proceso pueda atender un socket. Es lo que nssm y el healthcheck del
+// contenedor deben mirar para decidir "reiniciar o no".
+// Para "mandarle trafico o no", ese es /ready.
 app.get('/health', (req, res) => {
   res.status(200).json({
     server: 'standby',
     status: 'operational',
     timestamp: new Date().toISOString(),
   });
+});
+
+// READINESS. Comprueba MySQL, Mongo, Redis y el worker de Go, y devuelve 503
+// si falla una CRITICA (MySQL o Mongo) para que un balanceador saque este
+// proceso de rotacion en vez de seguir mandandole peticiones que van a dar 500.
+// Redis y el worker degradan, no descalifican: sin ellos el resto de la API
+// sigue sirviendo. Con cache de 2s, asi que pedirlo en bucle no multiplica la
+// carga sobre la base de datos.
+app.get('/ready', async (req, res) => {
+  try {
+    const readiness = await getReadiness({ force: req.query.force === '1' });
+    return res.status(readiness.ready ? 200 : 503).json(readiness);
+  } catch (error) {
+    logger.error('readiness check threw', { error: error.message });
+    return res.status(503).json({ ready: false, status: 'unready', error: error.message });
+  }
 });
 
 // Error handling middleware
@@ -270,6 +313,15 @@ const initializeApp = () => {
 
 // Cluster configuration
 const startServer = () => {
+  // El volcado de metricas arranca en TODOS los procesos, a proposito: cada uno
+  // acumula las peticiones que atendio y las cuatro instancias incrementan las
+  // MISMAS claves de Redis con HINCRBY, que es atomico. Ponerlo detras del
+  // guard de "primera instancia" que usan los schedulers daria una vista de un
+  // cuarto del trafico y nadie lo notaria.
+  if (process.env.METRICS_ENABLED !== "false") {
+    metrics.startFlushing();
+  }
+
   // Check if running under PM2
   const isPM2 = process.env.NODE_APP_INSTANCE !== undefined;
 

@@ -209,6 +209,39 @@ nssm status DevitrakServer      # SERVICE_RUNNING
 Invoke-WebRequest http://localhost:34001 -UseBasicParsing | Select-Object StatusCode   # 200
 ```
 
+## Liveness, readiness y métricas
+
+Tres endpoints con tres usos distintos, y confundirlos es lo que hace que un
+servidor roto siga recibiendo tráfico:
+
+| Endpoint | Para qué | Auth |
+|---|---|---|
+| `GET /health` | **Liveness.** Plano, sin dependencias: responde mientras el proceso atienda un socket. Es lo que debe mirar nssm o el HEALTHCHECK del contenedor para decidir *reiniciar o no* | no |
+| `GET /ready` | **Readiness.** Comprueba MySQL, Mongo, Redis y el worker de Go. `200` si puede servir, `503` si falla una crítica. Es lo que debe mirar un balanceador para decidir *mandarle tráfico o no* | no |
+| `GET /api/metrics` | Latencia p50/p95/p99, tráfico y tasa de error **por endpoint**, más un top de clientes por volumen. Vista del cluster entero, no del proceso que responde | superuser |
+
+```powershell
+# ¿Por qué está caído? El detalle viene por dependencia
+(Invoke-WebRequest "http://localhost:34001/ready" -UseBasicParsing).Content
+
+# ¿Qué endpoint se está comiendo el tiempo? (necesita x-token de superuser)
+Invoke-RestMethod "http://localhost:34001/api/metrics?hours=2" -Headers @{ "x-token" = $token }
+```
+
+Tres cosas que conviene saber antes de interpretarlos:
+
+- **`/ready` cachea 2 s.** Pedirlo en bucle no multiplica la carga sobre la base
+  de datos, que es como un endpoint de salud se convierte en un vector de DoS.
+  `?force=1` salta la caché para mirar a mano.
+- **Redis y el worker de Go DEGRADAN, no descalifican.** Si se caen, `/ready`
+  sigue devolviendo `200` con `status: "degraded"`: sin ellos se pierden cachés
+  y las operaciones masivas, pero el resto de la API responde, y sacar el
+  proceso de rotación dejaría al cliente sin nada en vez de con casi todo.
+- **Las métricas se agrupan por plantilla de ruta** (`/api/db_item/:id`), nunca
+  por la ruta con valores ni por `company_id`. Los cuatro procesos acumulan en
+  memoria y vuelcan a Redis cada 10 s con `HINCRBY`, así que la vista es del
+  cluster; las ventanas son por hora y expiran solas a las 3 h.
+
 > **⚠️ If the pull changed `go-worker/worker.exe`** (or any `go-worker/*.go`), the Node
 > restart is **not enough** — the Go worker is a **separate persistent process** and does not
 > hot-reload. You must also **restart the Go worker** (`nssm restart DevitrakGoWorker`, or rebuild
