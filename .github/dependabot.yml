@@ -1,0 +1,79 @@
+# Dependabot — actualizaciones de dependencias por PR.
+#
+# Por qué existe: el repo llevaba meses con 43 alertas acumuladas y nadie las
+# veía, porque detectarlas dependía de que alguien se acordara de abrir el panel
+# de seguridad. Además, dos de los tres ecosistemas que aquí se declaran no
+# estaban en el radar de nadie: las 9 alertas CRÍTICAS del repo no venían de npm,
+# venían de go-worker/go.mod.
+#
+# OJO, ESTE FICHERO NO ACTIVA LAS ACTUALIZACIONES DE SEGURIDAD. Eso es un ajuste
+# del repositorio (Settings > Code security > Dependabot security updates). Lo de
+# aquí son las actualizaciones de VERSIÓN: las que llegan aunque no haya CVE.
+#
+# ANTES DE MERGEAR CUALQUIER PR DE npm, dos comprobaciones que Dependabot no
+# hace y que ya tumbaron producción una vez cada una (2026-09-09):
+#
+#   1. Node de producción es 20.11.0 y .npmrc tiene engine-strict=true, así que
+#      un paquete que declare `engines.node >= 22` no rompe el PR: rompe el
+#      `npm ci` DEL SERVIDOR, y falla, no avisa. Pasó con el subárbol de
+#      @azure/identity. `npm ci` lo detecta, así que basta instalar antes de
+#      desplegar.
+#   2. Un paquete que pase a ser ESM puro rompe el arranque con
+#      ERR_REQUIRE_ESM, porque este código usa require(). Pasó con uuid 14.
+#      Lo comprueba scripts/deploy-node.ps1 antes de arrancar los servicios.
+#
+# Los minor y patch se agrupan en un PR por ecosistema para que revisar esto no
+# sea un trabajo semanal. Los MAJOR llegan sueltos a propósito: cada uno de los
+# que hemos hecho (bcrypt 5->6, pm2 5->7) necesitó verificar algo concreto en
+# producción, y agruparlos habría escondido esa necesidad.
+
+version: 2
+updates:
+
+  # ── Node / npm (raíz) ───────────────────────────────────────────────────────
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      npm-menores:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # ── Go worker ───────────────────────────────────────────────────────────────
+  # El segundo ecosistema, el que nadie estaba contando. Sube el piso de Go
+  # cuando el módulo nuevo declara un `go` directive mayor: x/crypto v0.52.0
+  # obligó a pasar el servidor de Go 1.24 a 1.27. Ver el runbook del toolchain
+  # en DEPLOY.md antes de mergear algo así.
+  - package-ecosystem: "gomod"
+    directory: "/go-worker"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 3
+    groups:
+      go-menores:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(go-worker)"
+
+  # ── Imagen base del Dockerfile ──────────────────────────────────────────────
+  # Mensual porque cambia poco, pero conviene vigilarlo: el 2026-09-08 el build
+  # de la imagen estaba roto sin que nadie lo supiera, porque el Release file de
+  # bullseye-security había caducado y `apt-get update` salía con exit 100. Una
+  # imagen base que llega al final de su soporte no genera ninguna alerta de
+  # seguridad; simplemente deja de instalar paquetes un día.
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "chore(docker)"
