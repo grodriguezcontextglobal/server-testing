@@ -8,6 +8,7 @@ const multer = require("multer");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
+const { requireCompanyAuth } = require("../middlewares/companyAuth");
 const path = require("path");
 const {
   createCompany,
@@ -65,6 +66,13 @@ const upload = multer({
 });
 
 const router = Router();
+
+// Namespace-wide access control. Defaults to `warn`: it logs unauthenticated
+// callers and blocks nothing, so this deploy changes no behaviour. Only one of
+// the routes below (PATCH /update-company/:id) has ever checked anything, and
+// several of the rest write to Mongo and to S3. See middlewares/companyAuth.js
+// for the modes and for how to read the logs before switching to `enforce`.
+router.use(requireCompanyAuth);
 
 router.post("/new", createCompany);
 

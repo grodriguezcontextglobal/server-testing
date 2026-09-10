@@ -170,6 +170,38 @@ Esas cuatro están exentas en todos los modos.
 > de la sesión verificada, nunca del header `x-company-id`. El modo solo decide
 > si además se rechazan los envíos sin sesión.
 
+### `/api/company`: pasar a `COMPANY_AUTH_MODE=enforce`
+
+Mismo mecanismo que el de arriba, para el namespace Mongo de compañías
+(`routes/company.js` → `/api/company`; **no** `/api/db_company`, que es el de
+MySQL). De sus 18 rutas solo una comprobaba algo, y las otras no son de solo
+lectura: `POST /provider-upload-document/:id` sube el fichero a S3 y escribe en
+Mongo, `POST /new` crea una compañía.
+
+El primer deploy que traiga `middlewares/companyAuth.js` **no requiere nada**:
+el default del código es `warn`, que registra y no bloquea.
+
+Antes de pasar a `enforce`, lee unos días de tráfico real:
+
+```powershell
+Select-String -Path "C:\Users\CGAdmin\Documents\Github\server-testing\logs\*.log" `
+  -Pattern "company: unauthenticated request allowed"
+```
+
+Cada línea trae la ruta, el método, el origin y la IP. Lo que aparezca y sea
+legítimo va a `PUBLIC_ROUTES` en `middlewares/companyAuth.js` **antes** de
+enforce, no después.
+
+> La diferencia con el caso de nodemailer es que allí las cuatro rutas exentas
+> se conocían. Aquí la lista está **sembrada a partir de los nombres de las
+> rutas**, no de evidencia: solo el registro de compañía es seguro, y las dos de
+> firmas de consumidor son una suposición marcada como tal en el código. Por eso
+> `.env.example` deja esta variable en `warn` en vez de en `enforce`.
+>
+> Poner enforce a ciegas es exactamente lo que dejó
+> `POST /api/db_company/delete-bulk-items` respondiendo 403 a un flujo real
+> durante tres semanas en julio.
+
 Verify it's back up:
 
 ```powershell
