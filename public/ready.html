@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Devitrak · Estado de dependencias</title>
+<style>
+  :root {
+    --bg: #212529;
+    --panel: #2b3035;
+    --panel-2: #34393f;
+    --line: rgba(255,255,255,.10);
+    --text: #f1f3f5;
+    --muted: #9aa4af;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+    --bad: #ef4444;
+    --accent: #155dee;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 20px 48px;
+    background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+  h1 { font-size: 18px; margin: 0; font-weight: 600; letter-spacing: .2px; }
+  h1 small { color: var(--muted); font-weight: 400; font-size: 13px; margin-left: 8px; }
+
+  /* ── Veredicto ─────────────────────────────────────────────── */
+  .verdict {
+    border-radius: 12px; padding: 20px 22px; margin-bottom: 8px;
+    border: 1px solid var(--line); background: var(--panel);
+    display: flex; align-items: center; gap: 18px;
+  }
+  .dot { width: 16px; height: 16px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 0 4px rgba(255,255,255,.06); }
+  .verdict .label { font-size: 22px; font-weight: 650; letter-spacing: .3px; }
+  .verdict .means { color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+  .v-ready  .dot { background: var(--ok); }
+  .v-degraded .dot { background: var(--warn); }
+  .v-unready .dot { background: var(--bad); }
+  .v-nores  .dot { background: #6b7280; }
+  .v-ready  .label { color: var(--ok); }
+  .v-degraded .label { color: var(--warn); }
+  .v-unready .label { color: var(--bad); }
+  .v-nores  .label { color: #9ca3af; }
+
+  /* ── Tira de historial ─────────────────────────────────────── */
+  .history { display: flex; gap: 2px; align-items: flex-end; height: 26px; margin: 14px 0 22px; }
+  .history i { flex: 1 1 0; min-width: 2px; border-radius: 1px; height: 100%; background: #3b4148; }
+  .history i.ok { background: var(--ok); }
+  .history i.degraded { background: var(--warn); }
+  .history i.bad { background: var(--bad); }
+  .history i.nores { background: #6b7280; }
+  .legend { color: var(--muted); font-size: 12px; margin-top: -14px; margin-bottom: 22px; }
+
+  /* ── Dependencias ─────────────────────────────────────────── */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .dep { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid #3b4148; border-radius: 10px; padding: 14px 16px; }
+  .dep.ok { border-left-color: var(--ok); }
+  .dep.bad { border-left-color: var(--bad); }
+  .dep.bad-soft { border-left-color: var(--warn); }
+  .dep .name { font-weight: 600; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; padding: 2px 7px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .tag.crit { color: #fca5a5; border-color: rgba(239,68,68,.35); }
+  .dep .state { margin-top: 8px; font-size: 13.5px; }
+  .dep .ms { font-family: var(--mono); color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+  .dep .err { margin-top: 8px; font-family: var(--mono); font-size: 12px; color: #fca5a5; word-break: break-word; }
+
+  /* ── Meta y controles ─────────────────────────────────────── */
+  .meta { margin-top: 22px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; font-size: 13px; color: var(--muted); }
+  .meta code { font-family: var(--mono); color: var(--text); }
+  .meta div + div { margin-top: 6px; }
+  .controls { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  button { font: inherit; color: var(--text); background: var(--accent); border: 0; border-radius: 8px; padding: 7px 14px; cursor: pointer; }
+  button.ghost { background: transparent; border: 1px solid var(--line); }
+  button:hover { filter: brightness(1.12); }
+  label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+  .foot { margin-top: 26px; color: var(--muted); font-size: 12.5px; line-height: 1.7; }
+  .foot b { color: var(--text); font-weight: 600; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f6f7f9; --panel:#fff; --panel-2:#fff; --line:rgba(0,0,0,.10); --text:#1f2933; --muted:#667085; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>Estado de dependencias <small id="host"></small></h1>
+    <div class="controls">
+      <label><input type="checkbox" id="auto" checked /> auto <span id="tick">5s</span></label>
+      <label title="Salta la caché de 2s del servidor"><input type="checkbox" id="force" /> forzar</label>
+      <button id="now">Comprobar</button>
+    </div>
+  </header>
+
+  <div class="verdict v-nores" id="verdict">
+    <div class="dot"></div>
+    <div>
+      <div class="label" id="vlabel">Comprobando…</div>
+      <div class="means" id="vmeans">Leyendo <code>/ready</code></div>
+    </div>
+  </div>
+
+  <div class="history" id="history"></div>
+  <div class="legend">Últimas 60 comprobaciones · la más reciente a la derecha</div>
+
+  <div class="grid" id="deps"></div>
+
+  <div class="meta" id="meta"></div>
+
+  <div class="foot">
+    <b>Qué significa cada estado.</b> <span style="color:var(--ok)">Listo</span>: puede
+    recibir tráfico. <span style="color:var(--warn)">Degradado</span>: sigue recibiendo
+    tráfico, pero algo no crítico está caído — sin Redis se pierden cachés e idempotencia,
+    sin el worker de Go fallan las operaciones masivas, y el resto de la API responde.
+    <span style="color:var(--bad)">No listo</span>: falla MySQL o Mongo, así que el
+    servidor devuelve <code>503</code> y un balanceador debería sacarlo de rotación.
+    <br />
+    <b>Esto no es <code>/health</code>.</b> Ese responde mientras el proceso atienda un
+    socket y sirve para decidir <em>reiniciar o no</em>. Esta página lee <code>/ready</code>,
+    que sí consulta las dependencias y sirve para decidir <em>mandarle tráfico o no</em>.
+    <br />
+    <b>El servidor cachea 2 s.</b> Pedirlo en bucle no multiplica la carga sobre la base de
+    datos; por eso puede aparecer <code>cached</code>. Marca «forzar» para saltarla.
+    <br />
+    <b>Un proceso a la vez.</b> Producción corre cuatro, y cada respuesta viene del que
+    atendió la petición — el <code>pid</code> lo dice. Recarga varias veces para ver a los
+    demás.
+  </div>
+
+</div>
+
+<script>
+(function () {
+  var MAX_HISTORY = 60;
+  var PERIOD_MS = 5000;
+  var history = [];
+  var timer = null, countdown = null, remaining = PERIOD_MS / 1000;
+
+  var $ = function (id) { return document.getElementById(id); };
+  $('host').textContent = location.host;
+
+  var VERDICTS = {
+    ready:    { cls: 'v-ready',    label: 'Listo',       means: 'Puede recibir tráfico. Todas las dependencias responden.' },
+    degraded: { cls: 'v-degraded', label: 'Degradado',   means: 'Sigue apto para tráfico, pero algo no crítico está caído.' },
+    unready:  { cls: 'v-unready',  label: 'No listo',    means: 'Falla una dependencia crítica. El servidor responde 503 y debería salir de rotación.' },
+    nores:    { cls: 'v-nores',    label: 'Sin respuesta', means: 'El endpoint no contestó. O el proceso está caído, o no hay ruta hasta él — y eso ya es información.' }
+  };
+
+  function esc(value) {
+    return String(value === undefined || value === null ? '' : value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function renderHistory() {
+    var html = '';
+    var pad = MAX_HISTORY - history.length;
+    for (var i = 0; i < pad; i++) html += '<i></i>';
+    history.forEach(function (entry) {
+      var cls = entry === 'ready' ? 'ok' : entry === 'degraded' ? 'degraded' : entry === 'unready' ? 'bad' : 'nores';
+      html += '<i class="' + cls + '" title="' + esc(entry) + '"></i>';
+    });
+    $('history').innerHTML = html;
+  }
+
+  function renderVerdict(kind) {
+    var v = VERDICTS[kind] || VERDICTS.nores;
+    $('verdict').className = 'verdict ' + v.cls;
+    $('vlabel').textContent = v.label;
+    $('vmeans').textContent = v.means;
+  }
+
+  function renderDeps(data) {
+    var checks = (data && data.checks) || {};
+    var critical = (data && data.critical) || [];
+    var names = Object.keys(checks);
+    if (!names.length) { $('deps').innerHTML = ''; return; }
+
+    $('deps').innerHTML = names.map(function (name) {
+      var check = checks[name] || {};
+      var isCritical = critical.indexOf(name) !== -1;
+      var cls = check.ok ? 'ok' : (isCritical ? 'bad' : 'bad-soft');
+      return '<div class="dep ' + cls + '">' +
+        '<div class="name">' + esc(name) +
+          '<span class="tag ' + (isCritical ? 'crit' : '') + '">' + (isCritical ? 'crítica' : 'degrada') + '</span>' +
+        '</div>' +
+        '<div class="state">' + (check.ok ? 'responde' : 'no responde') + '</div>' +
+        '<div class="ms">' + (typeof check.ms === 'number' ? check.ms + ' ms' : '—') + '</div>' +
+        (check.error ? '<div class="err">' + esc(check.error) + '</div>' : '') +
+      '</div>';
+    }).join('');
+  }
+
+  function renderMeta(data, httpStatus) {
+    if (!data) { $('meta').innerHTML = '<div>Sin datos del servidor.</div>'; return; }
+    var uptime = data.uptimeSeconds || 0;
+    var h = Math.floor(uptime / 3600), m = Math.floor((uptime % 3600) / 60);
+    $('meta').innerHTML =
+      '<div>HTTP <code>' + esc(httpStatus) + '</code> · proceso <code>' + esc(data.pid) + '</code>' +
+        ' · arriba desde hace <code>' + h + 'h ' + m + 'm</code></div>' +
+      '<div>Respuesta ' + (data.cached ? '<code>cacheada</code> (hasta 2s)' : '<code>fresca</code>') +
+        ' · sello <code>' + esc(data.timestamp) + '</code></div>' +
+      ((data.degraded && data.degraded.length)
+        ? '<div>Degradadas: <code>' + esc(data.degraded.join(', ')) + '</code></div>' : '') +
+      ((data.failedCritical && data.failedCritical.length)
+        ? '<div>Críticas caídas: <code>' + esc(data.failedCritical.join(', ')) + '</code></div>' : '');
+  }
+
+  function check() {
+    var url = '/ready' + ($('force').checked ? '?force=1' : '');
+    // Importante: /ready responde 503 cuando NO esta listo, y ese 503 trae el
+    // cuerpo con el detalle. Usar res.ok como puerta para parsear tiraria justo
+    // la informacion que se necesita cuando algo va mal.
+    fetch(url, { cache: 'no-store' })
+      .then(function (res) {
+        return res.json().catch(function () { return null; }).then(function (body) {
+          return { status: res.status, body: body };
+        });
+      })
+      .then(function (result) {
+        var data = result.body;
+        var kind = !data ? 'nores' : (data.status || (data.ready ? 'ready' : 'unready'));
+        renderVerdict(kind);
+        renderDeps(data);
+        renderMeta(data, result.status);
+        push(kind);
+      })
+      .catch(function () {
+        renderVerdict('nores');
+        renderDeps(null);
+        renderMeta(null, 'sin respuesta');
+        push('nores');
+      });
+  }
+
+  function push(kind) {
+    history.push(kind);
+    if (history.length > MAX_HISTORY) history.shift();
+    renderHistory();
+    remaining = PERIOD_MS / 1000;
+  }
+
+  function loop() {
+    clearInterval(timer); clearInterval(countdown);
+    if (!$('auto').checked) { $('tick').textContent = 'off'; return; }
+    timer = setInterval(check, PERIOD_MS);
+    countdown = setInterval(function () {
+      remaining = remaining <= 1 ? PERIOD_MS / 1000 : remaining - 1;
+      $('tick').textContent = remaining + 's';
+    }, 1000);
+  }
+
+  $('now').addEventListener('click', check);
+  $('auto').addEventListener('change', loop);
+  $('force').addEventListener('change', check);
+
+  renderHistory();
+  check();
+  loop();
+})();
+</script>
+</body>
+</html>
