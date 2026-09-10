@@ -1,5 +1,5 @@
 # Stage 1: compile Go worker
-FROM golang:1.26-bookworm AS go-builder
+FROM golang:1.27-bookworm AS go-builder
 WORKDIR /go-worker
 COPY go-worker/ .
 RUN CGO_ENABLED=0 go build -o worker .
