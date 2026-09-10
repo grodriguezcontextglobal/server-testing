@@ -20,7 +20,41 @@ Y el suyo del efecto en el usuario también:
 > click on anything, and then they would cancel, and then they wouldn't know
 > that the unit was assigned already"*
 
-**Causa raíz, medida:** el camino de asignación a miembro no es transaccional.
+> **CORRECCIÓN (2026-09-10, después de leer el handler).** La primera versión de
+> esta sección culpaba a `insertNewRowINMemberAssignedDeviceTableForLeaseTracking`
+> por no abrir transacción. **Es falso, y la conclusión cambia entera.** Ese
+> handler tiene **seis retornos 4xx y los seis van antes** de su único
+> `INSERT INTO member_assigned_device_lease`: valida y luego escribe, que es el
+> orden correcto, y una sola sentencia es atómica por sí misma.
+>
+> La causa real es peor, porque ninguna transacción la puede arreglar. **La
+> entrega de un equipo son dos llamadas a dos procesos distintos:**
+>
+> - Mover el ítem va por `/api/db_inventory/update-large-data`, que delega en el
+>   **worker de Go** (de ahí que el fix de `returnedRentedInfo` necesitara un
+>   `go build`, no un deploy de Node).
+> - Registrar la cesión va por `POST .../new-member-assigned-device-lease`, que
+>   escribe desde **Node** a MySQL. En toda esa familia de rutas
+>   (`mysql/routes/members.js`) no hay ninguna que mueva el ítem.
+>
+> Así que el 400 del documento salta en la segunda llamada cuando la primera ya
+> movió el equipo, y **una transacción de MySQL abierta en Node no puede cubrir
+> una escritura que hace otro proceso**. Es exactamente lo que advierte
+> `DESIGN_go_incremental_services.md` §1.3: *"las transacciones no cruzan
+> procesos... la unidad que se puede mover es la operación transaccional
+> completa, no el archivo"*.
+>
+> **El arreglo, entonces, no es envolver nada en `beginTransaction`.** Es un
+> endpoint único que posea la entrega completa —validar todo, incluido el
+> documento que produjo el 400, y solo entonces escribir ambas cosas— o que la
+> operación sea un job de la cola que la posea de principio a fin. Las dos son
+> aditivas: no rompen el contrato actual, y el frontend migra cuando pueda.
+>
+> Lo que sigue abajo (el recuento de escrituras sin transacción) **sigue siendo
+> válido y sigue siendo deuda real**, solo que no es la causa de lo que vio
+> Fredrik.
+
+**Escrituras sin transacción, medido** — deuda real, aunque no sea la causa de §1:
 
 | Fichero | Sentencias de escritura | Bloques `beginTransaction` |
 |---|---|---|
@@ -29,26 +63,30 @@ Y el suyo del efecto en el usuario también:
 | `mysql/controllers/school.js` | 10 | 2 |
 | `mysql/controllers/item.js` | 26 | 6 |
 
-`insertNewRowINMemberAssignedDeviceTableForLeaseTracking`
-(`members.js:734`) es el handler de ese flujo: **no abre transacción en ningún
-punto**, y devuelve `400` y `422` en dos sitios *después* de haber podido
-escribir. Sin transacción no hay rollback, así que el movimiento del equipo
-queda hecho y la respuesta dice que falló.
+### El caso concreto encontrado al verificar esto
 
-**Falta una pregunta por responder antes de arreglarlo**, y no se puede desde el
-backend: si el frontend hace **una** llamada o **dos** (mover el ítem, y luego
-crear la cesión con sus documentos). Cambia el arreglo por completo:
+`updateSubLocation` (`mysql/controllers/item.js:3172`) renombra una locación o
+sub-locación y **propaga el nombre nuevo a `item_inv` con un segundo `UPDATE`,
+sin transacción**. Tiene dos caminos y los dos son iguales:
 
-- **Una llamada** → envolver el handler en `beginTransaction`/`rollback`, como
-  ya hacen `items_events.js` (5 de 6) y `recordEvent.js` (2 de 2). Es el caso
-  fácil.
-- **Dos llamadas** → ninguna transacción de servidor puede protegerlo, porque
-  entre las dos hay un viaje al cliente. Ahí el arreglo es un endpoint único que
-  haga la entrega completa, o encolar la operación como un job que la posea de
-  principio a fin.
+| Camino | Escritura 1 | Escritura 2 |
+|---|---|---|
+| `currentIndex === 0` | `UPDATE locations SET location_name` | `UPDATE item_inv SET location` |
+| `currentIndex > 0` | `UPDATE sub_locations SET name` | `UPDATE item_inv` con el path nuevo |
 
-El audit trail que Fredrik pidió responde esto solo: si aparecen dos entradas
-para ese intento, son dos llamadas.
+Si la segunda falla, la locación queda renombrada y **los ítems siguen
+apuntando al nombre viejo**: desaparecen de la locación nueva sin aparecer en
+ninguna otra. Es el mismo tipo de daño que vio Fredrik —estado a medias que
+nadie deshace— y este sí se arregla con una transacción.
+
+**Con una trampa que hay que resolver al hacerlo:** el handler tiene varios
+`return res.status(404)` en medio. Un `return` dentro de una transacción sin
+`rollback` devuelve la conexión al pool **con la transacción abierta**, y
+`mysql2` no la deshace al liberarla: la hereda quien la reciba después. Bajo
+carga eso agota el pool, que es precisamente un fallo de concurrencia. La forma
+correcta es convertir esos retornos en excepciones con `statusCode` —el patrón
+que `performUpdateLargeData` ya usa en este mismo fichero— y dejar que un solo
+`catch` haga rollback y un solo `finally` libere.
 
 ---
 
