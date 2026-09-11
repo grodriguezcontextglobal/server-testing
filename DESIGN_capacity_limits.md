@@ -45,6 +45,43 @@ cómo reparta IIS.
 
 ### 2º — El threadpool de libuv, si hay logins
 
+> **CORRECCIÓN (2026-09-11, tras medirlo).** Lo que sigue en esta sección
+> planteaba que `UV_THREADPOOL_SIZE=16` multiplicaría por cuatro el techo de
+> autenticación. **Es falso, y la medición lo desmiente.**
+>
+> bcrypt es trabajo de **CPU pura**, así que el techo lo ponen los **núcleos**,
+> no los hilos. Medido en una máquina de 8 núcleos, hasheando con coste 10:
+>
+> | threadpool | concurrencia | hashes/s |
+> |---|---|---|
+> | 4 (defecto) | 4 | **53** |
+> | 4 (defecto) | 16 | 48 |
+> | 8 | 16 | 58 |
+> | 16 | 16 | **63** |
+> | 16 | 32 | 59 |
+>
+> De 4 a 16 hilos se gana un **19 %**, no un 300 %. Y en producción sería peor:
+> con 4 núcleos y 4 procesos de pm2 ya hay **16 hilos compitiendo por 4
+> núcleos**, cuatro veces sobresuscrito. Subirlo a 16 por proceso daría 64
+> hilos sobre 4 núcleos — más cambios de contexto, ninguna ganancia, y
+> hambrearía al resto de usuarios del pool (`fs`, `dns`).
+>
+> **Y el techo importa menos de lo que dije.** bcrypt solo se ejecuta en login,
+> registro y cambio de contraseña (`controller/admin.js`, `controller/registration.js`);
+> `validateJWT` usa `jwt.verify`, que es barato. No está en ningún camino por
+> petición, así que ~60 hashes/s de la máquina se reparten entre logins, que en
+> un SaaS son una fracción mínima del tráfico.
+>
+> **Conclusión: este no es el segundo escalón.** No hay que tocar
+> `UV_THREADPOOL_SIZE`, y la única palanca que subiría de verdad el techo de
+> login sería bajar el coste de bcrypt — que es un compromiso de seguridad, no
+> una mejora gratuita, y con coste 10 ya se está en el borde bajo de lo
+> recomendable. **No se recomienda.**
+>
+> Lo que sigue se conserva porque el cálculo del threadpool es correcto en sí
+> mismo; lo que estaba mal era suponer que los hilos, y no los núcleos, marcan
+> el techo de un trabajo de CPU.
+
 `UV_THREADPOOL_SIZE` **no está configurado en ninguna parte del repo**, así que
 son los 4 hilos por defecto, **16 en toda la máquina**.
 
@@ -174,13 +211,18 @@ o una ventana acordada fuera de horario.
 
 ## 4. Qué hacer con el resultado, por orden de rentabilidad
 
-1. **`UV_THREADPOOL_SIZE=16`** en las variables del servicio. Una línea, y
-   multiplica por cuatro el techo de autenticación. Es lo más barato de toda la
-   lista.
-2. **Idempotencia a Redis.** Es lo que hace que un reintento bajo carga no
-   duplique un cobro. `redis` ya está instalado.
+1. ~~`UV_THREADPOOL_SIZE=16`~~ — **descartado tras medirlo**, ver la corrección
+   del §1.2º. Da un 19 %, no un 300 %, y en producción (4 núcleos, 16 hilos ya
+   sobresuscritos) haría daño.
+2. **Idempotencia a Redis.** Pasa a ser lo primero, y no por rendimiento sino
+   por **corrección**: hoy es un `new Map()` por proceso con cuatro procesos, así
+   que dos peticiones con la misma clave en workers distintos pasan las dos. Es
+   el middleware que debe evitar cobros dobles, y falla justo bajo carga, que
+   es cuando los clientes reintentan. `redis` ya está instalado.
 3. **Rate limit a Redis**, o asumir explícitamente que el límite real es ×4 y
-   documentarlo en `API_CLIENT_GUIDELINES.md`, que hoy promete 300.
+   documentarlo en `API_CLIENT_GUIDELINES.md`, que hoy promete 300. De paso,
+   darle al login su propio presupuesto: hoy comparte el global, así que una
+   ráfaga de cualquier otra cosa desde la misma IP puede impedir entrar.
 4. **Bajar el límite de cuerpo de 50 MB** en las rutas que no suben ficheros, y
    quitar el de 100 MB del endpoint que no existe.
 5. **Cachear el esquema** en vez de `SHOW COLUMNS` por petición.
