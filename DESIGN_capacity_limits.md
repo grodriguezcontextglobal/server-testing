@@ -18,6 +18,41 @@ Windows · 4 núcleos · 32 GB RAM (25 GB libres) · VMware virtual disk SCSI
 Node, la memoria sobra por un orden de magnitud. Todo lo que sigue es CPU,
 hilos, conexiones y colas.
 
+### El reparto de CPU: nueve procesos sobre cuatro núcleos
+
+Esto es lo que de verdad limita la máquina, y conviene verlo escrito:
+
+| Servicio | Procesos |
+|---|---|
+| `DevitrakServer` (`pm2-runtime -i max`) | **4** de API + 1 daemon de pm2 |
+| `DevitrakGoWorker` | 1 |
+| `DevitrakEmailWorker` | 1 |
+| `DevitrakBulkWorker` | 1 |
+| `DevitrakDeleteWorker` | 1 |
+| | **9**, más IIS y el sistema |
+
+**`-i max` le entrega los cuatro núcleos a la API** y no deja cabeza para los
+cuatro workers ni para el proxy. Mientras la cola está tranquila no se nota;
+cuando entra un insert de 15.000 seriales, ese worker compite por CPU con los
+procesos que atienden a los usuarios.
+
+Dos consecuencias que cambian decisiones tomadas antes:
+
+1. **`-i max` probablemente sea demasiado en esta caja.** `-i 2` o `-i 3` deja
+   margen para los workers y para IIS. No es una corazonada que haya que
+   aplicar a ciegas: con `/api/metrics` se puede comparar el p95 antes y
+   después, que es justo para lo que está.
+
+2. **Mover trabajo a servicios separados aísla el event loop, no la CPU.** El
+   grupo `heavy` evita que la API se quede bloqueada mientras se procesa un
+   lote — eso es real y es la mayor parte de la ganancia — pero el trabajo
+   sigue compitiendo por los mismos cuatro núcleos.
+
+   Así que **la "prioridad absoluta" para pagos y login no se consigue en una
+   sola caja de cuatro núcleos.** Se consigue con más núcleos, o separando la
+   API de los workers en dos máquinas. Todo lo demás —encolar, agrupar,
+   dedicar servicios— reparte mejor el mismo pastel, no lo agranda.
+
 > **Aviso sobre el `load` de `/api/status`:** los tres ceros que devuelve no
 > significan que la máquina esté ociosa. `os.loadavg()` **siempre devuelve
 > `[0,0,0]` en Windows** — no existe el concepto. Ese campo no informa de nada
