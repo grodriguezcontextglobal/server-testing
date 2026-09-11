@@ -18,9 +18,7 @@ const {
   securityLogger,
 } = require("./middlewares/requestLogger");
 const { requestMetrics } = require("./middlewares/requestMetrics");
-const { readinessLimiter } = require("./middlewares/readinessRateLimit");
 const metrics = require("./helpers/metrics");
-const { getReadiness } = require("./helpers/readiness");
 const logger = require("./helpers/logger");
 
 // Constants
@@ -243,44 +241,6 @@ const configureRoutes = (app) => {
   });
 };
 
-// LIVENESS. Deliberadamente plano y sin dependencias: responde mientras el
-// proceso pueda atender un socket. Es lo que nssm y el healthcheck del
-// contenedor deben mirar para decidir "reiniciar o no".
-// Para "mandarle trafico o no", ese es /ready.
-// requestMetrics va explicito en estas dos rutas: se registran a nivel de
-// modulo, antes de que configureMiddleware monte nada, asi que de otro modo
-// serian las dos unicas rutas invisibles en /api/metrics -- y un ataque contra
-// /ready es precisamente lo que hay que poder ver ahi.
-app.get('/health', requestMetrics, (req, res) => {
-  res.status(200).json({
-    server: 'standby',
-    status: 'operational',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// READINESS. Comprueba MySQL, Mongo, Redis y el worker de Go, y devuelve 503
-// si falla una CRITICA (MySQL o Mongo) para que un balanceador saque este
-// proceso de rotacion en vez de seguir mandandole peticiones que van a dar 500.
-// Redis y el worker degradan, no descalifican: sin ellos el resto de la API
-// sigue sirviendo. Con cache de 2s, asi que pedirlo en bucle no multiplica la
-// carga sobre la base de datos.
-// El limitador va atado a la ruta, no montado en la cadena global: estas dos
-// rutas estan por ENCIMA de todo el middleware global (se registran aqui, y
-// configureMiddleware corre despues), asi que un `app.use` no las cubriria. Y
-// que sigan fuera del limitador global es deliberado -- ese es por IP y lo
-// comparte con el trafico de la API, asi que un pico contra la API dejaria al
-// balanceador sin poder sondear. Ver middlewares/readinessRateLimit.js.
-app.get('/ready', requestMetrics, readinessLimiter, async (req, res) => {
-  try {
-    const readiness = await getReadiness({ force: req.query.force === '1' });
-    return res.status(readiness.ready ? 200 : 503).json(readiness);
-  } catch (error) {
-    logger.error('readiness check threw', { error: error.message });
-    return res.status(503).json({ ready: false, status: 'unready', error: error.message });
-  }
-});
-
 // Error handling middleware
 const configureErrorHandling = (app) => {
   app.use((err, req, res, next) => {
@@ -316,6 +276,15 @@ const configureErrorHandling = (app) => {
 
 // Initialize application
 const initializeApp = () => {
+  // ORDEN DELIBERADO, no una casualidad: las rutas de sondeo se montan ANTES
+  // del middleware global para que no compartan el limitador de 300/15min con
+  // el trafico de la API (un pico dejaria a nssm sin poder sondear, y el
+  // supervisor reiniciaria un proceso sano) ni escriban una linea de log por
+  // cada comprobacion. Llevan su propia cadena: metricas siempre, y limitador
+  // propio en /ready. El porque completo esta en routes/health.js, y
+  // test/healthRoutes.test.js lo fija como invariante.
+  app.use(require("./routes/health"));
+
   configureMiddleware(app);
   configureRoutes(app);
   configureErrorHandling(app);
