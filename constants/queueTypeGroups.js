@@ -42,10 +42,27 @@ const DELETE_TYPES = [
   'inventory:bulk-delete-by-ids',
 ];
 
+// Escrituras pesadas que NADIE espera: sus controllers responden 202 + jobId y
+// el cliente consulta despues (createQueuedJobController, sin
+// waitForJobOutcome). Van aparte de BULK_WRITE_TYPES justo por eso, y por la
+// misma razon que DELETE_TYPES: el worker procesa de a uno, asi que un insert
+// alfanumerico de ~15.000 seriales retendria el tick y haria reventar la
+// ventana de 4s de los jobs que SI se esperan.
+//
+// Hasta ahora no estaban en ningun grupo, lo que significa que el server
+// principal (QUEUE_EXCLUDE_GROUPS=dedicated) los consumia DENTRO de los
+// procesos que atienden login y pagos.
+const HEAVY_ASYNC_TYPES = [
+  'inventory:bulk-insert-alphanumeric',
+  'inventory:bulk-update-alphanumeric',
+  'event:bulk-update-item-shipping',
+];
+
 const GROUPS = Object.freeze({
   email: Object.freeze([...EMAIL_TYPES]),
   bulk: Object.freeze([...BULK_WRITE_TYPES]),
   delete: Object.freeze([...DELETE_TYPES]),
+  heavy: Object.freeze([...HEAVY_ASYNC_TYPES]),
 });
 
 /** Todos los tipos que un worker dedicado reclama (lo que el server principal debe excluir). */
@@ -107,10 +124,15 @@ function resolveWorkerScope(env = process.env, { warn } = {}) {
   const includeFromTypes = parseList(env.QUEUE_TYPES);
   const group = String(env.QUEUE_GROUP || '').trim();
 
+  // QUEUE_GROUP admite una LISTA: 'bulk,heavy' deja que un mismo servicio
+  // sirva dos grupos. Eso desacopla como se agrupan los tipos en el codigo de
+  // cuantos servicios nssm existen, y permite crear un grupo hoy y decidir la
+  // topologia despues. Un solo nombre sigue funcionando igual que antes.
+  const groups = parseList(group);
   const includeTypes = includeFromTypes.length
     ? includeFromTypes
-    : group
-      ? typesForGroup(group)
+    : groups.length
+      ? unique(groups.flatMap((name) => typesForGroup(name)))
       : [];
 
   const excludeFromGroups = [];
@@ -131,6 +153,7 @@ module.exports = {
   EMAIL_TYPES,
   BULK_WRITE_TYPES,
   DELETE_TYPES,
+  HEAVY_ASYNC_TYPES,
   GROUPS,
   GROUP_NAMES,
   DEDICATED_GROUP,

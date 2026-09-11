@@ -519,6 +519,40 @@ server's exclusion and this document:
 - **`DevitrakBulkWorker`**: `QUEUE_GROUP=bulk` and `QUEUE_POLL_MS=300` (see below — this
   one's poll interval matters).
 - **`DevitrakDeleteWorker`**: `QUEUE_GROUP=delete` and `QUEUE_POLL_MS=300`.
+- **Grupo `heavy`** (`inventory:bulk-insert-alphanumeric`,
+  `inventory:bulk-update-alphanumeric`, `event:bulk-update-item-shipping`):
+  escrituras pesadas que **nadie espera** — sus controllers responden `202 + jobId`.
+  Ver el aviso de abajo: **necesita consumidor**.
+
+> ### ⚠️ ANTES DE DESPLEGAR EL GRUPO `heavy`: hay que darle consumidor
+>
+> Estos tres tipos **no estaban en ningún grupo**, así que hasta ahora los
+> consumía `DevitrakServer` dentro de los mismos procesos que atienden el login
+> y los pagos. Al meterlos en un grupo, `dedicated` los incluye y el server
+> **deja de tomarlos en cuanto arranque con este código**.
+>
+> Si ningún worker sirve `heavy`, esos jobs se quedan **encolados para
+> siempre**, sin error y sin que nada lo señale. Elige una de las dos:
+>
+> **(a) Rápido, sin servicio nuevo** — el worker de bulk sirve los dos grupos.
+> `QUEUE_GROUP` admite lista:
+>
+> ```powershell
+> nssm set DevitrakBulkWorker AppEnvironmentExtra QUEUE_GROUP=bulk,heavy QUEUE_POLL_MS=300
+> nssm restart DevitrakBulkWorker
+> ```
+>
+> Saca el trabajo pesado de la API, que es el 90 % de la ganancia. A cambio
+> comparte worker con los jobs que sí se esperan, así que un insert de 15.000
+> seriales todavía puede hacerles agotar su ventana de 4 s.
+>
+> **(b) Correcto** — su propio servicio, `DevitrakHeavyWorker` con
+> `QUEUE_GROUP=heavy` y **poll normal** (no necesita 300 ms: nadie espera).
+> Se crea igual que el de borrados, cambiando el nombre y el grupo.
+>
+> **Y el orden importa**: arranca el consumidor nuevo **antes** de reiniciar
+> `DevitrakServer`. Al revés queda una ventana sin nadie tomando esos tipos.
+> Durante el solape los dos compiten, y eso es inofensivo — el claim es atómico.
 
 The old form still works and takes precedence: an explicit `QUEUE_TYPES` overrides
 `QUEUE_GROUP`, and `QUEUE_EXCLUDE_TYPES` is added to whatever `QUEUE_EXCLUDE_GROUPS`

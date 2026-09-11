@@ -9,6 +9,7 @@ const {
   DELETE_TYPES,
   EMAIL_TYPES,
   BULK_WRITE_TYPES,
+  HEAVY_ASYNC_TYPES,
   typesForGroup,
   resolveWorkerScope,
 } = require('../constants/queueTypeGroups');
@@ -148,5 +149,77 @@ test('todo tipo de un grupo está registrado en queue/handlers (sin handler, el 
     for (const type of GROUPS[name]) {
       assert.ok(registered.has(type), `'${type}' (grupo ${name}) no está registrado`);
     }
+  }
+});
+
+/* ------------------------------------------------------------------ *
+ * Grupo heavy: escrituras pesadas que nadie espera
+ * ------------------------------------------------------------------ */
+
+test('heavy contiene los tres tipos que nadie espera', () => {
+  assert.deepStrictEqual([...HEAVY_ASYNC_TYPES].sort(), [
+    'event:bulk-update-item-shipping',
+    'inventory:bulk-insert-alphanumeric',
+    'inventory:bulk-update-alphanumeric',
+  ]);
+});
+
+test('los heavy NO estan en bulk, y ese es el punto', () => {
+  // bulk existe para jobs que el controller ESPERA (waitForJobOutcome, 4s).
+  // Un insert alfanumerico de ~15.000 seriales retiene el tick del worker --
+  // que procesa de a uno -- y haria reventar esa ventana. Es la misma razon
+  // por la que los borrados viven aparte.
+  for (const type of HEAVY_ASYNC_TYPES) {
+    assert.ok(!BULK_WRITE_TYPES.includes(type), `${type} no deberia estar en bulk`);
+  }
+});
+
+test('DevitrakServer deja de consumirlos: dedicated ahora los incluye', () => {
+  // Era el problema: al no estar en ningun grupo, el server principal
+  // (QUEUE_EXCLUDE_GROUPS=dedicated) los drenaba DENTRO de los procesos que
+  // atienden login y pagos.
+  const { excludeTypes } = resolveWorkerScope({ QUEUE_EXCLUDE_GROUPS: 'dedicated' });
+  for (const type of HEAVY_ASYNC_TYPES) {
+    assert.ok(excludeTypes.includes(type), `${type} deberia quedar excluido del server`);
+  }
+});
+
+test('QUEUE_GROUP admite una lista de grupos', () => {
+  // Permite que un solo servicio sirva dos grupos, y asi crear el grupo en el
+  // codigo sin tener que crear un servicio nssm el mismo dia.
+  const { includeTypes } = resolveWorkerScope({ QUEUE_GROUP: 'bulk,heavy' });
+  for (const type of [...BULK_WRITE_TYPES, ...HEAVY_ASYNC_TYPES]) {
+    assert.ok(includeTypes.includes(type), `${type} deberia estar incluido`);
+  }
+  assert.strictEqual(includeTypes.length, BULK_WRITE_TYPES.length + HEAVY_ASYNC_TYPES.length);
+});
+
+test('un solo grupo sigue funcionando igual que antes', () => {
+  // Compatibilidad: los servicios ya configurados con QUEUE_GROUP=delete o
+  // =email no pueden cambiar de comportamiento por este cambio.
+  assert.deepStrictEqual(
+    resolveWorkerScope({ QUEUE_GROUP: 'delete' }).includeTypes.sort(),
+    [...DELETE_TYPES].sort()
+  );
+  assert.deepStrictEqual(
+    resolveWorkerScope({ QUEUE_GROUP: 'email' }).includeTypes.sort(),
+    [...EMAIL_TYPES].sort()
+  );
+});
+
+test('una lista con un grupo invalido lanza, no se traga el error', () => {
+  // Sin esto, 'bulk,heavi' dejaria al worker sirviendo solo bulk y los heavy
+  // sin consumidor -- que es justo el fallo silencioso que hay que evitar.
+  assert.throws(() => resolveWorkerScope({ QUEUE_GROUP: 'bulk,heavi' }), /desconocido/i);
+});
+
+test('cada tipo heavy tiene su handler registrado', () => {
+  // Sin handler, el worker dedicado manda el job a dead-letter. Como estos
+  // tipos acaban de cambiar de dueño, conviene afirmarlo explicitamente.
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const source = fs.readFileSync(path.join(__dirname, '..', 'queue', 'handlers', 'index.js'), 'utf8');
+  for (const type of HEAVY_ASYNC_TYPES) {
+    assert.ok(source.includes(`"${type}"`) || source.includes(`'${type}'`), `${type} sin handler`);
   }
 });
