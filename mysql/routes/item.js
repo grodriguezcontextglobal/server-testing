@@ -82,7 +82,10 @@ router.post("/inventory-facets", validateJWT, getInventoryFacets);
 router.get("/serial-suggest", validateJWT, suggestSerials);
 
 //check table
-router.post("/items_information", consultingItemTable);
+// Devuelve el inventario de la compañía. Antes iba sin token y filtraba por el
+// NOMBRE de la compañía tomado del body; ahora exige JWT y usa el company_id
+// verificado. Queda obsoleta a favor de /inventory-page.
+router.post("/items_information", validateJWT, consultingItemTable);
 
 //check inventory current state by query
 router.post("/current-inventory", consultingInventoryCurrentState);
@@ -176,7 +179,10 @@ router.post(
 );
 
 //company inventory pagination
-router.post("/inventory-pagination", consultingCompanyInventoryWithPagination);
+// OBSOLETA a favor de /inventory-page (arriba), que pagina con allowlist de
+// filtros, hasMore y columnas explícitas. Se le añade el token porque al quitar
+// la sombra del catch-all `/:id` esta ruta vuelve a ser alcanzable.
+router.post("/inventory-pagination", validateJWT, consultingCompanyInventoryWithPagination);
 
 //company inventory based on location and sublocation
 router.post(

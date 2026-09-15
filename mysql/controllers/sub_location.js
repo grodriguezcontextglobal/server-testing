@@ -1,5 +1,6 @@
 const getConnection = require("../database/config");
 const logger = require("../../helpers/logger");
+const { resolveCompanyContext } = require("../helpers/companyContext");
 
 /**
  * Helper to process sub-location data (Find or Create) within a transaction
@@ -238,12 +239,43 @@ const getSubLocationsHierarchy = async (req, res) => {
   }
 };
 
+/**
+ * Comprueba que una sub-locación pertenece a la compañía verificada del
+ * llamante. `sub_locations` no guarda `company_id`: cuelga de `locations`, que
+ * sí lo tiene, así que la pertenencia se resuelve con el JOIN.
+ *
+ * Devuelve 404 —no 403— cuando la fila existe pero es de otra compañía: un 403
+ * confirmaría que ese id existe, que es información de otro inquilino.
+ */
+const belongsToCompany = async (connection, subLocationId, companyId) => {
+  const [[row]] = await connection.execute(
+    `SELECT sl.sub_location_id
+       FROM sub_locations sl
+       JOIN locations l ON l.location_id = sl.location_id
+      WHERE sl.sub_location_id = ? AND l.company_id = ?
+      LIMIT 1`,
+    [subLocationId, companyId]
+  );
+  return Boolean(row);
+};
+
 const updateSubLocation = async (req, res) => {
   const connection = getConnection();
   const { id } = req.params;
   const { name, active, parent_id } = req.body;
 
   try {
+    // El id de la sub-locación viene de la URL y no dice de quién es. Sin esta
+    // comprobación, cualquier usuario autenticado podía renombrar la estructura
+    // de locaciones de OTRA compañía probando ids.
+    const context = await resolveCompanyContext(req);
+    if (!context.ok) {
+      return res.status(context.status).json({ ok: false, msg: context.msg });
+    }
+    if (!(await belongsToCompany(connection, id, context.companyId))) {
+      return res.status(404).json({ ok: false, msg: "Sub-location not found" });
+    }
+
     // Build dynamic update query
     const fields = [];
     const values = [];
@@ -294,6 +326,19 @@ const deleteSubLocation = async (req, res) => {
   }
 
   try {
+    // Mismo motivo que en `updateSubLocation`: el id viene de la URL y no dice
+    // de quién es. Sin esto, cualquier usuario autenticado podía borrar la
+    // estructura de locaciones de OTRA compañía probando ids — y aquí el daño
+    // no se deshace: `sub_locations` tiene ON DELETE CASCADE sobre sí misma,
+    // así que se lleva por delante toda la rama de hijos.
+    const context = await resolveCompanyContext(req);
+    if (!context.ok) {
+      return res.status(context.status).json({ ok: false, msg: context.msg });
+    }
+    if (!(await belongsToCompany(connection, id, context.companyId))) {
+      return res.status(404).json({ ok: false, msg: "Sub-location not found" });
+    }
+
     const [children] = await connection.execute(
       "SELECT sub_location_id FROM sub_locations WHERE parent_id = ? AND active = 1",
       [id]

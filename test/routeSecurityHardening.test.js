@@ -405,3 +405,37 @@ for (const routerPath of [
     );
   });
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE F — rutas anónimas sobre item_inv (2026-09-15)
+// Las cinco iban sin token: dos vuelcan inventario de cualquier compañía y dos
+// escriben sobre la estructura de locaciones.
+// ════════════════════════════════════════════════════════════════════════════
+
+const ANON_CLOSED = [
+  ['../mysql/routes/item',         'POST', '/items_information'],
+  ['../mysql/routes/item',         'POST', '/inventory-pagination'],
+  ['../mysql/routes/company',      'POST', '/company-inventory-pagination'],
+  ['../mysql/routes/inventory',    'POST', '/update-location-sub-location'],
+  ['../mysql/routes/sub_location', 'PUT',  '/sub-locations/:id'],
+  ['../mysql/routes/sub_location', 'DELETE', '/sub-locations/:id'],
+];
+
+for (const [file, method, path] of ANON_CLOSED) {
+  test(`${file}: ${method} ${path} exige validateJWT`, () => {
+    const router = loadRouter(file);
+    const handlers = getRouteHandlers(router, method, path);
+    assert.ok(handlers !== null, `La ruta ${method} ${path} debe existir`);
+    assert.ok(
+      handlers.includes(validateJWT),
+      `validateJWT debe estar en ${method} ${path}`,
+    );
+  });
+}
+
+test('las dos escrituras de locación exigen ademas permiso de inventario', () => {
+  for (const [file, method, path] of ANON_CLOSED.slice(3)) {
+    const handlers = getRouteHandlers(loadRouter(file), method, path);
+    assert.ok(hasAuthzPermission(handlers), `authorizePermission debe estar en ${method} ${path}`);
+  }
+});

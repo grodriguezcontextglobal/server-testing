@@ -8,6 +8,9 @@ const {
   buildNamedQuery,
   QueryParamError,
 } = require("../queries/inventoryQueryCatalog");
+const {
+  FILTERABLE: FILTERABLE_INVENTORY_COLUMNS,
+} = require("../queries/inventoryPageQuery");
 const { resolveCompanyContext } = require("../helpers/companyContext");
 const {
   processSubLocation,
@@ -652,14 +655,57 @@ const deleteItem = async (request, response) => {
   }
 };
 
+/**
+ * Inventario de la compañía.
+ *
+ * OBSOLETA a favor de `POST /api/db_item/inventory-page`, que pagina y proyecta
+ * columnas. Se mantiene mientras el frontend migra.
+ *
+ * Antes iba SIN TOKEN y filtraba por `company` —el NOMBRE de la compañía, tal
+ * cual venía del body—, así que cualquiera podía volcar el inventario de
+ * cualquier cliente sabiendo cómo se llama. Ahora el `company_id` sale del
+ * contexto verificado y se aplica además el scope del rol.
+ */
 const consultingItemTable = async (request, response) => {
   try {
+    const context = await resolveCompanyContext(request);
+    if (!context.ok) {
+      return response.status(context.status).json({ ok: false, msg: context.msg });
+    }
+
     const connection = getConnection();
-    const query = "SELECT * FROM item_inv WHERE company=?;";
-    const values = [request.body.company];
-    const [result] = await connection.execute(query, values);
+    const scope = buildInventoryScopeFilter(context.access);
+    const where = scope.sql ? `company_id = ? AND ${scope.sql}` : "company_id = ?";
+
+    // TECHO DE FILAS, y deliberadamente NO silencioso.
+    //
+    // Sin él, una compañía con 50.000 ítems produce un array de mysql2 y una
+    // cadena JSON de decenas de MB, y el `JSON.stringify` bloquea el event loop
+    // del worker que atiende la petición: con cuatro procesos, se congela a un
+    // cuarto de los clientes. Truncar en silencio sería peor que el problema
+    // —el cliente creería tener el inventario entero—, así que la respuesta
+    // dice `truncated` y cuántas filas se sirvieron.
+    //
+    // La salida de verdad es `POST /api/db_item/inventory-page`. El techo es
+    // configurable para poder subirlo en caliente si a alguien le corta antes
+    // de migrar.
+    const maxRows = Number(process.env.ITEMS_INFORMATION_MAX_ROWS || 5000);
+    const query = `SELECT * FROM item_inv WHERE ${where} ORDER BY item_id ASC LIMIT ${maxRows + 1};`;
+    const values = [context.companyId, ...scope.params];
+    const [rows] = await connection.execute(query, values);
+
+    const truncated = rows.length > maxRows;
+    const items = truncated ? rows.slice(0, maxRows) : rows;
+    if (truncated) {
+      logger.warn(
+        `items_information truncado: company ${context.companyId} supera ${maxRows} filas; migrar a /inventory-page`
+      );
+    }
+
     return response.status(201).json({
-      items: result,
+      items,
+      truncated,
+      limit: maxRows,
       ok: true,
     });
   } catch (error) {
@@ -1915,8 +1961,27 @@ const getGroupedItemInventory = async (request, response) => {
   }
 };
 
+/**
+ * OBSOLETA a favor de `POST /api/db_item/inventory-page`, que pagina con
+ * allowlist de filtros, `hasMore` y columnas explícitas. Se mantiene mientras el
+ * frontend migra, con dos agujeros cerrados:
+ *
+ *  1. Iba SIN TOKEN y sin filtro de compañía: con el body vacío, `filters`
+ *     caía a `"1=1"` y paginaba `item_inv` de TODAS las compañías. Ahora el
+ *     `company_id` sale del contexto verificado y nunca puede faltar.
+ *  2. Los nombres de columna se concatenaban desde `Object.keys(request.body)`.
+ *     Scopear por compañía NO bastaba para cerrarlo: una clave como
+ *     `"item_id = 1 OR 1"` produce `company_id = ? AND item_id = 1 OR 1 = ?`, y
+ *     como AND liga más fuerte que OR, eso devuelve la tabla entera. Por eso los
+ *     filtros pasan ahora por la misma allowlist que `/inventory-page`.
+ */
 const consultingCompanyInventoryWithPagination = async (request, response) => {
   try {
+    const context = await resolveCompanyContext(request);
+    if (!context.ok) {
+      return response.status(context.status).json({ ok: false, msg: context.msg });
+    }
+
     const connection = getConnection();
 
     // Safe fallback for body
@@ -1927,13 +1992,40 @@ const consultingCompanyInventoryWithPagination = async (request, response) => {
     const { lastItemId, direction = "forward" } = request.query;
     const pageSize = 10;
 
-    // Filter non-undefined keys for WHERE clause
+    // Solo columnas de la allowlist; `company_id` y `company` se ignoran como
+    // filtro porque el scope ya lo impone el contexto verificado.
     const filterKeys = Object.keys(body).filter(
-      (key) => body[key] !== undefined,
+      (key) =>
+        body[key] !== undefined &&
+        key !== "company_id" &&
+        key !== "company" &&
+        FILTERABLE_INVENTORY_COLUMNS.has(key),
     );
+    const rejected = Object.keys(body).filter(
+      (key) =>
+        body[key] !== undefined &&
+        key !== "company_id" &&
+        key !== "company" &&
+        !FILTERABLE_INVENTORY_COLUMNS.has(key),
+    );
+    if (rejected.length > 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: `Unsupported filter(s): ${rejected.join(", ")}`,
+        detail: { allowed: [...FILTERABLE_INVENTORY_COLUMNS].sort() },
+      });
+    }
+
+    const scope = buildInventoryScopeFilter(context.access);
+    const scopeClause = scope.sql ? ` AND ${scope.sql}` : "";
     const filters =
-      filterKeys.map((key) => `${key} = ?`).join(" AND ") || "1=1";
-    const filterValues = filterKeys.map((key) => body[key]);
+      ["company_id = ?", ...filterKeys.map((key) => `\`${key}\` = ?`)].join(" AND ") +
+      scopeClause;
+    const filterValues = [
+      context.companyId,
+      ...filterKeys.map((key) => body[key]),
+      ...scope.params,
+    ];
 
     // Cursor-based condition
     let cursorCondition = "";
