@@ -4,6 +4,11 @@
  */
 const express = require("express");
 const { validateJWT } = require("../../middlewares/validate-jwt");
+const {
+  getInventoryPage,
+  getInventoryFacets,
+  suggestSerials,
+} = require("../controllers/inventoryPage");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
 const { authorizePermission } = require("../../middlewares/authorizePermission");
 const {
@@ -64,6 +69,17 @@ router.post("/consulting-item", consultingItem);
 
 //check item in warehouse
 router.post("/warehouse-items", validateJWT, consultingItemInWarehouseTable);
+
+// Página de inventario servida desde el servidor: una página de la tabla, y los
+// agregados que llenan los filtros sin descargar el inventario entero.
+//
+// OJO CON EL ORDEN: tienen que quedar por ENCIMA del `router.post("/:id")` de
+// más abajo. Ese catch-all captura cualquier POST de un solo segmento, y hoy ya
+// deja sin efecto a catorce rutas registradas después que él —entre ellas
+// /inventory-query y /inventory-pagination—, que acaban en `deleteItem`.
+router.post("/inventory-page", validateJWT, getInventoryPage);
+router.post("/inventory-facets", validateJWT, getInventoryFacets);
+router.get("/serial-suggest", validateJWT, suggestSerials);
 
 //check table
 router.post("/items_information", consultingItemTable);
