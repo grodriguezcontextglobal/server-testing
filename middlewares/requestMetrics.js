@@ -53,8 +53,61 @@ const resolveTenant = (request) => {
   return undefined;
 };
 
+/**
+ * Cuenta los bytes de cuerpo que salen hacia el cliente.
+ *
+ * POR QUÉ NO SE LEE `Content-Length`: `compression()` BORRA esa cabecera cuando
+ * comprime (`compression/index.js:225`) y solo comprime a partir de 1 KB. Es
+ * decir, la cabecera está exactamente en las respuestas pequeñas y falta en las
+ * grandes, que son las que interesa medir. Cualquier ranking de tamaño hecho
+ * sobre `Content-Length` —el de `middlewares/requestLogger.js` incluido— sale
+ * sesgado justo al revés.
+ *
+ * Envolver `write`/`end` sí mide lo que el cliente descarga: este middleware se
+ * monta ANTES que `compression` (`index.js:80` frente a `index.js:117`), así
+ * que cuando compression sustituye esos métodos, los que guarda para escribir
+ * de verdad son estos, y por aquí pasan los trozos YA comprimidos.
+ *
+ * Nunca lanza ni cambia la respuesta: si algo no se puede medir, se devuelve lo
+ * contado hasta ese momento.
+ */
+const instrumentBytes = (response) => {
+  let bytes = 0;
+  if (!response || typeof response.write !== "function" || typeof response.end !== "function") {
+    return () => 0;
+  }
+
+  const originalWrite = response.write;
+  const originalEnd = response.end;
+
+  const add = (chunk, encoding) => {
+    if (!chunk || typeof chunk === "function") return;
+    try {
+      bytes += Buffer.isBuffer(chunk)
+        ? chunk.length
+        : Buffer.byteLength(chunk, typeof encoding === "string" ? encoding : undefined);
+    } catch (error) {
+      // Un cuerpo no medible (un stream ajeno, un tipo raro) no puede romper
+      // la respuesta: se deja de contar y ya está.
+    }
+  };
+
+  response.write = function (chunk, encoding, callback) {
+    add(chunk, encoding);
+    return originalWrite.call(this, chunk, encoding, callback);
+  };
+
+  response.end = function (chunk, encoding, callback) {
+    add(chunk, encoding);
+    return originalEnd.call(this, chunk, encoding, callback);
+  };
+
+  return () => bytes;
+};
+
 const createRequestMetrics = ({ recordFn = metrics.record } = {}) => (request, response, next) => {
   const startedAt = Date.now();
+  const readBytes = instrumentBytes(response);
   let recorded = false;
 
   const finalize = () => {
@@ -65,6 +118,7 @@ const createRequestMetrics = ({ recordFn = metrics.record } = {}) => (request, r
       method: request.method,
       statusCode: response.statusCode,
       durationMs: Date.now() - startedAt,
+      bytes: readBytes(),
       tenant: resolveTenant(request),
     });
   };
@@ -84,4 +138,5 @@ module.exports = {
   requestMetrics: createRequestMetrics(),
   resolveRoute,
   resolveTenant,
+  instrumentBytes,
 };

@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const metrics = require('../helpers/metrics');
-const { createRequestMetrics, resolveRoute, resolveTenant } = require('../middlewares/requestMetrics');
+const { createRequestMetrics, resolveRoute, resolveTenant, instrumentBytes } = require('../middlewares/requestMetrics');
 const { getReadiness, withTimeout, _resetCache, CRITICAL } = require('../helpers/readiness');
 
 /* ---------------------------------------------------------------- *
@@ -281,6 +281,119 @@ test('middleware: cuenta tambien al cliente que aborta, y solo una vez', () => {
   res.emit('finish');
 
   assert.strictEqual(recorded.length, 1, 'close + finish = un solo registro');
+});
+
+/* ---------------------------------------------------------------- *
+ * Tamaño de la respuesta
+ * ---------------------------------------------------------------- */
+
+const makeResWithBody = () => {
+  const res = makeRes();
+  res.written = [];
+  res.write = function (chunk) { this.written.push(chunk); return true; };
+  res.end = function (chunk) { if (chunk) this.written.push(chunk); return this; };
+  return res;
+};
+
+test('bytes: suma lo escrito por write y por end', () => {
+  const res = makeResWithBody();
+  const readBytes = instrumentBytes(res);
+
+  res.write('hola');            // 4
+  res.write(Buffer.alloc(10));  // 10
+  res.end('!');                 // 1
+
+  assert.strictEqual(readBytes(), 15);
+  assert.deepStrictEqual(res.written.length, 3, 'el cuerpo original debe llegar intacto');
+});
+
+test('bytes: end(callback) no cuenta la funcion como cuerpo', () => {
+  const res = makeResWithBody();
+  const readBytes = instrumentBytes(res);
+  res.end(() => {});
+  assert.strictEqual(readBytes(), 0);
+});
+
+test('bytes: cuenta lo COMPRIMIDO, que es lo que descarga el cliente', () => {
+  // Este es el motivo de envolver write/end en vez de leer Content-Length:
+  // `compression()` se monta DESPUES (index.js:117 frente a index.js:80), asi
+  // que guarda como "originales" los metodos de este middleware y le entrega
+  // los trozos ya comprimidos. Si se midiera antes, el ranking diria que un
+  // endpoint pesa lo que pesa sin comprimir, que no es lo que viaja.
+  const res = makeResWithBody();
+  const readBytes = instrumentBytes(res);
+
+  const interno = { write: res.write, end: res.end };
+  res.write = function (chunk, enc, cb) { return interno.write.call(this, 'GZ', enc, cb); };
+  res.end = function (chunk, enc, cb) { return interno.end.call(this, chunk ? 'Z' : chunk, enc, cb); };
+
+  res.write('un cuerpo largo que se va a comprimir');
+  res.end('y su cola');
+
+  assert.strictEqual(readBytes(), 3, 'GZ + Z, no el cuerpo sin comprimir');
+});
+
+test('bytes: una respuesta sin cuerpo medible no baja la media del endpoint', () => {
+  metrics._reset();
+  metrics.record({ route: '/api/x', method: 'GET', statusCode: 200, durationMs: 1, bytes: 1000 });
+  metrics.record({ route: '/api/x', method: 'GET', statusCode: 304, durationMs: 1 }); // sin bytes
+
+  const redis = makeRedis();
+  return metrics.flush({ redisFn: redis.redisFn }).then(async () => {
+    const snap = await metrics.snapshot({ redisFn: redis.redisFn, hours: 1 });
+    const endpoint = snap.endpoints.find((e) => e.endpoint.includes('/api/x'));
+
+    assert.strictEqual(endpoint.count, 2, 'las dos peticiones cuentan para el trafico');
+    assert.strictEqual(endpoint.bytesCount, 1, 'solo una tenia cuerpo medible');
+    assert.strictEqual(endpoint.avgBytes, 1000, 'la media es sobre las medibles, no 500');
+  });
+});
+
+test('snapshot: heaviestEndpoints ordena por bytes servidos, no por peticiones', async () => {
+  metrics._reset();
+  // Uno enorme y raro; otro modesto pero constante. El trabajo de adelgazar
+  // payloads debe empezar por el segundo, que es el que mueve mas datos.
+  metrics.record({ route: '/api/gordo', method: 'GET', statusCode: 200, durationMs: 1, bytes: 2_000_000 });
+  for (let i = 0; i < 500; i++) {
+    metrics.record({ route: '/api/constante', method: 'GET', statusCode: 200, durationMs: 1, bytes: 40_000 });
+  }
+
+  const redis = makeRedis();
+  await metrics.flush({ redisFn: redis.redisFn });
+  const snap = await metrics.snapshot({ redisFn: redis.redisFn, hours: 1 });
+
+  assert.match(snap.heaviestEndpoints[0].endpoint, /\/api\/constante/);
+  assert.strictEqual(snap.heaviestEndpoints[0].totalBytes, 20_000_000);
+  assert.strictEqual(snap.totals.bytes, 22_000_000);
+  assert.match(snap.endpoints[0].endpoint, /\/api\/constante/, 'endpoints sigue ordenado por trafico');
+});
+
+test('bytes: un fallo de Redis tampoco pierde los contadores de tamano', async () => {
+  metrics._reset();
+  const redis = makeRedis({ failOnExec: true });
+  metrics.record({ route: '/api/x', method: 'GET', statusCode: 200, durationMs: 1, bytes: 5000 });
+
+  await metrics.flush({ redisFn: redis.redisFn });
+  metrics.record({ route: '/api/x', method: 'GET', statusCode: 200, durationMs: 1, bytes: 1000 });
+
+  const bueno = makeRedis();
+  await metrics.flush({ redisFn: bueno.redisFn });
+  const snap = await metrics.snapshot({ redisFn: bueno.redisFn, hours: 1 });
+  const endpoint = snap.endpoints.find((e) => e.endpoint.includes('/api/x'));
+
+  assert.strictEqual(endpoint.totalBytes, 6000, 'lo repuesto se suma a lo nuevo');
+  assert.strictEqual(endpoint.maxBytes, 5000);
+});
+
+test('percentileBytes: el denominador son las respuestas medibles', () => {
+  const row = {
+    bytesCount: 100,
+    byteBuckets: [0, 0, 0, 90, 10, 0, 0, 0], // 90 en <=32KB, 10 en <=128KB
+    maxBytes: 120_000,
+  };
+  const p95 = metrics.percentileBytes(row, 0.95);
+  assert.ok(p95 > 32_768 && p95 <= 131_072, `p95 fuera del bucket esperado: ${p95}`);
+  assert.strictEqual(metrics.percentileBytes({ bytesCount: 0, byteBuckets: [], maxBytes: 0 }, 0.95), 0);
 });
 
 /* ---------------------------------------------------------------- *
