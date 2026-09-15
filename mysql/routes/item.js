@@ -113,8 +113,22 @@ router.post("/edit-item", validateJWT, checkTokenVersion, authorizePermission("i
 router.post("/item-out-warehouse", validateJWT, checkTokenVersion, authorizePermission("inventory", "update"), updateItemInWarehouseAfterBeingAddedToEvent);
 
 //updateItemInWarehouseAfterBeingAddedToEvent
-//delete item (catch-all POST /:id — must stay authenticated; scope enforced in the controller)
-router.post("/:id", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
+// Borrar un ítem. El parámetro está acotado a DÍGITOS a propósito.
+//
+// Sin `(\\d+)` esto captura cualquier POST de un solo segmento y deja sin efecto
+// a las catorce rutas registradas después —comprobado recorriendo el stack del
+// router—, que acaban todas en `deleteItem`. Once tenían gemelo vivo en otro
+// prefijo (/api/db_company, /api/db_event) y por eso nada parecía roto; tres no:
+// /consulting-row-item-assigned-event, /inventory-pagination y /retrieve-item-data.
+//
+// Y había un filo peor que el enrutado: `deleteItem` lee item_id y company_id
+// del BODY e ignora `req.params.id`, así que cualquier petición a una de esas
+// rutas que llevara los dos campos borraba ese ítem.
+//
+// El handler no usa el parámetro; esta ruta es un duplicado de /delete-item.
+// Se puede borrar del todo cuando las métricas confirmen que nadie llama a la
+// forma numérica.
+router.post("/:id(\\d+)", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
 
 //delete item in inventory
 router.post("/delete-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
