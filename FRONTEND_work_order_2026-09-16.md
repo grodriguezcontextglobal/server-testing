@@ -7,7 +7,8 @@
 > **Vuestra respuesta (`..._ANSWER.md`) sigue siendo válida** para lo que cubría;
 > nada de lo que ya cerrasteis hay que rehacerlo.
 >
-> Commits afectados: `94d7076`, `2ff47d1`, `6ff962c`, `ca3611e`, `54dffdb`.
+> Commits afectados: `94d7076`, `2ff47d1`, `6ff962c`, `ca3611e`, `54dffdb`,
+> `56bf876`.
 > Ninguno está desplegado. `395bba6` (métricas) sí, y no rompe nada.
 
 ---
@@ -92,13 +93,13 @@ Para cada una de las cuatro:
 4. **Para `DELETE /api/db_consumer/:id` en particular**: ¿hay un botón de borrar
    cliente que hoy "no hace nada" o da error? Porque tras el deploy borra.
 
-### Lo que hacemos nosotros — [NOSOTROS]
+### Lo que ya hemos hecho nosotros — [NOSOTROS] ✅
 
-`deleteCustomer` ejecuta `DELETE FROM consumer_info WHERE consumer_id = ?`, **sin
-ningún filtro de compañía**. No vamos a dejar que una ruta así despierte: le
-ponemos scope de compañía antes de desplegar. No tenéis que hacer nada, pero os lo
-decimos porque cambia su respuesta: un `consumer_id` de otra compañía pasará a
-devolver **404** en vez de borrar.
+`deleteCustomer` ejecutaba `DELETE FROM consumer_info WHERE consumer_id = ?`,
+**sin ningún filtro de compañía**. No íbamos a dejar que una ruta así despierte:
+**ya tiene scope de compañía** (commit `56bf876`, detalle en §7.1). No tenéis que
+hacer nada, pero os lo decimos porque cambia su respuesta: un `consumer_id` de
+otra compañía devuelve **404** en vez de borrar.
 
 ### Cómo se verifica sin depender de nadie
 
@@ -226,19 +227,47 @@ Es el punto con más riesgo de que un ajuste apresurado empeore las cosas.
 
 ---
 
-## 7. Lo que arreglamos nosotros antes de desplegar
+## 7. Lo que hemos arreglado nosotros — YA HECHO
 
 **[NOSOTROS]. No requiere nada de vuestra parte.** Va aquí para que no os
-sorprenda en el diff.
+sorprenda en el diff. Los dos primeros puntos están **implementados y probados**
+(commit `56bf876`); el tercero sigue abierto y va en ticket aparte.
 
-1. **`deleteCustomer` sin scope de compañía** (§2). Se lo añadimos antes de que la
-   ruta despierte.
-2. **Falta `checkTokenVersion`** en `items_information`,
+1. ✅ **`deleteCustomer` ya tiene scope de compañía.** Antes de que la ruta
+   despierte (§2). `consumer_info` **no tiene `company_id`**, así que la
+   pertenencia se resuelve por el único vínculo que existe en el esquema:
+
+   ```
+   consumer_info.consumer_id
+     → consumer_attending_event.consumer_attending_id
+     → consumer_attending_event.event_attended_id = event_info.event_id
+     → event_info.company_assigned_event_id
+   ```
+
+   Un `consumer_id` de otra compañía devuelve ahora **404** (no 403: un 403
+   confirmaría que ese id existe). El id se sigue leyendo del **body** primero,
+   como hasta ahora, con `:id` de la URL como respaldo — no cambiamos a qué fila
+   apunta una llamada existente.
+
+   > **Limitación conocida, y es del esquema, no del arreglo:** un consumidor que
+   > no asista a **ningún** evento de la compañía no es atribuible a nadie con los
+   > datos que hay, así que esta ruta devuelve 404 para él. Antes tampoco se podía
+   > borrar —la ruta daba 401 a todo—, o sea que no quitamos nada que funcionara.
+   > **Si tenéis una pantalla que borra consumidores recién creados y aún sin
+   > evento, decídnoslo**: ese caso necesita otra solución y preferimos saberlo
+   > antes del deploy que después.
+
+2. ✅ **`checkTokenVersion` añadido** a `items_information`,
    `company-inventory-pagination`, `inventory-pagination` y las tres rutas nuevas
-   de inventario. Solo llevan `validateJWT`, a diferencia del resto de rutas
-   endurecidas. Efecto: un **force-logout no revoca el acceso** a esas lecturas
-   hasta que el token expire por su cuenta. Lo cerramos por coherencia.
-3. **Prioridades opuestas al resolver la compañía**: `authorizePermission` lee
+   de inventario. Solo llevaban `validateJWT`, a diferencia del resto de rutas
+   endurecidas. Efecto que se cierra: un **force-logout no revocaba el acceso** a
+   esas lecturas hasta que el token expirase por su cuenta.
+
+   **Para vosotros esto sí tiene una consecuencia práctica**: si vuestro cliente
+   guarda un token a través de un force-logout y sigue usándolo para leer
+   inventario, esas seis rutas pasan a rechazarlo. Es el comportamiento que ya
+   tenían todas las demás.
+3. ⏳ **Prioridades opuestas al resolver la compañía** (abierto): `authorizePermission` lee
    `params → body → query → header`, y `resolveCompanyContext` lee
    `header → body → query`. Con `company_id: A` en el body y `s-company-lq: B` en
    el header, el permiso se comprueba contra A y los datos se escriben en B. Las
@@ -259,9 +288,9 @@ FASE A — sin bloquear a nadie (podéis empezar ya)
   A3. §6  manejo del 409 en las ocho rutas de pago               [VOSOTROS]
   A4. §5  revisar si alguna vista depende del orden recibido     [VOSOTROS]
 
-FASE B — en paralelo, nosotros
-  B1. §7.1 scope de compañía en deleteCustomer                   [NOSOTROS]
-  B2. §7.2 checkTokenVersion en las seis rutas de lectura        [NOSOTROS]
+FASE B — nosotros
+  B1. §7.1 scope de compañía en deleteCustomer          ✅ HECHO   [NOSOTROS]
+  B2. §7.2 checkTokenVersion en las seis rutas          ✅ HECHO   [NOSOTROS]
   B3. leer /api/metrics a las 48 h del deploy de 395bba6         [NOSOTROS]
 
 FASE C — requiere la respuesta de la Fase A y el dato de B3
@@ -283,5 +312,7 @@ Tres respuestas, y con ellas cerramos el deploy:
 2. **§3 y §4** — cuántos consumidores tienen esas cuatro rutas en `src/`.
 3. **§6** — confirmación de que el 409 se trata como "en curso" y sin reintento
    automático.
+4. **§7.1** — si borráis consumidores que aún no asisten a ningún evento (ver la
+   limitación conocida).
 
 Lo demás ya está resuelto, por vuestro lado o por el nuestro.
