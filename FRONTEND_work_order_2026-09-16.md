@@ -8,7 +8,7 @@
 > nada de lo que ya cerrasteis hay que rehacerlo.
 >
 > Commits afectados: `94d7076`, `2ff47d1`, `6ff962c`, `ca3611e`, `54dffdb`,
-> `56bf876`.
+> `56bf876`, `8f9edab`.
 > Ninguno está desplegado. `395bba6` (métricas) sí, y no rompe nada.
 
 ---
@@ -104,9 +104,29 @@ otra compañía devuelve **404** en vez de borrar.
 ### Cómo se verifica sin depender de nadie
 
 `395bba6` ya está en producción y cuenta `s4xx` **por ruta**
-(`helpers/metrics.js:141`). En 24-48 h, `GET /api/metrics` dice exactamente
-cuántos 401 acumula cada una de las cuatro. Si el contador es cero, nadie las
-llama y este apartado se cierra solo.
+(`helpers/metrics.js:141`), así que `GET /api/metrics` dice cuántos 401 acumula
+cada una de las cuatro. Si el contador es cero, nadie las llama y este apartado
+se cierra solo.
+
+Con dos correcciones a lo que decía la primera versión de este documento:
+
+1. **`/api/metrics` no se podía leer.** Se registró con `requireSuperUser` pero
+   **sin `validateJWT`**, que es quien pone el `req.uid` del que ese gate
+   depende, así que respondía **401 a todo**, token de super_user incluido.
+   Arreglado en `8f9edab`. Los contadores **sí se estaban recogiendo** — lo roto
+   era solo la lectura, no la medición, así que no se ha perdido nada.
+2. **La ventana es de 3 horas, no de 48.** `METRICS_WINDOW_TTL_S` son 3 h y la
+   ruta topa `hours` en 3. Prometimos "en 24-48 h tendremos el tráfico" y eso no
+   es lo que hace el endpoint. Ampliarlo es un cambio de diseño —`snapshot()`
+   hace un `KEYS` de Redis por cada hora de la ventana— y no lo vamos a
+   improvisar.
+
+   **Consecuencia práctica, y va con vosotros:** una ruta muy llamada aparece en
+   cualquier muestra de 3 h, pero **un botón que se usa dos veces al día puede
+   dar cero en la ventana y parecer que nadie lo llama**. Justo el perfil de
+   `DELETE /api/db_consumer/:id`. Por eso vuestra respuesta al cuestionario de
+   arriba **no es opcional**: las métricas confirman lo que sí se usa, no
+   descartan lo que no aparece.
 
 ---
 
@@ -291,7 +311,8 @@ FASE A — sin bloquear a nadie (podéis empezar ya)
 FASE B — nosotros
   B1. §7.1 scope de compañía en deleteCustomer          ✅ HECHO   [NOSOTROS]
   B2. §7.2 checkTokenVersion en las seis rutas          ✅ HECHO   [NOSOTROS]
-  B3. leer /api/metrics a las 48 h del deploy de 395bba6         [NOSOTROS]
+  B3. desplegar 8f9edab (sin el, /api/metrics no se puede leer)   [NOSOTROS]
+  B4. muestrear /api/metrics varias veces al dia (ventana 3 h)   [NOSOTROS]
 
 FASE C — requiere la respuesta de la Fase A y el dato de B3
   C1. §2  decidir sobre las cuatro rutas que hoy dan 401         [CONFIRMAR]
