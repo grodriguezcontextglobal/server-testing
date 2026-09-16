@@ -6,7 +6,14 @@ const { publicPaymentRateLimit } = require('../middlewares/publicPaymentRateLimi
 const { validatePublicPaymentPayload } = require('../middlewares/validatePublicPaymentPayload');
 const { attachServerIdempotencyKey } = require('../middlewares/attachServerIdempotencyKey');
 const { validatePaymentIntentIdParam, validateRefundPayload } = require('../middlewares/validateStripeRoutePayload');
-const { idempotencyMutationCache, __idempotencyStore } = require('../middlewares/idempotencyMutationCache');
+// El middleware de idempotencia usa Redis cuando esta configurado; aqui se fija
+// en memoria para que el smoke no dependa del .env de la maquina.
+process.env.PAYMENTS_MUTATION_IDEMPOTENCY_STORE = 'memory';
+const {
+  idempotencyMutationCache,
+  __idempotencyStore,
+  __idempotencyFlush,
+} = require('../middlewares/idempotencyMutationCache');
 
 function mockRes() {
   return {
@@ -45,6 +52,18 @@ function runChain(req, res, middlewares) {
     mw(req, res, next);
   };
   next();
+}
+
+// Version await-able, para las cadenas que incluyen middleware asincrono.
+async function runChainAsync(req, res, middlewares) {
+  let idx = 0;
+  const next = async () => {
+    if (res.body) return;
+    const mw = middlewares[idx++];
+    if (!mw) return;
+    await mw(req, res, next);
+  };
+  await next();
 }
 
 test('smoke: create-payment-intent middleware chain allows valid public request', () => {
@@ -108,7 +127,7 @@ test('smoke: refund path rejects invalid payload', () => {
   assert.equal(res.body.ok, false);
 });
 
-test('smoke: mutation idempotency cache replays duplicate mutation response', () => {
+test('smoke: mutation idempotency cache replays duplicate mutation response', async () => {
   __idempotencyStore.clear();
 
   const req = baseReq({
@@ -119,11 +138,12 @@ test('smoke: mutation idempotency cache replays duplicate mutation response', ()
   });
 
   const res1 = mockRes();
-  runChain(req, res1, [idempotencyMutationCache]);
+  await runChainAsync(req, res1, [idempotencyMutationCache]);
   res1.status(201).json({ ok: true, msg: 'refunded' });
+  await __idempotencyFlush();
 
   const res2 = mockRes();
-  runChain(req, res2, [idempotencyMutationCache]);
+  await runChainAsync(req, res2, [idempotencyMutationCache]);
 
   assert.equal(res2.statusCode, 201);
   assert.deepEqual(res2.body, { ok: true, msg: 'refunded' });
