@@ -107,6 +107,7 @@ router.post("/update-content-in-container", updateContentInContainerItem);
 router.post(
   "/company-inventory-pagination",
   validateJWT,
+  checkTokenVersion,
   consultingCompanyInventoryWithPagination
 );
 

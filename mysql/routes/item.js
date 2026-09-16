@@ -77,15 +77,15 @@ router.post("/warehouse-items", validateJWT, consultingItemInWarehouseTable);
 // más abajo. Ese catch-all captura cualquier POST de un solo segmento, y hoy ya
 // deja sin efecto a catorce rutas registradas después que él —entre ellas
 // /inventory-query y /inventory-pagination—, que acaban en `deleteItem`.
-router.post("/inventory-page", validateJWT, getInventoryPage);
-router.post("/inventory-facets", validateJWT, getInventoryFacets);
-router.get("/serial-suggest", validateJWT, suggestSerials);
+router.post("/inventory-page", validateJWT, checkTokenVersion, getInventoryPage);
+router.post("/inventory-facets", validateJWT, checkTokenVersion, getInventoryFacets);
+router.get("/serial-suggest", validateJWT, checkTokenVersion, suggestSerials);
 
 //check table
 // Devuelve el inventario de la compañía. Antes iba sin token y filtraba por el
 // NOMBRE de la compañía tomado del body; ahora exige JWT y usa el company_id
 // verificado. Queda obsoleta a favor de /inventory-page.
-router.post("/items_information", validateJWT, consultingItemTable);
+router.post("/items_information", validateJWT, checkTokenVersion, consultingItemTable);
 
 //check inventory current state by query
 router.post("/current-inventory", consultingInventoryCurrentState);
@@ -182,7 +182,7 @@ router.post(
 // OBSOLETA a favor de /inventory-page (arriba), que pagina con allowlist de
 // filtros, hasMore y columnas explícitas. Se le añade el token porque al quitar
 // la sombra del catch-all `/:id` esta ruta vuelve a ser alcanzable.
-router.post("/inventory-pagination", validateJWT, consultingCompanyInventoryWithPagination);
+router.post("/inventory-pagination", validateJWT, checkTokenVersion, consultingCompanyInventoryWithPagination);
 
 //company inventory based on location and sublocation
 router.post(

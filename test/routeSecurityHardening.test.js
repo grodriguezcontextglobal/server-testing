@@ -439,3 +439,37 @@ test('las dos escrituras de locación exigen ademas permiso de inventario', () =
     assert.ok(hasAuthzPermission(handlers), `authorizePermission debe estar en ${method} ${path}`);
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE F — checkTokenVersion en las lecturas de inventario endurecidas
+//
+// Estas seis rutas recibieron validateJWT al cerrarse las rutas anónimas, pero
+// se quedaron SIN checkTokenVersion, a diferencia del resto de rutas
+// endurecidas. El efecto es que un force-logout no revoca el acceso a ellas:
+// el token viejo sigue leyendo inventario hasta que expire por su cuenta.
+// ════════════════════════════════════════════════════════════════════════════
+
+const INVENTORY_READ_ROUTES = [
+  ['../mysql/routes/item', 'POST', '/inventory-page'],
+  ['../mysql/routes/item', 'POST', '/inventory-facets'],
+  ['../mysql/routes/item', 'GET', '/serial-suggest'],
+  ['../mysql/routes/item', 'POST', '/items_information'],
+  ['../mysql/routes/item', 'POST', '/inventory-pagination'],
+  ['../mysql/routes/company', 'POST', '/company-inventory-pagination'],
+];
+
+for (const [modulePath, method, routePath] of INVENTORY_READ_ROUTES) {
+  test(`${modulePath}: ${method} ${routePath} lleva validateJWT y checkTokenVersion`, () => {
+    const router = loadRouter(modulePath);
+    const handlers = getRouteHandlers(router, method, routePath);
+    assert.ok(handlers !== null, `La ruta ${method} ${routePath} debe existir`);
+    assert.ok(
+      handlers.includes(validateJWT),
+      `validateJWT debe estar en la cadena de ${method} ${routePath}`,
+    );
+    assert.ok(
+      handlers.includes(checkTokenVersion),
+      `checkTokenVersion debe estar en la cadena de ${method} ${routePath}`,
+    );
+  });
+}
