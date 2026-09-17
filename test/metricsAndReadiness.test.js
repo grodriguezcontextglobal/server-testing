@@ -473,3 +473,58 @@ test('withTimeout: un check que lanza se reporta como caido, no tumba el readine
   assert.strictEqual(result.ok, false);
   assert.strictEqual(result.error, 'ECONNREFUSED');
 });
+
+/* ---------------------------------------------------------------- *
+ * Marca de agua del máximo
+ *
+ * `max` no es sumable, así que se escribe con `hSet` (pisa) en vez de
+ * `hIncrBy`. Como `drain()` vacía los contadores en cada vuelta, lo que se
+ * publicaba era el máximo de los últimos 10 s con tráfico, no el de la hora.
+ * Se veía en producción como una MEDIA MAYOR QUE EL MÁXIMO, que es imposible.
+ * ---------------------------------------------------------------- */
+
+test('el max publicado es el de la HORA, no el del último lote', async () => {
+  metrics._reset();
+
+  const { client, hashes } = makeRedis();
+  const redisFn = async () => client;
+  const at = Date.UTC(2026, 8, 17, 12);
+
+  // Lote 1: una petición LENTA.
+  metrics.record({ route: '/lento', method: 'GET', statusCode: 200, durationMs: 900 });
+  await metrics.flush({ redisFn, at });
+
+  // Lote 2: una RÁPIDA. Antes, este flush pisaba el 900 con un 5.
+  metrics.record({ route: '/lento', method: 'GET', statusCode: 200, durationMs: 5 });
+  await metrics.flush({ redisFn, at });
+
+  const hash = [...hashes.entries()].find(([k]) => k.includes('/lento'))[1];
+  const maxField = Object.entries(hash).find(([f]) => f.startsWith('max_ms_p'));
+
+  assert.ok(maxField, 'debe existir el campo max_ms_p<pid>');
+  assert.equal(
+    Number(maxField[1]),
+    900,
+    'el segundo lote no puede borrar el máximo del primero',
+  );
+});
+
+test('el max nunca puede quedar por debajo de la media', async () => {
+  metrics._reset();
+
+  const { client, hashes } = makeRedis();
+  const redisFn = async () => client;
+  const at = Date.UTC(2026, 8, 17, 13);
+
+  for (const ms of [500, 200, 10]) {
+    metrics.record({ route: '/mixto', method: 'POST', statusCode: 200, durationMs: ms });
+    await metrics.flush({ redisFn, at });
+  }
+
+  const hash = [...hashes.entries()].find(([k]) => k.includes('/mixto'))[1];
+  const maxMs = Number(Object.entries(hash).find(([f]) => f.startsWith('max_ms_p'))[1]);
+  const avgMs = Number(hash.sum_ms) / Number(hash.count);
+
+  assert.equal(maxMs, 500);
+  assert.ok(maxMs >= avgMs, `max (${maxMs}) no puede ser menor que la media (${avgMs})`);
+});

@@ -151,6 +151,37 @@ const record = ({ route, method = "GET", statusCode = 0, durationMs = 0, bytes, 
   }
 };
 
+/**
+ * Marca de agua de los maximos, por hora y por ruta.
+ *
+ * NO puede vivir en `routeStats`: `drain()` lo vacia en cada vuelta, y el max no
+ * es sumable, asi que se escribe con `hSet` (pisa) en vez de `hIncrBy`. Con el
+ * max del ultimo lote de 10s pisando al de la hora, el valor publicado acababa
+ * siendo el de los ultimos diez segundos con trafico — de ahi que se vieran
+ * medias MAYORES que el maximo, que es imposible.
+ *
+ * Es por proceso, que es justo lo que el campo `max_ms_p<pid>` modela; el
+ * snapshot ya toma el mayor de todos los procesos al leer.
+ */
+let highWater = new Map();
+let highWaterHour = null;
+
+const highWaterKey = (key) => key;
+
+const bumpHighWater = (hour, key, maxMs, maxBytes) => {
+  if (hour !== highWaterHour) {
+    highWater = new Map();
+    highWaterHour = hour;
+  }
+  const current = highWater.get(highWaterKey(key)) || { ms: 0, bytes: 0 };
+  const next = {
+    ms: Math.max(current.ms, maxMs || 0),
+    bytes: Math.max(current.bytes, maxBytes || 0),
+  };
+  highWater.set(highWaterKey(key), next);
+  return next;
+};
+
 /** Se lleva lo acumulado y deja los contadores a cero, en un solo paso. */
 const drain = () => {
   const routes = routeStats;
@@ -203,8 +234,11 @@ const flush = async ({ redisFn = clientRedis, at = Date.now() } = {}) => {
         if (value) pipeline.hIncrBy(hash, field, value);
       }
       // max no es sumable, así que se guarda aparte y el snapshot toma el mayor.
-      if (row.maxMs) pipeline.hSet(hash, `max_ms_p${process.pid}`, String(row.maxMs));
-      if (row.maxBytes) pipeline.hSet(hash, `max_bytes_p${process.pid}`, String(row.maxBytes));
+      // Se publica la MARCA DE AGUA de la hora, no el max de este lote: `hSet`
+      // pisa, y `drain()` ya se llevó lo anterior (ver `bumpHighWater`).
+      const hw = bumpHighWater(hour, key, row.maxMs, row.maxBytes);
+      if (hw.ms) pipeline.hSet(hash, `max_ms_p${process.pid}`, String(hw.ms));
+      if (hw.bytes) pipeline.hSet(hash, `max_bytes_p${process.pid}`, String(hw.bytes));
       pipeline.expire(hash, WINDOW_TTL_S);
     }
 
@@ -430,6 +464,8 @@ const stopFlushing = () => {
 const _reset = () => {
   routeStats = new Map();
   tenantStats = new Map();
+  highWater = new Map();
+  highWaterHour = null;
   flushing = false;
   stopFlushing();
 };
