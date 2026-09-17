@@ -149,10 +149,26 @@ arranque**.
 > **Si nadie sirve `heavy`, esos jobs se quedan encolados para siempre, sin
 > error y sin que nada lo señale.**
 
+> ### ⛔ CORRECCIÓN (2026-09-17): en ESTA máquina el paso 1.1 NO hace falta
+>
+> Verificado con `nssm get`: `DevitrakServer` **no usa
+> `QUEUE_EXCLUDE_GROUPS=dedicated`**. Usa la lista antigua escrita a mano,
+> `QUEUE_EXCLUDE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments`,
+> así que **sigue tomando los tres tipos `heavy` después del deploy**. No hay
+> parada silenciosa. Ver § "Fase 0 · Resultado" para el detalle y para el
+> problema real que esto destapa.
+>
+> Lo de abajo sigue siendo válido **el día que la configuración migre a grupos**.
+
 Dos salidas, las dos válidas:
 
 ```powershell
 # OPCIÓN A — rápida, sin servicio nuevo. Comparte worker con bulk.
+#
+# ⚠️ OJO: en esta máquina, DevitrakBulkWorker tiene QUEUE_TYPES puesto, y
+# QUEUE_TYPES TIENE PRECEDENCIA sobre QUEUE_GROUP (queueTypeGroups.js:132).
+# Añadir QUEUE_GROUP sin quitar QUEUE_TYPES se IGNORA en silencio: comprobado,
+# el worker seguiría tomando 0 de 3 tipos heavy. Hay que quitar QUEUE_TYPES.
 nssm set DevitrakBulkWorker AppEnvironmentExtra QUEUE_GROUP=bulk,heavy
 nssm restart DevitrakBulkWorker
 ```
@@ -473,3 +489,120 @@ Lo que hay que mirar en cada una:
 Decía que si Redis falla «las dos degradan y lo registran». Es cierto para la
 idempotencia de pagos; **no para las métricas**, que degradan sin escribir una
 línea. Corregido en §0.4.
+
+---
+
+# Fase 0 · CERRADA — datos reales de la VM (2026-09-17)
+
+Ejecutado en la VM. Cambia dos cosas del plan y destapa una tercera.
+
+## 🔴 El árbol de trabajo YA está en `c2bb2c5`
+
+```
+On branch main
+Your branch is up to date with 'origin/main'.
+nothing to commit, working tree clean
+c2bb2c5 (HEAD -> main, origin/main, origin/HEAD)
+```
+
+**El hueco de despliegue no es un `git pull` pendiente: es un `restart`
+pendiente.** El disco tiene los 31 commits, incluidos los siete cambios de
+contrato; lo que corre es el proceso viejo, que los cargó en memoria antes.
+
+Eso invierte el riesgo. No es que no podamos desplegar — es que **podemos
+desplegar sin querer**:
+
+- un `nssm restart` por cualquier motivo,
+- un reinicio de la VM o una actualización de Windows,
+- **un worker de pm2 que se caiga y respawnee**, que dejaría el cluster con unos
+  procesos en código viejo y otros en código nuevo, sirviendo contratos
+  distintos según a quién caiga la petición.
+
+Comprobado ahora mismo con 12 sondeos a `/ready` y `/api/metrics`: **404 en los
+12**, así que el cluster está entero en el código viejo y esa mezcla todavía no
+ha ocurrido. Pero está a un respawn de ocurrir.
+
+> **Consecuencia para el plan:** el paso 1.2/1.3 —dejar el disco en
+> `release/observabilidad`— pasa de ser «el primer paso del despliegue» a ser
+> **la forma de quitar el pie del acelerador**. Mientras el disco esté en `main`,
+> cualquier reinicio publica los cambios que rompen sin que nadie lo decida.
+
+## ✅ El riesgo del grupo `heavy` NO aplica aquí
+
+`nssm get DevitrakServer AppEnvironmentExtra`:
+
+```
+PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2
+GO_WORKER_EXTERNAL=true
+GO_WORKER_PORT=7453
+QUEUE_EXCLUDE_TYPES=send-email,send-email-multiple,send-email-multiple-with-attachments
+```
+
+**No hay `QUEUE_EXCLUDE_GROUPS=dedicated`.** Hay la lista antigua escrita a mano,
+y solo excluye los tres tipos de correo. Simulado con `resolveWorkerScope` y esos
+valores exactos: el server **toma los 3 de 3 tipos `heavy`** después del deploy.
+
+**El paso 1.1 no es obligatorio.** Desaparece el mayor riesgo de la Fase 1.
+
+## ⚠️ Pero eso destapa el problema de verdad
+
+Con esa configuración, `DevitrakServer` **toma 8 de los 11 tipos que deberían
+ser de workers dedicados**:
+
+```
+inventory:bulk-insert-range          member:bulk-insert
+member:bulk-return-leases            inventory:bulk-delete-by-criteria
+inventory:bulk-delete-by-ids         inventory:bulk-insert-alphanumeric
+inventory:bulk-update-alphanumeric   event:bulk-update-item-shipping
+```
+
+Es decir: **el aislamiento que los cuatro servicios dedicados venían a dar no
+existe hoy**. Los inserts masivos, los dos borrados masivos y las tres escrituras
+alfanuméricas pesadas se drenan dentro de los mismos procesos que atienden login
+y pagos — exactamente lo que se quería evitar. El claim atómico impide el doble
+procesamiento, así que no hay corrupción; lo que se pierde es el aislamiento.
+
+**No lo causa este despliegue. Es anterior, y es la razón por la que los grupos
+existen.** Migrar la configuración a `QUEUE_EXCLUDE_GROUPS=dedicated` es una
+tarea aparte, con su propio momento, y **no debe colarse en esta tanda**: hacerlo
+sin dar consumidor a `heavy` reintroduce justo la parada silenciosa que el paso
+1.1 describe.
+
+Y un detalle menor del mismo origen: `DevitrakBulkWorker` tiene
+`QUEUE_TYPES=…,inventory:bulk-delete-by-criteria,…` — un tipo del grupo
+**delete** dentro del worker de **bulk**, y le falta `inventory:bulk-delete-by-ids`.
+Los grupos están pensados para ser disjuntos; la lista a mano se desincronizó.
+
+## ⛔ Un error de mi propio runbook, corregido
+
+La **Opción A** del paso 1.1 decía «pon `QUEUE_GROUP=bulk,heavy` en el
+BulkWorker». **En esta máquina eso no habría hecho nada**: el worker tiene
+`QUEUE_TYPES` puesto, y `QUEUE_TYPES` tiene precedencia sobre `QUEUE_GROUP`
+(`constants/queueTypeGroups.js:132`). Simulado: seguiría tomando **0 de 3** tipos
+heavy, en silencio. Corregido en el paso 1.1 — hay que **quitar `QUEUE_TYPES`**,
+no solo añadir `QUEUE_GROUP`.
+
+## ✅ El resto del prevuelo
+
+| Comprobación | Resultado |
+|---|---|
+| `git status` | Limpio, sin commits locales. **No se repitió** el incidente de `e27aa4d` |
+| `node --version` | `v20.11.0` — cumple `engines` |
+| `nssm status DevitrakServer` | `SERVICE_RUNNING` |
+| `GO_WORKER_PORT` | `7453`, alineado con el cliente de Node |
+
+## Qué queda por mirar
+
+- `nssm status` de los otros cuatro servicios.
+- `REDIS_HOST` en el `.env` de la VM — de él dependen las métricas y la
+  idempotencia, y las métricas degradan **en silencio** (§0.4).
+
+## Fase 1 revisada
+
+```
+1.1  Consumidor para `heavy` ········· NO HACE FALTA (ver arriba)
+1.2  Crear release/observabilidad ···· desde desarrollo
+1.3  git checkout release/... + restart ← y esto además desarma el
+                                          despliegue accidental
+1.4  Verificar /health, /ready, /api/metrics
+```
