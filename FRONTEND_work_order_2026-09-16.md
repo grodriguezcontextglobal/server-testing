@@ -222,10 +222,19 @@ simultáneas — solo contra un reintento posterior.
 Ahora la clave se reserva en Redis **antes** de ejecutar. En estas ocho rutas:
 
 ```
-/api/db_stripe/payment-intents/:id/capture     /api/db_stripe/refund
-/api/db_stripe/payment-intents/:id/cancel      /api/db_stripe/partial-refund
-        …y sus cuatro gemelas bajo /internal/
+POST /api/stripe/payment-intents/:id/capture   POST /api/stripe/refund
+POST /api/stripe/payment-intents/:id/cancel    POST /api/stripe/partial-refund
+        …y las cuatro gemelas bajo /api/stripe/internal/
 ```
+
+> **CORRECCIÓN (2026-09-17).** La primera versión de esta lista decía
+> `/api/db_stripe/...`. **Estaba mal.** El fichero con la idempotencia es
+> `routes/stripe.js`, que se monta en **`/api/stripe`** (`index.js:174`);
+> `mysql/routes/stripe.js` → `/api/db_stripe` solo expone `consulting-stripe` y
+> `new_stripe`, sin idempotencia. Las rutas protegidas son las que el dashboard
+> ya llama. Lo detectó el frontend preguntando en vez de asumir — ver
+> `BACKEND_answers_2026-09-17.md` §1, que incluye además el hueco del importe
+> editable en la captura.
 
 - **Duplicado que llega mientras la primera aún corre → `409`**
   `{ ok: false, msg: "A request with this idempotency key is already in progress" }`
