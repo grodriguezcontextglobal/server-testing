@@ -228,13 +228,16 @@ const configureRoutes = (app) => {
   // Vista agregada del CLUSTER, no de este proceso: sale de Redis, donde los
   // cuatro vuelcan. Protegida como /api/jobs/stats — es informacion operativa,
   // e incluye un top de clientes por volumen.
-  // `requireSuperUser` se apoya en `req.uid`, y quien lo pone es `validateJWT`.
-  // Sin el, el gate no es mas estricto: es INALCANZABLE — responde 401 a todo,
-  // token de super_user incluido. Es el mismo orden que /api/jobs/stats, la otra
-  // ruta de observabilidad (routes/jobs.js:23).
+  // El gate se apoya en `req.uid`, y quien lo pone es `validateJWT`. Sin el no
+  // queda mas estricto: queda INALCANZABLE — responde 401 a todo, token valido
+  // incluido. Es el mismo orden que /api/jobs/stats (routes/jobs.js:23).
+  //
+  // Y es `requirePlatformRead`, no `requireSuperUser`: este endpoint agrega
+  // datos de TODAS las companias, asi que su puerta tiene que ser un flag de
+  // lectura acotado y no el de bypass total de escritura.
   const { validateJWT } = require("./middlewares/validate-jwt");
-  const { requireSuperUser } = require("./middlewares/requireSuperUser");
-  app.get("/api/metrics", validateJWT, requireSuperUser, async (req, res) => {
+  const { requirePlatformRead } = require("./middlewares/requirePlatformRead");
+  app.get("/api/metrics", validateJWT, requirePlatformRead, async (req, res) => {
     try {
       const hours = Math.min(3, Math.max(1, Number(req.query.hours) || 2));
       const snapshot = await metrics.snapshot({ hours });
