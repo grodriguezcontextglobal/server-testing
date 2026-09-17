@@ -96,6 +96,13 @@ const AdminUserSchema = new Schema({
     type: Boolean,
     default: false,
   },
+  // Lectura de observabilidad de plataforma (/api/metrics, /api/jobs/stats) SIN
+  // el poder de escritura de `super_user`, que es bypass total de
+  // authorizeMongoPermission. Ver middlewares/requirePlatformRead.js.
+  platform_observer: {
+    type: Boolean,
+    default: false,
+  },
   multipleCompanies: {
     type: Boolean,
     default: false,

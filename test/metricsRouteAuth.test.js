@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { requireSuperUser } = require('../middlewares/requireSuperUser');
+const { requirePlatformRead } = require('../middlewares/requirePlatformRead');
 
 /**
  * `GET /api/metrics` se registró con `requireSuperUser` pero SIN `validateJWT`.
@@ -31,11 +31,11 @@ const makeRes = () => {
   };
 };
 
-test('requireSuperUser responde 401 si nadie ha puesto req.uid', async () => {
+test('requirePlatformRead responde 401 si nadie ha puesto req.uid', async () => {
   const res = makeRes();
   let nextCalled = false;
 
-  await requireSuperUser({}, res, () => { nextCalled = true; });
+  await requirePlatformRead({}, res, () => { nextCalled = true; });
 
   assert.equal(nextCalled, false);
   assert.equal(res.sent.status, 401);
@@ -52,7 +52,7 @@ test('requireSuperUser responde 401 si nadie ha puesto req.uid', async () => {
  * el stack del router, y es lo que hay: sigue atrapando la regresión concreta,
  * que es que alguien quite `validateJWT` de esa línea.
  */
-test('index.js: GET /api/metrics lleva validateJWT ANTES de requireSuperUser', () => {
+test('index.js: GET /api/metrics lleva validateJWT ANTES del gate de plataforma', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../index.js'), 'utf8');
 
   const registration = source
@@ -62,7 +62,7 @@ test('index.js: GET /api/metrics lleva validateJWT ANTES de requireSuperUser', (
   assert.ok(registration, 'la ruta GET /api/metrics debe seguir existiendo');
   assert.match(
     registration,
-    /app\.get\("\/api\/metrics",\s*validateJWT,\s*requireSuperUser/,
-    'validateJWT tiene que ir antes de requireSuperUser, o la ruta responde 401 a todo',
+    /app\.get\("\/api\/metrics",\s*validateJWT,\s*requirePlatformRead/,
+    'validateJWT tiene que ir antes del gate, o la ruta responde 401 a todo',
   );
 });
