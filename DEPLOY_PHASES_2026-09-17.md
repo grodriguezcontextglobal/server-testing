@@ -360,3 +360,116 @@ que mide no existe en producción.
 Los dos riesgos que no perdonan un despiste, los dos en la Fase 1: **dar
 consumidor al grupo `heavy` antes de reiniciar**, y **decidir a conciencia lo de
 `MONGO_SECONDARY_READS`**, que se activa solo.
+
+---
+
+# Fase 0 · Resultado de la revisión (2026-09-17)
+
+Lo que se pudo comprobar desde la máquina de desarrollo está hecho. Lo que exige
+estar en la VM queda listado con su comando, porque desde aquí no hay acceso.
+
+## ✅ Verificado
+
+| # | Comprobación | Resultado |
+|---|---|---|
+| 1 | ¿Hace falta `npm ci`? | **No.** `c13cfd2..HEAD` no toca `package.json` ni `package-lock.json` |
+| 2 | ¿Migraciones SQL? | **Ninguna.** Cero ficheros `.sql` en el rango |
+| 3 | ¿Rebuild del worker de Go? | **No.** `go-worker/` sin cambios |
+| 4 | ¿Existe `deploy-node.ps1 -SkipInstall`? | **Sí**, `scripts/deploy-node.ps1:65` |
+| 5 | Variables nuevas y sus defaults | 3, todas con default seguro (§0.2) |
+| 6 | `MONGO_SECONDARY_READS` | Default **`on`** — `helpers/mongoRead.js:42`. Se activa solo al desplegar |
+| 7 | Candidato de Fase 1 (`94d7076` + `8f9edab`) | Cherry-pick limpio, **1272 tests, 1271 en verde** (solo el fallo preexistente de `auth.js`) |
+
+## ⚠️ El riesgo del grupo `heavy`, medido
+
+No es una advertencia heredada del mensaje de un commit: se ejecutó
+`resolveWorkerScope` con la configuración documentada de los cinco servicios.
+
+```
+DESPUÉS del deploy, sin tocar nada:
+  DevitrakServer       QUEUE_EXCLUDE_GROUPS=dedicated  -> toma heavy: NINGUNO
+  DevitrakBulkWorker   QUEUE_GROUP=bulk                -> toma heavy: NINGUNO
+  DevitrakDeleteWorker QUEUE_GROUP=delete              -> toma heavy: NINGUNO
+  DevitrakEmailWorker  QUEUE_GROUP=email               -> toma heavy: NINGUNO
+
+Remedios, los dos funcionan:
+  QUEUE_GROUP=bulk,heavy   -> toma los 3
+  QUEUE_GROUP=heavy        -> toma los 3
+```
+
+`dedicated` expande a la **unión de todos los grupos** (`constants/queueTypeGroups.js:92`),
+y `heavy` es ahora uno de ellos. Por eso el server deja de tomarlos.
+
+### Qué deja de procesarse si no se hace nada
+
+| Ruta | Qué hace |
+|---|---|
+| `POST /api/db_item/bulk-item-alphanumeric` | Alta masiva de inventario por serial alfanumérico |
+| `POST /api/db_company/update-items-based-on-alphanumeric-serial-number` | Actualización masiva por criterio o lista de seriales |
+| `PUT /api/db_item/event-items/bulk-update` | Actualización masiva de envío de equipos de un evento |
+
+Las tres responden **`202 + jobId`**, así que el cliente ve éxito y el trabajo
+**no se hace nunca**. Es el modo de fallo más caro de detectar.
+
+### ⚠️ Pero antes: esto depende de una suposición sin verificar
+
+Todo lo anterior asume que `DevitrakServer` tiene de verdad
+`QUEUE_EXCLUDE_GROUPS=dedicated`. Sale de `DEPLOY.md`, no de la máquina. **Si
+no la tuviera, no hay riesgo ninguno:**
+
+```
+DevitrakServer SIN QUEUE_EXCLUDE_GROUPS  -> toma heavy: 3/3  (no hay problema)
+DevitrakServer CON dedicated             -> toma heavy: 0/3  (hay que dar consumidor)
+```
+
+Es la primera comprobación que hay que hacer en la VM, y decide si el paso 1.1
+es obligatorio o innecesario.
+
+## ⏳ Pendiente en la VM
+
+Para pegar tal cual en PowerShell **como Administrador**:
+
+```powershell
+cd "C:\Users\CGAdmin\Documents\Github\server-testing"
+
+# --- 0.1 estado de git: lo que decide si se puede tirar de nada ---
+git status
+git log --oneline -3
+git stash list
+
+# --- LA COMPROBACIÓN QUE DECIDE EL PASO 1.1 ---
+nssm get DevitrakServer AppEnvironmentExtra
+nssm get DevitrakBulkWorker AppEnvironmentExtra
+
+# --- 0.4 entorno ---
+node --version                      # >= 20.11.0
+nssm status DevitrakServer
+nssm status DevitrakGoWorker
+nssm status DevitrakEmailWorker
+nssm status DevitrakBulkWorker
+nssm status DevitrakDeleteWorker
+
+# --- Redis, del que dependen métricas e idempotencia ---
+Select-String -Path ".env" -Pattern "^REDIS_(HOST|PORT)="
+```
+
+Lo que hay que mirar en cada una:
+
+1. **`git status` / `git log -3`** — si hay commits locales o cambios sin
+   commitear, **parar**. El `main` de esta VM ya pisó a `origin` una vez y borró
+   tres ficheros (`e27aa4d` fue el rescate). `git log -3` confirma además en qué
+   commit está de verdad, que es el dato que el sondeo HTTP solo pudo acotar.
+2. **`nssm get … AppEnvironmentExtra`** — decide si el paso 1.1 hace falta.
+3. **`node --version`** — por debajo de 20.11.0, `engine-strict` hace fallar
+   `npm` (no avisa: falla). No aplica a esta tanda, que no instala, pero sí a la
+   Fase 6.
+4. **Los cinco `nssm status`** — todos `SERVICE_RUNNING` antes de empezar. Si
+   alguno ya está caído, eso es un problema anterior a este despliegue.
+5. **`REDIS_HOST`** — si no está, métricas e idempotencia arrancan degradadas, y
+   las métricas **lo hacen en silencio** (ver §0.4).
+
+## Corrección respecto a la primera versión de este documento
+
+Decía que si Redis falla «las dos degradan y lo registran». Es cierto para la
+idempotencia de pagos; **no para las métricas**, que degradan sin escribir una
+línea. Corregido en §0.4.
