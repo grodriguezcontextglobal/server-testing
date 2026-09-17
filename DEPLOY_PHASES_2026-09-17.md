@@ -111,9 +111,18 @@ nssm status DevitrakDeleteWorker
 ```
 
 Redis tiene que estar accesible: las métricas agregan el cluster por Redis y la
-idempotencia de pagos reserva allí. Ninguna de las dos tumba el servidor si
-Redis falla — las dos degradan y lo registran — pero degradadas no sirven para
-lo que vienen a hacer.
+idempotencia de pagos reserva allí. Ninguna de las dos tumba el servidor si Redis
+falla, pero **degradan de forma distinta y conviene saber cuál es cuál**:
+
+| | Si Redis no responde | ¿Avisa? |
+|---|---|---|
+| Idempotencia de pagos | Cae al `Map` por proceso — con cuatro procesos deja de proteger contra el cobro doble | **Sí**, registra (como mucho una vez por minuto) |
+| Métricas | `flush()` repone los contadores en memoria y no se pierde el dato, pero no llega a Redis | **No. En silencio** — `startFlushing` hace `flush().catch(() => {})` |
+
+O sea: si Redis se cae, **no habrá ninguna línea de log diciendo que las métricas
+dejaron de agregarse**. El síntoma es `/api/metrics` devolviendo `503 metrics
+unavailable` (la lectura sí falla fuerte) y `/ready` marcando Redis como
+degradado. Mirar esos dos, no los logs.
 
 ---
 
