@@ -182,6 +182,59 @@ const uploadNotificationAttachment = async ({ content, filename, contentType }) 
   return { key };
 };
 
+/**
+ * Sube el .xlsx ya generado del export de inventario y devuelve su key.
+ *
+ * Toma una RUTA en disco, no un buffer, porque el handler escribe el libro con
+ * el writer en streaming de exceljs: un inventario de 50.000 ítems nunca llega
+ * a estar entero en memoria del worker, que es justo el problema que el export
+ * en cola viene a resolver. `uploadExcelToS3` no sirve aquí — espera el objeto
+ * `file` de multer (un fichero que SUBE el usuario), y este lo generamos
+ * nosotros.
+ *
+ * El fichero temporal se borra siempre, también si la subida falla: son unas
+ * decenas de MB por export y el worker es un proceso de vida larga.
+ *
+ * @param {Object} params
+ * @param {string} params.filePath - Ruta del .xlsx generado.
+ * @param {string} params.companyId
+ * @param {string} params.fileName - Nombre con el que se descargará.
+ * @returns {Promise<{key: string}>}
+ */
+const uploadInventoryExportToS3 = async ({ filePath, companyId, fileName }) => {
+  if (!filePath || !companyId || !fileName) {
+    throw new Error("Missing required parameters: filePath, companyId, fileName");
+  }
+
+  const key = `companies/${companyId}/inventory-exports/${Date.now()}-${fileName}`;
+
+  try {
+    await s3Client.send(
+      new PutObjectCommand({
+        Bucket: process.env.AWS_S3_BUCKET_NAME,
+        Key: key,
+        Body: fs.createReadStream(filePath),
+        ContentType:
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        // Sin esto el navegador abre la URL prefirmada en una pestaña en vez de
+        // descargar, y el usuario acaba con un .xlsx renderizado como basura.
+        ContentDisposition: `attachment; filename="${fileName}"`,
+        Metadata: {
+          companyId: String(companyId),
+          documentType: "inventory-export",
+          generatedAt: new Date().toISOString(),
+        },
+      })
+    );
+
+    return { key };
+  } finally {
+    await unlinkFile(filePath).catch((error) =>
+      logger.warn(`No se pudo borrar el export temporal ${filePath}: ${error.message}`)
+    );
+  }
+};
+
 const streamToBuffer = (stream) =>
   new Promise((resolve, reject) => {
     const chunks = [];
@@ -275,6 +328,7 @@ const deleteDocumentFromS3 = async (key) => {
 module.exports = {
   uploadPdfToS3,
   uploadExcelToS3,
+  uploadInventoryExportToS3,
   uploadNotificationAttachment,
   fetchAttachmentAsBase64,
   getTemporaryDownloadUrl,
