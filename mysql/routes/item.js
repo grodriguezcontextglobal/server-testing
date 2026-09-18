@@ -9,6 +9,7 @@ const {
   getInventoryFacets,
   suggestSerials,
 } = require("../controllers/inventoryPage");
+const { postInventoryExport } = require("../controllers/inventoryExport");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
 const { authorizePermission } = require("../../middlewares/authorizePermission");
 const {
@@ -80,6 +81,12 @@ router.post("/warehouse-items", validateJWT, consultingItemInWarehouseTable);
 router.post("/inventory-page", validateJWT, checkTokenVersion, getInventoryPage);
 router.post("/inventory-facets", validateJWT, checkTokenVersion, getInventoryFacets);
 router.get("/serial-suggest", validateJWT, checkTokenVersion, suggestSerials);
+
+// Export del inventario completo, en cola: responde 202 + jobId y el fichero se
+// recoge por `GET /api/jobs/owned/:jobId`. Mismo cuerpo que /inventory-page sin
+// paginación, así que exporta EXACTAMENTE lo que la tabla está enseñando.
+// Va aquí arriba por lo mismo que las tres de encima: el catch-all /:id.
+router.post("/inventory-export", validateJWT, checkTokenVersion, postInventoryExport);
 
 //check table
 // Devuelve el inventario de la compañía. Antes iba sin token y filtraba por el

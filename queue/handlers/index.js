@@ -172,6 +172,26 @@ register(
   createDeleteBulkItemsByIdsHandler({ runGoWorker })
 );
 
+const { createInventoryExportHandler } = require("./inventoryExport");
+const {
+  uploadInventoryExportToS3,
+  getTemporaryDownloadUrl,
+} = require("../../helpers/s3Upload");
+
+// Contrato async completo (202 + jobId), como document:upload-pdf: el cliente
+// hace polling de GET /api/jobs/owned/:jobId y lee result.url, una URL
+// prefirmada al .xlsx. El job lee el inventario a trozos y escribe el libro en
+// streaming -- ni las filas ni el fichero se materializan enteros en memoria
+// (ver mysql/controllers/inventoryExport.js).
+register(
+  "inventory:export",
+  createInventoryExportHandler({
+    getConnection: getSqlConnection,
+    uploadExport: uploadInventoryExportToS3,
+    getDownloadUrl: getTemporaryDownloadUrl,
+  })
+);
+
 const { createBulkInsertMembersHandler } = require("./bulkInsertMembers");
 
 // Import de estudiantes/miembros vía CSV -- un import a nivel de distrito
