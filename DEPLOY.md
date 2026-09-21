@@ -502,7 +502,7 @@ Production runs as **separate native nssm services** (no containers; Windows Ser
 | `DevitrakServer` | Node (`index.js`, pm2-runtime) | HTTP API + in-process queue worker for **every job type that has no dedicated worker** (`QUEUE_EXCLUDE_GROUPS=dedicated`) |
 | `DevitrakGoWorker` | `go-worker\worker.exe` | inventory Go operations (see the Go worker section) |
 | `DevitrakEmailWorker` | `node queue\standalone.js` | **email** jobs only |
-| `DevitrakBulkWorker` | `node queue\standalone.js` | **bulk-write** jobs only (see below) — fast poll |
+| `DevitrakBulkWorker` | `node queue\standalone.js` | **bulk-write** jobs (see below) — fast poll. Sirve también el grupo `heavy` mientras no exista `DevitrakHeavyWorker` |
 | `DevitrakDeleteWorker` | `node queue\standalone.js` | **delete** jobs only (see below) — fast poll |
 
 The split is driven entirely by env — the code is identical across services. The type
@@ -520,16 +520,31 @@ server's exclusion and this document:
   one's poll interval matters).
 - **`DevitrakDeleteWorker`**: `QUEUE_GROUP=delete` and `QUEUE_POLL_MS=300`.
 - **Grupo `heavy`** (`inventory:bulk-insert-alphanumeric`,
-  `inventory:bulk-update-alphanumeric`, `event:bulk-update-item-shipping`):
-  escrituras pesadas que **nadie espera** — sus controllers responden `202 + jobId`.
-  Ver el aviso de abajo: **necesita consumidor**.
+  `inventory:bulk-update-alphanumeric`, `event:bulk-update-item-shipping`,
+  `inventory:export`): trabajo pesado que **nadie espera** — sus controllers
+  responden `202 + jobId`. Ver el aviso de abajo: **necesita consumidor**.
+  `inventory:export` sube el .xlsx a S3, así que el servicio que sirva `heavy`
+  necesita `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y
+  `AWS_S3_BUCKET_NAME` — los toma del `.env` del repositorio, que
+  `queue\standalone.js` carga con dotenv igual que el server; no hay que
+  duplicarlos en nssm. También escribe un fichero temporal en `os.tmpdir()`
+  del usuario del servicio.
 
 > ### ⚠️ ANTES DE DESPLEGAR EL GRUPO `heavy`: hay que darle consumidor
 >
-> Estos tres tipos **no estaban en ningún grupo**, así que hasta ahora los
-> consumía `DevitrakServer` dentro de los mismos procesos que atienden el login
-> y los pagos. Al meterlos en un grupo, `dedicated` los incluye y el server
-> **deja de tomarlos en cuanto arranque con este código**.
+> Tres de estos cuatro tipos **no estaban en ningún grupo**, así que hasta
+> ahora los consumía `DevitrakServer` dentro de los mismos procesos que
+> atienden el login y los pagos. Al meterlos en un grupo, `dedicated` los
+> incluye y el server **deja de tomarlos en cuanto arranque con este código**.
+> El cuarto, `inventory:export`, nace aquí: nunca lo ha servido nadie.
+>
+> **Ojo con la forma vieja, que es la que corre hoy en la VM.** El comando de
+> `DevitrakServer` de más abajo trae un `QUEUE_EXCLUDE_TYPES=` con los tipos
+> escritos a mano, y `QUEUE_TYPES`/`QUEUE_EXCLUDE_TYPES` **tienen precedencia**
+> sobre los grupos. Mientras esa línea siga puesta, el server principal seguirá
+> reclamando `inventory:export` — generando el .xlsx dentro de la API — por
+> mucho que el tipo esté en `heavy`. Hay que **sustituirla** por
+> `QUEUE_EXCLUDE_GROUPS=dedicated`, no añadir el grupo al lado.
 >
 > Si ningún worker sirve `heavy`, esos jobs se quedan **encolados para
 > siempre**, sin error y sin que nada lo señale. Elige una de las dos:
@@ -545,6 +560,13 @@ server's exclusion and this document:
 > Saca el trabajo pesado de la API, que es el 90 % de la ganancia. A cambio
 > comparte worker con los jobs que sí se esperan, así que un insert de 15.000
 > seriales todavía puede hacerles agotar su ventana de 4 s.
+>
+> **Con `inventory:export` dentro, ese «a cambio» pesa más:** un export grande
+> dura minutos, no segundos, y el worker procesa de a uno. Mientras corre, los
+> `bulk` que esperan 4 s caen al `202 + jobId` — que es un camino correcto y ya
+> soportado (`createSyncOrQueuedController`), pero cambia lo que ve el usuario.
+> Si los exports se vuelven frecuentes, pasar a (b) es un cambio de env, sin
+> tocar código.
 >
 > **(b) Correcto** — su propio servicio, `DevitrakHeavyWorker` con
 > `QUEUE_GROUP=heavy` y **poll normal** (no necesita 300 ms: nadie espera).

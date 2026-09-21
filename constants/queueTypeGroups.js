@@ -52,10 +52,20 @@ const DELETE_TYPES = [
 // Hasta ahora no estaban en ningun grupo, lo que significa que el server
 // principal (QUEUE_EXCLUDE_GROUPS=dedicated) los consumia DENTRO de los
 // procesos que atienden login y pagos.
+//
+// `inventory:export` no es una escritura, pero tiene exactamente la misma
+// forma -- 202 + jobId, nadie espera -- y es el trabajo MAS LARGO del grupo:
+// lee el inventario a trozos y escribe una celda de exceljs por columna, hasta
+// el techo de 200.000 filas. Dejarlo fuera de un grupo habria repetido el
+// mismo fallo que estos tres: el .xlsx se generaria dentro de los procesos que
+// atienden login y pagos, que es justo lo que el export en cola venia a
+// evitar. Es tambien el argumento mas fuerte para separar `heavy` en su propio
+// servicio en vez de colgarlo del worker de bulk (DEPLOY.md, opcion (b)).
 const HEAVY_ASYNC_TYPES = [
   'inventory:bulk-insert-alphanumeric',
   'inventory:bulk-update-alphanumeric',
   'event:bulk-update-item-shipping',
+  'inventory:export',
 ];
 
 const GROUPS = Object.freeze({
