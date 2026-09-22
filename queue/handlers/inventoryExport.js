@@ -19,6 +19,7 @@
  * sin escribir un .xlsx de verdad — igual que `documentUpload.js`.
  */
 
+const fs = require('fs/promises');
 const os = require('os');
 const path = require('path');
 const { buildInventoryScopeFilter } = require('../../mysql/helpers/staffAccess');
@@ -118,66 +119,81 @@ function createInventoryExportHandler({
 
     const writer = createWorkbookWriter(filePath);
 
-    let cursor = null;
-    let rowCount = 0;
+    const runExport = async () => {
+      let cursor = null;
+      let rowCount = 0;
 
-    for (;;) {
-      const query = buildExportChunkQuery({
-        companyId,
-        filters,
-        search,
-        scope,
-        sortBy,
-        sortDir,
-        cursor,
-        chunkSize: EXPORT_CHUNK_SIZE,
-      });
+      for (;;) {
+        const query = buildExportChunkQuery({
+          companyId,
+          filters,
+          search,
+          scope,
+          sortBy,
+          sortDir,
+          cursor,
+          chunkSize: EXPORT_CHUNK_SIZE,
+        });
 
-      const [rows] = await connection.execute(query.sql, query.params);
-      if (rows.length === 0) break;
+        const [rows] = await connection.execute(query.sql, query.params);
+        if (rows.length === 0) break;
 
-      // `event_name`/`condition` del evento activo, un lote por trozo. Solo
-      // para los que NO están en stock: para el resto la hoja ni los mira, y
-      // pedirlos sería una consulta por trozo que no cambia ni una celda.
-      const outOfStockIds = rows
-        .filter((row) => Number(row.warehouse) !== 1)
-        .map((row) => row.item_id);
-      const lookup = buildEventLookupQuery(outOfStockIds);
-      let assignments = new Map();
-      if (lookup) {
-        const [assignmentRows] = await connection.execute(lookup.sql, lookup.params);
-        assignments = indexLatestAssignments(assignmentRows);
+        // `event_name`/`condition` del evento activo, un lote por trozo. Solo
+        // para los que NO están en stock: para el resto la hoja ni los mira, y
+        // pedirlos sería una consulta por trozo que no cambia ni una celda.
+        const outOfStockIds = rows
+          .filter((row) => Number(row.warehouse) !== 1)
+          .map((row) => row.item_id);
+        const lookup = buildEventLookupQuery(outOfStockIds);
+        let assignments = new Map();
+        if (lookup) {
+          const [assignmentRows] = await connection.execute(lookup.sql, lookup.params);
+          assignments = indexLatestAssignments(assignmentRows);
+        }
+
+        for (const row of rows) {
+          const assignment = assignments.get(row.item_id);
+          writer.addRow(toSheetRow(assignment ? { ...row, ...assignment } : row));
+        }
+
+        rowCount += rows.length;
+        if (rowCount > MAX_EXPORT_ROWS) {
+          throw new Error(
+            `The export exceeds the ${MAX_EXPORT_ROWS.toLocaleString('en-US')} row limit. Narrow the filters and try again.`
+          );
+        }
+
+        // Un trozo incompleto es el último: no hay que pedir otro para descubrir
+        // que está vacío.
+        if (rows.length < query.chunkSize) break;
+        cursor = buildExportCursor(rows, query.sort);
       }
 
-      for (const row of rows) {
-        const assignment = assignments.get(row.item_id);
-        writer.addRow(toSheetRow(assignment ? { ...row, ...assignment } : row));
-      }
+      await writer.commit();
 
-      rowCount += rows.length;
-      if (rowCount > MAX_EXPORT_ROWS) {
-        throw new Error(
-          `The export exceeds the ${MAX_EXPORT_ROWS.toLocaleString('en-US')} row limit. Narrow the filters and try again.`
-        );
-      }
+      const { key } = await uploadExport({ filePath, companyId, fileName });
+      const url = await getDownloadUrl(key, DOWNLOAD_URL_MINUTES);
 
-      // Un trozo incompleto es el último: no hay que pedir otro para descubrir
-      // que está vacío.
-      if (rows.length < query.chunkSize) break;
-      cursor = buildExportCursor(rows, query.sort);
-    }
-
-    await writer.commit();
-
-    const { key } = await uploadExport({ filePath, companyId, fileName });
-    const url = await getDownloadUrl(key, DOWNLOAD_URL_MINUTES);
-
-    return {
-      url,
-      expiresAt: new Date(now().getTime() + DOWNLOAD_URL_MINUTES * 60 * 1000).toISOString(),
-      rowCount,
-      fileName,
+      return {
+        url,
+        expiresAt: new Date(now().getTime() + DOWNLOAD_URL_MINUTES * 60 * 1000).toISOString(),
+        rowCount,
+        fileName,
+      };
     };
+
+    // Si el export revienta ANTES de llegar a la subida, el .xlsx a medio
+    // escribir se queda en el temporal del servicio: `uploadInventoryExportToS3`
+    // lo borra en su `finally`, pero solo si se llega hasta ahí. El camino que
+    // más lo va a provocar es el techo de 200.000 filas, que es justo el error
+    // que verá un usuario con un filtro amplio -- o sea, el caso frecuente, no
+    // el raro.
+    try {
+      return await runExport();
+    } catch (error) {
+      await fs.unlink(filePath).catch(() => {});
+      throw error;
+    }
   };
 }
 
