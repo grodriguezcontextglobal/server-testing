@@ -192,6 +192,25 @@ register(
   })
 );
 
+const { createInventoryImportHandler } = require("./inventoryImportSpreadsheet");
+const { processLocation } = require("../../mysql/controllers/location");
+const { processSubLocationPath } = require("../../mysql/controllers/sub_location");
+
+// Import de una hoja de calculo entera: UNA fila de item_inv por unidad, con
+// los valores de esa unidad. Va aparte de inventory:bulk-insert-alphanumeric
+// porque aquel copia los escalares del cuerpo sobre todo el lote -- correcto
+// para un grupo de unidades identicas, y la razon por la que un fichero real
+// escribia el coste de otra fila en 482 de 500 unidades
+// (ver mysql/controllers/inventoryImport.js).
+register(
+  "inventory:bulk-insert-from-spreadsheet",
+  createInventoryImportHandler({
+    getConnection: getSqlConnection,
+    processLocation,
+    processSubLocationPath,
+  })
+);
+
 const { createBulkInsertMembersHandler } = require("./bulkInsertMembers");
 
 // Import de estudiantes/miembros vía CSV -- un import a nivel de distrito
