@@ -25,7 +25,7 @@ const {
 } = require('../mysql/queries/inventoryImportQuery');
 
 const { createPostInventoryImport, JOB_TYPE } = require('../mysql/controllers/inventoryImport');
-const { createInventoryImportHandler, buildUnitRow, withDefaults, INSERT_QUERY } =
+const { createInventoryImportHandler, buildUnitRow, withDefaults, asJsonText, INSERT_QUERY } =
   require('../queue/handlers/inventoryImportSpreadsheet');
 
 // ─── Ayudas ──────────────────────────────────────────────────────────────────
@@ -661,4 +661,89 @@ test('distinctLocationNames respeta el orden del fichero', () => {
     ],
   });
   assert.deepStrictEqual(distinctLocationNames(units), ['Orlando, FL', 'Miami, FL']);
+});
+
+
+/* ------------------------------------------------------------------ *
+ * El fallo del primer import real en produccion (2026-09-22):
+ * 581 de 581 filas rechazadas por MySQL
+ * ------------------------------------------------------------------ */
+
+test('una cadena vacia NO llega a una columna JSON: "The document is empty."', () => {
+  // El cliente manda `"returnedRentedInfo": ""` en sus defaults y aqui se
+  // respetaba tal cual. MySQL responde
+  //   Invalid JSON text: "The document is empty." at position 0
+  // y rechaza la fila -- las 581. inventoryBulkInsert.js nunca se topo con ello
+  // porque IGNORA el payload y hardcodea '[]'.
+  const d = withDefaults({ returnedRentedInfo: '', containerId: '' });
+  assert.strictEqual(d.returnedRentedInfo, '[]');
+  assert.strictEqual(d.containerId, '[]');
+});
+
+test('lo que si es JSON valido se respeta, y un objeto se serializa', () => {
+  assert.strictEqual(asJsonText('[{"a":1}]'), '[{"a":1}]');
+  assert.strictEqual(asJsonText([{ a: 1 }]), '[{"a":1}]');
+  assert.strictEqual(asJsonText(null), '[]');
+  assert.strictEqual(asJsonText(undefined), '[]');
+});
+
+test('la fila que llega a MySQL nunca lleva "" en las dos columnas JSON', () => {
+  const { units } = validateImportBody({ units: [unit()] });
+  const row = buildUnitRow(units[0], {
+    companyId: 7,
+    company: 'ABC',
+    locationId: 5,
+    subLocationId: null,
+    defaults: withDefaults({ returnedRentedInfo: '', containerId: '' }),
+    timestamp: '2026-09-22 10:00:00',
+  });
+  const columns = INSERT_QUERY.match(/\(([^)]+)\)\s*VALUES/)[1]
+    .split(',')
+    .map((c) => c.trim());
+  for (const name of ['returnedRentedInfo', 'container_id']) {
+    assert.strictEqual(row[columns.indexOf(name)], '[]', `${name} llego vacio`);
+  }
+});
+
+test('locationsCreated cuenta las CREADAS, no las que ya existian', async () => {
+  // Contaba las llamadas a processLocation, que es find-or-create y no dice cual
+  // de las dos hizo: un fichero con 10 locaciones ya existentes reportaba
+  // "locationsCreated: 10". Lo lee una persona para decidir si el fichero traia
+  // locaciones nuevas de verdad.
+  const { pool } = mockPool();
+  const created = [];
+  const handler = createInventoryImportHandler({
+    getConnection: () => ({
+      getConnection: async () => ({
+        ...(await pool.getConnection()),
+        execute: async (sql) => {
+          if (/FROM locations/.test(sql)) return [[{ location_id: 5, location_name: 'Miami, FL' }]];
+          if (/FROM item_inv/.test(sql)) return [[]];
+          return [[]];
+        },
+      }),
+    }),
+    processLocation: async (conn, data) => {
+      created.push(data.location_name);
+      return { location_id: 77 };
+    },
+    processSubLocationPath: async () => null,
+  });
+
+  const result = await handler({
+    companyId: 7,
+    company: 'ABC',
+    units: validateImportBody({
+      units: [
+        unit({ serial_number: 'A-1', location: 'Miami, FL' }),
+        unit({ serial_number: 'A-2', location: 'Tampa, FL' }),
+      ],
+    }).units,
+    defaults: {},
+    locationIds: {},
+    skipped: [],
+  });
+
+  assert.deepStrictEqual(created, ['Tampa, FL'], 'solo se crea la que no existia');
+  assert.strictEqual(result.locationsCreated, 1);
 });
