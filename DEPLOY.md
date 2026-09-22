@@ -530,6 +530,43 @@ server's exclusion and this document:
   duplicarlos en nssm. También escribe un fichero temporal en `os.tmpdir()`
   del usuario del servicio.
 
+### Estado real de producción — verificado en la VM el 2026-09-22
+
+Los bloques de instalación de más abajo son los pasos históricos, **no el estado
+actual**. Esto es lo que devuelve `nssm get <servicio> AppEnvironmentExtra` hoy,
+después del cutover a grupos:
+
+```
+DevitrakServer        PM2_HOME=…\.pm2
+                      GO_WORKER_EXTERNAL=true
+                      GO_WORKER_PORT=7453
+                      QUEUE_EXCLUDE_GROUPS=dedicated
+DevitrakBulkWorker    QUEUE_GROUP=bulk,heavy   QUEUE_POLL_MS=300
+DevitrakDeleteWorker  QUEUE_GROUP=delete       QUEUE_POLL_MS=300
+DevitrakEmailWorker   QUEUE_GROUP=email
+```
+
+> #### ⚠️ `GO_WORKER_PORT=7453` NO se puede omitir de esa línea
+>
+> `nssm set AppEnvironmentExtra` **reemplaza el bloque entero**, así que montar
+> el comando sin esa variable la borra. Y no se cae al valor por defecto del
+> código (que es 7453 y sería correcto): **el `.env` del repositorio tiene
+> `GO_WORKER_PORT=7452`**, `dotenv` no pisa lo que ya viene del entorno, y sin la
+> variable de nssm gana el `.env`. Node marcaría el 7452 mientras el worker
+> escucha en el 7453 → ECONNREFUSED en **todas** las llamadas al Go worker. Es
+> exactamente el incidente del 2026-08-06.
+>
+> Antes de tocar cualquier `AppEnvironmentExtra`, haz primero el `nssm get` y
+> monta la línea nueva a partir de lo que devuelva.
+
+**Lo que había antes del cutover**, por si hay que revertir: `DevitrakServer`
+excluía **solo los tres tipos de correo** (no la lista larga que documentan los
+bloques de abajo), así que competía por los bulk, los borrados y los pesados
+dentro de los procesos que atienden login y pagos. Y `DevitrakBulkWorker` llevaba
+un `QUEUE_TYPES=` explícito — que **tiene precedencia sobre `QUEUE_GROUP`**, así
+que añadirle el grupo sin quitar la lista no habría hecho nada, mientras la API
+sí habría dejado de tomar los pesados: 202 + jobId y nadie procesándolos.
+
 > ### ⚠️ ANTES DE DESPLEGAR EL GRUPO `heavy`: hay que darle consumidor
 >
 > Tres de estos cuatro tipos **no estaban en ningún grupo**, así que hasta

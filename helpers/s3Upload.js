@@ -201,34 +201,110 @@ const uploadNotificationAttachment = async ({ content, filename, contentType }) 
  * @param {string} params.fileName - Nombre con el que se descargará.
  * @returns {Promise<{key: string}>}
  */
+const UPLOAD_MAX_ATTEMPTS = Number(process.env.S3_EXPORT_UPLOAD_ATTEMPTS || 3);
+
+/**
+ * Errores de subida que merecen otro intento: cortes de red y fallos del lado
+ * de S3. Un 403 (credenciales) o un 404 (bucket) NO se reintentan — repetirlos
+ * solo retrasa el error de verdad y lo entierra bajo tres trazas iguales.
+ */
+const RETRIABLE_UPLOAD_CODES = new Set([
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ERR_STREAM_PREMATURE_CLOSE",
+  "RequestTimeout",
+  "InternalError",
+  "SlowDown",
+  "TimeoutError",
+]);
+
+const isRetriableUploadError = (error) => {
+  if (!error) return false;
+  const status = error.$metadata && error.$metadata.httpStatusCode;
+  if (status && (status >= 500 || status === 429)) return true;
+  return RETRIABLE_UPLOAD_CODES.has(error.code) || RETRIABLE_UPLOAD_CODES.has(error.name);
+};
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Envía el comando reintentando, y CONSTRUYÉNDOLO DE NUEVO en cada intento.
+ *
+ * Por qué existe esto y no basta el reintento del SDK: el SDK v3 reintenta solo
+ * (`standard`, 3 intentos) y ECONNRESET entra en lo que reintentaría, pero **no
+ * puede reintentar una petición cuyo cuerpo es un stream** — ya se consumió y no
+ * se rebobina. Las otras subidas de este fichero pasan un Buffer, que sí es
+ * replayable, así que se curan solas; el export es la única que no, y es la que
+ * falló en producción el 22-sep (job `inventory:export`, `read ECONNRESET`).
+ *
+ * La cola acabó reintentando el job entero, que con 1.625 filas costó dos
+ * segundos — pero con 200.000 son minutos de releer MySQL y regenerar el .xlsx
+ * por un corte de un segundo al subir. Por eso el reintento va aquí, pegado a
+ * lo que falló, y no en el job.
+ *
+ * `buildCommand` es una función, no un comando: cada intento necesita un stream
+ * nuevo. Pasar el mismo objeto reintentaría con un stream ya agotado y fallaría
+ * igual, solo que más lento.
+ */
+const sendWithRetry = async ({
+  send,
+  buildCommand,
+  attempts = UPLOAD_MAX_ATTEMPTS,
+  onRetry,
+  delayFn = wait,
+}) => {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await send(buildCommand());
+    } catch (error) {
+      if (attempt >= attempts || !isRetriableUploadError(error)) throw error;
+      if (onRetry) onRetry(error, attempt);
+      await delayFn(attempt * 500);
+    }
+  }
+};
+
 const uploadInventoryExportToS3 = async ({ filePath, companyId, fileName }) => {
   if (!filePath || !companyId || !fileName) {
     throw new Error("Missing required parameters: filePath, companyId, fileName");
   }
 
+  // La clave se calcula UNA vez, fuera del bucle: un reintento tiene que
+  // sobrescribir el mismo objeto, no dejar uno huérfano por intento.
   const key = `companies/${companyId}/inventory-exports/${Date.now()}-${fileName}`;
 
   try {
-    await s3Client.send(
-      new PutObjectCommand({
-        Bucket: process.env.AWS_S3_BUCKET_NAME,
-        Key: key,
-        Body: fs.createReadStream(filePath),
-        ContentType:
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        // Sin esto el navegador abre la URL prefirmada en una pestaña en vez de
-        // descargar, y el usuario acaba con un .xlsx renderizado como basura.
-        ContentDisposition: `attachment; filename="${fileName}"`,
-        Metadata: {
-          companyId: String(companyId),
-          documentType: "inventory-export",
-          generatedAt: new Date().toISOString(),
-        },
-      })
-    );
+    await sendWithRetry({
+      send: (command) => s3Client.send(command),
+      buildCommand: () =>
+        new PutObjectCommand({
+          Bucket: process.env.AWS_S3_BUCKET_NAME,
+          Key: key,
+          Body: fs.createReadStream(filePath),
+          ContentType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          // Sin esto el navegador abre la URL prefirmada en una pestaña en vez de
+          // descargar, y el usuario acaba con un .xlsx renderizado como basura.
+          ContentDisposition: `attachment; filename="${fileName}"`,
+          Metadata: {
+            companyId: String(companyId),
+            documentType: "inventory-export",
+            generatedAt: new Date().toISOString(),
+          },
+        }),
+      onRetry: (error, attempt) =>
+        logger.warn(
+          `Export ${key}: intento ${attempt} de subida falló (${error.code || error.name}), reintentando`
+        ),
+    });
 
     return { key };
   } finally {
+    // Una sola vez, después del último intento: borrarlo entre intentos dejaría
+    // al siguiente sin fichero que subir.
     await unlinkFile(filePath).catch((error) =>
       logger.warn(`No se pudo borrar el export temporal ${filePath}: ${error.message}`)
     );
@@ -329,6 +405,8 @@ module.exports = {
   uploadPdfToS3,
   uploadExcelToS3,
   uploadInventoryExportToS3,
+  sendWithRetry,
+  isRetriableUploadError,
   uploadNotificationAttachment,
   fetchAttachmentAsBase64,
   getTemporaryDownloadUrl,

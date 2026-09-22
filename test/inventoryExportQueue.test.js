@@ -330,3 +330,135 @@ test('si resolveAccess ya respondió, el controller no encola', async () => {
 
   assert.equal(res.payload, null);
 });
+
+/* ------------------------------------------------------------------ *
+ * Reintento de la subida, y el temporal que se quedaba huérfano
+ * (2026-09-22, tras el fallo real en producción)
+ * ------------------------------------------------------------------ */
+
+const fsSync = require('node:fs');
+const nodePath = require('node:path');
+const nodeOs = require('node:os');
+const { sendWithRetry, isRetriableUploadError } = require('../helpers/s3Upload');
+
+const netError = (code) => Object.assign(new Error('socket hang up'), { code });
+
+test('la subida reintenta un corte de red y CONSTRUYE un comando nuevo cada vez', async () => {
+  // El SDK v3 no puede reintentar solo: el cuerpo es un stream ya consumido.
+  // Reintentar con el MISMO comando fallaría igual, solo que más lento -- por eso
+  // `buildCommand` es una función.
+  const built = [];
+  let calls = 0;
+
+  const result = await sendWithRetry({
+    send: async () => {
+      calls += 1;
+      if (calls < 3) throw netError('ECONNRESET');
+      return { ok: true };
+    },
+    buildCommand: () => {
+      const command = { body: `stream-${built.length}` };
+      built.push(command);
+      return command;
+    },
+    delayFn: async () => {},
+  });
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(calls, 3);
+  assert.equal(built.length, 3, 'cada intento necesita su propio stream');
+  assert.equal(new Set(built).size, 3, 'no se puede reutilizar el comando');
+});
+
+test('la subida NO reintenta un 403: repetirlo entierra el error de verdad', async () => {
+  let calls = 0;
+  const denied = Object.assign(new Error('Access Denied'), {
+    name: 'AccessDenied',
+    $metadata: { httpStatusCode: 403 },
+  });
+
+  await assert.rejects(
+    () =>
+      sendWithRetry({
+        send: async () => {
+          calls += 1;
+          throw denied;
+        },
+        buildCommand: () => ({}),
+        delayFn: async () => {},
+      }),
+    /Access Denied/
+  );
+  assert.equal(calls, 1);
+});
+
+test('se agotan los intentos y el último error sale tal cual', async () => {
+  let calls = 0;
+  await assert.rejects(
+    () =>
+      sendWithRetry({
+        send: async () => {
+          calls += 1;
+          throw netError('ECONNRESET');
+        },
+        buildCommand: () => ({}),
+        attempts: 2,
+        delayFn: async () => {},
+      }),
+    /socket hang up/
+  );
+  assert.equal(calls, 2);
+});
+
+test('qué se considera reintentable', () => {
+  assert.equal(isRetriableUploadError(netError('ECONNRESET')), true);
+  assert.equal(isRetriableUploadError(netError('ETIMEDOUT')), true);
+  assert.equal(
+    isRetriableUploadError({ $metadata: { httpStatusCode: 503 } }),
+    true,
+    'S3 caído sí'
+  );
+  assert.equal(
+    isRetriableUploadError({ $metadata: { httpStatusCode: 429 } }),
+    true,
+    'throttling sí'
+  );
+  assert.equal(
+    isRetriableUploadError({ name: 'NoSuchBucket', $metadata: { httpStatusCode: 404 } }),
+    false
+  );
+  assert.equal(isRetriableUploadError(null), false);
+});
+
+test('si el export revienta antes de subir, el .xlsx a medias no se queda en el disco', async () => {
+  // `uploadInventoryExportToS3` borra el temporal en su `finally`, pero solo si
+  // se llega hasta ahí. El techo de 200.000 filas revienta ANTES, y es el error
+  // que verá un usuario con un filtro amplio.
+  const tmpDir = fsSync.mkdtempSync(nodePath.join(nodeOs.tmpdir(), 'export-test-'));
+  let writtenPath = null;
+
+  const handler = createInventoryExportHandler({
+    getConnection: () => ({
+      execute: async () => {
+        throw new Error('ER_LOCK_WAIT_TIMEOUT');
+      },
+    }),
+    uploadExport: async () => assert.fail('no debería llegar a subir'),
+    getDownloadUrl: async () => assert.fail('no debería llegar a firmar'),
+    createWorkbookWriter: (filePath) => {
+      writtenPath = filePath;
+      fsSync.writeFileSync(filePath, 'xlsx a medio escribir');
+      return { addRow: () => {}, commit: async () => {} };
+    },
+    tmpDir,
+  });
+
+  await assert.rejects(
+    () => handler({ companyId: 7, access: { scoped: false } }, { id: 'job-x' }),
+    /ER_LOCK_WAIT_TIMEOUT/
+  );
+
+  assert.ok(writtenPath, 'el escritor creó el fichero');
+  assert.equal(fsSync.existsSync(writtenPath), false, 'el temporal sigue ahí');
+  fsSync.rmSync(tmpDir, { recursive: true, force: true });
+});
