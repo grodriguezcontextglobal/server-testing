@@ -17,6 +17,8 @@ const {
   requestLogger,
   securityLogger,
 } = require("./middlewares/requestLogger");
+const { requestMetrics } = require("./middlewares/requestMetrics");
+const metrics = require("./helpers/metrics");
 const logger = require("./helpers/logger");
 
 // Constants
@@ -70,6 +72,12 @@ const configureMiddleware = (app) => {
   // Request logging middleware (should be first to capture all requests)
   app.use(requestLogger);
   app.use(securityLogger);
+
+  // Per-endpoint counters and latency. Goes here, before everything else, so it
+  // also sees the requests that a middleware rejects (rate limit, CORS, body
+  // too large) — those are precisely the ones you need to count when the server
+  // is under pressure, and they never reach the router.
+  app.use(requestMetrics);
 
   // Trust proxy (required for correct IP rate limiting behind load balancers)
   app.set("trust proxy", 1);
@@ -176,6 +184,7 @@ const configureRoutes = (app) => {
     consumer: require("./mysql/routes/consumers"),
     event: require("./mysql/routes/events"),
     item: require("./mysql/routes/item"),
+    identifier: require("./mysql/routes/identifier"),
     record: require("./mysql/routes/recordEvent"),
     staff: require("./mysql/routes/staff"),
     stripe: require("./mysql/routes/stripe"),
@@ -211,22 +220,34 @@ const configureRoutes = (app) => {
   // Mount consumer public namespace (attendees app; no token required)
   app.use("/api/consumer", require("./routes/consumer"));
 
-  // School namespace. Mounted explicitly rather than through the mysqlRoutes
-  // map above, which prefixes everything with /api/db_ — the frontend calls
-  // these at /api/school/*.
+  // Mount school (education) namespace — gated per-route by company.industry='Education'
   app.use("/api/school", require("./mysql/routes/school"));
 
   app.use("/api", require("./routes/status"));
-};
 
-//route health endpoint
-app.get('/health', (req, res) => {
-  res.status(200).json({
-    server: 'standby',
-    status: 'operational',
-    timestamp: new Date().toISOString(),
+  // Vista agregada del CLUSTER, no de este proceso: sale de Redis, donde los
+  // cuatro vuelcan. Protegida como /api/jobs/stats — es informacion operativa,
+  // e incluye un top de clientes por volumen.
+  // El gate se apoya en `req.uid`, y quien lo pone es `validateJWT`. Sin el no
+  // queda mas estricto: queda INALCANZABLE — responde 401 a todo, token valido
+  // incluido. Es el mismo orden que /api/jobs/stats (routes/jobs.js:23).
+  //
+  // Y es `requirePlatformRead`, no `requireSuperUser`: este endpoint agrega
+  // datos de TODAS las companias, asi que su puerta tiene que ser un flag de
+  // lectura acotado y no el de bypass total de escritura.
+  const { validateJWT } = require("./middlewares/validate-jwt");
+  const { requirePlatformRead } = require("./middlewares/requirePlatformRead");
+  app.get("/api/metrics", validateJWT, requirePlatformRead, async (req, res) => {
+    try {
+      const hours = Math.min(3, Math.max(1, Number(req.query.hours) || 2));
+      const snapshot = await metrics.snapshot({ hours });
+      return res.json({ ok: true, ...snapshot });
+    } catch (error) {
+      logger.error("metrics snapshot failed", { error: error.message });
+      return res.status(503).json({ ok: false, msg: "metrics unavailable", error: error.message });
+    }
   });
-});
+};
 
 // Error handling middleware
 const configureErrorHandling = (app) => {
@@ -263,6 +284,15 @@ const configureErrorHandling = (app) => {
 
 // Initialize application
 const initializeApp = () => {
+  // ORDEN DELIBERADO, no una casualidad: las rutas de sondeo se montan ANTES
+  // del middleware global para que no compartan el limitador de 300/15min con
+  // el trafico de la API (un pico dejaria a nssm sin poder sondear, y el
+  // supervisor reiniciaria un proceso sano) ni escriban una linea de log por
+  // cada comprobacion. Llevan su propia cadena: metricas siempre, y limitador
+  // propio en /ready. El porque completo esta en routes/health.js, y
+  // test/healthRoutes.test.js lo fija como invariante.
+  app.use(require("./routes/health"));
+
   configureMiddleware(app);
   configureRoutes(app);
   configureErrorHandling(app);
@@ -271,6 +301,15 @@ const initializeApp = () => {
 
 // Cluster configuration
 const startServer = () => {
+  // El volcado de metricas arranca en TODOS los procesos, a proposito: cada uno
+  // acumula las peticiones que atendio y las cuatro instancias incrementan las
+  // MISMAS claves de Redis con HINCRBY, que es atomico. Ponerlo detras del
+  // guard de "primera instancia" que usan los schedulers daria una vista de un
+  // cuarto del trafico y nadie lo notaria.
+  if (process.env.METRICS_ENABLED !== "false") {
+    metrics.startFlushing();
+  }
+
   // Check if running under PM2
   const isPM2 = process.env.NODE_APP_INSTANCE !== undefined;
 
@@ -282,16 +321,31 @@ const startServer = () => {
 
   // Start Go Worker if we are the Native Master OR the first PM2 instance
   if (isNativeMaster || isPM2FirstInstance) {
-    logger.info(`Starting Go worker...`);
-
     // Determine executable name based on platform
     const isWindows = process.platform === "win32";
     const execName = isWindows ? "worker.exe" : "worker";
     const workerPath = path.resolve(__dirname, "go-worker", execName);
-
-    // Check if file exists
     const fs = require("fs");
-    if (fs.existsSync(workerPath)) {
+
+    // Log the resolved target ALWAYS (not only in the external topology), and
+    // resolve it through helpers/goWorker.js so this line can never disagree
+    // with what runtime actually calls. A silent Node/worker port mismatch took
+    // weeks to find in prod precisely because no startup line ever stated the
+    // address Node would dial.
+    const { host: workerHost, port: workerPort } =
+      require("./helpers/goWorker").resolveWorkerTarget();
+    logger.info(`Go worker target: http://${workerHost}:${workerPort}`);
+
+    // GO_WORKER_EXTERNAL=true: the Go worker runs as its own service/host (see
+    // helpers/goWorker.js GO_WORKER_HOST) — Node must NOT spawn a local copy.
+    // This switch enables the split-services topology; default (unset) preserves
+    // today's behavior of spawning a co-located worker.
+    if (process.env.GO_WORKER_EXTERNAL === "true") {
+      logger.info(
+        `GO_WORKER_EXTERNAL=true — not spawning a local Go worker; using the target above.`
+      );
+    } else if (fs.existsSync(workerPath)) {
+      logger.info(`Starting Go worker...`);
       const goWorker = spawn(workerPath, [], {
         cwd: path.resolve(__dirname, "go-worker"),
         stdio: "inherit",
@@ -338,13 +392,13 @@ const startServer = () => {
       logger.error("Failed to start task queue worker:", { error: error.message });
     }
 
-    // // Initialize Scheduled Jobs
-    // try {
-    //   const { initScheduledJobs } = require("./scheduler");
-    //   initScheduledJobs();
-    // } catch (error) {
-    //   logger.error("Failed to initialize scheduled jobs:", error);
-    // }
+    // Initialize scheduled jobs (overdue reminders, etc.) — single instance only.
+    try {
+      const { initScheduledJobs } = require("./scheduler");
+      initScheduledJobs();
+    } catch (error) {
+      logger.error("Failed to initialize scheduled jobs:", { error: error.message });
+    }
   }
 
   // Disable native cluster mode to prevent infinite loops and simplify debugging

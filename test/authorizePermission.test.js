@@ -137,3 +137,29 @@ test('authorizePermission: 500 cuando la consulta SQL lanza excepción', async (
   assert.equal(res.statusCode, 500);
   assert.equal(res.body.ok, false);
 });
+
+// ── s-company-lq como último recurso (2026-09-15) ──────────────────────────
+// Motivo: al exigir permiso en /sub-locations/:id, el middleware respondía 401
+// "missing company_id" a TODA petición, porque esa ruta identifica el recurso
+// por la URL y no lleva company_id en params, body ni query.
+
+const { readCompanyId } = require('../middlewares/authorizePermission');
+
+const reqWith = ({ params = {}, body = {}, query = {}, header } = {}) => ({
+  params, body, query,
+  header: (name) => (header && name === 's-company-lq' ? header : undefined),
+});
+
+test('readCompanyId: params, body y query siguen mandando sobre el header', () => {
+  assert.strictEqual(readCompanyId(reqWith({ params: { company_id: 'A' }, header: 'Z' })), 'A');
+  assert.strictEqual(readCompanyId(reqWith({ body: { company_id: 'B' }, header: 'Z' })), 'B');
+  assert.strictEqual(readCompanyId(reqWith({ query: { company_id: 'C' }, header: 'Z' })), 'C');
+});
+
+test('readCompanyId: sin company_id en ninguna fuente, cae al header', () => {
+  assert.strictEqual(readCompanyId(reqWith({ header: '62' })), '62');
+});
+
+test('readCompanyId: sin header y sin company_id no inventa una compañía', () => {
+  assert.strictEqual(readCompanyId(reqWith({})), undefined);
+});

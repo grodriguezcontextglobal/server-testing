@@ -61,6 +61,18 @@ const ROLE_PERMISSIONS = {
     'location:read',   'location:update',
     'staff:update_contact',
   ]),
+
+  // Nivel 8 — inventory CRUD, con scope de CATEGORÍA (sin permisos de location)
+  category_manager: new Set([
+    'inventory:create', 'inventory:read', 'inventory:update', 'inventory:delete',
+    'staff:update_contact',
+  ]),
+
+  // Nivel 9 — inventory solo lectura/actualización, con scope de categoría
+  category_assistant: new Set([
+    'inventory:read', 'inventory:update',
+    'staff:update_contact',
+  ]),
 };
 
 /**

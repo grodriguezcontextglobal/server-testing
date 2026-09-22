@@ -1,1024 +1,1508 @@
 require("dotenv").config();
-const crypto = require("crypto");
+const { randomUUID } = require("crypto");
+const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
-const connection = getConnection();
+const StaffActivityLog = require("../../models/StaffActivityLog");
+const { isUnder13 } = require("../helpers/ageCalc");
+const { generateOtc, hashOtc, otcExpiresAt, isOtcExpired, isConsentMutable, isValidDecision } = require("../helpers/consentOtc");
 
-/**
- * School namespace — guardian consent lifecycle for Education companies.
- *
- * Covers the ten endpoints the admin dashboard actually calls. Gustavo's
- * FRONTEND_server_updates_2026-07.md §3 also specifies /school/dashboard,
- * /school/roster, /school/consent/record and /school/consent/status; nothing
- * in the frontend calls those, so they are deliberately not implemented here
- * rather than shipped untested.
- *
- * Consent is a one-time-code (OTC) flow: staff request consent, the guardian
- * receives a link carrying a random token, and the public respond endpoint
- * records the decision. Only the SHA-256 of the token is stored, so a database
- * leak can't be replayed into forged consents.
- */
+const hasBlankRequiredId = (value) =>
+  value === undefined || value === null || String(value).trim() === "";
 
-const CONSENT_TTL_DAYS = Number(process.env.SCHOOL_CONSENT_TTL_DAYS || 14);
-const DEFAULT_POLICY_TYPE = "AUP";
-const DEFAULT_POLICY_VERSION = "1";
+const validateStudentRequest = ({ company_id, member_id }) => {
+  if (hasBlankRequiredId(company_id)) return "company_id is required";
+  if (hasBlankRequiredId(member_id)) return "member_id is required";
+  return null;
+};
 
-// Real mail is opt-in. The demo district's ~1,000 seeded guardians carry
-// fabricated @example.com addresses, so sending for real by default would
-// generate a thousand bounces against the sending domain's reputation.
-const EMAIL_ENABLED = process.env.SCHOOL_CONSENT_EMAIL === "true";
-const CONSENT_BASE_URL =
-  process.env.SCHOOL_CONSENT_BASE_URL || "http://localhost:5522";
-const IS_PRODUCTION = process.env.NODE_ENV === "production";
-
-/* ------------------------------------------------------------------ pure */
-
-/** Random, URL-safe one-time code handed to the guardian. */
-const generateOtc = () => crypto.randomBytes(24).toString("hex");
-
-/** Only the hash is persisted; the raw code lives in the emailed link. */
-const hashOtc = (otc) =>
-  crypto.createHash("sha256").update(String(otc)).digest("hex");
-
-const normalizeEmail = (email) => String(email ?? "").trim().toLowerCase();
-
-const buildConsentLink = (otc, baseUrl = CONSENT_BASE_URL) =>
-  `${String(baseUrl).replace(/\/$/, "")}/school/consent/respond?otc=${otc}`;
-
-/**
- * A stored row's effective status.
- *
- * Expiry is derived rather than swept by a cron: a pending request whose
- * expires_at has passed reads as "expired" the moment anyone looks at it.
- */
-const deriveConsentStatus = (row, now = new Date()) => {
-  if (!row) return "missing";
-  if (row.status && row.status !== "pending") return row.status;
-  if (row.expires_at && new Date(row.expires_at).getTime() < now.getTime()) {
-    return "expired";
+const logDisclosure = async (payload) => {
+  if (!payload?.staff_member_id || typeof StaffActivityLog.create !== "function") return;
+  try {
+    await StaffActivityLog.create(payload);
+  } catch (error) {
+    logger.error("disclosure audit log error:", error.message);
   }
-  return "pending";
 };
 
-/** A guardian may still respond only while the request is live. */
-const isMutable = (row, now = new Date()) =>
-  deriveConsentStatus(row, now) === "pending";
-
-const consentTextFor = (policyType, policyVersion, companyName) =>
-  `${companyName} requests your consent for the ${policyType} policy ` +
-  `(version ${policyVersion}). By agreeing you confirm you are the parent or ` +
-  `legal guardian authorized to accept this policy on the student's behalf, ` +
-  `and that you accept responsibility for district equipment issued to them.`;
-
-/* ------------------------------------------------------------------ setup */
-
-let tablesReady = null;
-
-const ensureSchoolTables = () => {
-  if (tablesReady) return tablesReady;
-
-  tablesReady = (async () => {
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS school_guardians (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        company_id VARCHAR(255) NOT NULL,
-        first_name VARCHAR(255) NULL,
-        last_name VARCHAR(255) NULL,
-        email VARCHAR(255) NULL,
-        phone_number VARCHAR(64) NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_company_email (company_id, email),
-        KEY idx_company (company_id)
-      )`);
-
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS school_member_guardians (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        company_id VARCHAR(255) NOT NULL,
-        member_id BIGINT NOT NULL,
-        guardian_id INT NOT NULL,
-        relationship VARCHAR(64) NOT NULL DEFAULT 'guardian',
-        is_primary TINYINT(1) NOT NULL DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY unique_link (member_id, guardian_id),
-        KEY idx_member (member_id)
-      )`);
-
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS school_consents (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        company_id VARCHAR(255) NOT NULL,
-        member_id BIGINT NOT NULL,
-        guardian_id INT NULL,
-        policy_type VARCHAR(64) NOT NULL DEFAULT 'AUP',
-        policy_version VARCHAR(32) NOT NULL DEFAULT '1',
-        status VARCHAR(16) NOT NULL DEFAULT 'pending',
-        otc_hash CHAR(64) NULL,
-        expires_at DATETIME NULL,
-        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        responded_at DATETIME NULL,
-        signer_name VARCHAR(255) NULL,
-        signer_email VARCHAR(255) NULL,
-        method VARCHAR(64) NOT NULL DEFAULT 'e-signature',
-        consent_text TEXT NULL,
-        KEY idx_member_policy (company_id, member_id, policy_type),
-        KEY idx_otc (otc_hash)
-      )`);
-
-    await connection.query(`
-      CREATE TABLE IF NOT EXISTS school_settings (
-        company_id VARCHAR(255) NOT NULL PRIMARY KEY,
-        enforce_member_consent TINYINT(1) NOT NULL DEFAULT 0,
-        enforce_under_13 TINYINT(1) NOT NULL DEFAULT 0,
-        required_consent_policy_version VARCHAR(32) NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-      )`);
-  })().catch((error) => {
-    // Don't cache a failed bootstrap — the next request should retry.
-    tablesReady = null;
-    throw error;
-  });
-
-  return tablesReady;
+// PURE: classify one member device lease from its raw columns.
+const classifyMemberLease = (row, now = Date.now()) => {
+  const outstanding = Number(row.returned) === 0;
+  const due = row.expected_return_date ? new Date(row.expected_return_date).getTime() : NaN;
+  const overdue = outstanding && !Number.isNaN(due) && due < now;
+  return { outstanding, overdue };
 };
 
-/* ---------------------------------------------------------------- helpers */
-
-const badRequest = (response, msg) => response.status(400).json({ ok: false, msg });
-
-const settingsRowFor = async (companyId) => {
-  const [rows] = await connection.query(
-    "SELECT * FROM school_settings WHERE company_id = ?",
-    [String(companyId)]
-  );
-  const row = rows[0];
-  return {
-    enforce_member_consent: Boolean(row?.enforce_member_consent),
-    enforce: Boolean(row?.enforce_member_consent),
-    enforce_under_13: Boolean(row?.enforce_under_13),
-    required_consent_policy_version:
-      row?.required_consent_policy_version ?? null,
+/**
+ * PURE + exported: member-lease rows -> { summary, by_grade }. Deterministic
+ * given `now`. Powers the 1:1 device-program dashboard.
+ */
+const buildSchoolDashboard = (rows = [], { now = Date.now() } = {}) => {
+  const summary = {
+    total_leases: rows.length,
+    outstanding: 0,
+    overdue: 0,
+    returned: 0,
+    lost: 0,
+    damaged: 0,
+    students_with_devices: 0,
   };
+  const byGrade = {};
+  const students = new Set();
+
+  for (const row of rows) {
+    if (row.member_id !== undefined && row.member_id !== null) students.add(row.member_id);
+    const { outstanding, overdue } = classifyMemberLease(row, now);
+
+    if (outstanding) summary.outstanding++;
+    else if (row.return_status === "lost") summary.lost++;
+    else if (row.return_status === "damaged") summary.damaged++;
+    else summary.returned++;
+    if (overdue) summary.overdue++;
+
+    const g = row.grade && String(row.grade).trim() ? String(row.grade).trim() : "Unassigned";
+    if (!byGrade[g]) byGrade[g] = { total: 0, outstanding: 0, overdue: 0 };
+    byGrade[g].total++;
+    if (outstanding) byGrade[g].outstanding++;
+    if (overdue) byGrade[g].overdue++;
+  }
+
+  summary.students_with_devices = students.size;
+  return { summary, by_grade: byGrade };
 };
 
-const memberInCompany = async (companyId, memberId) => {
-  const [rows] = await connection.query(
-    `SELECT member_id, first_name, last_name, grade, homeroom, minor,
-            parent_guardian_first_name, parent_guardian_last_name,
-            parent_guardian_email, parent_guardian_phone_number
-       FROM members_info WHERE member_id = ? AND company_id = ?`,
-    [memberId, String(companyId)]
-  );
-  return rows[0] || null;
+// POST /api/school/dashboard  { company_id }
+// 1:1 device-program summary for the company: lease status counts + per-grade
+// breakdown + student totals. Education-gated at the route.
+const schoolDashboard = async (req, res) => {
+  const connection = getConnection();
+  const { company_id } = req.body || {};
+  if (company_id === undefined || company_id === null || String(company_id).trim() === "") {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  try {
+    const [rows] = await connection.query(
+      `SELECT madl.member_id, madl.returned, madl.return_status, madl.expected_return_date,
+              mi.grade, mi.homeroom
+         FROM member_assigned_device_lease madl
+         JOIN members_info mi ON mi.member_id = madl.member_id AND mi.company_id = madl.company_id
+        WHERE madl.company_id = ?`,
+      [company_id]
+    );
+    const [[cnt]] = await connection.query(
+      "SELECT COUNT(*) AS total FROM members_info WHERE company_id = ?",
+      [company_id]
+    );
+    const dashboard = buildSchoolDashboard(rows, { now: Date.now() });
+    dashboard.summary.total_students = Number(cnt.total);
+    return res.status(200).json({ ok: true, ...dashboard });
+  } catch (error) {
+    logger.error("schoolDashboard error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
 };
 
-const companyName = async (companyId) => {
-  const [rows] = await connection.query(
-    "SELECT company_name FROM company_info WHERE company_id = ?",
-    [companyId]
-  );
-  return rows[0]?.company_name || "the school";
+// POST /api/school/roster  { company_id, grade?, homeroom? }
+// Students for the company (optionally filtered by grade/homeroom) with a count
+// of devices currently out per student.
+const schoolRoster = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, grade, homeroom } = req.body || {};
+  if (company_id === undefined || company_id === null || String(company_id).trim() === "") {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  const where = ["mi.company_id = ?"];
+  const values = [company_id];
+  if (grade !== undefined && grade !== null && String(grade).trim() !== "") {
+    where.push("mi.grade = ?");
+    values.push(String(grade).trim());
+  }
+  if (homeroom !== undefined && homeroom !== null && String(homeroom).trim() !== "") {
+    where.push("mi.homeroom = ?");
+    values.push(String(homeroom).trim());
+  }
+  try {
+    const [rows] = await connection.query(
+      `SELECT mi.member_id, mi.first_name, mi.last_name, mi.email, mi.grade, mi.homeroom, mi.minor,
+              SUM(CASE WHEN madl.returned = 0 THEN 1 ELSE 0 END) AS devices_out
+         FROM members_info mi
+         LEFT JOIN member_assigned_device_lease madl
+           ON madl.member_id = mi.member_id AND madl.company_id = mi.company_id
+        WHERE ${where.join(" AND ")}
+        GROUP BY mi.member_id, mi.first_name, mi.last_name, mi.email, mi.grade, mi.homeroom, mi.minor
+        ORDER BY mi.grade, mi.homeroom, mi.last_name, mi.first_name`,
+      values
+    );
+    const students = rows.map((r) => ({ ...r, devices_out: Number(r.devices_out) || 0 }));
+    return res.status(200).json({ ok: true, count: students.length, students });
+  } catch (error) {
+    logger.error("schoolRoster error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
 };
 
 /**
- * Deliver the consent link. Falls back to logging so the flow is fully
- * exercisable without a mail server — the returned link is what the demo uses.
+ * PURE + exported: merge normalized student_guardian rows with the single embedded
+ * guardian on members_info. The embedded one is prepended as source:'embedded'
+ * (primary) unless a normalized guardian already has the same email.
  */
-const deliverConsentEmail = async ({ to, studentName, school, link }) => {
-  if (!EMAIL_ENABLED) {
-    console.log(
-      `[school/consent] email disabled — link for ${to} (${studentName}): ${link}`
-    );
-    return { delivered: false, reason: "email_disabled" };
-  }
-  try {
-    // Required lazily so a missing/renamed mailer can't take the route down.
-    const mailer = require("../../helpers/nodeMailer/notifications");
-    const send = mailer?.sendEmail || mailer?.default || mailer;
-    if (typeof send !== "function") throw new Error("no mailer export");
-    await send({
-      to,
-      subject: `${school}: consent needed for ${studentName}`,
-      html: `<p>${school} needs your consent for <strong>${studentName}</strong>.</p>
-             <p><a href="${link}">Review and respond</a></p>`,
-    });
-    return { delivered: true };
-  } catch (error) {
-    console.error("[school/consent] email send failed:", error.message);
-    return { delivered: false, reason: error.message };
-  }
-};
-
-/** The raw link is only ever exposed outside production. */
-const withDebugLink = (payload, link) =>
-  IS_PRODUCTION ? payload : { ...payload, consent_url: link };
-
-/* --------------------------------------------------------------- settings */
-
-const getSchoolSettings = async (request, response) => {
-  try {
-    await ensureSchoolTables();
-    const { company_id } = request.body || {};
-    if (!company_id) return badRequest(response, "company_id is required.");
-    return response.status(200).json({
-      ok: true,
-      settings: await settingsRowFor(company_id),
-    });
-  } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
-  }
-};
-
-const updateConsentEnforcement = async (request, response) => {
-  try {
-    await ensureSchoolTables();
-    const {
-      company_id,
-      enforce,
-      enforce_under_13,
-      required_consent_policy_version,
-    } = request.body || {};
-    if (!company_id) return badRequest(response, "company_id is required.");
-
-    await connection.query(
-      `INSERT INTO school_settings
-         (company_id, enforce_member_consent, enforce_under_13, required_consent_policy_version)
-       VALUES (?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         enforce_member_consent = VALUES(enforce_member_consent),
-         enforce_under_13 = VALUES(enforce_under_13),
-         required_consent_policy_version = VALUES(required_consent_policy_version)`,
-      [
-        String(company_id),
-        enforce ? 1 : 0,
-        enforce_under_13 ? 1 : 0,
-        required_consent_policy_version || null,
-      ]
-    );
-
-    return response.status(200).json({
-      ok: true,
-      settings: await settingsRowFor(company_id),
-    });
-  } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
-  }
-};
-
-/* -------------------------------------------------------------- guardians */
-
-const listGuardians = async (request, response) => {
-  try {
-    await ensureSchoolTables();
-    const { company_id, member_id } = request.body || {};
-    if (!company_id || !member_id) {
-      return badRequest(response, "company_id and member_id are required.");
-    }
-
-    const member = await memberInCompany(company_id, member_id);
-    if (!member) {
-      return response
-        .status(404)
-        .json({ ok: false, msg: "Member not found in this company." });
-    }
-
-    const [linked] = await connection.query(
-      `SELECT g.id, g.first_name, g.last_name, g.email, g.phone_number,
-              l.relationship, l.is_primary
-         FROM school_member_guardians l
-         JOIN school_guardians g ON g.id = l.guardian_id
-        WHERE l.member_id = ? AND l.company_id = ?
-        ORDER BY l.is_primary DESC, g.id ASC`,
-      [member_id, String(company_id)]
-    );
-
-    const guardians = linked.map((g) => ({ ...g, source: "normalized" }));
-
-    // The legacy primary guardian lives in columns on members_info. Surface it
-    // as a synthetic row so a student who predates the normalized tables still
-    // shows a guardian, but skip it when the same address is already linked.
-    const embeddedEmail = normalizeEmail(member.parent_guardian_email);
-    const alreadyLinked = guardians.some(
-      (g) => normalizeEmail(g.email) === embeddedEmail && embeddedEmail
-    );
-    if (
-      !alreadyLinked &&
-      (member.parent_guardian_first_name || member.parent_guardian_email)
-    ) {
-      guardians.unshift({
+const mergeGuardians = (normalized = [], embedded = null) => {
+  const list = normalized.map((g) => ({
+    id: g.id,
+    first_name: g.first_name,
+    last_name: g.last_name,
+    email: g.email,
+    phone_number: g.phone_number,
+    relationship: g.relationship || null,
+    is_primary: Number(g.is_primary) === 1,
+    source: "normalized",
+  }));
+  const hasEmbedded =
+    embedded &&
+    (embedded.parent_guardian_email ||
+      embedded.parent_guardian_first_name ||
+      embedded.parent_guardian_last_name);
+  if (hasEmbedded) {
+    const dupe =
+      embedded.parent_guardian_email &&
+      list.some(
+        (g) =>
+          g.email &&
+          String(g.email).toLowerCase() === String(embedded.parent_guardian_email).toLowerCase()
+      );
+    if (!dupe) {
+      list.unshift({
         id: null,
-        first_name: member.parent_guardian_first_name,
-        last_name: member.parent_guardian_last_name,
-        email: member.parent_guardian_email,
-        phone_number: member.parent_guardian_phone_number,
+        first_name: embedded.parent_guardian_first_name || null,
+        last_name: embedded.parent_guardian_last_name || null,
+        email: embedded.parent_guardian_email || null,
+        phone_number: embedded.parent_guardian_phone_number || null,
         relationship: "guardian",
-        is_primary: 1,
+        is_primary: true,
         source: "embedded",
       });
     }
-
-    return response
-      .status(200)
-      .json({ ok: true, count: guardians.length, guardians });
-  } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
   }
+  return list;
 };
 
-const addGuardian = async (request, response) => {
+// POST /api/school/student/export  { company_id, member_id }
+// Portable FERPA/COPPA student data export: identity, guardians, leases,
+// consents, and the audited access log for this student.
+const studentExport = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, member_id } = req.body || {};
+  const validationError = validateStudentRequest({ company_id, member_id });
+  if (validationError) return res.status(400).json({ ok: false, msg: validationError });
+
   try {
-    await ensureSchoolTables();
-    const {
-      company_id,
-      member_id,
-      guardian_id,
-      first_name,
-      last_name,
-      email,
-      phone_number,
-      relationship = "guardian",
-      is_primary = 1,
-    } = request.body || {};
-
-    if (!company_id || !member_id) {
-      return badRequest(response, "company_id and member_id are required.");
-    }
-    if (!guardian_id && !first_name && !last_name && !email) {
-      return badRequest(response, "A guardian name or email is required.");
-    }
-
-    const member = await memberInCompany(company_id, member_id);
-    if (!member) {
-      return response
-        .status(404)
-        .json({ ok: false, msg: "Member not found in this company." });
-    }
-
-    let resolvedGuardianId = guardian_id ? Number(guardian_id) : null;
-    const normalizedEmail = email ? normalizeEmail(email) : null;
-
-    if (!resolvedGuardianId) {
-      // Guardians are shared per company: siblings resolve to one record, and
-      // re-saving the same address updates rather than duplicating.
-      const [existing] = normalizedEmail
-        ? await connection.query(
-            "SELECT id FROM school_guardians WHERE company_id = ? AND email = ?",
-            [String(company_id), normalizedEmail]
-          )
-        : [[]];
-
-      if (existing[0]) {
-        resolvedGuardianId = existing[0].id;
-        await connection.query(
-          `UPDATE school_guardians
-              SET first_name = COALESCE(?, first_name),
-                  last_name = COALESCE(?, last_name),
-                  phone_number = COALESCE(?, phone_number)
-            WHERE id = ?`,
-          [first_name || null, last_name || null, phone_number || null, resolvedGuardianId]
-        );
-      } else {
-        const [inserted] = await connection.query(
-          `INSERT INTO school_guardians
-             (company_id, first_name, last_name, email, phone_number)
-           VALUES (?, ?, ?, ?, ?)`,
-          [
-            String(company_id),
-            first_name || null,
-            last_name || null,
-            normalizedEmail,
-            phone_number || null,
-          ]
-        );
-        resolvedGuardianId = inserted.insertId;
-      }
-    }
-
-    await connection.query(
-      `INSERT INTO school_member_guardians
-         (company_id, member_id, guardian_id, relationship, is_primary)
-       VALUES (?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE
-         relationship = VALUES(relationship),
-         is_primary = VALUES(is_primary)`,
-      [String(company_id), member_id, resolvedGuardianId, relationship, is_primary ? 1 : 0]
+    const [studentRows] = await connection.query(
+      "SELECT * FROM members_info WHERE member_id = ? AND company_id = ? LIMIT 1",
+      [member_id, company_id]
     );
-
-    // Keep the legacy embedded columns in step so the profile header, the
-    // exports and the old queries don't disagree with the normalized tables.
-    if (is_primary) {
-      await connection.query(
-        `UPDATE members_info
-            SET parent_guardian_first_name = COALESCE(?, parent_guardian_first_name),
-                parent_guardian_last_name = COALESCE(?, parent_guardian_last_name),
-                parent_guardian_email = COALESCE(?, parent_guardian_email),
-                parent_guardian_phone_number = COALESCE(?, parent_guardian_phone_number)
-          WHERE member_id = ? AND company_id = ?`,
-        [
-          first_name || null,
-          last_name || null,
-          normalizedEmail,
-          phone_number || null,
-          member_id,
-          String(company_id),
-        ]
-      );
+    const student = studentRows[0];
+    if (!student) {
+      return res.status(404).json({ ok: false, msg: "member not found in this company" });
     }
 
-    return response
-      .status(201)
-      .json({ ok: true, guardian_id: resolvedGuardianId });
-  } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
-  }
-};
-
-const searchGuardians = async (request, response) => {
-  try {
-    await ensureSchoolTables();
-    const { company_id, email } = request.body || {};
-    if (!company_id) return badRequest(response, "company_id is required.");
-
-    const normalized = normalizeEmail(email);
-    if (!normalized) {
-      return response.status(200).json({ ok: true, count: 0, guardians: [] });
-    }
-
-    const [guardians] = await connection.query(
-      `SELECT id, first_name, last_name, email, phone_number
-         FROM school_guardians
-        WHERE company_id = ? AND email LIKE ?
-        LIMIT 25`,
-      [String(company_id), `%${normalized}%`]
+    const [normalizedGuardians] = await connection.query(
+      `SELECT g.id, g.first_name, g.last_name, g.email, g.phone_number,
+              sg.relationship, sg.is_primary
+         FROM student_guardian sg
+         JOIN guardians g ON g.id = sg.guardian_id
+        WHERE sg.company_id = ? AND sg.member_id = ?`,
+      [company_id, member_id]
     );
+    const guardians = mergeGuardians(normalizedGuardians, student);
 
-    return response
-      .status(200)
-      .json({ ok: true, count: guardians.length, guardians });
-  } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
-  }
-};
+    const [leases] = await connection.query(
+      `SELECT * FROM member_assigned_device_lease
+        WHERE member_id = ? AND company_id = ?
+        ORDER BY assigned_date DESC`,
+      [member_id, company_id]
+    );
+    const [consents] = await connection.query(
+      `SELECT * FROM school_consent
+        WHERE member_id = ? AND company_id = ?
+        ORDER BY consented_at DESC`,
+      [member_id, company_id]
+    );
+    const access_log = await StaffActivityLog.find({
+      company_id: String(company_id),
+      target_id: String(member_id),
+    })
+      .sort({ timestamp: -1 })
+      .limit(100)
+      .lean();
 
-/* ---------------------------------------------------------------- consent */
-
-const latestConsentRow = async (companyId, memberId, policyType) => {
-  const [rows] = await connection.query(
-    `SELECT * FROM school_consents
-      WHERE company_id = ? AND member_id = ? AND policy_type = ?
-      ORDER BY id DESC LIMIT 1`,
-    [String(companyId), memberId, policyType]
-  );
-  return rows[0] || null;
-};
-
-const publicConsentShape = (row) => ({
-  id: row.id,
-  status: deriveConsentStatus(row),
-  policy_type: row.policy_type,
-  policy_version: row.policy_version,
-  expires_at: row.expires_at,
-  requested_at: row.requested_at,
-  responded_at: row.responded_at,
-  signer_name: row.signer_name,
-  signer_email: row.signer_email,
-  method: row.method,
-  mutable: isMutable(row),
-});
-
-const getMemberConsent = async (request, response) => {
-  try {
-    await ensureSchoolTables();
-    const {
-      company_id,
-      member_id,
-      policy_type = DEFAULT_POLICY_TYPE,
-    } = request.body || {};
-    if (!company_id || !member_id) {
-      return badRequest(response, "company_id and member_id are required.");
-    }
-
-    const row = await latestConsentRow(company_id, member_id, policy_type);
-
-    // Deliberately terse when there is no record. The frontend's
-    // resolveConsentRecord() falls back to the whole response body when
-    // `consent` is null, so echoing required_consent_policy_version here would
-    // make isPolicyStale() compare it against an absent policy_version and
-    // report "stale" for a student who simply has no consent yet.
-    if (!row) {
-      return response.status(200).json({ ok: true, count: 0, consent: null });
-    }
-
-    const settings = await settingsRowFor(company_id);
-    return response.status(200).json({
-      ok: true,
-      count: 1,
-      consent: publicConsentShape(row),
-      required_consent_policy_version:
-        settings.required_consent_policy_version,
+    await logDisclosure({
+      staff_member_id: req.uid,
+      company_id: String(company_id),
+      action: "DISCLOSURE",
+      target_model: "SchoolPII",
+      target_id: String(member_id),
+      details: {
+        type: "student_export",
+        purpose: "FERPA data-subject request",
+        recipient: "staff",
+        fields_exported: ["identity", "guardians", "leases", "consents", "access_log"],
+      },
     });
+
+    return res.status(200).json({ ok: true, student, guardians, leases, consents, access_log });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    logger.error("studentExport error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
   }
 };
 
-/**
- * Whether a stored consent satisfies the company's required policy version.
- * Mirrors the frontend's isPolicyStale so both sides agree on "stale".
- */
-const isPolicyStale = (row, requiredVersion) => {
-  if (!row || !requiredVersion) return false;
-  return String(row.policy_version) !== String(requiredVersion);
+const ANONYMIZE_MEMBER_SQL = `UPDATE members_info
+   SET first_name = 'REDACTED',
+       last_name = 'REDACTED',
+       email = NULL,
+       phone_number = NULL,
+       address = NULL,
+       address_street = NULL,
+       address_city = NULL,
+       address_state = NULL,
+       address_zip = NULL,
+       parent_guardian_first_name = NULL,
+       parent_guardian_last_name = NULL,
+       parent_guardian_email = NULL,
+       parent_guardian_phone_number = NULL,
+       external_id = NULL,
+       image_url = NULL
+ WHERE member_id = ? AND company_id = ?`;
+
+const anonymizeStudent = async (conn, company_id, member_id) => {
+  // Anonymize the student record (embedded guardian fields are student-owned)
+  const [memberResult] = await conn.execute(ANONYMIZE_MEMBER_SQL, [member_id, company_id]);
+
+  // For normalized guardians: only anonymize if exclusively linked to this student.
+  // Shared guardians are preserved to protect other students' data.
+  const [guardianRows] = await conn.execute(
+    "SELECT guardian_id FROM student_guardian WHERE member_id = ? AND company_id = ?",
+    [member_id, company_id]
+  );
+  const guardianIds = guardianRows.map((row) => row.guardian_id).filter(Boolean);
+  let guardiansAnonymized = 0;
+
+  for (const gid of guardianIds) {
+    const [otherLinks] = await conn.execute(
+      "SELECT 1 FROM student_guardian WHERE guardian_id = ? AND company_id = ? AND member_id != ? LIMIT 1",
+      [gid, company_id, member_id]
+    );
+    if (otherLinks.length === 0) {
+      await conn.execute(
+        `UPDATE guardians SET first_name = 'REDACTED', last_name = 'REDACTED', email = NULL, phone_number = NULL
+         WHERE company_id = ? AND id = ?`,
+        [company_id, gid]
+      );
+      guardiansAnonymized++;
+    }
+  }
+
+  const [consentResult] = await conn.execute(
+    `UPDATE school_consent
+        SET signer_name = 'REDACTED', signer_email = NULL
+      WHERE member_id = ? AND company_id = ?`,
+    [member_id, company_id]
+  );
+
+  return {
+    members_info_updated: Number(memberResult.affectedRows || 0) > 0,
+    guardians_anonymized: guardiansAnonymized,
+    consents_anonymized: Number(consentResult.affectedRows || 0),
+  };
 };
 
-/**
- * District-wide consent posture in one request.
- *
- * The readiness dashboard needs a status for every minor on the roster. Asking
- * /school/consent per student meant ~961 requests against the demo district —
- * enough to trip a production rate limiter, and all of it fired the moment
- * consent enforcement is switched on. This collapses it to a single query.
- *
- * Returns the fields Gustavo's §3.3 documents (total / consented /
- * missing_count / missing[]) plus a `statuses` map keyed by member_id, which is
- * what the dashboard renders chips from.
- */
-const getConsentStatusSummary = async (request, response) => {
+const deleteStudent = async (conn, company_id, member_id) => {
+  const [guardianRows] = await conn.execute(
+    "SELECT guardian_id FROM student_guardian WHERE member_id = ? AND company_id = ?",
+    [member_id, company_id]
+  );
+  const guardianIds = guardianRows.map((row) => row.guardian_id).filter(Boolean);
+  let guardiansDeleted = 0;
+  let guardiansPreservedShared = 0;
+
+  // Only delete guardians that are NOT linked to any other student in this company.
+  if (guardianIds.length) {
+    for (const gid of guardianIds) {
+      const [otherLinks] = await conn.execute(
+        "SELECT 1 FROM student_guardian WHERE guardian_id = ? AND company_id = ? AND member_id != ? LIMIT 1",
+        [gid, company_id, member_id]
+      );
+      if (otherLinks.length === 0) {
+        await conn.execute(
+          "DELETE FROM guardians WHERE company_id = ? AND id = ?",
+          [company_id, gid]
+        );
+        guardiansDeleted++;
+      } else {
+        guardiansPreservedShared++;
+      }
+    }
+  }
+  const [linkResult] = await conn.execute(
+    "DELETE FROM student_guardian WHERE member_id = ? AND company_id = ?",
+    [member_id, company_id]
+  );
+  const [consentResult] = await conn.execute(
+    "DELETE FROM school_consent WHERE member_id = ? AND company_id = ?",
+    [member_id, company_id]
+  );
+  const [memberResult] = await conn.execute(
+    "DELETE FROM members_info WHERE member_id = ? AND company_id = ?",
+    [member_id, company_id]
+  );
+
+  return {
+    members_info_deleted: Number(memberResult.affectedRows || 0) > 0,
+    guardians_deleted: guardiansDeleted,
+    guardians_preserved_shared: guardiansPreservedShared,
+    student_guardian_links_deleted: Number(linkResult.affectedRows || 0),
+    consents_deleted: Number(consentResult.affectedRows || 0),
+  };
+};
+
+// POST /api/school/student/erase  { company_id, member_id, mode? }
+// Strip student PII while preserving asset history by default; hard-delete only
+// the student/guardian/consent records when explicitly requested.
+const studentErase = async (req, res) => {
+  const pool = getConnection();
+  const { company_id, member_id } = req.body || {};
+  const mode = req.body?.mode || "anonymize";
+  const validationError = validateStudentRequest({ company_id, member_id });
+  if (validationError) return res.status(400).json({ ok: false, msg: validationError });
+  if (!["anonymize", "delete"].includes(mode)) {
+    return res.status(400).json({ ok: false, msg: "mode must be anonymize or delete" });
+  }
+
   try {
-    await ensureSchoolTables();
-    const {
-      company_id,
-      policy_type = DEFAULT_POLICY_TYPE,
-      policy_version,
-    } = request.body || {};
-    if (!company_id) return badRequest(response, "company_id is required.");
-
-    const settings = await settingsRowFor(company_id);
-    const requiredVersion =
-      policy_version ?? settings.required_consent_policy_version ?? null;
-
-    // Same minor rule the profile and the dashboard use: derive from
-    // date_of_birth, fall back to the legacy flag when there's no birthdate.
-    const [rows] = await connection.query(
-      `SELECT m.member_id, m.first_name, m.last_name, m.grade, m.date_of_birth,
-              (m.date_of_birth IS NOT NULL
-               AND TIMESTAMPDIFF(YEAR, m.date_of_birth, CURDATE()) < 13) AS under_13,
-              c.status AS consent_status, c.policy_version, c.expires_at
-         FROM members_info m
-         LEFT JOIN (
-           SELECT s.* FROM school_consents s
-           JOIN (SELECT member_id, MAX(id) AS max_id
-                   FROM school_consents
-                  WHERE company_id = ? AND policy_type = ?
-                  GROUP BY member_id) latest
-             ON s.id = latest.max_id
-         ) c ON c.member_id = m.member_id
-        WHERE m.company_id = ?
-          AND ((m.date_of_birth IS NOT NULL
-                AND TIMESTAMPDIFF(YEAR, m.date_of_birth, CURDATE()) < 18)
-            OR (m.date_of_birth IS NULL AND m.minor = 1))`,
-      [String(company_id), policy_type, String(company_id)]
+    const [studentRows] = await pool.execute(
+      "SELECT 1 FROM members_info WHERE member_id = ? AND company_id = ? LIMIT 1",
+      [member_id, company_id]
     );
+    if (!studentRows.length) {
+      return res.status(404).json({ ok: false, msg: "member not found in this company" });
+    }
 
-    const statuses = {};
-    const missing = [];
-    let consented = 0;
+    const [[leaseCount]] = await pool.execute(
+      "SELECT COUNT(*) AS total FROM member_assigned_device_lease WHERE member_id = ? AND company_id = ?",
+      [member_id, company_id]
+    );
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+      const receipt =
+        mode === "delete"
+          ? await deleteStudent(conn, company_id, member_id)
+          : await anonymizeStudent(conn, company_id, member_id);
+      receipt.leases_preserved = Number(leaseCount.total || 0);
+      await conn.commit();
+      await logDisclosure({
+        staff_member_id: req.uid,
+        company_id: String(company_id),
+        action: "DISCLOSURE",
+        target_model: "SchoolPII",
+        target_id: String(member_id),
+        details: {
+          type: "student_erase",
+          purpose: "FERPA/COPPA data-subject request",
+          mode,
+          receipt,
+        },
+      });
+      return res.status(200).json({ ok: true, mode, member_id, receipt });
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    logger.error("studentErase error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
 
-    rows.forEach((row) => {
-      const hasRecord = Boolean(row.consent_status);
-      let status = "missing";
+// POST /api/school/student/access-log  { company_id, member_id, type? }
+// Per-student access + disclosure history for FERPA record requests.
+const studentAccessLog = async (req, res) => {
+  const { company_id, member_id, type } = req.body || {};
+  const validationError = validateStudentRequest({ company_id, member_id });
+  if (validationError) return res.status(400).json({ ok: false, msg: validationError });
+  if (type && !["access", "disclosure"].includes(type)) {
+    return res.status(400).json({ ok: false, msg: "type must be access or disclosure" });
+  }
 
-      if (hasRecord) {
-        const derived = deriveConsentStatus({
-          status: row.consent_status,
-          expires_at: row.expires_at,
-        });
-        status =
-          derived === "agreed" && isPolicyStale(row, requiredVersion)
-            ? "stale"
-            : derived;
+  const filter = {
+    company_id: String(company_id),
+    target_id: String(member_id),
+  };
+  if (type === "access") filter.action = { $in: ["READ", "CREATE", "UPDATE", "DELETE"] };
+  else if (type === "disclosure") filter.action = "DISCLOSURE";
+
+  try {
+    const logs = await StaffActivityLog.find(filter)
+      .sort({ timestamp: -1 })
+      .limit(200)
+      .lean();
+    const access_log = logs.map((log) => ({
+      id: log.id || (log._id ? String(log._id) : undefined),
+      action: log.action,
+      staff_member_id: log.staff_member_id,
+      timestamp: log.timestamp,
+      details: log.details || {},
+    }));
+    return res.status(200).json({ ok: true, member_id, access_log, count: access_log.length });
+  } catch (error) {
+    logger.error("studentAccessLog error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/guardians  { company_id, member_id }
+const listStudentGuardians = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, member_id } = req.body || {};
+  if (!company_id || member_id === undefined || member_id === null || String(member_id).trim() === "") {
+    return res.status(400).json({ ok: false, msg: "company_id and member_id are required" });
+  }
+  try {
+    const [normalized] = await connection.query(
+      `SELECT g.id, g.first_name, g.last_name, g.email, g.phone_number,
+              sg.relationship, sg.is_primary
+         FROM student_guardian sg
+         JOIN guardians g ON g.id = sg.guardian_id
+        WHERE sg.company_id = ? AND sg.member_id = ?`,
+      [company_id, member_id]
+    );
+    const [embRows] = await connection.query(
+      `SELECT parent_guardian_first_name, parent_guardian_last_name,
+              parent_guardian_email, parent_guardian_phone_number
+         FROM members_info WHERE company_id = ? AND member_id = ? LIMIT 1`,
+      [company_id, member_id]
+    );
+    const guardians = mergeGuardians(normalized, embRows[0] || null);
+    return res.status(200).json({ ok: true, count: guardians.length, guardians });
+  } catch (error) {
+    logger.error("listStudentGuardians error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/guardians/add
+// { company_id, member_id, guardian_id?, first_name?, last_name?, email?, phone_number?, relationship?, is_primary? }
+// Reuses an existing guardian when guardian_id is provided; creates a new one otherwise.
+// Idempotent: returns existing link with 200 if the student is already linked to this guardian.
+const addStudentGuardian = async (req, res) => {
+  const pool = getConnection();
+  const {
+    company_id,
+    member_id,
+    guardian_id,
+    first_name,
+    last_name,
+    email,
+    phone_number,
+    relationship,
+    is_primary,
+  } = req.body || {};
+  if (!company_id || member_id === undefined || member_id === null || String(member_id).trim() === "") {
+    return res.status(400).json({ ok: false, msg: "company_id and member_id are required" });
+  }
+  // When no guardian_id is provided, we need guardian identity fields to create a new one.
+  if (!guardian_id && !first_name && !last_name && !email) {
+    return res
+      .status(400)
+      .json({ ok: false, msg: "provide guardian_id or at least a name or email for the guardian" });
+  }
+  try {
+    // multi-tenant guard: the student must belong to this company
+    const [m] = await pool.execute(
+      "SELECT 1 FROM members_info WHERE member_id = ? AND company_id = ? LIMIT 1",
+      [member_id, company_id]
+    );
+    if (!m.length) {
+      return res.status(404).json({ ok: false, msg: "member not found in this company" });
+    }
+
+    const conn = await pool.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      let guardianId = guardian_id || null;
+      let createdGuardian = false;
+
+      if (guardianId) {
+        // Verify guardian exists in this company
+        const [g] = await conn.execute(
+          "SELECT id FROM guardians WHERE id = ? AND company_id = ? LIMIT 1",
+          [guardianId, company_id]
+        );
+        if (!g.length) {
+          await conn.rollback();
+          return res.status(404).json({ ok: false, msg: "guardian not found in this company" });
+        }
+      } else {
+        // Create a new guardian
+        guardianId = randomUUID();
+        await conn.execute(
+          `INSERT INTO guardians (id, company_id, first_name, last_name, email, phone_number)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [guardianId, company_id, first_name || null, last_name || null, email || null, phone_number || null]
+        );
+        createdGuardian = true;
       }
 
-      statuses[row.member_id] = status;
+      // Check if link already exists (idempotent)
+      const [existingLink] = await conn.execute(
+        "SELECT id FROM student_guardian WHERE company_id = ? AND member_id = ? AND guardian_id = ? LIMIT 1",
+        [company_id, member_id, guardianId]
+      );
+      if (existingLink.length) {
+        await conn.commit();
+        return res.status(200).json({
+          ok: true,
+          guardian_id: guardianId,
+          linked: false,
+          existing_link: true,
+          created_guardian: false,
+        });
+      }
 
-      if (status === "agreed") {
-        consented += 1;
-      } else {
-        missing.push({
-          member_id: row.member_id,
+      const linkId = randomUUID();
+      await conn.execute(
+        `INSERT INTO student_guardian (id, company_id, member_id, guardian_id, relationship, is_primary)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [linkId, company_id, member_id, guardianId, relationship || null, is_primary ? 1 : 0]
+      );
+      await conn.commit();
+      return res.status(201).json({
+        ok: true,
+        guardian_id: guardianId,
+        linked: true,
+        existing_link: false,
+        created_guardian: createdGuardian,
+      });
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
+  } catch (error) {
+    logger.error("addStudentGuardian error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/guardians/search
+// { company_id, member_id?, email?, guardian_id? }
+// Search guardians by flexible factors within a company.
+const searchGuardians = async (req, res) => {
+  const pool = getConnection();
+  const { company_id, member_id, email, guardian_id } = req.body || {};
+
+  if (!company_id) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  if (!member_id && !email && !guardian_id) {
+    return res
+      .status(400)
+      .json({ ok: false, msg: "provide at least one of: member_id, email, or guardian_id" });
+  }
+
+  try {
+    let whereClauses = ["g.company_id = ?"];
+    let params = [company_id];
+
+    if (guardian_id) {
+      whereClauses.push("g.id = ?");
+      params.push(guardian_id);
+    }
+    if (email) {
+      whereClauses.push("LOWER(g.email) = LOWER(?)");
+      params.push(email);
+    }
+    if (member_id) {
+      whereClauses.push("sg.member_id = ?");
+      params.push(member_id);
+    }
+
+    const whereStr = whereClauses.join(" AND ");
+
+    const [rows] = await pool.execute(
+      `SELECT g.id, g.first_name, g.last_name, g.email, g.phone_number,
+              sg.member_id, sg.relationship, sg.is_primary,
+              mi.first_name AS student_first_name, mi.last_name AS student_last_name
+       FROM guardians g
+       JOIN student_guardian sg ON sg.guardian_id = g.id AND sg.company_id = g.company_id
+       LEFT JOIN members_info mi ON mi.member_id = sg.member_id AND mi.company_id = sg.company_id
+       WHERE ${whereStr}`,
+      params
+    );
+
+    // Group by guardian_id to deduplicate shared guardians
+    const guardianMap = new Map();
+    for (const row of rows) {
+      if (!guardianMap.has(row.id)) {
+        guardianMap.set(row.id, {
+          id: row.id,
           first_name: row.first_name,
           last_name: row.last_name,
-          grade: row.grade,
-          under_13: Boolean(row.under_13),
-          status,
+          email: row.email,
+          phone_number: row.phone_number,
+          students: [],
         });
       }
-    });
+      if (row.member_id) {
+        guardianMap.get(row.id).students.push({
+          member_id: row.member_id,
+          first_name: row.student_first_name,
+          last_name: row.student_last_name,
+          relationship: row.relationship,
+          is_primary: row.is_primary,
+        });
+      }
+    }
 
-    return response.status(200).json({
-      ok: true,
-      policy_type,
-      policy_version: requiredVersion,
-      total: rows.length,
-      consented,
-      missing_count: missing.length,
-      missing,
-      statuses,
-    });
+    const guardians = Array.from(guardianMap.values());
+    return res.status(200).json({ ok: true, count: guardians.length, guardians });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    logger.error("searchGuardians error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
   }
 };
 
-/** Shared by request and resend: mint a code, store its hash, deliver the link. */
-const issueConsentRequest = async ({
-  companyId,
-  memberId,
-  member,
-  guardianId,
-  guardianEmail,
-  policyType,
-  policyVersion,
-  existingId,
-}) => {
-  const otc = generateOtc();
-  const expiresAt = new Date(
-    Date.now() + CONSENT_TTL_DAYS * 24 * 60 * 60 * 1000
-  );
-  const school = await companyName(companyId);
-  const studentName = `${member.first_name ?? ""} ${member.last_name ?? ""}`.trim();
-  const text = consentTextFor(policyType, policyVersion, school);
+// PURE + exported: roster rows carrying a `consented` flag -> compliance summary
+// (who has / hasn't signed). Deterministic, no I/O.
+const summarizeConsentStatus = (rows = []) => {
+  let consented = 0;
+  const missing = [];
+  for (const r of rows) {
+    if (Number(r.consented) === 1 || r.consented === true) {
+      consented++;
+    } else {
+      const missingMember = {
+        member_id: r.member_id,
+        first_name: r.first_name,
+        last_name: r.last_name,
+        grade: r.grade || null,
+      };
+      if (r.under_13 !== undefined) missingMember.under_13 = r.under_13;
+      missing.push(missingMember);
+    }
+  }
+  return { total: rows.length, consented, missing_count: missing.length, missing };
+};
 
-  let consentId = existingId;
-  if (existingId) {
-    await connection.query(
-      `UPDATE school_consents
-          SET otc_hash = ?, expires_at = ?, status = 'pending', guardian_id = ?,
-              signer_email = ?, requested_at = CURRENT_TIMESTAMP,
-              responded_at = NULL, signer_name = NULL, consent_text = ?
-        WHERE id = ?`,
-      [hashOtc(otc), expiresAt, guardianId, guardianEmail, text, existingId]
+// POST /api/school/consent/record
+// { company_id, member_id, signer_name, policy_type?='AUP', policy_version?='1',
+//   guardian_id?, signer_email?, method?='e-signature' }
+const recordConsent = async (req, res) => {
+  const pool = getConnection();
+  const {
+    company_id, member_id, policy_type, policy_version,
+    guardian_id, signer_name, signer_email, method,
+  } = req.body || {};
+  if (!company_id || member_id === undefined || member_id === null || String(member_id).trim() === "") {
+    return res.status(400).json({ ok: false, msg: "company_id and member_id are required" });
+  }
+  if (!signer_name || !String(signer_name).trim()) {
+    return res.status(400).json({ ok: false, msg: "signer_name is required" });
+  }
+  try {
+    const [m] = await pool.execute(
+      "SELECT 1 FROM members_info WHERE member_id = ? AND company_id = ? LIMIT 1",
+      [member_id, company_id]
     );
-  } else {
-    const [inserted] = await connection.query(
-      `INSERT INTO school_consents
-         (company_id, member_id, guardian_id, policy_type, policy_version,
-          status, otc_hash, expires_at, signer_email, consent_text)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`,
+    if (!m.length) {
+      return res.status(404).json({ ok: false, msg: "member not found in this company" });
+    }
+    const pType = policy_type && String(policy_type).trim() ? String(policy_type).trim() : "AUP";
+    const pVer = policy_version && String(policy_version).trim() ? String(policy_version).trim() : "1";
+    const id = randomUUID();
+    try {
+      await pool.execute(
+        `INSERT INTO school_consent
+           (id, company_id, member_id, guardian_id, policy_type, policy_version, signer_name, signer_email, method, consented_at, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'agreed')`,
+        [id, company_id, member_id, guardian_id || null, pType, pVer, String(signer_name).trim(), signer_email || null, method || "e-signature"]
+      );
+      return res.status(201).json({ ok: true, consent_id: id });
+    } catch (e) {
+      if (e.code === "ER_DUP_ENTRY") {
+        return res.status(200).json({ ok: true, msg: "consent already recorded for this member/policy/version" });
+      }
+      throw e;
+    }
+  } catch (error) {
+    logger.error("recordConsent error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/consent/request
+// Staff creates a consent request -> generates OTC -> sends email to guardian.
+const requestConsent = async (req, res) => {
+  const pool = getConnection();
+  const { company_id, member_id, guardian_id, policy_type, policy_version } = req.body || {};
+
+  if (!company_id || member_id === undefined || member_id === null || String(member_id).trim() === "") {
+    return res.status(400).json({ ok: false, msg: "company_id and member_id are required" });
+  }
+
+  const pType = policy_type && String(policy_type).trim() ? String(policy_type).trim() : "AUP";
+  const pVer = policy_version && String(policy_version).trim() ? String(policy_version).trim() : "1";
+
+  try {
+    const [m] = await pool.execute(
+      "SELECT member_id, first_name, last_name, minor FROM members_info WHERE member_id = ? AND company_id = ? LIMIT 1",
+      [member_id, company_id]
+    );
+    if (!m.length) {
+      return res.status(404).json({ ok: false, msg: "member not found in this company" });
+    }
+    const student = m[0];
+
+    let guardianEmail = null;
+    let guardianName = null;
+    let resolvedGuardianId = guardian_id || null;
+
+    if (resolvedGuardianId) {
+      const [g] = await pool.execute(
+        "SELECT first_name, last_name, email FROM guardians WHERE id = ? AND company_id = ?",
+        [resolvedGuardianId, company_id]
+      );
+      if (g.length) {
+        guardianEmail = g[0].email;
+        guardianName = `${g[0].first_name || ""} ${g[0].last_name || ""}`.trim();
+      }
+    }
+
+    if (!guardianEmail) {
+      const [sg] = await pool.execute(
+        `SELECT g.id, g.first_name, g.last_name, g.email
+           FROM student_guardian sg JOIN guardians g ON g.id = sg.guardian_id
+          WHERE sg.company_id = ? AND sg.member_id = ? LIMIT 1`,
+        [company_id, member_id]
+      );
+      if (sg.length && sg[0].email) {
+        resolvedGuardianId = sg[0].id;
+        guardianEmail = sg[0].email;
+        guardianName = `${sg[0].first_name || ""} ${sg[0].last_name || ""}`.trim();
+      }
+    }
+
+    if (!guardianEmail) {
+      const [emb] = await pool.execute(
+        "SELECT parent_guardian_email, parent_guardian_first_name, parent_guardian_last_name FROM members_info WHERE member_id = ? AND company_id = ? LIMIT 1",
+        [member_id, company_id]
+      );
+      if (emb.length && emb[0].parent_guardian_email) {
+        guardianEmail = emb[0].parent_guardian_email;
+        guardianName = `${emb[0].parent_guardian_first_name || ""} ${emb[0].parent_guardian_last_name || ""}`.trim();
+      }
+    }
+
+    if (!guardianEmail) {
+      return res.status(422).json({ ok: false, msg: "No guardian email found for this student. Add a guardian first." });
+    }
+
+    // `otc` is the plaintext code that goes in the guardian's email and is
+    // never persisted; only its hash is stored, so a database read cannot be
+    // replayed as a consent link.
+    const otc = generateOtc();
+    const expires = otcExpiresAt();
+    const id = randomUUID();
+
+    await pool.execute(
+      `INSERT INTO school_consent
+        (id, company_id, member_id, guardian_id, policy_type, policy_version,
+         signer_name, signer_email, method, status, otc_hash, otc_expires_at,
+         requested_at, requester_staff_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, NOW(), ?)`,
       [
-        String(companyId),
-        memberId,
-        guardianId,
-        policyType,
-        policyVersion,
-        hashOtc(otc),
-        expiresAt,
+        id,
+        company_id,
+        member_id,
+        resolvedGuardianId,
+        pType,
+        pVer,
+        guardianName || "Guardian",
         guardianEmail,
-        text,
+        "email-link",
+        hashOtc(otc),
+        expires,
+        req.uid || null,
       ]
     );
-    consentId = inserted.insertId;
+
+    try {
+      const { enqueue } = require("../../helpers/queue");
+      const consentUrl = `${process.env.FRONTEND_URL || "https://admin.devitrak.net"}/school/consent/respond?otc=${otc}`;
+      await enqueue(
+        "send-email",
+        {
+          to: guardianEmail,
+          from: "Devitrak Notifications <noreply@devitrak.com>",
+          subject: `Consent Required: Device Agreement for ${student.first_name} ${student.last_name}`,
+          html: `
+          <p>Hello ${guardianName || "Guardian"},</p>
+          <p>A device assignment agreement requires your consent for <strong>${student.first_name} ${student.last_name}</strong>.</p>
+          <p>Please review and respond to the consent request:</p>
+          <p><a href="${consentUrl}" style="display:inline-block;padding:12px 24px;background:#4F46E5;color:#fff;text-decoration:none;border-radius:6px;">Review Consent</a></p>
+          <p>Or copy this link: ${consentUrl}</p>
+          <p>This link expires in 7 days.</p>
+          <p>Best regards,<br/>Devitrak</p>
+        `,
+        },
+        { idempotencyKey: `school-consent-request:${id}` }
+      );
+    } catch (emailErr) {
+      logger.error("Failed to enqueue consent email:", emailErr.message);
+    }
+
+    return res.status(201).json({
+      ok: true,
+      consent_id: id,
+      status: "pending",
+      expires_at: expires,
+      guardian_email: guardianEmail,
+    });
+  } catch (error) {
+    logger.error("requestConsent error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
   }
-
-  const link = buildConsentLink(otc);
-  const delivery = await deliverConsentEmail({
-    to: guardianEmail,
-    studentName,
-    school,
-    link,
-  });
-
-  return { consentId, otc, link, expiresAt, delivery };
 };
 
-/**
- * Resolve which guardian address a consent request should go to: an explicit
- * guardian_id, else the primary normalized link, else the legacy embedded
- * columns on members_info.
- */
-const resolveGuardianForMember = async (companyId, memberId, member, guardianId) => {
-  if (guardianId) {
-    const [rows] = await connection.query(
-      "SELECT id, email FROM school_guardians WHERE id = ? AND company_id = ?",
-      [guardianId, String(companyId)]
-    );
-    if (rows[0]) return { id: rows[0].id, email: normalizeEmail(rows[0].email) };
+// POST /api/school/consent/resend
+// Staff re-sends a pending consent request: regenerates the OTC (invalidating
+// the previous link) and re-enqueues the email. Only valid while status='pending'
+// — an already agreed/refused consent must go through /consent/request again
+// (new policy_version) rather than being resent.
+const resendConsent = async (req, res) => {
+  const pool = getConnection();
+  const { company_id, member_id, policy_type, policy_version } = req.body || {};
+
+  const validationError = validateStudentRequest({ company_id, member_id });
+  if (validationError) {
+    return res.status(400).json({ ok: false, msg: validationError });
   }
 
-  const [linked] = await connection.query(
-    `SELECT g.id, g.email FROM school_member_guardians l
-       JOIN school_guardians g ON g.id = l.guardian_id
-      WHERE l.member_id = ? AND l.company_id = ?
-      ORDER BY l.is_primary DESC, g.id ASC LIMIT 1`,
-    [memberId, String(companyId)]
-  );
-  if (linked[0]?.email) {
-    return { id: linked[0].id, email: normalizeEmail(linked[0].email) };
-  }
+  const pType = policy_type && String(policy_type).trim() ? String(policy_type).trim() : "AUP";
+  const pVer = policy_version && String(policy_version).trim() ? String(policy_version).trim() : "1";
 
-  return { id: null, email: normalizeEmail(member.parent_guardian_email) };
-};
-
-const requestConsent = async (request, response) => {
   try {
-    await ensureSchoolTables();
-    const {
-      company_id,
-      member_id,
-      guardian_id,
-      policy_type = DEFAULT_POLICY_TYPE,
-      policy_version = DEFAULT_POLICY_VERSION,
-    } = request.body || {};
-
-    if (!company_id || !member_id) {
-      return badRequest(response, "company_id and member_id are required.");
-    }
-
-    const member = await memberInCompany(company_id, member_id);
-    if (!member) {
-      return response
-        .status(404)
-        .json({ ok: false, msg: "Member not found in this company." });
-    }
-
-    const guardian = await resolveGuardianForMember(
-      company_id,
-      member_id,
-      member,
-      guardian_id
+    const [rows] = await pool.execute(
+      `SELECT id, status, signer_name, signer_email
+         FROM school_consent
+        WHERE company_id = ? AND member_id = ? AND policy_type = ? AND policy_version = ?
+        LIMIT 1`,
+      [company_id, member_id, pType, pVer]
     );
-    if (!guardian.email) {
-      return response
-        .status(422)
-        .json({ ok: false, msg: "No guardian email on file for this student." });
-    }
 
-    const existing = await latestConsentRow(company_id, member_id, policy_type);
-    const existingStatus = deriveConsentStatus(existing);
-
-    if (existing && existingStatus === "agreed" &&
-        existing.policy_version === policy_version) {
-      return response.status(200).json({
-        ok: true,
-        consent_id: existing.id,
-        status: "agreed",
-        msg: "Consent already recorded for this policy version.",
-      });
-    }
-    if (existing && existingStatus === "pending") {
-      return response.status(409).json({
+    if (!rows.length) {
+      return res.status(404).json({
         ok: false,
-        msg: "A consent request is already pending. Use resend instead.",
-        consent_id: existing.id,
+        msg: "No consent request found for this student/policy. Use /consent/request first.",
       });
     }
 
-    const issued = await issueConsentRequest({
-      companyId: company_id,
-      memberId: member_id,
-      member,
-      guardianId: guardian.id,
-      guardianEmail: guardian.email,
-      policyType: policy_type,
-      policyVersion: policy_version,
-      existingId: null,
-    });
+    const existing = rows[0];
+    if (!isConsentMutable(existing.status)) {
+      return res.status(409).json({
+        ok: false,
+        msg: `Consent already ${existing.status}; nothing to resend.`,
+        status: existing.status,
+      });
+    }
+    if (!existing.signer_email) {
+      return res.status(422).json({ ok: false, msg: "No guardian email on file for this consent request." });
+    }
 
-    return response.status(201).json(
-      withDebugLink(
-        {
-          ok: true,
-          consent_id: issued.consentId,
-          status: "pending",
-          expires_at: issued.expiresAt,
-          guardian_email: guardian.email,
-          email_delivered: issued.delivery.delivered,
-        },
-        issued.link
-      )
+    // Plaintext goes to the email, hash goes to the database. Rotating it here
+    // is what invalidates the previous link.
+    const otc = generateOtc();
+    const hashedOtc = hashOtc(otc);
+    const expires = otcExpiresAt();
+
+    const [updateResult] = await pool.execute(
+      `UPDATE school_consent
+          SET otc_hash = ?, otc_expires_at = ?, requested_at = NOW(), requester_staff_id = ?
+        WHERE id = ? AND status = 'pending'`,
+      [hashedOtc, expires, req.uid || null, existing.id]
     );
+
+    if (!updateResult.affectedRows) {
+      return res.status(409).json({ ok: false, msg: "Consent was responded to before it could be resent." });
+    }
+
+    try {
+      const { enqueue } = require("../../helpers/queue");
+      const consentUrl = `${process.env.FRONTEND_URL || "https://admin.devitrak.net"}/school/consent/respond?otc=${otc}`;
+      await enqueue(
+        "send-email",
+        {
+          to: existing.signer_email,
+          from: "Devitrak Notifications <noreply@devitrak.com>",
+          subject: "Reminder: Consent Required for Device Agreement",
+          html: `
+          <p>Hello ${existing.signer_name || "Guardian"},</p>
+          <p>This is a reminder that a device assignment agreement still requires your consent.</p>
+          <p>Please review and respond to the consent request:</p>
+          <p><a href="${consentUrl}" style="display:inline-block;padding:12px 24px;background:#4F46E5;color:#fff;text-decoration:none;border-radius:6px;">Review Consent</a></p>
+          <p>Or copy this link: ${consentUrl}</p>
+          <p>This link expires in 7 days. Any previous consent link is no longer valid.</p>
+          <p>Best regards,<br/>Devitrak</p>
+        `,
+        },
+        // Keyed on the HASH, not the plaintext: this string is persisted on the
+        // Job document, and the code itself has no business being indexed there.
+        { idempotencyKey: `school-consent-resend:${existing.id}:${hashedOtc.slice(0, 16)}` }
+      );
+    } catch (emailErr) {
+      logger.error("Failed to enqueue consent resend email:", emailErr.message);
+    }
+
+    return res.status(200).json({
+      ok: true,
+      consent_id: existing.id,
+      status: "pending",
+      expires_at: expires,
+      guardian_email: existing.signer_email,
+    });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    logger.error("resendConsent error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
   }
 };
 
-const resendConsent = async (request, response) => {
-  try {
-    await ensureSchoolTables();
-    const {
-      company_id,
-      member_id,
-      policy_type = DEFAULT_POLICY_TYPE,
-      policy_version = DEFAULT_POLICY_VERSION,
-    } = request.body || {};
-
-    if (!company_id || !member_id) {
-      return badRequest(response, "company_id and member_id are required.");
-    }
-
-    const member = await memberInCompany(company_id, member_id);
-    if (!member) {
-      return response
-        .status(404)
-        .json({ ok: false, msg: "Member not found in this company." });
-    }
-
-    const existing = await latestConsentRow(company_id, member_id, policy_type);
-    if (!existing) {
-      // The frontend maps this to "send a new one first".
-      return response
-        .status(404)
-        .json({ ok: false, msg: "No consent request to resend." });
-    }
-
-    const status = deriveConsentStatus(existing);
-    if (status === "agreed" || status === "refused") {
-      return response
-        .status(409)
-        .json({ ok: false, msg: `Guardian already responded (${status}).` });
-    }
-
-    const guardian = await resolveGuardianForMember(
-      company_id,
-      member_id,
-      member,
-      existing.guardian_id
-    );
-    if (!guardian.email) {
-      return response
-        .status(422)
-        .json({ ok: false, msg: "No guardian email on file for this student." });
-    }
-
-    const issued = await issueConsentRequest({
-      companyId: company_id,
-      memberId: member_id,
-      member,
-      guardianId: guardian.id,
-      guardianEmail: guardian.email,
-      policyType: policy_type,
-      policyVersion: policy_version || existing.policy_version,
-      existingId: existing.id,
+// POST /api/school/consent/public/retrieve
+// Public: guardian retrieves consent details using the OTC.
+const publicRetrieveConsent = async (req, res) => {
+  const pool = getConnection();
+  const token = String(req.body?.otc || "").trim();
+  if (!token) {
+    return res.status(400).json({
+      ok: false,
+      msg: "otc is required",
     });
-
-    return response.status(200).json(
-      withDebugLink(
-        {
-          ok: true,
-          consent_id: issued.consentId,
-          status: "pending",
-          expires_at: issued.expiresAt,
-          guardian_email: guardian.email,
-          email_delivered: issued.delivery.delivered,
-        },
-        issued.link
-      )
-    );
-  } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
   }
-};
-
-/* ----------------------------------------------------------------- public */
-
-const consentRowByOtc = async (otc) => {
-  const [rows] = await connection.query(
-    "SELECT * FROM school_consents WHERE otc_hash = ? ORDER BY id DESC LIMIT 1",
-    [hashOtc(otc)]
-  );
-  return rows[0] || null;
-};
-
-const publicRetrieveConsent = async (request, response) => {
   try {
-    await ensureSchoolTables();
-    const { otc } = request.body || {};
-    if (!otc) return badRequest(response, "otc is required.");
+    const [rows] = await pool.execute(
+      `
+        SELECT
+          sc.id AS consent_id,
+          sc.company_id,
+          sc.member_id,
+          sc.guardian_id,
+          sc.policy_type,
+          sc.policy_version,
+          sc.signer_name,
+          sc.signer_email,
+          sc.method,
+          sc.consented_at,
+          sc.created_at,
+          sc.status,
+          sc.otc_expires_at,
+          sc.requested_at,
+          sc.responded_at,
+          sc.refused_at,
 
-    const row = await consentRowByOtc(otc);
-    // 404 for an unknown code — never reveal whether it merely expired, so the
-    // endpoint can't be used to probe which codes were ever valid.
-    if (!row) {
-      return response.status(404).json({ ok: false, msg: "Invalid consent link." });
+          COALESCE(
+            sc.otc_expires_at,
+            DATE_ADD(sc.requested_at, INTERVAL 7 DAY)
+          ) AS effective_otc_expires_at,
+
+          ci.company_name,
+          ci.industry,
+
+          css.consent_document_id,
+
+          mi.first_name AS student_first_name,
+          mi.last_name AS student_last_name,
+          mi.email AS student_email,
+          mi.grade AS student_grade,
+          mi.homeroom AS student_homeroom,
+          mi.date_of_birth AS student_date_of_birth,
+
+          g.first_name AS guardian_first_name,
+          g.last_name AS guardian_last_name,
+          g.email AS guardian_email,
+          g.phone_number AS guardian_phone_number
+
+        FROM school_consent AS sc
+
+        INNER JOIN company_info AS ci
+          ON ci.company_id = sc.company_id
+
+        LEFT JOIN company_school_settings AS css
+          ON css.company_id = sc.company_id
+
+        INNER JOIN members_info AS mi
+          ON mi.member_id = sc.member_id
+         AND mi.company_id = sc.company_id
+
+        LEFT JOIN guardians AS g
+          ON g.id = sc.guardian_id
+         AND g.company_id = sc.company_id
+
+        WHERE sc.otc_hash = ?
+        LIMIT 1
+      `,
+      [hashOtc(token)]
+    );
+    if (!rows.length) {
+      return res.status(404).json({
+        ok: false,
+        msg: "Invalid consent link.",
+      });
     }
 
-    const status = deriveConsentStatus(row);
-    if (status === "expired") {
-      return response
-        .status(410)
-        .json({ ok: false, msg: "This consent link has expired." });
+    const record = rows[0];
+    const expiresAt = record.effective_otc_expires_at;
+
+    if (isOtcExpired(expiresAt)) {
+      return res.status(410).json({
+        ok: false,
+        code: "CONSENT_LINK_EXPIRED",
+        msg: "This consent link has expired.",
+      });
     }
 
-    const member = await memberInCompany(row.company_id, row.member_id);
-    const [guardians] = row.guardian_id
-      ? await connection.query(
-          "SELECT first_name, last_name, email FROM school_guardians WHERE id = ?",
-          [row.guardian_id]
-        )
-      : [[]];
+    const guardianFullName =
+      [record.guardian_first_name, record.guardian_last_name]
+        .filter(Boolean)
+        .join(" ") ||
+      record.signer_name ||
+      null;
 
-    const guardian = guardians[0] || {
-      first_name: member?.parent_guardian_first_name,
-      last_name: member?.parent_guardian_last_name,
-      email: row.signer_email,
+    const studentFullName =
+      [record.student_first_name, record.student_last_name]
+        .filter(Boolean)
+        .join(" ") || "Student";
+
+    const response = {
+      ok: true,
+
+      consent: {
+        id: record.consent_id,
+        status: record.status,
+        policy_type: record.policy_type,
+        policy_version: record.policy_version,
+        method: record.method,
+        signer_name: record.signer_name,
+        signer_email: record.signer_email,
+        requested_at: record.requested_at,
+        expires_at: expiresAt,
+        consented_at: record.consented_at,
+        refused_at: record.refused_at,
+        responded_at: record.responded_at,
+        mutable: isConsentMutable(record.status),
+      },
+
+      company: {
+        id: record.company_id,
+        name: record.company_name,
+        industry: record.industry,
+        consent_document_id: record.consent_document_id || null,
+      },
+
+      guardian: {
+        // id: record.guardian_id,
+        first_name: record.guardian_first_name,
+        last_name: record.guardian_last_name,
+        full_name: guardianFullName,
+        email: record.guardian_email || record.signer_email || null,
+        // phone_number: record.guardian_phone_number || null,
+      },
+
+      student: {
+        // id: record.member_id,
+        // first_name: record.student_first_name,
+        // last_name: record.student_last_name,
+        full_name: studentFullName,
+        // email: record.student_email || null,
+        grade: record.student_grade || null,
+        // homeroom: record.student_homeroom || null,
+        // date_of_birth: record.student_date_of_birth || null,
+      },
     };
 
-    return response.status(200).json({
-      ok: true,
-      consent: {
-        ...publicConsentShape(row),
-        consent_text: row.consent_text,
-      },
-      company: { name: await companyName(row.company_id) },
-      guardian: {
-        full_name: `${guardian.first_name ?? ""} ${guardian.last_name ?? ""}`.trim(),
-        email: guardian.email,
-      },
-      student: {
-        full_name: `${member?.first_name ?? ""} ${member?.last_name ?? ""}`.trim(),
-        grade: member?.grade,
-        homeroom: member?.homeroom,
-      },
-    });
+    return res.status(200).json(response);
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    logger.error("publicRetrieveConsent error:", {
+      message: error.message,
+      stack: error.stack,
+    });
+
+    return res.status(500).json({
+      ok: false,
+      msg: "Unable to retrieve consent information.",
+    });
   }
 };
+// POST /api/school/consent/public/respond
+// Public: guardian agrees or refuses consent via OTC.
+const publicRespondConsent = async (req, res) => {
+  const pool = getConnection();
+  const { otc, decision, signer_name } = req.body || {};
+  const token = otc ? String(otc).trim() : "";
 
-const publicRespondConsent = async (request, response) => {
+  if (!token) {
+    return res.status(400).json({ ok: false, msg: "otc is required" });
+  }
+  if (!isValidDecision(decision)) {
+    return res.status(400).json({ ok: false, msg: "decision must be 'agreed' or 'refused'" });
+  }
+  if (!signer_name || !String(signer_name).trim()) {
+    return res.status(400).json({ ok: false, msg: "signer_name is required" });
+  }
+
   try {
-    await ensureSchoolTables();
-    const { otc, decision, signer_name } = request.body || {};
-    if (!otc) return badRequest(response, "otc is required.");
-    if (!["agreed", "refused"].includes(decision)) {
-      return badRequest(response, "decision must be 'agreed' or 'refused'.");
-    }
-    if (!String(signer_name ?? "").trim()) {
-      return badRequest(response, "signer_name is required.");
+    const [rows] = await pool.execute(
+      "SELECT id, status, otc_expires_at FROM school_consent WHERE otc_hash = ? LIMIT 1",
+      [hashOtc(token)]
+    );
+
+    if (!rows.length) {
+      return res.status(404).json({ ok: false, msg: "Invalid consent link." });
     }
 
-    const row = await consentRowByOtc(otc);
-    if (!row) {
-      return response.status(404).json({ ok: false, msg: "Invalid consent link." });
+    const consent = rows[0];
+    if (isOtcExpired(consent.otc_expires_at)) {
+      return res.status(410).json({ ok: false, code: "CONSENT_LINK_EXPIRED", msg: "This consent link has expired." });
     }
 
-    const status = deriveConsentStatus(row);
-    if (status === "expired") {
-      return response
-        .status(410)
-        .json({ ok: false, msg: "This consent link has expired." });
-    }
-    if (status === "agreed" || status === "refused") {
-      // The frontend retries transient failures, so a repeat submit has to be
-      // safe: report the decision already on file rather than overwriting it.
-      return response.status(409).json({
-        ok: false,
-        msg: `This request was already ${status}.`,
-        status,
+    if (!isConsentMutable(consent.status)) {
+      return res.status(200).json({
+        ok: true,
+        msg: `Consent already ${consent.status}.`,
+        status: consent.status,
       });
     }
 
-    // The code is deliberately left in place. The response page retries
-    // transient network failures, so a retry that lands after the write
-    // succeeded has to still resolve to this row and get the 409 above —
-    // clearing the hash would answer 404 "invalid link" to a guardian whose
-    // consent was in fact recorded. The row's status is what makes the code
-    // inert: retrieve returns it read-only, respond refuses to change it.
-    await connection.query(
-      `UPDATE school_consents
-          SET status = ?, signer_name = ?, responded_at = CURRENT_TIMESTAMP
-        WHERE id = ?`,
-      [decision, String(signer_name).trim(), row.id]
+    const ip = req.ip || req.connection?.remoteAddress || "";
+    const userAgent = req.get("user-agent") || "";
+    const statusField = decision === "agreed" ? "consented_at" : "refused_at";
+    await pool.execute(
+      `UPDATE school_consent
+         SET status = ?, signer_name = ?, ${statusField} = NOW(), responded_at = NOW(),
+             response_ip = ?, response_user_agent = ?
+       WHERE id = ?`,
+      [decision, String(signer_name).trim(), ip, userAgent, consent.id]
     );
 
-    return response
-      .status(200)
-      .json({ ok: true, status: decision, consent_id: row.id });
+    return res.status(200).json({ ok: true, status: decision, consent_id: consent.id });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    logger.error("publicRespondConsent error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/consent  { company_id, member_id }  -> consents for a student
+const listMemberConsents = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, member_id } = req.body || {};
+  if (!company_id || member_id === undefined || member_id === null || String(member_id).trim() === "") {
+    return res.status(400).json({ ok: false, msg: "company_id and member_id are required" });
+  }
+  try {
+    const [rows] = await connection.query(
+      `SELECT id, guardian_id, policy_type, policy_version, signer_name, signer_email, method,
+              consented_at, status, otc_expires_at, requested_at, responded_at, refused_at
+         FROM school_consent WHERE company_id = ? AND member_id = ?
+        ORDER BY consented_at DESC`,
+      [company_id, member_id]
+    );
+    return res.status(200).json({ ok: true, count: rows.length, consents: rows });
+  } catch (error) {
+    logger.error("listMemberConsents error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/consent/list
+//   { company_id, status?, page?=1, page_size?=50 }
+//
+// Company-wide consent review, in ANY state. `consentStatus` below only answers
+// "signed / not signed" (it joins on status='agreed'), and `listMemberConsents`
+// above needs a member_id — neither shows a company's pending or refused
+// requests, which is what a compliance screen needs.
+//
+// `expired` is NOT a stored status: it is a pending row whose OTC window has
+// closed. The buckets here are kept mutually exclusive on purpose (`pending`
+// excludes expired) so a UI can count them without double-counting; each row
+// also carries an `expired` flag so the client never has to do date math.
+//
+// The OTC hash is deliberately NOT selected: it is a bearer credential that
+// grants read access to a student's PII and the right to answer on the
+// guardian's behalf.
+const CONSENT_LIST_STATUSES = ["agreed", "pending", "refused", "expired"];
+const CONSENT_LIST_PAGE_SIZE = 50;
+const CONSENT_LIST_MAX_PAGE_SIZE = 200;
+
+const parsePositiveInt = (value, fallback) => {
+  if (value === undefined || value === null || String(value).trim() === "") return fallback;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return null;
+  return parsed;
+};
+
+const listCompanyConsents = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, status, page, page_size } = req.body || {};
+  if (hasBlankRequiredId(company_id)) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+
+  let statusClause = "";
+  const statusParams = [];
+  if (status !== undefined && status !== null && String(status).trim() !== "") {
+    const wanted = String(status).trim().toLowerCase();
+    if (!CONSENT_LIST_STATUSES.includes(wanted)) {
+      return res.status(400).json({
+        ok: false,
+        msg: `status must be one of: ${CONSENT_LIST_STATUSES.join(", ")}`,
+      });
+    }
+    if (wanted === "expired") {
+      statusClause = "AND sc.status = 'pending' AND sc.otc_expires_at IS NOT NULL AND sc.otc_expires_at < NOW()";
+    } else if (wanted === "pending") {
+      statusClause = "AND sc.status = 'pending' AND (sc.otc_expires_at IS NULL OR sc.otc_expires_at >= NOW())";
+    } else {
+      statusClause = "AND sc.status = ?";
+      statusParams.push(wanted);
+    }
+  }
+
+  const pageNumber = parsePositiveInt(page, 1);
+  const requestedSize = parsePositiveInt(page_size, CONSENT_LIST_PAGE_SIZE);
+  if (pageNumber === null || requestedSize === null) {
+    return res.status(400).json({ ok: false, msg: "page and page_size must be positive integers" });
+  }
+  const pageSize = Math.min(requestedSize, CONSENT_LIST_MAX_PAGE_SIZE);
+  const offset = (pageNumber - 1) * pageSize;
+
+  try {
+    const [countRows] = await connection.query(
+      `SELECT COUNT(*) AS total FROM school_consent sc WHERE sc.company_id = ? ${statusClause}`,
+      [company_id, ...statusParams]
+    );
+    const total = countRows.length ? Number(countRows[0].total) : 0;
+
+    const [rows] = await connection.query(
+      `SELECT sc.id, sc.member_id, mi.first_name, mi.last_name, mi.grade,
+              sc.guardian_id, sc.policy_type, sc.policy_version, sc.status,
+              sc.signer_name, sc.signer_email, sc.method,
+              sc.requested_at, sc.responded_at, sc.refused_at, sc.consented_at,
+              sc.otc_expires_at, sc.created_at
+         FROM school_consent sc
+         LEFT JOIN members_info mi
+           ON mi.member_id = sc.member_id AND mi.company_id = sc.company_id
+        WHERE sc.company_id = ? ${statusClause}
+        ORDER BY COALESCE(sc.consented_at, sc.responded_at, sc.requested_at, sc.created_at) DESC, sc.id
+        LIMIT ? OFFSET ?`,
+      [company_id, ...statusParams, pageSize, offset]
+    );
+
+    const now = new Date();
+    const consents = rows.map((row) => ({
+      ...row,
+      expired: row.status === "pending" && !!row.otc_expires_at && new Date(row.otc_expires_at) < now,
+    }));
+
+    return res.status(200).json({
+      ok: true,
+      page: pageNumber,
+      page_size: pageSize,
+      total,
+      total_pages: pageSize > 0 ? Math.ceil(total / pageSize) : 0,
+      count: consents.length,
+      consents,
+    });
+  } catch (error) {
+    logger.error("listCompanyConsents error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/consent/status  { company_id, policy_type?='AUP', policy_version? }
+// Compliance view: which students have / have NOT signed the policy.
+const consentStatus = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, policy_type, policy_version } = req.body || {};
+  if (!company_id) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  const pType = policy_type && String(policy_type).trim() ? String(policy_type).trim() : "AUP";
+  const values = [pType];
+  let versionClause = "";
+  if (policy_version && String(policy_version).trim() !== "") {
+    versionClause = "AND sc.policy_version = ?";
+    values.push(String(policy_version).trim());
+  }
+  values.push(company_id);
+  try {
+    const [rows] = await connection.query(
+      `SELECT mi.member_id, mi.first_name, mi.last_name, mi.grade, mi.date_of_birth,
+              (sc.id IS NOT NULL) AS consented
+         FROM members_info mi
+         LEFT JOIN school_consent sc
+            ON sc.member_id = mi.member_id AND sc.company_id = mi.company_id
+           AND sc.policy_type = ? ${versionClause} AND sc.status = 'agreed'
+        WHERE mi.company_id = ?`,
+      values
+    );
+    // A member may match multiple consent rows (versions); collapse to consented-if-any.
+    const byMember = new Map();
+    for (const r of rows) {
+      const consented = Number(r.consented) === 1;
+      const prev = byMember.get(r.member_id);
+      if (!prev) byMember.set(r.member_id, { ...r, consented });
+      else if (consented) prev.consented = true;
+    }
+    for (const [, member] of byMember) {
+      member.under_13 = isUnder13(member.date_of_birth, new Date());
+    }
+    const members = [...byMember.values()];
+    const summary = summarizeConsentStatus(members);
+    return res.status(200).json({ ok: true, policy_type: pType, ...summary, members });
+  } catch (error) {
+    logger.error("consentStatus error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/settings  { company_id }  -> current school settings
+// (consent enforcement etc.). Missing row => defaults (enforcement OFF).
+const getSchoolSettings = async (req, res) => {
+  const connection = getConnection();
+  const { company_id } = req.body || {};
+  if (!company_id) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  try {
+    const [rows] = await connection.query(
+      `SELECT enforce_member_consent, enforce_under_13_consent, required_consent_policy_version, consent_document_id
+         FROM company_school_settings WHERE company_id = ? LIMIT 1`,
+      [company_id]
+    );
+    const enforce_member_consent = rows.length ? Number(rows[0].enforce_member_consent) === 1 : false;
+    const enforce_under_13_consent = rows.length
+      ? Number(rows[0].enforce_under_13_consent) === 1
+      : false;
+    const required_consent_policy_version = rows.length
+      ? rows[0].required_consent_policy_version || null
+      : null;
+    const consent_document_id = rows.length ? rows[0].consent_document_id || null : null;
+    return res.status(200).json({
+      ok: true,
+      settings: {
+        enforce_member_consent,
+        enforce_under_13_consent,
+        required_consent_policy_version,
+        consent_document_id,
+      },
+    });
+  } catch (error) {
+    logger.error("getSchoolSettings error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+// POST /api/school/settings/consent-enforcement
+// { company_id, enforce, enforce_under_13?, required_consent_policy_version?, consent_document_id? }
+// Opt-in toggle. Upsert into the separate company_school_settings table (never
+// touches company_info). Turn ON only AFTER backfilling consents, or existing
+// minors without a recorded consent will be blocked from device assignment.
+// consent_document_id is the Mongo Document _id the guardian reviews before
+// agreeing/declining (surfaced later via publicRetrieveConsent).
+const setConsentEnforcement = async (req, res) => {
+  const connection = getConnection();
+  const { company_id, enforce, enforce_under_13, required_consent_policy_version, consent_document_id } = req.body || {};
+  if (!company_id) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  const val =
+    enforce === true ||
+      enforce === 1 ||
+      String(enforce).toLowerCase() === "true" ||
+      String(enforce) === "1"
+      ? 1
+      : 0;
+  const under13Val =
+    enforce_under_13 === true ||
+      enforce_under_13 === 1 ||
+      String(enforce_under_13).toLowerCase() === "true" ||
+      String(enforce_under_13) === "1"
+      ? 1
+      : 0;
+  const requiredVersion =
+    required_consent_policy_version !== undefined &&
+      required_consent_policy_version !== null &&
+      String(required_consent_policy_version).trim() !== ""
+      ? String(required_consent_policy_version).trim()
+      : null;
+  const documentId =
+    consent_document_id !== undefined &&
+      consent_document_id !== null &&
+      String(consent_document_id).trim() !== ""
+      ? String(consent_document_id).trim()
+      : null;
+  try {
+    await connection.execute(
+      `INSERT INTO company_school_settings
+         (company_id, enforce_member_consent, enforce_under_13_consent, required_consent_policy_version, consent_document_id)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE
+         enforce_member_consent = VALUES(enforce_member_consent),
+         enforce_under_13_consent = VALUES(enforce_under_13_consent),
+         required_consent_policy_version = VALUES(required_consent_policy_version),
+         consent_document_id = VALUES(consent_document_id)`,
+      [company_id, val, under13Val, requiredVersion, documentId]
+    );
+    return res.status(200).json({
+      ok: true,
+      settings: {
+        enforce_member_consent: val === 1,
+        enforce_under_13_consent: under13Val === 1,
+        required_consent_policy_version: requiredVersion,
+        consent_document_id: documentId,
+      },
+    });
+  } catch (error) {
+    logger.error("setConsentEnforcement error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
   }
 };
 
 module.exports = {
-  // pure helpers, exported for tests
-  generateOtc,
-  hashOtc,
-  normalizeEmail,
-  buildConsentLink,
-  deriveConsentStatus,
-  isMutable,
-  isPolicyStale,
-  ensureSchoolTables,
-  // handlers
-  getSchoolSettings,
-  updateConsentEnforcement,
-  listGuardians,
-  addGuardian,
+  schoolDashboard,
+  schoolRoster,
+  listStudentGuardians,
+  addStudentGuardian,
   searchGuardians,
-  getMemberConsent,
-  getConsentStatusSummary,
+  recordConsent,
   requestConsent,
   resendConsent,
   publicRetrieveConsent,
   publicRespondConsent,
+  listMemberConsents,
+  listCompanyConsents,
+  consentStatus,
+  getSchoolSettings,
+  setConsentEnforcement,
+  studentExport,
+  studentErase,
+  studentAccessLog,
+  buildSchoolDashboard,
+  classifyMemberLease,
+  mergeGuardians,
+  summarizeConsentStatus,
+  validateStudentRequest,
+  anonymizeStudent,
+  deleteStudent,
 };

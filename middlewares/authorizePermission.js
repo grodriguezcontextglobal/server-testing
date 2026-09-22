@@ -9,10 +9,33 @@ const getConnection = require("../mysql/database/config");
  *   router.patch('/update-contact', validateJWT, authorizePermission('staff','update_contact'), handler)
  *   router.post('/inventory',       validateJWT, authorizePermission('inventory','create'),       handler)
  */
+/**
+ * De dónde sale la compañía contra la que se comprueba el permiso.
+ *
+ * El header `s-company-lq` es el ÚLTIMO recurso, no el primero: params, body y
+ * query mandan, así que para las rutas que ya funcionaban no cambia nada.
+ *
+ * Existe porque hay rutas que identifican el recurso por la URL y no llevan
+ * `company_id` en ninguna de esas tres fuentes —`/sub-locations/:id` es el
+ * caso—, y ahí este middleware respondía 401 «missing company_id» a TODA
+ * petición, token válido incluido. El cliente manda ese header en cualquier
+ * ruta `/api/db_*`, y `resolveCompanyContext` ya lo trata como fuente
+ * preferente, así que esto solo alinea las dos comprobaciones.
+ *
+ * No afloja nada: el header no otorga permisos, solo dice contra qué compañía
+ * preguntar, y la consulta de abajo sigue exigiendo pertenencia activa con el
+ * permiso concreto.
+ */
+const readCompanyId = (req) =>
+  req.params?.company_id ||
+  req.body?.company_id ||
+  req.query?.company_id ||
+  (typeof req.header === "function" ? req.header("s-company-lq") : undefined);
+
 const authorizePermission = (resource, action) => async (req, res, next) => {
   try {
-    const staffId   = req.sqlStaffId;
-    const companyId = req.params?.company_id || req.body?.company_id || req.query?.company_id;
+    const staffId = req.sqlStaffId;
+    const companyId = readCompanyId(req);
 
     if (!staffId || !companyId) {
       return res.status(401).json({ ok: false, msg: "Unauthorized: missing staff identity or company_id" });
@@ -33,11 +56,10 @@ const authorizePermission = (resource, action) => async (req, res, next) => {
     if (!rows.length) {
       return res.status(403).json({ ok: false, msg: "Forbidden: insufficient permissions" });
     }
-
     next();
   } catch (error) {
     return res.status(500).json({ ok: false, msg: "Authorization check failed" });
   }
 };
 
-module.exports = { authorizePermission };
+module.exports = { authorizePermission, readCompanyId };

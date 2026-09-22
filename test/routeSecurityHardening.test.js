@@ -78,6 +78,14 @@ test('mysql/routes/company.js: POST /update_company tiene authorizePermission', 
   );
 });
 
+test('mysql/routes/company.js: POST /locations tiene validateJWT + authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/company');
+  const handlers = getRouteHandlers(router, 'POST', '/locations');
+  assert.ok(handlers !== null, 'La ruta POST /locations debe existir');
+  assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en POST /locations');
+  assert.ok(hasAuthzPermission(handlers), 'authorizePermission debe estar en POST /locations');
+});
+
 test('mysql/routes/company.js: DELETE /:id tiene authorizePermission o mapeo de company_id', () => {
   const router = loadRouter('../mysql/routes/company');
   const handlers = getRouteHandlers(router, 'DELETE', '/:id');
@@ -294,3 +302,174 @@ test('routes/staff.js: POST /admin-users tiene authorizeMongoPermission', () => 
     'authorizeMongoPermission debe estar en POST /admin-users',
   );
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE I — endpoints bulk de inventario sin auth (insertBulkItem/container)
+// RED: las tres eran públicas -- sin validateJWT, sin scoping por company_id.
+// insertBulkItem valida company_id en el body -> puede llevar authorizePermission.
+// Los endpoints de container operan por container_item_id sin company_id
+// disponible en body/params -- solo requieren login (validateJWT) por ahora;
+// el scoping real necesita un join a item_inv para derivar el company_id
+// dueño del container (ver nota en mysql/routes/inventory.js).
+// ════════════════════════════════════════════════════════════════════════════
+
+test('mysql/routes/item.js: POST /bulk-item tiene authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/item');
+  const handlers = getRouteHandlers(router, 'POST', '/bulk-item');
+  assert.ok(handlers !== null, 'La ruta POST /bulk-item debe existir');
+  assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en POST /bulk-item');
+  assert.ok(hasAuthzPermission(handlers), 'authorizePermission debe estar en POST /bulk-item');
+});
+
+test('mysql/routes/item.js: POST /item-out-warehouse tiene validateJWT + authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/item');
+  const handlers = getRouteHandlers(router, 'POST', '/item-out-warehouse');
+  assert.ok(handlers !== null, 'La ruta POST /item-out-warehouse debe existir');
+  assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en POST /item-out-warehouse');
+  assert.ok(hasAuthzPermission(handlers), 'authorizePermission debe estar en POST /item-out-warehouse');
+});
+
+test('mysql/routes/inventory.js: POST /container-items tiene validateJWT', () => {
+  const router = loadRouter('../mysql/routes/inventory');
+  const handlers = getRouteHandlers(router, 'POST', '/container-items');
+  assert.ok(handlers !== null, 'La ruta POST /container-items debe existir');
+  assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en POST /container-items');
+});
+
+test('mysql/routes/inventory.js: PUT /container/:container_item_id tiene validateJWT', () => {
+  const router = loadRouter('../mysql/routes/inventory');
+  const handlers = getRouteHandlers(router, 'PUT', '/container/:container_item_id');
+  assert.ok(handlers !== null, 'La ruta PUT /container/:container_item_id debe existir');
+  assert.ok(handlers.includes(validateJWT), 'validateJWT debe estar en PUT /container/:container_item_id');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE — rutas de contenedor en evento (mysql/routes/events.js)
+// RED: las dos eran anónimas mientras su hermana /allocate-device-event ya
+// estaba gateada, y las dos escriben (UPDATE item_inv + INSERT al evento).
+// Además, sin validateJWT el job que encola /inserting-items-in-event-from-container
+// queda sin dueño (context.uid = null) y GET /api/jobs/owned/:jobId responde 404
+// para el jobId que el propio endpoint acaba de devolver.
+// ════════════════════════════════════════════════════════════════════════════
+
+test('mysql/routes/events.js: POST /inserting-items-in-event-from-container tiene validateJWT', () => {
+  const router = loadRouter('../mysql/routes/events');
+  const handlers = getRouteHandlers(router, 'POST', '/inserting-items-in-event-from-container');
+  assert.ok(handlers !== null, 'La ruta POST /inserting-items-in-event-from-container debe existir');
+  assert.ok(
+    handlers.includes(validateJWT),
+    'validateJWT debe estar en POST /inserting-items-in-event-from-container (si no, el job queda sin dueño)',
+  );
+});
+
+test('mysql/routes/events.js: POST /allocate-device-container-event tiene validateJWT', () => {
+  const router = loadRouter('../mysql/routes/events');
+  const handlers = getRouteHandlers(router, 'POST', '/allocate-device-container-event');
+  assert.ok(handlers !== null, 'La ruta POST /allocate-device-container-event debe existir');
+  assert.ok(
+    handlers.includes(validateJWT),
+    'validateJWT debe estar en POST /allocate-device-container-event',
+  );
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE — /inventory-based-on-submitted-parameters (las 3 rutas)
+//
+// consultingCompanyInventoryBasedOnSubmittedParameters EJECUTA el SQL que
+// viene en el body de la request. El mismo handler está montado en tres
+// routers y dos de ellos (db_event, db_item) estaban SIN autenticación
+// alguna: cualquiera en internet podía correr sentencias arbitrarias contra
+// producción. Estos tests fijan que las tres rutas queden autenticadas.
+// ════════════════════════════════════════════════════════════════════════════
+
+const { checkTokenVersion } = require('../middlewares/checkValidateToken');
+
+const RAW_QUERY_ROUTE = '/inventory-based-on-submitted-parameters';
+
+for (const routerPath of [
+  '../mysql/routes/company',
+  '../mysql/routes/events',
+  '../mysql/routes/item',
+]) {
+  test(`${routerPath}: POST ${RAW_QUERY_ROUTE} exige validateJWT + checkTokenVersion`, () => {
+    const router = loadRouter(routerPath);
+    const handlers = getRouteHandlers(router, 'POST', RAW_QUERY_ROUTE);
+    assert.ok(handlers !== null, `La ruta POST ${RAW_QUERY_ROUTE} debe existir en ${routerPath}`);
+    assert.ok(
+      handlers.includes(validateJWT),
+      `validateJWT debe estar en POST ${RAW_QUERY_ROUTE} de ${routerPath} — este handler ejecuta SQL del cliente`,
+    );
+    assert.ok(
+      handlers.includes(checkTokenVersion),
+      `checkTokenVersion debe estar en POST ${RAW_QUERY_ROUTE} de ${routerPath} — sin él una sesión revocada sigue ejecutando SQL`,
+    );
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE F — rutas anónimas sobre item_inv (2026-09-15)
+// Las cinco iban sin token: dos vuelcan inventario de cualquier compañía y dos
+// escriben sobre la estructura de locaciones.
+// ════════════════════════════════════════════════════════════════════════════
+
+const ANON_CLOSED = [
+  ['../mysql/routes/item',         'POST', '/items_information'],
+  ['../mysql/routes/item',         'POST', '/inventory-pagination'],
+  ['../mysql/routes/company',      'POST', '/company-inventory-pagination'],
+  ['../mysql/routes/inventory',    'POST', '/update-location-sub-location'],
+  ['../mysql/routes/sub_location', 'PUT',  '/sub-locations/:id'],
+  ['../mysql/routes/sub_location', 'DELETE', '/sub-locations/:id'],
+];
+
+for (const [file, method, path] of ANON_CLOSED) {
+  test(`${file}: ${method} ${path} exige validateJWT`, () => {
+    const router = loadRouter(file);
+    const handlers = getRouteHandlers(router, method, path);
+    assert.ok(handlers !== null, `La ruta ${method} ${path} debe existir`);
+    assert.ok(
+      handlers.includes(validateJWT),
+      `validateJWT debe estar en ${method} ${path}`,
+    );
+  });
+}
+
+test('las dos escrituras de locación exigen ademas permiso de inventario', () => {
+  for (const [file, method, path] of ANON_CLOSED.slice(3)) {
+    const handlers = getRouteHandlers(loadRouter(file), method, path);
+    assert.ok(hasAuthzPermission(handlers), `authorizePermission debe estar en ${method} ${path}`);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE F — checkTokenVersion en las lecturas de inventario endurecidas
+//
+// Estas seis rutas recibieron validateJWT al cerrarse las rutas anónimas, pero
+// se quedaron SIN checkTokenVersion, a diferencia del resto de rutas
+// endurecidas. El efecto es que un force-logout no revoca el acceso a ellas:
+// el token viejo sigue leyendo inventario hasta que expire por su cuenta.
+// ════════════════════════════════════════════════════════════════════════════
+
+const INVENTORY_READ_ROUTES = [
+  ['../mysql/routes/item', 'POST', '/inventory-page'],
+  ['../mysql/routes/item', 'POST', '/inventory-facets'],
+  ['../mysql/routes/item', 'GET', '/serial-suggest'],
+  ['../mysql/routes/item', 'POST', '/items_information'],
+  ['../mysql/routes/item', 'POST', '/inventory-pagination'],
+  ['../mysql/routes/company', 'POST', '/company-inventory-pagination'],
+];
+
+for (const [modulePath, method, routePath] of INVENTORY_READ_ROUTES) {
+  test(`${modulePath}: ${method} ${routePath} lleva validateJWT y checkTokenVersion`, () => {
+    const router = loadRouter(modulePath);
+    const handlers = getRouteHandlers(router, method, routePath);
+    assert.ok(handlers !== null, `La ruta ${method} ${routePath} debe existir`);
+    assert.ok(
+      handlers.includes(validateJWT),
+      `validateJWT debe estar en la cadena de ${method} ${routePath}`,
+    );
+    assert.ok(
+      handlers.includes(checkTokenVersion),
+      `checkTokenVersion debe estar en la cadena de ${method} ${routePath}`,
+    );
+  });
+}

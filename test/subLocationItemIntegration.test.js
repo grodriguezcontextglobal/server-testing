@@ -81,7 +81,17 @@ function makeTxPool({ locationRow = { location_id: 5 }, existingSubLocations = {
     },
   };
 
-  return { calls, getConnection: async () => conn };
+  // Pool-level execute is used by the scope write-gate (getStaffCompanyAccess /
+  // canWriteInScope). Return a full-access role (level 1) so the gate is a no-op
+  // in these sub_location-persistence tests (equivalent to the pre-gate behavior).
+  const poolExecute = async (sql) => {
+    if (/FROM company_staff/i.test(sql)) {
+      return [[{ company_staff_id: "cs-test", role_type: "admin", role_level: 1, location_ids: null, category_ids: null }]];
+    }
+    return [[]];
+  };
+
+  return { calls, getConnection: async () => conn, execute: poolExecute };
 }
 
 describe('insertingItem — persiste sub_location_id (Fase 4a)', () => {
@@ -108,7 +118,7 @@ describe('insertingItem — persiste sub_location_id (Fase 4a)', () => {
     const pool = makeTxPool();
     const { insertingItem } = loadItemController(pool);
 
-    const req = { body: baseBody({ sub_location_name: 'Dc Office' }) };
+    const req = { sqlStaffId: 1, body: baseBody({ sub_location_name: 'Dc Office' }) };
     const res = mockRes();
 
     await insertingItem(req, res);
@@ -124,7 +134,7 @@ describe('insertingItem — persiste sub_location_id (Fase 4a)', () => {
     const pool = makeTxPool();
     const { insertingItem } = loadItemController(pool);
 
-    const req = { body: baseBody({ sub_location: ['Building A', 'Floor 3', 'Room 35'] }) };
+    const req = { sqlStaffId: 1, body: baseBody({ sub_location: ['Building A', 'Floor 3', 'Room 35'] }) };
     const res = mockRes();
 
     await insertingItem(req, res);
@@ -148,7 +158,7 @@ describe('insertingItem — persiste sub_location_id (Fase 4a)', () => {
     });
     const { insertingItem } = loadItemController(pool);
 
-    const req = { body: baseBody({ sub_location: ['Building A', 'Floor 3'] }) };
+    const req = { sqlStaffId: 1, body: baseBody({ sub_location: ['Building A', 'Floor 3'] }) };
     const res = mockRes();
 
     await insertingItem(req, res);
@@ -162,7 +172,7 @@ describe('insertingItem — persiste sub_location_id (Fase 4a)', () => {
     const pool = makeTxPool();
     const { insertingItem } = loadItemController(pool);
 
-    const req = { body: baseBody({ sub_location: [null, null, null] }) };
+    const req = { sqlStaffId: 1, body: baseBody({ sub_location: [null, null, null] }) };
     const res = mockRes();
 
     await insertingItem(req, res);
@@ -180,7 +190,7 @@ describe('insertingItem — persiste sub_location_id (Fase 4a)', () => {
     const pool = makeTxPool();
     const { insertingItem } = loadItemController(pool);
 
-    const req = { body: baseBody() };
+    const req = { sqlStaffId: 1, body: baseBody() };
     const res = mockRes();
 
     await insertingItem(req, res);

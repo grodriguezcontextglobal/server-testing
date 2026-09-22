@@ -1,4 +1,3 @@
-const nodeMailer = require("nodemailer");
 const sgMail = require("@sendgrid/mail");
 const fs = require("fs");
 const path = require("path");
@@ -42,8 +41,11 @@ const {
   documentSigningCompletionConsumerLeaseMessageHtml,
   liabilityContractMemberNotificationMessageHtml,
   returnConfirmationLeaseMemberMessageHtml,
+  memberDeviceIncidentMessageHtml,
+  memberDeviceFeeReceiptMessageHtml,
   forceLogoutNotificationHtmlTemplate,
   memberEmailNotificationHtml,
+  customizeMessageHtml,
 } = require("./returningDeviceMessage");
 const User = require("../models/User");
 const logger = require("../helpers/logger");
@@ -131,6 +133,75 @@ const buildReturningDeviceLeaseMemberMessage = (body, branding) => ({
   html: returnConfirmationLeaseMemberMessageHtml(body, branding),
 });
 const returningDeviceLeaseMemberNotification = createQueuedEmailController(buildReturningDeviceLeaseMemberMessage, { branded: true });
+
+// --- School track: lost/damaged device, and the receipt for the fee ---------
+//
+// Split off from buildReturningDeviceLeaseMemberMessage above because all three
+// outcomes used to share it: a student declared their laptop lost and the
+// guardian received "the devices have been returned successfully" — written
+// confirmation of a return that never happened.
+//
+// `member.email` is used AS GIVEN. The caller has already resolved it (guardian
+// for a minor, and it refuses to send when a minor has no guardian on file), so
+// re-resolving it here could only get it wrong. It is also passed bare, without
+// a display name: the address frequently belongs to the guardian, and labelling
+// their mailbox with the student's name is the same mistake as greeting them by
+// it.
+const MEMBER_DEVICE_INCIDENT_OUTCOMES = new Set(["lost", "damaged"]);
+
+const validateMemberDeviceIncident = (body = {}) => {
+  if (!body.member || !body.member.email) {
+    return { status: 400, body: { ok: false, message: "member.email is required" } };
+  }
+  if (!MEMBER_DEVICE_INCIDENT_OUTCOMES.has(String(body.outcome || "").toLowerCase())) {
+    return {
+      status: 400,
+      body: { ok: false, message: "outcome must be 'lost' or 'damaged'" },
+    };
+  }
+  return null;
+};
+
+const buildMemberDeviceIncidentMessage = (body) => {
+  const studentName = `${body.member.firstName || ""} ${body.member.lastName || ""}`.trim();
+  const isLost = String(body.outcome).toLowerCase() === "lost";
+  return {
+    from: "Devitrak Notifications <noreply@devitrak.com>",
+    to: body.member.email,
+    subject: isLost
+      ? `Device reported lost — ${studentName}`
+      : `Device returned damaged — ${studentName}`,
+    html: memberDeviceIncidentMessageHtml(body),
+  };
+};
+const memberDeviceIncidentNotification = createQueuedEmailController(
+  buildMemberDeviceIncidentMessage,
+  { validate: validateMemberDeviceIncident }
+);
+
+const validateMemberDeviceFeeReceipt = (body = {}) => {
+  if (!body.member || !body.member.email) {
+    return { status: 400, body: { ok: false, message: "member.email is required" } };
+  }
+  return null;
+};
+
+const buildMemberDeviceFeeReceiptMessage = (body) => ({
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  to: body.member.email,
+  subject: `Payment receipt — ${body.company || "device fee"}`,
+  html: memberDeviceFeeReceiptMessageHtml(body),
+});
+const memberDeviceFeeReceiptNotification = createQueuedEmailController(
+  buildMemberDeviceFeeReceiptMessage,
+  {
+    validate: validateMemberDeviceFeeReceipt,
+    // The money moved exactly once; a retried request must not mail a second
+    // receipt for the same charge.
+    idempotencyKeyFn: (body) =>
+      body.paymentIntent ? `member-fee-receipt:${body.paymentIntent}` : undefined,
+  }
+);
 
 const buildDeviceReportPerTransactionMessage = (body, branding) => ({
   from: "Devitrak Notifications <noreply@devitrak.com>",
@@ -846,6 +917,15 @@ const buildMemberEmailMessage = (body, branding) => ({
 });
 const memberEmailNotification = createQueuedEmailController(buildMemberEmailMessage, { branded: true });
 
+const buildCustomizeMessage = (body) => ({
+  to: body.staff,
+  from: "Devitrak Notifications <noreply@devitrak.com>",
+  subject: `Devitrak Notification - ${body.subject}`,
+  html: customizeMessageHtml(body),
+});
+const customizeMessage = createQueuedEmailController(buildCustomizeMessage);
+
+
 module.exports = {
   assingDeviceNotification,
   buildAssignDeviceMessage,
@@ -877,6 +957,12 @@ module.exports = {
   buildNewUserInvitationMessage,
   buildRefundInvoiceMessage,
   buildReturningDeviceLeaseMemberMessage,
+  buildMemberDeviceIncidentMessage,
+  buildMemberDeviceFeeReceiptMessage,
+  validateMemberDeviceIncident,
+  validateMemberDeviceFeeReceipt,
+  memberDeviceIncidentNotification,
+  memberDeviceFeeReceiptNotification,
   buildReturningDeviceMessage,
   buildSingleEmailMessage,
   buildStaffInternalMessage,
@@ -933,4 +1019,6 @@ module.exports = {
   singleEmailNotification,
   staffInternalNotification,
   termsAndConditionsAcceptanceNotification,
+  buildCustomizeMessage,
+  customizeMessage,
 };

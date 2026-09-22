@@ -1175,6 +1175,459 @@ const memberEmailNotificationHtml = (props, branding) => {
   });
 };
 
+
+/**
+ * Free-form notification: the caller supplies the subject and the body.
+ *
+ * `message` is interpolated as HTML on purpose — that is what makes the message
+ * "customizable" — so whatever reaches this function can put arbitrary markup in
+ * the email. Keep that in mind before exposing it to any caller that isn't
+ * trusted; see the note on the route in routes/nodeMailer.js.
+ */
+const customizeMessageHtml = (props) => {
+  const subject = props?.subject || "Notification";
+  const message = props?.message || "";
+  const company = props?.company || "Devitrak";
+  return `
+  <html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>
+      Devitrak App | Easy way to manage inventory. A good solution for your
+      business no matter the size of your organization.
+    </title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+    </style>
+  </head>
+  <body
+    style="
+      max-width: 768px;
+      min-width: 320px;
+      background-color:#fff;
+      color: #1a202c;
+      font-family: 'Inter', sans-serif;
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+      margin: auto;
+      padding: 0;
+    "
+  >
+    <div
+      style="
+        margin-left: auto;
+        margin-right: auto;
+        padding: 2rem;
+        width: 100%;
+        border-radius: 12px;
+      "
+    >
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 2.5rem;
+          width: 100%;
+        "
+      >
+        <div style="align-self: flex-start">
+          <p
+            style="
+              text-align: left;
+              width: 100%;
+              color: #475467;
+              font-size: 9px;
+              font-style: normal;
+              font-weight: 500;
+              line-height: 9px;
+            "
+          >
+            Power by
+          </p>
+          <div
+            style="
+              display: flex;
+              justify-content: flex-end;
+              align-items: center;
+              margin-top: 2.5px;
+            "
+          >
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+              alt="devitrak-logo"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+            <img
+              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              alt="devitrak-name"
+              style="
+                object-fit: contain;
+                object-position: 50% 50%;
+                align-self: flex-start;
+                display: flex;
+                align-items: center;
+              "
+            />
+          </div>
+        </div>
+      </div>
+      <div style="max-width: 768px; min-width: 320px">
+      <h1
+      style="
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 1rem;
+      "
+    >
+      ${subject}
+    </h1>
+    <p style="font-size: 1rem; color: #475467; margin-bottom: 1.5rem">
+      This email notification sent from ${company}.
+    </p>
+    <p
+            style="
+              border-radius: 12px;
+              margin:auto;
+              color: #475467;
+              text-align: left;
+              font-size: 16px;
+              font-style: normal;
+              font-weight: 400;
+              line-height: 24px; /* 150% */
+              padding:12px 8px;
+              text-wrap: pretty
+            "
+          >
+            ${message}
+          </p>
+      <div style="margin-top: 2.5rem">
+      <p style="font-size: 1rem; color: #475467">
+        This email was sent from an unmonitored account. Do not reply to this email.
+      </p>
+      </div>
+      </div>
+    </div>
+  </body>
+</html>
+  `;
+
+};
+
+// ---------------------------------------------------------------------------
+// School track — a device declared lost or damaged, and the receipt for the fee
+// charged over it.
+//
+// These exist because ALL THREE outcomes (returned / damaged / lost) used to
+// post to /member-lease-return-device-notification, so the guardian of a laptop
+// that was never coming back received written confirmation of a return that did
+// not happen. Neither template below may ever state that the device came back.
+// ---------------------------------------------------------------------------
+
+// The condition note is staff free text and the reason lines are typed by hand;
+// both land inside markup. Escaped so an apostrophe or an angle bracket cannot
+// break the email — or inject into it.
+//
+// `escapeHtml` ya no se define acá: viene de nodeMailer/emailLayout.js (ver el
+// import arriba), que es de donde lo toma el chasis de plantillas. Las dos
+// implementaciones eran identicas --mismo manejo de null, los mismos cinco
+// caracteres y el & primero-- asi que unificar no cambia lo que se envia.
+
+// Dollars in, dollars on the page. Cents never reach this layer.
+const formatUsd = (amount) =>
+  `$${Number(amount).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+
+const devitrakEmailHeader = `
+          <div style="margin-bottom: 2.5rem; width: 100%">
+            <p
+              style="
+                text-align: left;
+                width: 100%;
+                color: #475467;
+                font-size: 9px;
+                font-style: normal;
+                font-weight: 500;
+                line-height: 9px;
+              "
+            >
+              Power by
+            </p>
+            <div style="margin-top: 2.5px">
+              <img
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+                alt="devitrak-logo"
+                style="object-fit: contain; object-position: 50% 50%"
+              />
+              <img
+                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                alt="devitrak-name"
+                style="object-fit: contain; object-position: 50% 50%"
+              />
+            </div>
+          </div>`;
+
+const memberDeviceEmailStyles = `
+      @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap");
+
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: 'Inter', sans-serif;
+        background-color: #ffffff;
+        color: #1a202c;
+        -webkit-text-size-adjust: none;
+        -ms-text-size-adjust: none;
+        max-width: 768px;
+        min-width: 320px;
+      }
+
+      .container {
+        margin: 0 auto;
+        padding: 20px;
+        width: 100%;
+        max-width: 768px;
+      }
+
+      h1 {
+        font-size: 24px;
+        font-weight: 600;
+        color: #101828;
+        margin-bottom: 16px;
+      }
+
+      p {
+        font-size: 16px;
+        color: #475467;
+        margin-bottom: 24px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 20px 0;
+        font-size: 14px;
+      }
+
+      th, td {
+        padding: 12px;
+        border: 1px solid #e0e0e0;
+        text-align: left;
+      }
+
+      th {
+        background-color: #f2f2f2;
+        font-weight: 600;
+        color: #475467;
+      }
+
+      .callout {
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin: 20px 0;
+      }
+
+      .footer {
+        font-size: 12px;
+        color: #475467;
+        text-align: center;
+        margin-top: 40px;
+      }
+
+      @media only screen and (max-width: 600px) {
+        h1 { font-size: 20px; }
+        p, th, td { font-size: 12px; }
+      }`;
+
+/**
+ * B3.1 — a device was declared lost or damaged.
+ *
+ * The recipient is frequently the guardian, not the student, so the student's
+ * name identifies the SUBJECT of the notice and is never used as a greeting.
+ * `feeAmount: null` prints nothing about money at all: the school often has not
+ * decided the amount yet, and a "$0.00 due" line reads as "you owe nothing".
+ */
+const memberDeviceIncidentMessageHtml = (props = {}) => {
+  const member = props.member || {};
+  const studentName = escapeHtml(
+    `${member.firstName || ""} ${member.lastName || ""}`.trim()
+  );
+  const outcome = String(props.outcome || "").toLowerCase();
+  const isLost = outcome === "lost";
+  const heading = isLost ? "Device reported lost" : "Device returned damaged";
+  const lead = isLost
+    ? `Our records show that a device assigned to <strong>${studentName}</strong> has been reported lost and has not been recovered.`
+    : `Our records show that a device assigned to <strong>${studentName}</strong> was returned damaged.`;
+  const devices = Array.isArray(props.devices) ? props.devices : [];
+
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${heading}</title>
+    <style>${memberDeviceEmailStyles}</style>
+  </head>
+  <body>
+    <div class="container">
+${devitrakEmailHeader}
+
+      <h1>${heading}</h1>
+      <p>Hello,</p>
+      <p>${lead}</p>
+      <p><strong>${escapeHtml(props.outcomeLabel || heading)}</strong></p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Device type</th>
+            <th>Serial number</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${devices
+            .map((entry) => {
+              const device = (entry && entry.device) || {};
+              return `
+            <tr>
+              <td>${escapeHtml(device.deviceType || "Device")}</td>
+              <td>${escapeHtml(device.serialNumber || "N/A")}</td>
+              <td>${new Date().toLocaleDateString()}</td>
+            </tr>`;
+            })
+            .join("")}
+        </tbody>
+      </table>
+
+      ${
+        props.conditionNote
+          ? `<div class="callout">
+        <p style="margin-bottom: 4px"><strong>Note from school staff</strong></p>
+        <p style="margin-bottom: 0">${escapeHtml(props.conditionNote)}</p>
+      </div>`
+          : ""
+      }
+
+      ${
+        props.feeAmount !== null && props.feeAmount !== undefined
+          ? `<div class="callout">
+        <p style="margin-bottom: 4px"><strong>Replacement fee: ${formatUsd(
+          props.feeAmount
+        )}</strong></p>
+        <p style="margin-bottom: 0">
+          Please contact the school office to arrange payment. This notice is not a receipt.
+        </p>
+      </div>`
+          : ""
+      }
+
+      <p>If you believe this is a mistake, please contact the school office.</p>
+
+      <div class="footer">
+        <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
+      </div>
+    </div>
+  </body>
+</html>
+`;
+};
+
+/**
+ * B3.2 — the fee has ALREADY been captured. This is a receipt, never a request
+ * for payment; nothing in it may read like an invoice. `paymentIntent` is the
+ * reference the family quotes in a dispute — the same id on the paper receipt.
+ */
+const memberDeviceFeeReceiptMessageHtml = (props = {}) => {
+  const member = props.member || {};
+  const studentName = escapeHtml(
+    `${member.firstName || ""} ${member.lastName || ""}`.trim()
+  );
+  const lines = Array.isArray(props.lines) ? props.lines : [];
+  const paidOn = props.date ? new Date(props.date) : new Date();
+  const paidOnLabel = isNaN(paidOn.getTime())
+    ? new Date().toLocaleDateString()
+    : paidOn.toLocaleDateString();
+
+  return `
+<html lang="en" translate="no">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Payment receipt</title>
+    <style>${memberDeviceEmailStyles}</style>
+  </head>
+  <body>
+    <div class="container">
+${devitrakEmailHeader}
+
+      <h1>Payment receipt</h1>
+      <p>Hello,</p>
+      <p>
+        This is a receipt for a device fee paid${
+          props.billedGuardian ? ` on behalf of <strong>${studentName}</strong>` : ""
+        } at ${escapeHtml(props.company || "your school")} on ${paidOnLabel}.
+        ${
+          props.billedGuardian
+            ? "No further action is needed."
+            : `This covers the device fee for <strong>${studentName}</strong>. No further action is needed.`
+        }
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Serial number</th>
+            <th>Reason</th>
+            <th>Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${lines
+            .map(
+              (line) => `
+            <tr>
+              <td>${escapeHtml((line && line.serialNumber) || "N/A")}</td>
+              <td>${escapeHtml((line && line.reason) || "")}</td>
+              <td>${formatUsd((line && line.amount) || 0)}</td>
+            </tr>`
+            )
+            .join("")}
+          <tr>
+            <td colspan="2"><strong>Total paid</strong></td>
+            <td><strong>${formatUsd(props.total || 0)}</strong></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="callout">
+        <p style="margin-bottom: 0">
+          Reference: <strong>${escapeHtml(props.paymentIntent || "N/A")}</strong>
+        </p>
+      </div>
+
+      <p>Keep this receipt for your records. Quote the reference above if you have any question about this payment.</p>
+
+      <div class="footer">
+        <p>This email was sent from an unmonitored account. Do not reply to this email.</p>
+      </div>
+    </div>
+  </body>
+</html>
+`;
+};
+
 module.exports = {
   assigningDeviceMessageHtml,
   cancelingDepositMessageHtml,
@@ -1199,6 +1652,8 @@ module.exports = {
   loginActivityNotificationMessageHtml,
   lostDeviceFeeCollectedMessageHtml,
   lostDeviceFeeReceipt,
+  memberDeviceIncidentMessageHtml,
+  memberDeviceFeeReceiptMessageHtml,
   newUserInvitationMessageHtml,
   nrffInterpretationFeedbackEmailMessageHtml,
   reportBugMessageHtml,
@@ -1212,5 +1667,6 @@ module.exports = {
   staffInternalNotificationMessageHtml,
   staffNotificationMessageHtml,
   termsAndConditionsAcceptanceMessageHtml,
-  memberEmailNotificationHtml
+  memberEmailNotificationHtml,
+  customizeMessageHtml
 };

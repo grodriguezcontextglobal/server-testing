@@ -3,6 +3,15 @@ const getConnection = require("../database/config");
 const { clientRedis } = require("../../database/cacheMemoryConfig");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
+const { describeSqlShape } = require("../../helpers/sqlShape");
+const {
+  buildNamedQuery,
+  QueryParamError,
+} = require("../queries/inventoryQueryCatalog");
+const {
+  FILTERABLE: FILTERABLE_INVENTORY_COLUMNS,
+} = require("../queries/inventoryPageQuery");
+const { resolveCompanyContext } = require("../helpers/companyContext");
 const {
   processSubLocation,
   processSubLocationPath,
@@ -10,9 +19,23 @@ const {
 } = require("./sub_location");
 const ReceiversPool = require("../../models/ReceiversPool");
 const { groupBy } = require("lodash");
+const { enqueue, extractJobContext } = require("../../helpers/queue");
+const { createQueuedJobController, waitForJobOutcome } = require("../../helpers/queuedController");
+const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
+const { chunkArray } = require("../../helpers/chunkArray");
+const crypto = require("node:crypto");
 require("dotenv").config();
 
-const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
+// Rows per INSERT statement for bulk writes -- see insertBulkItem.
+const BULK_INSERT_BATCH_SIZE = 500;
+
+const {
+  getStaffCompanyAccess,
+  buildInventoryScopeFilter,
+  applyWorkerScope,
+  canWriteInScope,
+  getWritableScope,
+} = require("../helpers/staffAccess");
 
 const ITEM_INV_COLUMNS = new Set([
   "item_id",
@@ -346,6 +369,19 @@ const insertingItem = async (request, response) => {
       supplier_info || null,
     ];
 
+    // Scope write gate (create): a location/category-scoped role may only create
+    // items within its assigned scope (with can_create). Full-access roles pass.
+    // rollback + return is safe here — the `finally` still releases the connection.
+    const creatorAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!creatorAccess) {
+      await connection.rollback();
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    if (!(await canWriteInScope(creatorAccess, "create", { locationId, categoryName: category_name }))) {
+      await connection.rollback();
+      return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
+    }
+
     console.log(values);
     const [result] = await connection.execute(query, values);
 
@@ -373,216 +409,177 @@ const insertingItem = async (request, response) => {
   }
 };
 
-const insertBulkItem = async (request, response) => {
-  try {
-    const connection = getConnection();
-    // const cache_connection = await clientRedis();
-    const {
-      category_name,
-      sub_category_name,
-      item_group,
-      sub_item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      min_serial_number,
-      max_serial_number,
-      warehouse,
-      main_warehouse,
-      created_at,
-      update_at,
-      company,
-      location,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      containerId,
-      display_item,
-      enableAssignFeature,
-      image_url,
-      supplier_info,
-    } = request.body;
+// Migrado a cola (ver project_bulk_queue_migration_plan.md): un rango
+// min/max de serial lo EXPANDE EL SERVIDOR, sin techo natural (2 números
+// pueden generar millones de filas) -- el mayor riesgo de volumen de los 7
+// bulk fixes de la sesión anterior. El controller solo resuelve
+// location_id/valida scope (rápido, igual que insertBulkItemAlhpanumericFormat)
+// y encola; el INSERT real vive en queue/handlers/bulkInsertItemRange.js.
+// A diferencia de ese hermano (fire-and-forget 202), este usa
+// waitForJobOutcome para NO romper el contrato en el caso típico: si el job
+// termina dentro de maxWaitMs (con el worker DEDICADO de poll rápido, no el
+// genérico de 4s) responde 201 con la misma forma de siempre; solo una
+// carga verdaderamente enorme cae al 202+jobId.
+function createInsertBulkItemRange({
+  getLocationIdFn = getLocationId,
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  connectionFn = getConnection,
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  canWriteInScopeFn = canWriteInScope,
+  waitForJobOutcomeFn = waitForJobOutcome,
+  maxWaitMs = 4000,
+} = {}) {
+  return async function insertBulkItem(request, response) {
+    try {
+      const { location, company_id, category_name, min_serial_number, max_serial_number } = request.body;
 
-    // Determine location name
-    const locName = typeof location === "string" ? location : location?.name;
-    if (!locName || !company_id) {
-      return response.status(400).json({
-        msg: "Company ID and Location Name are required.",
+      const locName = typeof location === "string" ? location : location?.name;
+      if (!locName || !company_id) {
+        return response.status(400).json({
+          msg: "Company ID and Location Name are required.",
+          ok: false,
+        });
+      }
+
+      const connection = connectionFn();
+      const locationId = await getLocationIdFn(connection, company_id, locName);
+      if (!locationId) {
+        return response.status(404).json({
+          msg: `Location '${locName}' not found.`,
+          ok: false,
+        });
+      }
+
+      // Scope write gate (create): a location/category-scoped role may only bulk-create
+      // items within its assigned scope (with can_create). Every row shares this single
+      // location + category, so an all-or-nothing check is correct here. Full-access passes.
+      const creatorAccess = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
+      if (!creatorAccess) {
+        return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+      }
+      if (!(await canWriteInScopeFn(creatorAccess, "create", { locationId, categoryName: category_name }))) {
+        return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
+      }
+
+      if (!min_serial_number || !max_serial_number) {
+        return response.status(400).json({
+          msg: "Minimum and maximum serial numbers are required.",
+          ok: false,
+        });
+      }
+
+      const payload = { ...request.body, location: locName, location_id: locationId };
+      const job = await enqueueFn("inventory:bulk-insert-range", payload, {
+        context: extractContextFn(request),
+      });
+
+      const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
+      if (outcome.outcome === "done") {
+        return response.status(201).json({ item: outcome.result, ok: true });
+      }
+      if (outcome.outcome === "failed") {
+        return response.status(500).json({
+          ok: false,
+          msg: outcome.job.lastError || "Bulk insert failed",
+        });
+      }
+      return response.status(202).json({
+        ok: true,
+        jobId: job.id,
+        msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
+      });
+    } catch (error) {
+      response.status(500).json({
+        err: error,
+        msg: `${error.message}`,
         ok: false,
       });
     }
+  };
+}
+const insertBulkItem = createInsertBulkItemRange();
 
-    // Lookup Location ID
-    const locationId = await getLocationId(connection, company_id, locName);
-    if (!locationId) {
-      return response.status(404).json({
-        msg: `Location '${locName}' not found.`,
+// Migrado al contrato async (202 + jobId, ver DESIGN_task_queue.md § Fase 4b):
+// hasta 15,000 seriales por request, insertados síncronamente antes sostenían
+// la conexión HTTP abierta varios segundos/minutos sin transacción real (cada
+// batch de 1000 se autocommiteaba independiente) ni idempotencia — un timeout
+// de cliente + retry duplicaba filas completas. Ahora solo se valida/resuelve
+// location_id (rápido) y se encola el resto; el INSERT real vive en
+// queue/handlers/inventoryBulkInsert.js dentro de una única transacción.
+function createInsertBulkItemAlphanumeric({
+  getLocationIdFn = getLocationId,
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  connectionFn = getConnection,
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  canWriteInScopeFn = canWriteInScope,
+} = {}) {
+  return async function insertBulkItemAlhpanumericFormat(request, response) {
+    try {
+      const { location, company_id, category_name } = request.body;
+
+      const locName = typeof location === "string" ? location : location?.name;
+      if (!locName || !company_id) {
+        return response.status(400).json({
+          msg: "Company ID and Location Name are required.",
+          ok: false,
+        });
+      }
+
+      const connection = connectionFn();
+      const locationId = await getLocationIdFn(connection, company_id, locName);
+      if (!locationId) {
+        return response.status(404).json({
+          msg: `Location '${locName}' not found.`,
+          ok: false,
+        });
+      }
+
+      // Scope write gate (create): scoped roles may only enqueue bulk inserts within
+      // their assigned scope (with can_create). Single location + category per request,
+      // so an all-or-nothing check is correct. Full-access roles pass.
+      const access = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
+      if (!access) {
+        return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+      }
+      if (!(await canWriteInScopeFn(access, "create", { locationId, categoryName: category_name }))) {
+        return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
+      }
+
+      const payload = { ...request.body, location_id: locationId };
+      const context = extractContextFn(request);
+
+      // Idempotencia: mismo patrón que document:upload-pdf (controller/document.js).
+      // Namespaced por tipo para no chocar con claves iguales de otros job types.
+      const clientKey =
+        typeof request.get === "function"
+          ? request.get("Idempotency-Key") || request.get("idempotency-key")
+          : undefined;
+      const idempotencyKey = clientKey
+        ? `inventory:bulk-insert-alphanumeric:${String(clientKey).trim()}`
+        : undefined;
+
+      const job = await enqueueFn("inventory:bulk-insert-alphanumeric", payload, {
+        context,
+        idempotencyKey,
+      });
+
+      return response.status(202).json({
+        msg: "Bulk items queued for insertion",
+        ok: true,
+        jobId: job.id,
+      });
+    } catch (error) {
+      logger.error("Error in insertBulkItemAlhpanumericFormat:", error);
+      response.status(500).json({
+        msg: error.message,
         ok: false,
       });
     }
-
-    if (!min_serial_number || !max_serial_number) {
-      return response.status(400).json({
-        msg: "Minimum and maximum serial numbers are required.",
-        ok: false,
-      });
-    }
-
-    // Generate serial numbers from min_serial_number to max_serial_number
-    const serialNumbers = [];
-    let currentSerial = parseInt(min_serial_number, 10);
-    const maxSerial = parseInt(max_serial_number, 10);
-
-    while (currentSerial <= maxSerial) {
-      serialNumbers.push(
-        currentSerial.toString().padStart(min_serial_number.length, "0"),
-      );
-      currentSerial++;
-    }
-
-    if (serialNumbers.length === 0) {
-      return response.status(400).json({
-        msg: "No serial numbers generated.",
-        ok: false,
-      });
-    }
-
-    const query = `
-    INSERT INTO item_inv
-    (
-      category_name,
-      sub_category_name,
-      item_group,
-      sub_item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial_number,
-      warehouse,
-      main_warehouse,
-      create_at,
-      update_at,
-      company,
-      location,
-      location_id,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      container_id,
-      display_item,
-      enableAssignFeature,
-      image_url,
-      supplier_info
-      )
-      VALUES ?
-    `;
-
-    // Prepare an array of value arrays, each sub-array representing a row to be inserted
-    const values = serialNumbers.map((serial_number) => [
-      category_name,
-      sub_category_name || null,
-      item_group,
-      sub_item_group || null,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial_number,
-      warehouse,
-      main_warehouse,
-      created_at,
-      update_at,
-      company,
-      locName,
-      locationId,
-      current_location,
-      sub_location,
-      extra_serial_number,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      containerId,
-      display_item,
-      enableAssignFeature,
-      image_url || null,
-      supplier_info,
-    ]);
-    const [result] = await connection.query(query, [values]);
-    // connection.query(query, [values], function (err, result) {
-    // });
-    // cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=true&enableAssignFeature=1`);
-    // cache_connection
-    //   .promise()
-    //   .del(`company_id=${company_id}&warehouse=false&enableAssignFeature=1`);
-
-    return response.status(201).json({
-      item: result,
-      ok: true,
-    });
-  } catch (error) {
-    response.status(500).json({
-      err: error,
-      msg: `${error.message}`,
-      ok: false,
-    });
-  }
-};
-
-const insertBulkItemAlhpanumericFormat = async (request, response) => {
-  try {
-    const connection = getConnection();
-    const { location, company_id } = request.body;
-
-    const locName = typeof location === "string" ? location : location?.name;
-    if (!locName || !company_id) {
-      return response.status(400).json({
-        msg: "Company ID and Location Name are required.",
-        ok: false,
-      });
-    }
-
-    const locationId = await getLocationId(connection, company_id, locName);
-    if (!locationId) {
-      return response.status(404).json({
-        msg: `Location '${locName}' not found.`,
-        ok: false,
-      });
-    }
-
-    // Pass location_id to Worker
-    request.body.location_id = locationId;
-
-    // Execute Node.js Worker logic
-    await insertBulkItemAlhpanumericFormatWorker(connection, request.body);
-
-    return response.status(201).json({
-      msg: "Alpha bulk items inserted successfully",
-      ok: true,
-    });
-  } catch (error) {
-    logger.error("Error in insertBulkItemAlhpanumericFormat:", error);
-    response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
-  }
-};
+  };
+}
+const insertBulkItemAlhpanumericFormat = createInsertBulkItemAlphanumeric();
 
 const consultingItem = async (request, response) => {
   try {
@@ -613,9 +610,38 @@ const consultingItem = async (request, response) => {
 const deleteItem = async (request, response) => {
   try {
     const connection = getConnection();
-    const query = "DELETE FROM item_inv WHERE item_id=?";
-    const values = [request.body.item_id];
-    const [result] = await connection.execute(query, values);
+    const { item_id, company_id } = request.body;
+    if (!item_id || !company_id) {
+      return response.status(400).json({ ok: false, msg: "item_id and company_id are required" });
+    }
+
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+
+    // Load the item's own scope (and enforce multi-tenant: it must belong to company_id).
+    const [[item]] = await connection.execute(
+      "SELECT location_id, category_name FROM item_inv WHERE item_id = ? AND company_id = ? LIMIT 1",
+      [item_id, company_id]
+    );
+    if (!item) {
+      return response.status(404).json({ ok: false, msg: "Item not found for this company" });
+    }
+
+    // Per-assignment write gate: scoped roles need can_delete on the item's location/category.
+    const allowed = await canWriteInScope(userAccess, "delete", {
+      locationId: item.location_id,
+      categoryName: item.category_name,
+    });
+    if (!allowed) {
+      return response.status(403).json({ ok: false, msg: "Not allowed to delete items in this location/category" });
+    }
+
+    const [result] = await connection.execute(
+      "DELETE FROM item_inv WHERE item_id = ? AND company_id = ?",
+      [item_id, company_id]
+    );
     return response.status(201).json({
       item_deleted: result,
       ok: true,
@@ -629,14 +655,57 @@ const deleteItem = async (request, response) => {
   }
 };
 
+/**
+ * Inventario de la compañía.
+ *
+ * OBSOLETA a favor de `POST /api/db_item/inventory-page`, que pagina y proyecta
+ * columnas. Se mantiene mientras el frontend migra.
+ *
+ * Antes iba SIN TOKEN y filtraba por `company` —el NOMBRE de la compañía, tal
+ * cual venía del body—, así que cualquiera podía volcar el inventario de
+ * cualquier cliente sabiendo cómo se llama. Ahora el `company_id` sale del
+ * contexto verificado y se aplica además el scope del rol.
+ */
 const consultingItemTable = async (request, response) => {
   try {
+    const context = await resolveCompanyContext(request);
+    if (!context.ok) {
+      return response.status(context.status).json({ ok: false, msg: context.msg });
+    }
+
     const connection = getConnection();
-    const query = "SELECT * FROM item_inv WHERE company=?;";
-    const values = [request.body.company];
-    const [result] = await connection.execute(query, values);
+    const scope = buildInventoryScopeFilter(context.access);
+    const where = scope.sql ? `company_id = ? AND ${scope.sql}` : "company_id = ?";
+
+    // TECHO DE FILAS, y deliberadamente NO silencioso.
+    //
+    // Sin él, una compañía con 50.000 ítems produce un array de mysql2 y una
+    // cadena JSON de decenas de MB, y el `JSON.stringify` bloquea el event loop
+    // del worker que atiende la petición: con cuatro procesos, se congela a un
+    // cuarto de los clientes. Truncar en silencio sería peor que el problema
+    // —el cliente creería tener el inventario entero—, así que la respuesta
+    // dice `truncated` y cuántas filas se sirvieron.
+    //
+    // La salida de verdad es `POST /api/db_item/inventory-page`. El techo es
+    // configurable para poder subirlo en caliente si a alguien le corta antes
+    // de migrar.
+    const maxRows = Number(process.env.ITEMS_INFORMATION_MAX_ROWS || 5000);
+    const query = `SELECT * FROM item_inv WHERE ${where} ORDER BY item_id ASC LIMIT ${maxRows + 1};`;
+    const values = [context.companyId, ...scope.params];
+    const [rows] = await connection.execute(query, values);
+
+    const truncated = rows.length > maxRows;
+    const items = truncated ? rows.slice(0, maxRows) : rows;
+    if (truncated) {
+      logger.warn(
+        `items_information truncado: company ${context.companyId} supera ${maxRows} filas; migrar a /inventory-page`
+      );
+    }
+
     return response.status(201).json({
-      items: result,
+      items,
+      truncated,
+      limit: maxRows,
       ok: true,
     });
   } catch (error) {
@@ -658,21 +727,16 @@ const consultingItemInWarehouseTable = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
     // Base query construction
     let formatting = Object.keys(filters).map((item) => `${item}=?`).join(" AND ");
     const values = Object.values(filters);
 
-    // Roles 0 (root_admin), 1 (admin), 4 (inventory_manager) see all inventory; others are location-scoped
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      const locationPlaceholders = locations.map(() => "?").join(",");
-      if (formatting) {
-        formatting += ` AND location IN (${locationPlaceholders})`;
-      } else {
-        formatting = `location IN (${locationPlaceholders})`;
-      }
-      values.push(...locations);
+    // Full-access roles: no restriction. Location/category-scoped roles: restricted
+    // to their assignments; a scoped role with no assignments matches nothing (1=0).
+    const scope = buildInventoryScopeFilter(userAccess);
+    if (scope.sql) {
+      formatting = formatting ? `${formatting} AND ${scope.sql}` : scope.sql;
+      values.push(...scope.params);
     }
 
     const query = `SELECT * FROM item_inv WHERE ${formatting};`;
@@ -744,6 +808,32 @@ const updateItemInTable = async (request, response) => {
         msg: "Provide at least one identifying field to target the item (e.g., item_id or serial_number with company_id).",
         ok: false,
       });
+    }
+
+    // Scope write gate (update): a location/category-scoped role may only edit
+    // items within its CURRENT scope (with can_update). Checked against each
+    // targeted item's own location/category. Full-access roles skip this.
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, body.company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+    if (userAccess.scoped) {
+      const [targetRows] = await connection.execute(
+        `SELECT location_id, category_name FROM item_inv WHERE ${whereParts.join(" AND ")}`,
+        whereValues
+      );
+      if (!targetRows.length) {
+        return response.status(404).json({ ok: false, msg: "Item not found for this company" });
+      }
+      for (const target of targetRows) {
+        const allowed = await canWriteInScope(userAccess, "update", {
+          locationId: target.location_id,
+          categoryName: target.category_name,
+        });
+        if (!allowed) {
+          return response.status(403).json({ ok: false, msg: "Not allowed to update items in this location/category" });
+        }
+      }
     }
 
     // Build SET clause from provided updatable fields (excluding identifiers)
@@ -848,8 +938,9 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
   request,
   response,
 ) => {
+  let connection = null;
   try {
-    const { warehouse, company_id, item_group, category_name, data, logistic_status } =
+    const { warehouse, company_id, item_group, category_name, data, logistic_status = "allocated" } =
       request.body;
     // Validate request body
     if (
@@ -865,15 +956,20 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
         ok: false,
       });
     }
+    const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+    }
+
     const pool = getConnection();
-    const connection = await pool.getConnection(); // Get dedicated connection for transaction
+    connection = await pool.getConnection(); // Get dedicated connection for transaction
     // Prepare the serial numbers for the IN clause
     const serialNumbers = data.map((item) => item.toString());
     const placeholders = serialNumbers.map(() => "?").join(",");
 
     // Find items query with proper parameterization
     const findIndexQuery = `
-      SELECT item_id, serial_number
+      SELECT item_id, serial_number, location_id, category_name
       FROM item_inv
       WHERE item_group = ?
         AND category_name = ?
@@ -896,8 +992,29 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
       });
     }
 
+    // Process-only-permitted: this moves inventory in/out of the warehouse, so
+    // scoped roles may only touch items within their can_update scope. Non-
+    // permitted items are skipped (reported via skipped_count). Full-access passes.
+    let scopedResults = results;
+    let skippedCount = 0;
+    if (userAccess.scoped) {
+      const writable = await getWritableScope(userAccess, "update");
+      const permitted = new Set((writable.values || []).map(String));
+      scopedResults = results.filter((r) =>
+        permitted.has(String(writable.dimension === "location" ? r.location_id : r.category_name))
+      );
+      skippedCount = results.length - scopedResults.length;
+      if (scopedResults.length === 0) {
+        return response.status(403).json({
+          ok: false,
+          msg: "Not allowed to update items in this location/category",
+          skipped_count: skippedCount,
+        });
+      }
+    }
+
     // Fix: Keep item_ids as numbers instead of converting to strings
-    const itemIds = results.map((item) => item.item_id);
+    const itemIds = scopedResults.map((item) => item.item_id);
 
     const idPlaceholders = itemIds.map(() => "?").join(",");
 
@@ -914,6 +1031,7 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
     return response.status(201).json({
       msg: "Items updated successfully",
       ok: true,
+      ...(skippedCount > 0 ? { skipped_count: skippedCount } : {}),
     });
   } catch (error) {
     logger.error(
@@ -925,6 +1043,9 @@ const updateItemInWarehouseAfterBeingAddedToEvent = async (
       msg: `Server error: ${error.message}`,
       ok: false,
     });
+  } finally {
+    // The dedicated connection was leaked on every path before; release it now.
+    if (connection) connection.release();
   }
 };
 
@@ -1170,14 +1291,14 @@ const checkingInventoryCurrentState = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
-    const workerPayload = { company_id };
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
+    // Scoped roles constrain the worker query to their locations/categories; a
+    // scoped role with no assignments is denied (empty result, worker not called).
+    const { payload, denyAll } = applyWorkerScope(userAccess, { company_id });
+    if (denyAll) {
+      return response.status(201).json({ ok: true, result: [] });
     }
 
-    const workerResponse = await runGoWorker("checking-inventory-current-state", workerPayload);
+    const workerResponse = await runGoWorker("checking-inventory-current-state", payload);
     if (workerResponse.status === "error") {
       throw new Error(workerResponse.message);
     }
@@ -1210,19 +1331,18 @@ const checkingItem = async (request, response) => {
       }
     }
 
-    const workerPayload = { filters: cleanFilters };
-
     const userAccess = await getStaffCompanyAccess(request.sqlStaffId, bodyFilters.company_id);
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
 
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
+    // Scoped roles constrain to their locations/categories; no assignments → denied.
+    const { payload, denyAll } = applyWorkerScope(userAccess, { filters: cleanFilters });
+    if (denyAll) {
+      return response.status(201).json({ cached: false, items: [], ok: true });
     }
 
-    const result = await runGoWorker("check-item", workerPayload);
+    const result = await runGoWorker("check-item", payload);
 
     return response.status(201).json({
       cached: false,
@@ -1584,7 +1704,7 @@ const updateItemInTableAfterBeingAddedToEventFromContainer = async (
     for (let item of database) {
       const query = `
         UPDATE item_inv 
-        SET warehouse = ? AND update_at = NOW()
+        SET warehouse = ?, update_at = NOW()
         WHERE item_id = ?;
       `;
 
@@ -1841,8 +1961,27 @@ const getGroupedItemInventory = async (request, response) => {
   }
 };
 
+/**
+ * OBSOLETA a favor de `POST /api/db_item/inventory-page`, que pagina con
+ * allowlist de filtros, `hasMore` y columnas explícitas. Se mantiene mientras el
+ * frontend migra, con dos agujeros cerrados:
+ *
+ *  1. Iba SIN TOKEN y sin filtro de compañía: con el body vacío, `filters`
+ *     caía a `"1=1"` y paginaba `item_inv` de TODAS las compañías. Ahora el
+ *     `company_id` sale del contexto verificado y nunca puede faltar.
+ *  2. Los nombres de columna se concatenaban desde `Object.keys(request.body)`.
+ *     Scopear por compañía NO bastaba para cerrarlo: una clave como
+ *     `"item_id = 1 OR 1"` produce `company_id = ? AND item_id = 1 OR 1 = ?`, y
+ *     como AND liga más fuerte que OR, eso devuelve la tabla entera. Por eso los
+ *     filtros pasan ahora por la misma allowlist que `/inventory-page`.
+ */
 const consultingCompanyInventoryWithPagination = async (request, response) => {
   try {
+    const context = await resolveCompanyContext(request);
+    if (!context.ok) {
+      return response.status(context.status).json({ ok: false, msg: context.msg });
+    }
+
     const connection = getConnection();
 
     // Safe fallback for body
@@ -1853,13 +1992,40 @@ const consultingCompanyInventoryWithPagination = async (request, response) => {
     const { lastItemId, direction = "forward" } = request.query;
     const pageSize = 10;
 
-    // Filter non-undefined keys for WHERE clause
+    // Solo columnas de la allowlist; `company_id` y `company` se ignoran como
+    // filtro porque el scope ya lo impone el contexto verificado.
     const filterKeys = Object.keys(body).filter(
-      (key) => body[key] !== undefined,
+      (key) =>
+        body[key] !== undefined &&
+        key !== "company_id" &&
+        key !== "company" &&
+        FILTERABLE_INVENTORY_COLUMNS.has(key),
     );
+    const rejected = Object.keys(body).filter(
+      (key) =>
+        body[key] !== undefined &&
+        key !== "company_id" &&
+        key !== "company" &&
+        !FILTERABLE_INVENTORY_COLUMNS.has(key),
+    );
+    if (rejected.length > 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: `Unsupported filter(s): ${rejected.join(", ")}`,
+        detail: { allowed: [...FILTERABLE_INVENTORY_COLUMNS].sort() },
+      });
+    }
+
+    const scope = buildInventoryScopeFilter(context.access);
+    const scopeClause = scope.sql ? ` AND ${scope.sql}` : "";
     const filters =
-      filterKeys.map((key) => `${key} = ?`).join(" AND ") || "1=1";
-    const filterValues = filterKeys.map((key) => body[key]);
+      ["company_id = ?", ...filterKeys.map((key) => `\`${key}\` = ?`)].join(" AND ") +
+      scopeClause;
+    const filterValues = [
+      context.companyId,
+      ...filterKeys.map((key) => body[key]),
+      ...scope.params,
+    ];
 
     // Cursor-based condition
     let cursorCondition = "";
@@ -2058,6 +2224,230 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
   }
 };
 
+/**
+ * Returns event devices to the warehouse and detaches them from the event, as
+ * ONE atomic operation.
+ *
+ * The frontend does this today as three separate calls to the raw-SQL endpoint:
+ * UPDATE item_inv SET warehouse = 1, then SELECT the item_ids, then DELETE the
+ * event assignments. Split like that they are three independent transactions,
+ * so a failure between the first and the last leaves stock marked as returned
+ * to the warehouse while still assigned to the event — a state nothing later
+ * reconciles.
+ *
+ * Two things make this safer than the sequence it replaces:
+ *  - `FOR UPDATE` holds the matched rows for the life of the transaction, so a
+ *    concurrent assignment cannot slip between the read and the writes.
+ *  - The item_ids are derived HERE from company-scoped rows, instead of being
+ *    supplied by the client. The legacy DELETE took item_ids straight from the
+ *    browser and had no company filter of its own, so it could detach another
+ *    tenant's assignments.
+ */
+const returnEventDevicesToWarehouse = async (request, response) => {
+  const { event_id, item_group, category_name, serial_numbers } = request.body || {};
+
+  if (!event_id || !item_group || !category_name) {
+    return response.status(400).json({
+      ok: false,
+      msg: "event_id, item_group and category_name are required",
+    });
+  }
+
+  const serials = [
+    ...new Set(
+      (Array.isArray(serial_numbers) ? serial_numbers : []).filter(
+        (value) => value !== null && value !== undefined && String(value).trim() !== ""
+      )
+    ),
+  ];
+  if (!serials.length) {
+    return response
+      .status(400)
+      .json({ ok: false, msg: "serial_numbers must be a non-empty array" });
+  }
+
+  const context = await resolveCompanyContext(request);
+  if (!context.ok) {
+    return response.status(context.status).json({ ok: false, msg: context.msg });
+  }
+
+  // getConnection() returns the Pool, which has no beginTransaction/commit —
+  // only an individual PoolConnection does.
+  const pool = getConnection();
+  const connection = await pool.getConnection();
+  let transactionStarted = false;
+
+  try {
+    await connection.beginTransaction();
+    transactionStarted = true;
+
+    const [items] = await connection.execute(
+      `SELECT item_id FROM item_inv
+        WHERE company_id = ? AND item_group = ? AND category_name = ?
+          AND serial_number IN (${serials.map(() => "?").join(", ")})
+        FOR UPDATE`,
+      [context.companyId, item_group, category_name, ...serials]
+    );
+
+    if (!items.length) {
+      await connection.rollback();
+      return response.status(404).json({
+        ok: false,
+        msg: "No matching inventory items found for this company.",
+      });
+    }
+
+    const itemIds = items.map((row) => row.item_id);
+    const itemPlaceholders = itemIds.map(() => "?").join(", ");
+
+    const [updated] = await connection.execute(
+      `UPDATE item_inv SET warehouse = 1, update_at = NOW()
+        WHERE company_id = ? AND item_id IN (${itemPlaceholders})`,
+      [context.companyId, ...itemIds]
+    );
+
+    const [deleted] = await connection.execute(
+      `DELETE FROM item_inv_assigned_event
+        WHERE event_id = ? AND item_id IN (${itemPlaceholders})`,
+      [event_id, ...itemIds]
+    );
+
+    await connection.commit();
+
+    return response.status(200).json({
+      ok: true,
+      returned_items: updated.affectedRows,
+      removed_assignments: deleted.affectedRows,
+      // Serials that matched nothing in THIS company: either unknown, or owned
+      // by another tenant. Reported rather than silently dropped, so the caller
+      // can tell a partial result from a complete one.
+      skipped_serials: serials.length - itemIds.length,
+    });
+  } catch (error) {
+    if (transactionStarted) {
+      try {
+        await connection.rollback();
+      } catch (rollbackError) {
+        logger.error("returnEventDevicesToWarehouse rollback failed", {
+          error: rollbackError.message,
+        });
+      }
+    }
+    logger.error("returnEventDevicesToWarehouse failed", {
+      event_id,
+      error: error.message,
+    });
+    return response.status(500).json({ ok: false, msg: error.message });
+  } finally {
+    connection.release();
+  }
+};
+
+// Shapes already reported by THIS process. Each distinct shape is logged once
+// rather than on every call, because the endpoint is high traffic and the goal
+// is an inventory, not a request log. Under pm2 cluster each worker reports
+// independently, which just means a shape can appear once per worker.
+const reportedQueryShapes = new Set();
+
+/**
+ * Records the SHAPE of a client-supplied statement (never its values) so the
+ * full set of queries the frontend sends can be inventoried before replacing
+ * this endpoint with a server-side named-query catalog. Several frontend call
+ * sites build their SQL in variables, so reading the client source is not
+ * enough to enumerate them.
+ *
+ * Never throws: auditing must not be able to break the endpoint it observes.
+ */
+const auditRawQueryShape = (request, query) => {
+  try {
+    logger.info("raw-sql endpoint: auditing query shape", { query });
+    logger.info("raw-sql endpoint: SQL_SHAPE_AUDIT", { value: process.env.SQL_SHAPE_AUDIT });
+    if (process.env.SQL_SHAPE_AUDIT === "false") return;
+
+    const described = describeSqlShape(query);
+    logger.info("raw-sql endpoint: query shape observed", {
+      shape_hash: described.hash,
+      statement_type: described.type,
+      tables: described.tables,
+      has_company_id: described.hasCompanyId,
+      mounted_at: request.baseUrl,
+      sql_staff_id: request.sqlStaffId ?? null,
+      shape: described.shape,
+    });
+    if (reportedQueryShapes.has(described.hash)) return;
+    reportedQueryShapes.add(described.hash);
+
+    logger.warn("raw-sql endpoint: new query shape observed", {
+      shape_hash: described.hash,
+      statement_type: described.type,
+      tables: described.tables,
+      // false => this shape cannot be scoped to the caller's company, so it
+      // reads (or writes) across tenants. These are the priority cases for the
+      // catalog.
+      has_company_id: described.hasCompanyId,
+      mounted_at: request.baseUrl,
+      sql_staff_id: request.sqlStaffId ?? null,
+      shape: described.shape,
+    });
+  } catch (auditError) {
+    logger.error("raw-sql endpoint: shape audit failed", {
+      error: auditError.message,
+    });
+  }
+};
+
+/**
+ * Runs a statement from the server-side catalog. This is the replacement for
+ * consultingCompanyInventoryBasedOnSubmittedParameters: the client names a
+ * query and passes parameters, and the SQL text never leaves the server.
+ *
+ * The company id still arrives in the body (the frontend has it to hand), but
+ * it is no longer TRUSTED: getStaffCompanyAccess resolves the caller's active
+ * membership of that company and returns null otherwise, so a tampered value
+ * yields 403 instead of another tenant's rows. That check is what closes the
+ * cross-tenant hole in the legacy endpoint, where the company filter was
+ * whatever the browser chose to send.
+ */
+const runNamedInventoryQuery = async (request, response) => {
+  try {
+    const { queryName, params } = request.body;
+
+    if (!queryName) {
+      return response.status(400).json({ ok: false, msg: "queryName is required" });
+    }
+
+    // Reads the s-company-lq header (or body/query for not-yet-migrated call
+    // sites) and proves the caller belongs to that company. A header is client
+    // input just like a body field, so the verification inside is what makes it
+    // safe — not where the value was read from.
+    const context = await resolveCompanyContext(request);
+    if (!context.ok) {
+      return response.status(context.status).json({ ok: false, msg: context.msg });
+    }
+
+    let built;
+    try {
+      built = buildNamedQuery(queryName, params, { companyId: context.companyId });
+    } catch (paramError) {
+      if (paramError instanceof QueryParamError) {
+        return response.status(400).json({ ok: false, msg: paramError.message });
+      }
+      throw paramError;
+    }
+
+    const connection = getConnection();
+    const [result] = await connection.execute(built.sql, built.values);
+
+    return response.status(200).json({ ok: true, result });
+  } catch (error) {
+    logger.error("runNamedInventoryQuery failed", {
+      queryName: request.body?.queryName,
+      error: error.message,
+    });
+    return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   request,
   response,
@@ -2065,6 +2455,8 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
   try {
     const connection = getConnection();
     let { query, values } = request.body;
+
+    auditRawQueryShape(request, query);
     // Clone the values to safely manipulate
     let finalValues = [];
     let placeholderIndex = 0;
@@ -2115,14 +2507,21 @@ const retrieveItemData = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
-    const workerPayload = { company_id };
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      workerPayload.locations = locations;
+    // Scoped roles constrain to their locations/categories; no assignments → denied
+    // (empty aggregation, worker not called).
+    const { payload, denyAll } = applyWorkerScope(userAccess, { company_id });
+    if (denyAll) {
+      return response.status(200).json({
+        args: [],
+        groupedData: { category_name: {}, item_group: {}, brand: {}, ownership: {} },
+        ok: true,
+        query: "",
+        total: 0,
+        totalAvailable: 0,
+      });
     }
 
-    const result = await runGoWorker("retrieve-item-data", workerPayload);
+    const result = await runGoWorker("retrieve-item-data", payload);
     return response.status(200).json({
       args: result.args,
       groupedData: result.groupedData,
@@ -2427,204 +2826,24 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
   }
 };
 
-const updateItemsBasedOnAlphanumericSerialNumber = async (request, response) => {
-  let connection;
-
-  const ALLOWED_REFERENCE_KEYS = ["item_group", "category_name", "brand"];
-  const CONTROL_FIELDS = ["reference", "updateAll", "list", "company_id", "update_at"];
-
-  // Parses the wrapped extra_serial_number format into a per-item Map.
-  //
-  // Input format (JSON string or array):
-  //   [{ "5001": [{ keyObject: "Serial Number", valueObject: "5001" },
-  //               { keyObject: "item_id",        valueObject: 57105  }] }]
-  //
-  // Output: Map { "5001" → '[{"keyObject":"Serial Number","valueObject":"5001"}]' }
-  //   — item_id entries are stripped because they are not stored in the column.
-  const buildExtraSerialNumberMap = (raw) => {
-    if (raw === undefined || raw === null) return new Map();
-    let parsed;
-    try {
-      parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
-    } catch (e) {
-      throw new Error(`extra_serial_number contains invalid JSON: ${e.message}`);
-    }
-    if (!Array.isArray(parsed)) {
-      throw new Error("extra_serial_number must be a JSON array");
-    }
-    const map = new Map();
-    for (const entry of parsed) {
-      for (const [serial, data] of Object.entries(entry)) {
-        if (Array.isArray(data)) {
-          const filtered = data.filter((item) => item?.keyObject !== "item_id");
-          map.set(String(serial), JSON.stringify(filtered));
-        }
-      }
-    }
-    return map;
-  };
-
-  try {
-    connection = await getConnection().getConnection();
-    await connection.beginTransaction();
-
-    const {
-      company_id,
-      updateAll = false,
-      list = [],
-      reference = {},
-      extra_serial_number,
-      ...rawUpdateData
-    } = request.body;
-
-    if (!company_id) {
-      return response.status(400).json({ msg: "company_id is required.", ok: false });
-    }
-
-    // Build the common update payload, stripping control keys and undefineds
-    const validUpdateData = {};
-    for (const [key, value] of Object.entries(rawUpdateData)) {
-      if (!CONTROL_FIELDS.includes(key) && value !== undefined) {
-        validUpdateData[key] = value;
-      }
-    }
-
-    if (updateAll) {
-      // ── updateAll: update every item that matches the reference criteria ───────
-      // extra_serial_number is intentionally excluded here — we cannot assign
-      // per-item values when the target set is determined at runtime by a WHERE.
-      const referenceEntries = Object.entries(reference).filter(
-        ([key, value]) =>
-          ALLOWED_REFERENCE_KEYS.includes(key) &&
-          value !== undefined &&
-          value !== null &&
-          String(value).trim() !== "",
-      );
-
-      if (referenceEntries.length === 0) {
-        return response.status(400).json({
-          msg: "reference must include at least one of: item_group, category_name, brand.",
-          ok: false,
-        });
-      }
-
-      const baseEntries = Object.entries(validUpdateData);
-      if (baseEntries.length === 0) {
-        return response.status(400).json({
-          msg: "At least one field is required to update.",
-          ok: false,
-        });
-      }
-
-      const updateEntries = [...baseEntries, ["update_at", new Date()]];
-      const setClause = updateEntries.map(([key]) => `${key} = ?`).join(", ");
-      const setValues = updateEntries.map(([, val]) => val);
-
-      const whereClause = [
-        "company_id = ?",
-        ...referenceEntries.map(([key]) => `${key} = ?`),
-      ].join(" AND ");
-      const whereValues = [company_id, ...referenceEntries.map(([, val]) => val)];
-
-      const [result] = await connection.execute(
-        `UPDATE item_inv SET ${setClause} WHERE ${whereClause}`,
-        [...setValues, ...whereValues],
-      );
-
-      await connection.commit();
-      return response.status(200).json({
-        msg: `${result.affectedRows} item(s) updated successfully.`,
-        ok: true,
-        updated_count: result.affectedRows,
-      });
-    }
-
-    // ── list: update only the items whose serial numbers are in list ─────────────
-
-    // Build the map first so we can fall back to its keys when list is omitted.
-    let extraSerialMap;
-    try {
-      extraSerialMap = buildExtraSerialNumberMap(extra_serial_number);
-    } catch (e) {
-      return response.status(400).json({ ok: false, msg: e.message });
-    }
-
-    // If list is not provided, derive it from the serial number keys embedded
-    // in extra_serial_number so callers don't need to send it twice.
-    const effectiveList = Array.isArray(list) && list.length > 0
-      ? list
-      : [...extraSerialMap.keys()];
-
-    if (effectiveList.length === 0) {
-      return response.status(400).json({
-        msg: "Provide list or extra_serial_number with serial number keys.",
-        ok: false,
-      });
-    }
-
-    const baseEntries = Object.entries(validUpdateData);
-
-    if (baseEntries.length === 0 && extraSerialMap.size === 0) {
-      return response.status(400).json({
-        msg: "At least one field is required to update.",
-        ok: false,
-      });
-    }
-
-    const updateEntries = [...baseEntries, ["update_at", new Date()]];
-    const setClauses = updateEntries.map(([key]) => `${key} = ?`);
-    const setValues = updateEntries.map(([, val]) => val);
-
-    // Build a CASE WHEN expression so each serial number gets its own
-    // extra_serial_number value. Items not present in the map keep their
-    // current value (ELSE extra_serial_number).
-    if (extraSerialMap.size > 0) {
-      const whenClauses = [];
-      for (const serial of effectiveList) {
-        const stored = extraSerialMap.get(String(serial));
-        if (stored !== undefined) {
-          whenClauses.push("WHEN ? THEN ?");
-          setValues.push(String(serial), stored);
-        }
-      }
-      if (whenClauses.length > 0) {
-        setClauses.push(
-          `extra_serial_number = CASE serial_number ${whenClauses.join(" ")} ELSE extra_serial_number END`,
-        );
-      }
-    }
-
-    const placeholders = effectiveList.map(() => "?").join(", ");
-    const query = `
-      UPDATE item_inv
-      SET ${setClauses.join(", ")}
-      WHERE company_id = ? AND serial_number IN (${placeholders})
-    `;
-
-    const [result] = await connection.execute(query, [
-      ...setValues,
-      company_id,
-      ...effectiveList,
-    ]);
-
-    await connection.commit();
-    return response.status(200).json({
-      msg: `${result.affectedRows} item(s) updated successfully.`,
-      ok: true,
-      updated_count: result.affectedRows,
-    });
-  } catch (error) {
-    if (connection) await connection.rollback();
-    logger.error("Error in bulk item update:", error);
-    return response.status(500).json({
-      msg: `Internal server error: ${error.message}`,
-      ok: false,
-      err: error,
-    });
-  } finally {
-    if (connection) connection.release();
-  }
-};
+// Migrado al contrato async (202 + jobId, ver DESIGN_task_queue.md § Fase 4b):
+// el UPDATE corría síncrono dentro del ciclo request/response sosteniendo la
+// conexión HTTP mientras tocaba potencialmente miles de filas (updateAll por
+// criterio de category_name/item_group/brand, o listas grandes de seriales).
+// Ahora el controller solo valida (rápido, sin DB) y encola; el UPDATE real
+// vive en queue/handlers/inventoryBulkUpdateAlphanumeric.js dentro de una
+// única transacción con conexión dedicada del pool.
+const updateItemsBasedOnAlphanumericSerialNumber = createQueuedJobController(
+  "inventory:bulk-update-alphanumeric",
+  (body) => body,
+  {
+    validate: (body) => {
+      const plan = resolveUpdatePlan(body);
+      return plan.error ? { status: plan.error.status, body: { msg: plan.error.msg, ok: false } } : null;
+    },
+    buildSuccessBody: (job) => ({ msg: "Bulk item update queued", ok: true, jobId: job.id }),
+  },
+);
 
 const insertContainerItems = async (request, response) => {
   const connection = getConnection();
@@ -2930,230 +3149,298 @@ const updateContainerItems = async (request, response) => {
   }
 };
 
-const checkLargeData = async (request, response) => {
-  try {
-    const connection = getConnection();
-    const { item_ids } = request.body;
-    const query = `SELECT * FROM item_inv WHERE item_id IN (${item_ids
-      .map((item_id) => item_id)
-      .join(",")});`;
-    const [results] = await connection.execute(query);
-    response.status(200).json({
-      ok: true,
-      result: results,
-    });
-  } catch (error) {
-    logger.error("Error:", error.message);
-    response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
-  }
-};
+// Security fix: item_ids used to be string-interpolated directly into the SQL
+// (no parametrization, no type check) and the route had no auth/company
+// scoping — any caller could read any company's inventory by item_id, and a
+// non-numeric item_ids element would be injected raw into the query.
+function createCheckLargeData({ connectionFn = getConnection } = {}) {
+  return async function checkLargeData(request, response) {
+    try {
+      const { item_ids, company_id } = request.body;
 
-const updateLargeData = async (request, response) => {
-  try {
-    const { item_ids, updates } = request.body;
-
-    // Ensure item_ids is an array and not empty
-    if (!Array.isArray(item_ids) || item_ids.length === 0) {
-      return response.status(400).json({
-        msg: "item_ids must be a non-empty array",
-        ok: false,
-      });
-    }
-
-    // Ensure updates is a non-empty object
-    if (!updates || typeof updates !== 'object' || Object.keys(updates).length === 0) {
-      return response.status(400).json({
-        msg: "'updates' must be a non-empty object",
-        ok: false,
-      });
-    }
-
-    const workerResponse = await runGoWorker("update-item-warehouse", {
-      item_ids: item_ids,
-      updates: updates,
-    });
-
-    if (workerResponse.status === "error") {
-      throw new Error(workerResponse.message);
-    }
-
-    return response.status(200).json({
-      ok: true,
-      result: workerResponse.data,
-    });
-  } catch (error) {
-    logger.error("Error:", error.message);
-    response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
-  }
-};
-
-const updateSubLocation = async (req, res) => {
-  try {
-    const { newName, path, currentIndex, company_id } = req.body;
-
-    // Validate required fields
-    if (
-      !newName ||
-      !Array.isArray(path) ||
-      currentIndex === undefined ||
-      !company_id ||
-      path.length === 0
-    ) {
-      return res.status(400).json({
-        message:
-          "Missing required fields: newName, path (array), currentIndex, and company_id",
-        success: false,
-      });
-    }
-
-    const connection = getConnection();
-
-    // Handle location update (index 0)
-    if (currentIndex === 0) {
-      // Update locations table
-      const updateLocationQuery = `
-        UPDATE locations
-        SET location_name = ?
-        WHERE company_id = ? AND location_name = ?
-      `;
-
-      const [locResult] = await connection.query(updateLocationQuery, [
-        newName,
-        company_id,
-        path[0],
-      ]);
-
-      // Backward compatibility: Update item_inv.location (string)
-      const updateItemInvQuery = `
-        UPDATE item_inv
-        SET location = ?
-        WHERE company_id = ? AND location = ?
-      `;
-      await connection.query(updateItemInvQuery, [
-        newName,
-        company_id,
-        path[0],
-      ]);
-
-      return res.status(200).json({
-        affectedRows: locResult.affectedRows,
-        message: "Location updated successfully",
-        ok: true,
-      });
-    }
-
-    // Handle sub_location update (index > 0)
-    // For relational structure, we need to find the specific sub_location record and update its name
-    // The 'path' array represents the hierarchy: [Location, Sub1, Sub2, ...]
-
-    // 1. Find the location_id
-    const [locations] = await connection.query(
-      "SELECT location_id FROM locations WHERE company_id = ? AND location_name = ?",
-      [company_id, path[0]],
-    );
-
-    if (locations.length === 0) {
-      return res.status(404).json({ message: "Location not found", ok: false });
-    }
-    const locationId = locations[0].location_id;
-
-    // 2. Traverse the hierarchy to find the target sub_location_id
-    // path: ["Building A", "Floor 3", "Room 101"]
-    // currentIndex: 2 (updating "Room 101" to newName)
-    // We need to find the ID of "Room 101" which is a child of "Floor 3", which is a child of "Building A"
-
-    let currentParentId = null;
-    let targetSubLocationId = null;
-
-    // Iterate up to the target index
-    for (let i = 1; i <= currentIndex; i++) {
-      const nameToFind = path[i];
-
-      let query =
-        "SELECT sub_location_id FROM sub_locations WHERE location_id = ? AND name = ?";
-      const params = [locationId, nameToFind];
-
-      if (currentParentId === null) {
-        query += " AND parent_id IS NULL";
-      } else {
-        query += " AND parent_id = ?";
-        params.push(currentParentId);
+      if (!company_id) {
+        return response.status(400).json({
+          msg: "company_id is required",
+          ok: false,
+        });
       }
-
-      const [subs] = await connection.query(query, params);
-
-      if (subs.length === 0) {
-        // If we can't find the path in relational table, we might need to fallback to JSON update or fail
-        // For now, let's assume migration has run and fail if not found
-        return res.status(404).json({
-          message: `Sub-location segment '${nameToFind}' not found in relational structure`,
+      if (!Array.isArray(item_ids) || item_ids.length === 0) {
+        return response.status(400).json({
+          msg: "item_ids must be a non-empty array",
           ok: false,
         });
       }
 
-      currentParentId = subs[0].sub_location_id;
-      if (i === currentIndex) {
-        targetSubLocationId = currentParentId;
-      }
+      const connection = connectionFn();
+      const placeholders = item_ids.map(() => "?").join(",");
+      const query = `SELECT * FROM item_inv WHERE company_id = ? AND item_id IN (${placeholders})`;
+      const [results] = await connection.execute(query, [company_id, ...item_ids]);
+
+      return response.status(200).json({
+        ok: true,
+        result: results,
+      });
+    } catch (error) {
+      logger.error("Error:", error.message);
+      return response.status(500).json({
+        msg: error.message,
+        ok: false,
+      });
     }
+  };
+}
+const checkLargeData = createCheckLargeData();
 
-    if (targetSubLocationId) {
-      // Update the sub_locations table
-      await connection.query(
-        "UPDATE sub_locations SET name = ? WHERE sub_location_id = ?",
-        [newName, targetSubLocationId],
-      );
+// Security fix: the route had no auth/company scoping, and the SQL built by
+// the Go worker had no company_id filter — any caller could bulk-update any
+// company's inventory by item_id (item_id is a globally sequential,
+// enumerable int, not scoped per company). company_id is now required here
+// and forwarded to the Go worker, which adds `AND company_id = ?` to the
+// UPDATE (see go-worker/controllers.go UpdateItemWarehouse).
+//
+// Pure "do the work" function — no req/res — so internal callers (ex.
+// allocateDeviceToEvent in items_events.js) can call it directly instead of
+// invoking the Express handler with a borrowed `response` object (that used
+// to send multiple conflicting HTTP responses on the same connection).
+// Throws an Error with `.statusCode` set for validation failures; the HTTP
+// handler below maps that to the right response.
+async function performUpdateLargeData({ item_ids, updates, company_id } = {}, { runGoWorkerFn = runGoWorker } = {}) {
+  if (!company_id) {
+    const err = new Error("company_id is required");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Ensure item_ids is an array and not empty
+  if (!Array.isArray(item_ids) || item_ids.length === 0) {
+    const err = new Error("item_ids must be a non-empty array");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  // Drop undefined values before checking "non-empty": a caller building
+  // `updates: { logistic_status, warehouse }` from destructured fields that
+  // turned out undefined would otherwise pass a technically non-empty object
+  // (Object.keys still counts a key whose value is undefined) that then
+  // serializes to `{}` over the wire to the Go worker (JSON.stringify drops
+  // undefined-valued keys) — surfacing as a confusing "no update fields
+  // provided" 500 from the Go worker instead of a clear 400 here.
+  const definedUpdates = updates && typeof updates === "object"
+    ? Object.fromEntries(Object.entries(updates).filter(([, v]) => v !== undefined))
+    : {};
+
+  if (Object.keys(definedUpdates).length === 0) {
+    const err = new Error("'updates' must be a non-empty object");
+    err.statusCode = 400;
+    throw err;
+  }
+
+  return runGoWorkerFn("update-item-warehouse", {
+    item_ids,
+    updates: definedUpdates,
+    company_id,
+  });
+}
+
+function createUpdateLargeData({ runGoWorkerFn = runGoWorker } = {}) {
+  return async function updateLargeData(request, response) {
+    try {
+      const result = await performUpdateLargeData(request.body, { runGoWorkerFn });
+      return response.status(200).json({
+        ok: true,
+        result,
+      });
+    } catch (error) {
+      logger.error("Error:", error.message);
+      return response.status(error.statusCode || 500).json({
+        msg: error.message,
+        ok: false,
+      });
     }
+  };
+}
+const updateLargeData = createUpdateLargeData();
 
-    // Maintain Backward Compatibility: Update JSON in item_inv
-    // This logic mimics the original JSON update behavior
-    const updateIndex = currentIndex - 1;
-    const pathConditions = path
-      .slice(1)
-      .map(
-        (_, index) =>
-          `JSON_UNQUOTE(JSON_EXTRACT(sub_location, '$[${index}]')) = ?`,
-      )
-      .join(" AND ");
+/** Error con código HTTP, para salir de una transacción sin `return`. */
+const httpError = (statusCode, body) => {
+  const error = new Error(body.message || "Request failed");
+  error.statusCode = statusCode;
+  error.body = body;
+  return error;
+};
 
-    const updateQuery = `
-      UPDATE item_inv
-      SET sub_location = JSON_SET(
-        sub_location,
-        '$[${updateIndex}]',
-        CAST(? AS JSON)
-      )
-      WHERE company_id = ? 
-      AND location = ?
-      ${pathConditions ? "AND " + pathConditions : ""}`;
+/**
+ * Renombra una locación o sub-locación y propaga el nombre nuevo a `item_inv`.
+ *
+ * SON DOS ESCRITURAS Y ANTES NO IBAN EN UNA TRANSACCIÓN: si la segunda fallaba,
+ * la locación quedaba renombrada y los ítems seguían apuntando al nombre viejo
+ * — desaparecían de la locación nueva sin aparecer en ninguna otra.
+ *
+ * Dos detalles del arreglo que no son opcionales:
+ *
+ *  1. `getConnection()` devuelve el POOL, que no expone `beginTransaction`.
+ *     Hace falta una conexión dedicada (`pool.getConnection()`), igual que en
+ *     `containerItemsDetails`.
+ *  2. Los `return res.status(404)` de en medio pasan a ser excepciones con
+ *     `statusCode`, el patrón de `performUpdateLargeData`. Un `return` dentro de
+ *     una transacción abierta devuelve la conexión al pool CON la transacción
+ *     viva: `mysql2` no la deshace al liberarla, se la hereda quien la reciba
+ *     después, y bajo carga eso agota el pool. Ahora hay un solo `catch` que
+ *     hace rollback y un solo `finally` que libera.
+ *
+ * Fábrica para poder inyectar el pool en los tests, como `createUpdateLargeData`.
+ */
+const createUpdateSubLocation = ({
+  connectionFn = getConnection,
+  resolveContextFn = resolveCompanyContext,
+} = {}) => async (req, res) => {
+  const { newName, path, currentIndex } = req.body || {};
 
-    const [updateResult] = await connection.query(updateQuery, [
-      JSON.stringify(newName),
-      company_id,
-      path[0],
-      ...path.slice(1),
-    ]);
-
-    return res.status(200).json({
-      affectedRows: updateResult.affectedRows,
-      message: "Sub location updated successfully",
-      ok: true,
+  if (
+    !newName ||
+    !Array.isArray(path) ||
+    currentIndex === undefined ||
+    path.length === 0
+  ) {
+    return res.status(400).json({
+      message: "Missing required fields: newName, path (array) and currentIndex",
+      success: false,
     });
+  }
+
+  // El company_id sale del contexto verificado, no del body: esta ruta iba sin
+  // token y renombraba la estructura de la compañía que dijera el cuerpo.
+  const context = await resolveContextFn(req);
+  if (!context.ok) {
+    return res.status(context.status).json({ ok: false, msg: context.msg });
+  }
+  const declared = (req.body || {}).company_id;
+  if (declared !== undefined && String(declared) !== String(context.companyId)) {
+    return res.status(400).json({
+      ok: false,
+      msg: "Company mismatch between header and body",
+      detail: { header: context.companyId, body: declared },
+    });
+  }
+  const company_id = context.companyId;
+
+  const pool = connectionFn();
+  const connection = await pool.getConnection();
+
+  try {
+    await connection.beginTransaction();
+    let payload;
+
+    if (currentIndex === 0) {
+      const [locResult] = await connection.query(
+        `UPDATE locations SET location_name = ? WHERE company_id = ? AND location_name = ?`,
+        [newName, company_id, path[0]],
+      );
+
+      // Compatibilidad: item_inv.location guarda el nombre, no el id.
+      await connection.query(
+        `UPDATE item_inv SET location = ? WHERE company_id = ? AND location = ?`,
+        [newName, company_id, path[0]],
+      );
+
+      payload = {
+        affectedRows: locResult.affectedRows,
+        message: "Location updated successfully",
+        ok: true,
+      };
+    } else {
+      const [locations] = await connection.query(
+        "SELECT location_id FROM locations WHERE company_id = ? AND location_name = ?",
+        [company_id, path[0]],
+      );
+      if (locations.length === 0) {
+        throw httpError(404, { message: "Location not found", ok: false });
+      }
+      const locationId = locations[0].location_id;
+
+      let currentParentId = null;
+      let targetSubLocationId = null;
+
+      for (let i = 1; i <= currentIndex; i++) {
+        const nameToFind = path[i];
+        let query =
+          "SELECT sub_location_id FROM sub_locations WHERE location_id = ? AND name = ?";
+        const params = [locationId, nameToFind];
+
+        if (currentParentId === null) {
+          query += " AND parent_id IS NULL";
+        } else {
+          query += " AND parent_id = ?";
+          params.push(currentParentId);
+        }
+
+        const [subs] = await connection.query(query, params);
+        if (subs.length === 0) {
+          throw httpError(404, {
+            message: `Sub-location segment '${nameToFind}' not found in relational structure`,
+            ok: false,
+          });
+        }
+
+        currentParentId = subs[0].sub_location_id;
+        if (i === currentIndex) targetSubLocationId = currentParentId;
+      }
+
+      if (targetSubLocationId) {
+        await connection.query(
+          "UPDATE sub_locations SET name = ? WHERE sub_location_id = ?",
+          [newName, targetSubLocationId],
+        );
+      }
+
+      const updateIndex = currentIndex - 1;
+      const pathConditions = path
+        .slice(1)
+        .map(
+          (_, index) =>
+            `JSON_UNQUOTE(JSON_EXTRACT(sub_location, '$[${index}]')) = ?`,
+        )
+        .join(" AND ");
+
+      const [updateResult] = await connection.query(
+        `UPDATE item_inv
+         SET sub_location = JSON_SET(sub_location, '$[${updateIndex}]', CAST(? AS JSON))
+         WHERE company_id = ?
+         AND location = ?
+         ${pathConditions ? "AND " + pathConditions : ""}`,
+        [JSON.stringify(newName), company_id, path[0], ...path.slice(1)],
+      );
+
+      payload = {
+        affectedRows: updateResult.affectedRows,
+        message: "Sub location updated successfully",
+        ok: true,
+      };
+    }
+
+    await connection.commit();
+    return res.status(200).json(payload);
   } catch (error) {
+    await connection.rollback().catch((rollbackError) => {
+      logger.error("updateSubLocation rollback failed:", rollbackError.message);
+    });
+
+    if (error.statusCode) {
+      return res.status(error.statusCode).json(error.body);
+    }
+
     logger.error("Error updating sub location:", error);
     return res.status(500).json({
       error: error.message,
       message: "Internal server error while updating sub location",
       ok: false,
     });
+  } finally {
+    connection.release();
   }
 };
+
+const updateSubLocation = createUpdateSubLocation();
 
 const getInventoryHierarchyWithTypes = async (request, response) => {
   try {
@@ -3167,8 +3454,6 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
-    const { role_level, locations } = userAccess;
-
     let query = `
       SELECT
         item_id, item_group, warehouse, location, sub_location
@@ -3178,10 +3463,12 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
 
     const values = [company_id];
 
-    if (!FULL_INVENTORY_ROLES.has(role_level) && locations.length > 0) {
-      const placeholders = locations.map(() => "?").join(",");
-      query += ` AND location IN (${placeholders})`;
-      values.push(...locations);
+    // Full-access: unrestricted. Scoped roles: constrained to their locations/
+    // categories; no assignments → matches nothing (1=0).
+    const scope = buildInventoryScopeFilter(userAccess);
+    if (scope.sql) {
+      query += ` AND ${scope.sql}`;
+      values.push(...scope.params);
     }
 
     const [items] = await connection.execute(query, values);
@@ -3467,7 +3754,25 @@ const filterSuppliersInfoItems = async (request, response) => {
   }
 };
 
-const deleteBulkItems = async (request, response) => {
+// Migrado a cola (gemelo de deleteBulkItemBasedOnCriteria): el borrado por
+// lista de ids puede llegar con miles de item_ids y el DELETE del lado Go no
+// trocea. Lo que NO se puede mover al job se queda acá: la autorización y el
+// filtrado por scope dependen de `request.sqlStaffId`, y en un job no hay
+// request. El job recibe los ids YA filtrados; `skipped_count` se calcula y se
+// responde en el acto. El DELETE real vive en
+// queue/handlers/deleteBulkItemsByIds.js. Usa waitForJobOutcome para responder
+// con la misma forma de siempre en el caso típico (necesita el worker dedicado
+// de poll rápido: con el genérico de 4s, cada llamada caería al 202).
+function createDeleteBulkItems({
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  getWritableScopeFn = getWritableScope,
+  connectionFn = getConnection,
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  waitForJobOutcomeFn = waitForJobOutcome,
+  maxWaitMs = 4000,
+} = {}) {
+  return async function deleteBulkItems(request, response) {
   try {
     const { item_ids, company_id } = request.body;
 
@@ -3486,18 +3791,93 @@ const deleteBulkItems = async (request, response) => {
       });
     }
 
-    const workerResponse = await runGoWorker("delete-bulk-items", {
-      company_id: company_id,
-      item_ids: item_ids,
-    });
-
-    if (workerResponse.status === "error") {
-      throw new Error(workerResponse.message);
+    const userAccess = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
+    if (!userAccess) {
+      return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
 
-    return response.status(200).json({
+    // Process-only-permitted: for a scoped role, narrow item_ids to those whose own
+    // location/category is within the staff's can_delete scope. Non-permitted ids are
+    // silently skipped (reported via skipped_count). Full-access roles delete all.
+    let targetIds = item_ids;
+    let skippedCount = 0;
+    if (userAccess.scoped) {
+      const writable = await getWritableScopeFn(userAccess, "delete");
+      const permitted = new Set((writable.values || []).map(String));
+      const connection = connectionFn();
+      // Batched: an unbounded IN (...) for the whole item_ids array risks
+      // max_allowed_packet/parameter limits for a large delete request.
+      const rows = [];
+      for (const batch of chunkArray(item_ids, BULK_INSERT_BATCH_SIZE)) {
+        const placeholders = batch.map(() => "?").join(",");
+        const [batchRows] = await connection.execute(
+          `SELECT item_id, location_id, category_name FROM item_inv
+           WHERE company_id = ? AND item_id IN (${placeholders})`,
+          [company_id, ...batch]
+        );
+        rows.push(...batchRows);
+      }
+      targetIds = rows
+        .filter((r) =>
+          permitted.has(String(writable.dimension === "location" ? r.location_id : r.category_name))
+        )
+        .map((r) => r.item_id);
+      skippedCount = item_ids.length - targetIds.length;
+
+      if (targetIds.length === 0) {
+        return response.status(200).json({
+          ok: true,
+          result: { deleted_count: 0 },
+          skipped_count: skippedCount,
+          msg: "No items within your permitted scope",
+        });
+      }
+    }
+
+    // Idempotencia: mismo patrón namespaced que insertBulkItemAlhpanumericFormat.
+    // Sin header, la clave se deriva del contenido (company + ids ordenados), así
+    // que el reintento automático del cliente no encola dos veces el mismo
+    // borrado. Los ids son los YA filtrados por scope, no los del body.
+    const clientKey =
+      typeof request.get === "function"
+        ? request.get("Idempotency-Key") || request.get("idempotency-key")
+        : undefined;
+    const idempotencyKey = clientKey
+      ? `inventory:bulk-delete-by-ids:${String(clientKey).trim()}`
+      : `inventory:bulk-delete-by-ids:${company_id}:${crypto
+          .createHash("sha256")
+          .update([...targetIds].map(String).sort().join(","))
+          .digest("hex")}`;
+
+    const job = await enqueueFn(
+      "inventory:bulk-delete-by-ids",
+      { company_id, item_ids: targetIds },
+      { context: extractContextFn(request), idempotencyKey }
+    );
+
+    const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
+    if (outcome.outcome === "done") {
+      // `result` llevaba `workerResponse.data`, que era SIEMPRE undefined
+      // (runGoWorker ya devuelve el data desempaquetado, no la respuesta
+      // completa), así que el cliente nunca recibía el conteo. Ahora sí, con la
+      // misma forma que pretendía el código original: { affectedRows }.
+      return response.status(200).json({
+        ok: true,
+        result: { affectedRows: outcome.result?.deletedCount ?? 0 },
+        ...(skippedCount > 0 ? { skipped_count: skippedCount } : {}),
+      });
+    }
+    if (outcome.outcome === "failed") {
+      return response.status(500).json({
+        ok: false,
+        msg: outcome.job.lastError || "Bulk delete failed",
+      });
+    }
+    return response.status(202).json({
       ok: true,
-      result: workerResponse.data,
+      jobId: job.id,
+      msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
+      ...(skippedCount > 0 ? { skipped_count: skippedCount } : {}),
     });
   } catch (error) {
     logger.error("Error:", error.message);
@@ -3506,7 +3886,9 @@ const deleteBulkItems = async (request, response) => {
       ok: false,
     });
   }
-};
+  };
+}
+const deleteBulkItems = createDeleteBulkItems();
 
 const ensureIndexes = async (connection) => {
   try {
@@ -3602,113 +3984,6 @@ const retrieveCompanyItemsWithLocations = async (request, response) => {
   }
 };
 
-const insertBulkItemAlhpanumericFormatWorker = async (connection, req) => {
-  const {
-    category_name,
-    item_group,
-    cost,
-    brand,
-    descript_item,
-    ownership,
-    list,
-    warehouse,
-    main_warehouse,
-    created_at,
-    update_at,
-    company,
-    location,
-    location_id,
-    current_location,
-    sub_location,
-    extra_serial_number,
-    company_id,
-    return_date,
-    container,
-    containerSpotLimit,
-    image_url,
-    supplier_info,
-  } = req;
-
-  if (!list || list.length === 0) {
-    throw new Error("no serial numbers provided");
-  }
-
-  let extraInfoMap = {};
-  if (extra_serial_number && typeof extra_serial_number === "string") {
-    try {
-      const parsedExtraInfo = JSON.parse(extra_serial_number);
-      if (Array.isArray(parsedExtraInfo)) {
-        extraInfoMap = parsedExtraInfo.reduce((acc, item) => {
-          if (item) {
-            const key = Object.keys(item)[0];
-            if (key) {
-              acc[key] = item[key];
-            }
-          }
-          return acc;
-        }, {});
-      } else if (
-        typeof parsedExtraInfo === "object" &&
-        parsedExtraInfo !== null
-      ) {
-        extraInfoMap = parsedExtraInfo;
-      }
-    } catch (e) {
-      logger.error("Failed to parse extra_serial_number JSON:", e);
-    }
-  }
-
-  const query = `
-    INSERT INTO item_inv (
-      category_name, item_group, cost, brand, descript_item, ownership,
-      serial_number, warehouse, main_warehouse, create_at, update_at,
-      company, location, location_id, current_location, sub_location, extra_serial_number,
-      company_id, return_date, returnedRentedInfo, container, containerSpotLimit,
-      container_id, display_item, enableAssignFeature, image_url, supplier_info
-    ) VALUES ?`;
-
-  const returnedRentedInfo = "[]";
-  const containerID = "[]";
-  const displayItem = 1;
-  const enableAssignFeature = 1;
-
-  const batchSize = 1000;
-
-  for (let i = 0; i < list.length; i += batchSize) {
-    const batch = list.slice(i, i + batchSize);
-    const values = batch.map((serial) => [
-      category_name,
-      item_group,
-      cost,
-      brand,
-      descript_item,
-      ownership,
-      serial,
-      warehouse,
-      main_warehouse,
-      created_at,
-      update_at,
-      company,
-      location,
-      location_id,
-      current_location,
-      sub_location,
-      extraInfoMap[serial] ? JSON.stringify(extraInfoMap[serial]) : null,
-      company_id,
-      return_date,
-      returnedRentedInfo,
-      container,
-      containerSpotLimit,
-      containerID,
-      displayItem,
-      enableAssignFeature,
-      image_url,
-      supplier_info,
-    ]);
-    await connection.query(query, [values]);
-  }
-};
-
 const confirmItemsReturnedToStock = async (request, response) => {
   const connection = await getConnection().getConnection();
   try {
@@ -3792,81 +4067,109 @@ const confirmItemsReturnedToStock = async (request, response) => {
   }
 };
 
-const deleteBulkItemBasedOnCriteria = async (request, response) => {
-  const pool = getConnection();
-  let connection;
-  try {
-    connection = await pool.getConnection();
-    await connection.beginTransaction();
-    console.log("deleteBulkItemBasedOnCriteria request.body:", request.body);
-    const { serial_number, category_name, item_group, company_id } =
-      request.body;
+// Migrado a cola (ver project_bulk_queue_migration_plan.md): sin
+// serial_number, esto borra TODA una categoría/ubicación del inventario --
+// sin techo natural, mismo perfil de riesgo que insertBulkItem/
+// bulkReturnMemberLeases. El controller resuelve el scope (company_id +
+// category_name/item_group, y los location_ids permitidos si el rol es
+// location-scoped) y encola; el DELETE real vive en
+// queue/handlers/deleteBulkItemBasedOnCriteria.js. Usa waitForJobOutcome
+// para responder con la misma forma de siempre en el caso típico.
+function createDeleteBulkItemBasedOnCriteria({
+  getStaffCompanyAccessFn = getStaffCompanyAccess,
+  getWritableScopeFn = getWritableScope,
+  enqueueFn = enqueue,
+  extractContextFn = extractJobContext,
+  waitForJobOutcomeFn = waitForJobOutcome,
+  maxWaitMs = 4000,
+} = {}) {
+  return async function deleteBulkItemBasedOnCriteria(request, response) {
+    try {
+      const { serial_number, category_name, item_group, company_id } = request.body;
 
-    if (!company_id || !category_name) {
-      return response.status(400).json({
-        msg: "company_id and category_name are required.",
+      if (!company_id || !category_name) {
+        return response.status(400).json({
+          msg: "company_id and category_name are required.",
+          ok: false,
+        });
+      }
+
+      const userAccess = await getStaffCompanyAccessFn(request.sqlStaffId, company_id);
+      if (!userAccess) {
+        return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
+      }
+
+      // Intersect the delete criteria with the staff's can_delete scope. Category-scoped
+      // roles: the fixed category_name must itself be permitted (all-or-nothing). Location-
+      // scoped roles: the criteria carry no location, so restrict the DELETE to permitted
+      // location_ids. Full-access roles are unrestricted.
+      let location_ids = null;
+      if (userAccess.scoped) {
+        const writable = await getWritableScopeFn(userAccess, "delete");
+        if (writable.dimension === "category") {
+          if (!(writable.values || []).includes(category_name)) {
+            return response.status(200).json({
+              deleted_count: 0,
+              msg: "Category not within your permitted scope. No changes were made.",
+              ok: true,
+            });
+          }
+        } else if (writable.dimension === "location") {
+          if (!writable.values || writable.values.length === 0) {
+            return response.status(200).json({
+              deleted_count: 0,
+              msg: "No locations within your permitted scope. No changes were made.",
+              ok: true,
+            });
+          }
+          location_ids = writable.values;
+        }
+      }
+
+      const payload = { company_id, category_name, item_group, serial_number, location_ids };
+      const job = await enqueueFn("inventory:bulk-delete-by-criteria", payload, {
+        context: extractContextFn(request),
+      });
+
+      const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
+      if (outcome.outcome === "done") {
+        const { deletedCount } = outcome.result;
+        if (deletedCount === 0) {
+          return response.status(200).json({
+            deleted_count: 0,
+            msg: "No items found matching the provided criteria. No changes were made.",
+            ok: true,
+          });
+        }
+        return response.status(200).json({
+          deleted_count: deletedCount,
+          msg: `${deletedCount} item(s) deleted successfully.`,
+          ok: true,
+        });
+      }
+      if (outcome.outcome === "failed") {
+        return response.status(500).json({
+          error: outcome.job.lastError,
+          msg: "An internal error occurred. Please contact the administrator.",
+          ok: false,
+        });
+      }
+      return response.status(202).json({
+        ok: true,
+        jobId: job.id,
+        msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
+      });
+    } catch (error) {
+      logger.error("deleteBulkItemBasedOnCriteria error:", error);
+      return response.status(500).json({
+        error: error.message,
+        msg: "An internal error occurred. Please contact the administrator.",
         ok: false,
       });
     }
-
-    let whereClauses = ["company_id = ?", "category_name = ?"];
-    let values = [company_id, category_name];
-
-    if (item_group) {
-      whereClauses.push("item_group = ?");
-      values.push(item_group);
-    }
-
-    if (
-      serial_number &&
-      Array.isArray(serial_number) &&
-      serial_number.length > 0
-    ) {
-      const serialPlaceholders = serial_number.map(() => "?").join(",");
-      whereClauses.push(`serial_number IN (${serialPlaceholders})`);
-      values.push(...serial_number);
-    }
-
-    const query = `DELETE FROM item_inv WHERE ${whereClauses.join(" AND ")}`;
-
-    logger.info(`[deleteBulkItemBasedOnCriteria] Executing query: ${query}`);
-    logger.info(`[deleteBulkItemBasedOnCriteria] With values: ${JSON.stringify(values)}`);
-
-    const [result] = await connection.execute(query, values);
-    const deletedCount = result.affectedRows;
-
-    if (deletedCount === 0) {
-      await connection.commit();
-      return response.status(200).json({
-        deleted_count: 0,
-        msg: "No items found matching the provided criteria. No changes were made.",
-        ok: true,
-      });
-    }
-
-    await connection.commit();
-
-    return response.status(200).json({
-      deleted_count: deletedCount,
-      msg: `${deletedCount} item(s) deleted successfully.`,
-      ok: true,
-    });
-  } catch (error) {
-    if (connection) {
-      await connection.rollback();
-    }
-    logger.error("deleteBulkItemBasedOnCriteria error:", error);
-    return response.status(500).json({
-      error: error.message,
-      msg: "An internal error occurred. Please contact the administrator.",
-      ok: false,
-    });
-  } finally {
-    if (connection) {
-      connection.release();
-    }
-  }
-};
+  };
+}
+const deleteBulkItemBasedOnCriteria = createDeleteBulkItemBasedOnCriteria();
 
 const retrieveCompanyInventoryBasedOnParams = async (request, response) => {
   const { expected, company_id, location, item_group, category_name, limit } = request.body;
@@ -3907,10 +4210,15 @@ module.exports = {
   checkingItem,
   checkInventoryCompanyExists,
   checkLargeData,
+  createCheckLargeData,
+  createUpdateLargeData,
+  performUpdateLargeData,
   confirmItemsReturnedToStock,
   containerItemsDetails,
   consultingCompanyInventoryBasedOnLocationAndSubLocation,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  runNamedInventoryQuery,
+  returnEventDevicesToWarehouse,
   consultingCompanyInventoryWithPagination,
   consultingInventoryTracking,
   consultingItem,
@@ -3918,6 +4226,8 @@ module.exports = {
   consultingItemTable,
   consultItemDataFromSerialNumber,
   deleteBulkItemBasedOnCriteria,
+  createDeleteBulkItemBasedOnCriteria,
+  createDeleteBulkItems,
   deleteBulkItems,
   deleteContainerItem,
   deleteItem,
@@ -3930,7 +4240,9 @@ module.exports = {
   getInventoryHierarchyWithTypes,
   gettingDataFromLocationOption,
   insertBulkItem,
+  createInsertBulkItemRange,
   insertBulkItemAlhpanumericFormat,
+  createInsertBulkItemAlphanumeric,
   insertContainerItems,
   insertingItem,
   itemFinalStatusWhenEventIsFinished,
@@ -3955,4 +4267,5 @@ module.exports = {
   updateItemsBasedOnSerialNumber,
   updateLargeData,
   updateSubLocation,
+  createUpdateSubLocation,
 };

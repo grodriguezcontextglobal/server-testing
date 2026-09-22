@@ -90,8 +90,8 @@ function createUploadDocument({
       });
 
       // El dueño del job = quien podrá hacer polling de GET /api/jobs/owned/:jobId.
-      // Esta ruta no corre validateJWT (req.uid es null), así que el uid del
-      // dueño se toma de created_by (el uid Mongo que el frontend ya envía).
+      // Esta ruta ahora sí corre validateJWT, así que context.uid normalmente
+      // viene del JWT; created_by queda como fallback por compatibilidad.
       const context = extractContextFn(req);
       if (!context.uid) context.uid = req.body.created_by || null;
 
@@ -168,7 +168,7 @@ const getCompanyDocumentByID = async (req, res) => {
 
 const getDocumentTypes = async (req, res) => {
   try {
-    const { company_id } = req.user;
+    const { company_id } = req.query;
     const types = await Document.getCompanyDocumentTypes(company_id);
     res.json({
       ok: true,
@@ -184,7 +184,7 @@ const getDocumentTypes = async (req, res) => {
 
 const getTriggerActions = async (req, res) => {
   try {
-    const { company_id } = req.user;
+    const { company_id } = req.query;
     const actions = await Document.getCompanyTriggerActions(company_id);
     res.json({
       ok: true,
@@ -585,7 +585,12 @@ const updateStampEventConsumerSignatures = async (request, response) => {
       ok: true,
       msg: "Signature updated successfully",
     });
-  } catch (error) {}
+  } catch (error) {
+    return response.status(500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
 };
 
 const getConsumerSignatures = async (req, res) => {
@@ -1223,7 +1228,7 @@ const memberVerificationSignedDocumentForAssignmentDevices = async (
         contract_info: contract,
       });
     }
-    const parseDateSafe = (value) => {
+    const parseDateSafeMember = (value) => {
       if (!value) return NaN;
       if (value instanceof Date) {
         const t = value.getTime();
@@ -1240,7 +1245,7 @@ const memberVerificationSignedDocumentForAssignmentDevices = async (
       const t = d.getTime();
       return Number.isNaN(t) ? NaN : t;
     };
-    const refTs = parseDateSafe(date_reference);
+    const refTs = parseDateSafeMember(date_reference);
     if (Number.isNaN(refTs)) {
       return res.status(400).json({
         ok: false,
@@ -1251,10 +1256,10 @@ const memberVerificationSignedDocumentForAssignmentDevices = async (
     const windowStart = refTs - 10 * 60 * 1000; // -10 minutes
     const windowEnd = refTs + 10 * 60 * 1000; // +10 minutes
 
-    // Find all contracts for staff and company (date is stored as String, so range queries won't be reliable at DB level)
-    const contracts = await VerificationConsumersLeaseContracts.find({
+    // Find all contracts for the member and company (date is stored as String, so range queries won't be reliable at DB level)
+    const contracts = await VerificationMemberLeaseContracts.find({
       company_id,
-      consumer_member_id,
+      member_id,
     }).lean();
 
     if (!contracts || contracts.length === 0) {
@@ -1273,7 +1278,7 @@ const memberVerificationSignedDocumentForAssignmentDevices = async (
         if (doc.document_url !== contract_url) continue;
 
         // Prefer document date, fallback to contract date
-        const contractTs = parseDateSafe(contract?.date);
+        const contractTs = parseDateSafeMember(contract?.date);
         const tsCandidate = contractTs;
 
         if (Number.isNaN(tsCandidate)) continue;
@@ -1548,7 +1553,7 @@ const addSignatureToMemberDocument = async (req, res) => {
     signature.date = new Date().toLocaleString();
     contractList[document] = signature;
     const updatedVerification =
-      await VerificationConsumersLeaseContracts.findByIdAndUpdate(
+      await VerificationMemberLeaseContracts.findByIdAndUpdate(
         verification_id,
         {
           contract_list: contractList,

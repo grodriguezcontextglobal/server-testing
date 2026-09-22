@@ -59,6 +59,25 @@ const PUBLIC_ROUTES = new Map([
   ["/login-existing-consumer", "passwordless login link for consumers"],
 ]);
 
+/**
+ * The two public routes an ATTENDEE hits, as opposed to a staff member at a
+ * keyboard. They cannot be limited per IP: at a venue every attendee is behind
+ * the same wifi, so one public address covers the whole room, and a 10-per-15-
+ * minutes budget locks out the eleventh person to walk in. The room is the
+ * normal case, not the attack.
+ *
+ * They are limited per TARGET EMAIL instead, which is the thing the abuse
+ * actually needs to repeat: the reason these routes are sensitive is that
+ * hammering one address reveals whether it is registered, and that stays
+ * blocked. Total volume from a single address is still capped by the app-wide
+ * limiter in index.js (300 / 15 min per IP), so keying by email here does not
+ * leave the routes open to a flood across many addresses.
+ */
+const CONSUMER_PUBLIC_ROUTES = new Set([
+  "/confirmation-account",
+  "/login-existing-consumer",
+]);
+
 const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
 const routePath = (request) => {
@@ -68,6 +87,25 @@ const routePath = (request) => {
 };
 
 const isPublicRoute = (request) => PUBLIC_ROUTES.has(routePath(request));
+
+const isConsumerPublicRoute = (request) => CONSUMER_PUBLIC_ROUTES.has(routePath(request));
+
+/**
+ * Rate-limit key for the attendee routes: the address the mail would go to.
+ * Both handlers read it from `body.consumer.email` (see
+ * buildConfirmationLinkNewConsumerMessage / buildLoginLinkExistingConsumerMessage).
+ *
+ * Falls back to the IP when there is no usable address, so a malformed body
+ * cannot buy an unlimited route — it just lands in the shared IP bucket.
+ * express.json() runs in index.js before any router is mounted, so `body` is
+ * already parsed by the time this runs.
+ */
+const consumerRateLimitKey = (request) => {
+  const email = request.body?.consumer?.email;
+  return typeof email === "string" && email.trim()
+    ? `email:${email.trim().toLowerCase()}`
+    : `ip:${request.ip}`;
+};
 
 /**
  * Decode the session token without rejecting. Returns null for absent,
@@ -203,9 +241,8 @@ const notificationRateLimit = rateLimit({
 });
 
 /**
- * The pre-login routes are the ones a stranger can reach, and two of them
- * (`/confirmation-account`, `/login-existing-consumer`) will tell you whether
- * an address is registered if you let someone hammer them.
+ * The pre-login routes a STAFF member reaches, one person at one keyboard, so
+ * per-IP is the right key and ten in fifteen minutes is generous.
  */
 const publicNotificationRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -216,15 +253,35 @@ const publicNotificationRateLimit = rateLimit({
   message: { ok: false, msg: "Too many requests. Please try again shortly." },
 });
 
+/**
+ * The attendee routes, keyed per target address — see CONSUMER_PUBLIC_ROUTES.
+ * Five is tighter than the ten above because the budget is no longer shared:
+ * one person asking for their own login link more than five times in fifteen
+ * minutes is already past the point where another email helps them.
+ */
+const consumerNotificationRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: consumerRateLimitKey,
+  message: { ok: false, msg: "Too many requests for this email. Please try again shortly." },
+});
+
 /** Applies the strict limiter only to the routes that answer without a token. */
-const publicRouteRateLimit = (request, response, next) =>
-  isPublicRoute(request)
+const publicRouteRateLimit = (request, response, next) => {
+  if (isConsumerPublicRoute(request)) {
+    return consumerNotificationRateLimit(request, response, next);
+  }
+  return isPublicRoute(request)
     ? publicNotificationRateLimit(request, response, next)
     : next();
+};
 
 module.exports = {
   MODE,
   PUBLIC_ROUTES,
+  CONSUMER_PUBLIC_ROUTES,
   attachVerifiedCompany,
   requireNotificationAuth,
   notificationRateLimit,
@@ -232,5 +289,7 @@ module.exports = {
   verifyCompanyMembership,
   clearMembershipCache,
   isPublicRoute,
+  isConsumerPublicRoute,
+  consumerRateLimitKey,
   readSession,
 };

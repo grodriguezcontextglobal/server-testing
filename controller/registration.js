@@ -1,5 +1,7 @@
-const bcrypt = require("bcryptjs");
-const { v4: uuid } = require("uuid");
+// bcrypt NATIVO: hashea en el threadpool de libuv en vez de bloquear el event
+// loop ~150ms por alta. Ver el comentario en controller/admin.js.
+const bcrypt = require("bcrypt");
+const { randomUUID: uuid } = require("crypto");
 const AdminUser = require("../models/AdminUser");
 const Company = require("../models/Company");
 const getConnection = require("../mysql/database/config");
@@ -10,12 +12,43 @@ const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
 
 // ----- shared SQL helpers -----
 
-async function insertStaffMemberSQL(sqlConn, { first_name, last_name, email, phone_number }) {
-  const [result] = await sqlConn.execute(
-    "INSERT INTO staff_member (first_name, last_name, email, phone_number) VALUES (?, ?, ?, ?)",
-    [first_name, last_name, email, phone_number || null]
-  );
-  return result.insertId;
+/**
+ * Devuelve el `staff_id` de ese email, creando la fila solo si no existía.
+ *
+ * `staff_member.email` tiene UNIQUE (`uq_staff_member_email`, aplicado
+ * 2026-08-18 junto con la limpieza de duplicados — ver
+ * mysql/migrations/dedupe_staff_member_by_email.sql), así que un INSERT plano
+ * ahora falla con 1062 en vez de duplicar en silencio. Antes de ese índice el
+ * mismo email llegó a tener 9 filas y la resolución de `staff_id` quedaba
+ * ambigua: un login con rol scopeado terminó resolviendo al rol equivocado.
+ *
+ * El 1062 se atrapa en vez de prevenirse solo con el SELECT previo porque dos
+ * requests concurrentes con el mismo email (invitación aceptada dos veces,
+ * doble click) pasan ambos el SELECT y solo uno gana el INSERT. El que pierde
+ * relee y se queda con la fila del ganador.
+ */
+async function upsertStaffMemberSQL(sqlConn, { first_name, last_name, email, phone_number }) {
+  const findByEmail = async () => {
+    const [[row]] = await sqlConn.execute(
+      "SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1",
+      [email]
+    );
+    return row ? row.staff_id : null;
+  };
+
+  const existing = await findByEmail();
+  if (existing) return existing;
+
+  try {
+    const [result] = await sqlConn.execute(
+      "INSERT INTO staff_member (first_name, last_name, email, phone_number) VALUES (?, ?, ?, ?)",
+      [first_name, last_name, email, phone_number || null]
+    );
+    return result.insertId;
+  } catch (error) {
+    if (error?.errno === 1062 || error?.code === "ER_DUP_ENTRY") return await findByEmail();
+    throw error;
+  }
 }
 
 async function insertCompanyInfoSQL(sqlConn, { company_name, address, phone, main_email, industry }) {
@@ -149,12 +182,13 @@ const registerNewUserAndCompany = async (request, response) => {
     const sqlConn = getConnection();
 
     // --- Crear AdminUser en MongoDB ---
-    const salt = bcrypt.genSaltSync();
+    const salt = await bcrypt.genSalt();
+    const hashedPassword = await bcrypt.hash(user.password, salt);
     const adminUser = new AdminUser({
       name: user.name,
       lastName: user.lastName,
       email: user.email,
-      password: bcrypt.hashSync(user.password, salt),
+      password: hashedPassword,
       phone: user.phone || "",
       imageProfile: user.imageProfile || "",
       role: 0,
@@ -165,7 +199,7 @@ const registerNewUserAndCompany = async (request, response) => {
     // --- Insertar staff_member en MySQL ---
     let sqlStaffId = null;
     try {
-      sqlStaffId = await insertStaffMemberSQL(sqlConn, {
+      sqlStaffId = await upsertStaffMemberSQL(sqlConn, {
         first_name: user.name,
         last_name: user.lastName,
         email: user.email,
@@ -306,20 +340,12 @@ const registerExistingUserNewCompany = async (request, response) => {
     let resolvedStaffId = jwtStaffId;
     if (!resolvedStaffId) {
       try {
-        const [[staffRow]] = await sqlConn.execute(
-          "SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1",
-          [adminUser.email]
-        );
-        if (staffRow) {
-          resolvedStaffId = staffRow.staff_id;
-        } else {
-          resolvedStaffId = await insertStaffMemberSQL(sqlConn, {
-            first_name: adminUser.name,
-            last_name: adminUser.lastName,
-            email: adminUser.email,
-            phone_number: adminUser.phone || null,
-          });
-        }
+        resolvedStaffId = await upsertStaffMemberSQL(sqlConn, {
+          first_name: adminUser.name,
+          last_name: adminUser.lastName,
+          email: adminUser.email,
+          phone_number: adminUser.phone || null,
+        });
       } catch (sqlErr) {
         logger.warn("staff_member lookup/insert falló para usuario existente", {
           email: adminUser.email,
@@ -407,9 +433,15 @@ const registerExistingUserNewCompany = async (request, response) => {
 // ----- POST /api/registration/accept-invitation -----
 // Acepta una invitación de empresa. Crea el usuario en MongoDB+SQL si es nuevo,
 // o reutiliza el existente. Inserta en company_staff con el rol de la invitación.
-// Body: { user: { name, lastName, email, password? }, company: { company_name }, roleType }
+// Body: { user: { name, lastName, email, password? }, company: { company_name } }
+//
+// El ROL NO se acepta del body: lo definió quien invitó y ya está guardado en
+// `Company.employees[].roleType`. Aceptarlo del request permitía que el propio
+// invitado pidiera `root_admin` en una ruta sin autenticación y quedara así en
+// `company_staff`, que es la fuente de verdad del lado SQL (ver
+// mysql/helpers/staffAccess.js).
 const acceptInvitation = async (request, response) => {
-  const { user, company, roleType } = request.body;
+  const { user, company } = request.body;
 
   if (!user?.email || !company?.company_name) {
     return response.status(400).json({
@@ -417,8 +449,6 @@ const acceptInvitation = async (request, response) => {
       msg: "user.email y company.company_name son requeridos.",
     });
   }
-
-  const validRoleType = VALID_ROLE_TYPES.has(roleType) ? roleType : "assistant";
 
   try {
     // ── Buscar empresa en MongoDB ──────────────────────────────────────────────
@@ -429,6 +459,24 @@ const acceptInvitation = async (request, response) => {
         msg: `La empresa "${company.company_name}" no existe.`,
       });
     }
+
+    // ── La invitación tiene que existir ────────────────────────────────────────
+    // Antes, si el email no estaba en `employees` solo se saltaba el update de
+    // Mongo pero IGUAL se insertaba en company_staff: con saber el nombre de una
+    // empresa alcanzaba para darse acceso.
+    const empIndex = companyDoc.employees.findIndex((e) => e.user === user.email);
+    if (empIndex < 0) {
+      return response.status(404).json({
+        ok: false,
+        msg: `No hay una invitación pendiente para ${user.email} en "${company.company_name}".`,
+      });
+    }
+
+    // El rol lo fijó quien invitó, no el invitado.
+    const invitedRoleType = companyDoc.employees[empIndex].roleType;
+    const validRoleType = VALID_ROLE_TYPES.has(invitedRoleType)
+      ? invitedRoleType
+      : "assistant";
 
     const sqlConn = getConnection();
 
@@ -443,45 +491,35 @@ const acceptInvitation = async (request, response) => {
           msg: "user.password es requerido para usuarios nuevos.",
         });
       }
-      const salt = bcrypt.genSaltSync();
+      const salt = await bcrypt.genSalt();
+      const hashedPassword = await bcrypt.hash(user.password, salt);
       adminUser = new AdminUser({
         name: user.name || "",
         lastName: user.lastName || "",
         email: user.email,
-        password: bcrypt.hashSync(user.password, salt),
+        password: hashedPassword,
         phone: user.phone || "",
         imageProfile: "",
-        role: 0,
+        // role: 0,
         active: true,
       });
       await adminUser.save();
     }
 
     // ── Marcar empleado como Confirmed en MongoDB ──────────────────────────────
-    const empIndex = companyDoc.employees.findIndex((e) => e.user === user.email);
-    if (empIndex >= 0) {
-      companyDoc.employees[empIndex].status = "Confirmed";
-      if (isNewUser) companyDoc.employees[empIndex].userId = adminUser._id;
-      await companyDoc.save();
-    }
+    companyDoc.employees[empIndex].status = "Confirmed";
+    if (isNewUser) companyDoc.employees[empIndex].userId = adminUser._id;
+    await companyDoc.save();
 
     // ── SQL: crear o encontrar staff_member ───────────────────────────────────
     let sqlStaffId = null;
     try {
-      const [[existingStaff]] = await sqlConn.execute(
-        "SELECT staff_id FROM staff_member WHERE email = ? LIMIT 1",
-        [user.email]
-      );
-      if (existingStaff) {
-        sqlStaffId = existingStaff.staff_id;
-      } else {
-        sqlStaffId = await insertStaffMemberSQL(sqlConn, {
-          first_name: adminUser.name,
-          last_name: adminUser.lastName,
-          email: adminUser.email,
-          phone_number: adminUser.phone || null,
-        });
-      }
+      sqlStaffId = await upsertStaffMemberSQL(sqlConn, {
+        first_name: adminUser.name,
+        last_name: adminUser.lastName,
+        email: adminUser.email,
+        phone_number: adminUser.phone || null,
+      });
     } catch (sqlErr) {
       logger.warn("staff_member insert/lookup falló para invitación", {
         email: user.email,
@@ -533,6 +571,9 @@ const acceptInvitation = async (request, response) => {
         _id: companyDoc._id,
         company_name: companyDoc.company_name,
         sql_id: sqlCompanyId,
+        // El rol efectivo con el que quedó la membresía. Se devuelve para que el
+        // cliente no tenga que adivinarlo ni mandarlo — ya no lo acepta el body.
+        roleType: validRoleType,
       },
     });
   } catch (error) {

@@ -218,24 +218,32 @@ const searchingDeviceTransaction = async (variable, company, lastId = null) => {
     query._id = { $gt: new mongoose.Types.ObjectId(lastId) };
   }
   const limit = 11;
-  // `results` is a capped page for display; `total` and `serials` cover the whole
-  // match set, so the header count and the Inventory subtraction don't silently
-  // work off the first ten rows only.
-  const [results, total, serials] = await Promise.all([
-    Receivers.find(query).sort({ _id: 1 }).limit(limit),
-    Receivers.countDocuments(query),
-    Receivers.distinct("device.serialNumber", query),
-  ]);
+  const results = await Receivers.find(query).sort({ _id: 1 }).limit(limit);
   const hasMore = results.length === limit;
   if (hasMore) {
     results.pop();
   }
-  return {
-    deviceTransaction: results,
-    total,
-    serials: serials.filter(Boolean),
-    hasMore,
-  };
+  const pageSerials = results
+    .map((row) => row?.device?.serialNumber)
+    .filter(Boolean);
+
+  // `results` is a capped page. The exact count and the full serial set feed the
+  // header total and the Inventory subtraction, so they matter -- but they are
+  // refinements, not requirements: if the connection isn't live (or the extra
+  // queries fail) fall back to what the page already told us rather than hanging
+  // or failing the whole search.
+  let total = results.length;
+  let serials = pageSerials;
+  if (mongoose.connection?.readyState === 1) {
+    const [exactTotal, allSerials] = await Promise.all([
+      Receivers.countDocuments(query).catch(() => results.length),
+      Receivers.distinct("device.serialNumber", query).catch(() => pageSerials),
+    ]);
+    total = exactTotal;
+    serials = (allSerials ?? []).filter(Boolean);
+  }
+
+  return { deviceTransaction: results, total, serials, hasMore };
 };
 
 const searchingDevicePool = async (variable, company, lastId = null) => {
@@ -747,53 +755,181 @@ const searchingStaff = async (props) => {
   return result.flat().filter(Boolean);
 };
 
+// Values the frontend actually sends (see FRONTEND_search_backend_segmentation_plan.md
+// § 2). "device" covers BOTH searchingDeviceTransaction and searchingDevicePool --
+// there is no separate device-pool-only category.
+// "inventory" and "members" join the set for the new results sections. Adding
+// them is backward compatible: an older frontend simply never sends them, and an
+// unknown value still falls back to "all".
+const VALID_SEARCH_CATEGORIES = new Set([
+  "consumers",
+  "staff",
+  "device",
+  "event",
+  "inventory",
+  "members",
+]);
+
+// Pure + exported: normalizes req.query.category to one of the 4 known values or
+// "all". Anything else (typo, stale/future frontend build, missing, an array from
+// a malformed ?category=a&category=b) falls back to "all" -- this endpoint is hit
+// on every keystroke across the whole app, so it must never 400/500 on a bad value.
+const resolveSearchCategory = (rawCategory) => {
+  const value = Array.isArray(rawCategory) ? rawCategory[0] : rawCategory;
+  return VALID_SEARCH_CATEGORIES.has(value) ? value : "all";
+};
+
+// Pre-built "skipped branch" shapes, one per sub-search's own return type -- so a
+// skipped branch looks exactly like a real search that found nothing (same shape
+// the frontend already treats as empty via `?? []`/`?.length ?? 0`), no new
+// empty/null convention introduced.
+const EMPTY_CONSUMER_RESULT = { consumers: [], hasMore: false };
+const EMPTY_DEVICE_TRANSACTION_RESULT = { deviceTransaction: [], hasMore: false };
+const EMPTY_DEVICE_POOL_RESULT = { devicePool: [], hasMore: false };
+const EMPTY_EVENT_RESULT = { hasMore: false, results: [] };
+const EMPTY_STAFF_RESULT = [];
+const EMPTY_INVENTORY_RESULT = {
+  items: [],
+  groups: [],
+  total: 0,
+  matchedTotal: 0,
+  elsewhereTotal: 0,
+  hasMore: false,
+};
+const EMPTY_MEMBER_RESULT = { members: [], total: 0, hasMore: false };
+const EMPTY_INVENTORY_LOCATION_RESULT = { locations: [] };
+const EMPTY_ASSIGNMENT_RESULT = {
+  assignments: [],
+  total: 0,
+  overdue: 0,
+  hasMore: false,
+};
+
+/**
+ * A slow (not failing) Vitess/MySQL query has no bound today -- item_inv's
+ * pool `connectTimeout` only covers acquiring a connection, not running the
+ * query. Without this, one hung section rides the whole /search/searching_
+ * response into the global 30s response timeout (index.js), discarding every
+ * OTHER section that already finished. This can't cancel the underlying
+ * query (mysql2 doesn't expose that), it just stops the response from
+ * waiting on it -- the query still finishes server-side and releases its
+ * connection on its own.
+ */
+const SECTION_TIMEOUT_MS = Number(process.env.SEARCH_SECTION_TIMEOUT_MS) || 5000;
+const withSectionTimeout = (promise, emptyResult, label) => {
+  let timer;
+  const timeout = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      console.error(`${label}: section timed out after ${SECTION_TIMEOUT_MS}ms`);
+      resolve(
+        emptyResult && typeof emptyResult === "object"
+          ? { ...emptyResult, error: `timeout after ${SECTION_TIMEOUT_MS}ms` }
+          : emptyResult
+      );
+    }, SECTION_TIMEOUT_MS);
+  });
+  // Whichever side of the race wins, clear the timer -- otherwise every fast,
+  // successful search leaves a dangling 5s timer behind (harmless individually,
+  // but it piles up under real traffic instead of being freed right away).
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+};
+
 const searching = async (req, res) => {
   // const { variable, company } = req.body;
   const variable = req.query.variable;
   const company = req.query.company;
+  const category = resolveSearchCategory(req.query.category);
   try {
     const companyInfo = await searchingCompanyInfo(company);
     const companySqlId = await resolveCompanySqlId(
       companyInfo,
       req.query.company_sql_id
     );
-    // The event-checkout serials have to be known before Inventory runs, because
-    // Inventory subtracts whatever another bucket is already showing.
-    const deviceTransactionFound = await searchingDeviceTransaction(
-      variable,
-      company
-    );
-    const checkoutSerials = deviceTransactionFound.serials ?? [];
+
+    // Gate each sub-search behind the requested category so an unrelated tab's
+    // DB queries/joins are skipped entirely (the actual perf win the frontend
+    // change is for) -- not just narrowing which branches show up in the JSON.
+    // `transaction` has no dedicated UI tab/category in the agreed contract, so
+    // it always runs, same as before this change.
+    const runConsumer = category === "all" || category === "consumers";
+    const runStaff = category === "all" || category === "staff";
+    const runDevice = category === "all" || category === "device";
+    const runEvent = category === "all" || category === "event";
+    // The Devices tab now means "units in someone's hands", spanning event
+    // checkouts and open member leases, so both hang off `device`.
+    const runInventory = category === "all" || category === "inventory";
+    const runMembers = category === "all" || category === "members";
+
+    const deviceTransactionPromise = runDevice
+      ? searchingDeviceTransaction(variable, company)
+      : Promise.resolve(EMPTY_DEVICE_TRANSACTION_RESULT);
+
+    // Only Inventory and the dedup count actually need the checkout serials
+    // (Inventory subtracts whatever the checkout bucket already shows) --
+    // chaining just these two off deviceTransactionPromise, instead of
+    // `await`ing it before the Promise.all like before, lets every other
+    // section below start immediately instead of waiting on deviceTransaction
+    // first.
+    const inventoryAndUnitsPromise = runInventory || runDevice
+      ? deviceTransactionPromise.then((deviceTransactionFound) => {
+          const checkoutSerials = deviceTransactionFound.serials ?? [];
+          return Promise.all([
+            runInventory
+              ? withSectionTimeout(
+                  searchingInventory(variable, companySqlId, checkoutSerials),
+                  EMPTY_INVENTORY_RESULT,
+                  "searchingInventory"
+                )
+              : Promise.resolve(EMPTY_INVENTORY_RESULT),
+            withSectionTimeout(
+              countDistinctUnits(variable, companySqlId, checkoutSerials),
+              0,
+              "countDistinctUnits"
+            ),
+          ]);
+        })
+      : Promise.resolve([EMPTY_INVENTORY_RESULT, 0]);
 
     const [
       consumerFound,
       transactionFound,
+      deviceTransactionFound,
       devicePoolFound,
       eventFound,
       staffFound,
-      inventoryFound,
+      [inventoryFound, unitTotal],
       memberFound,
       inventoryLocationFound,
       memberAssignmentFound,
-      unitTotal,
     ] = await Promise.all([
-      searchingConsumer(variable, company),
+      runConsumer ? searchingConsumer(variable, company) : Promise.resolve(EMPTY_CONSUMER_RESULT),
       searchingTransaction(variable, company),
-      searchingDevicePool(variable, company),
-      searchingEvents({
-        variable: variable,
-        company: companyInfo.company_name,
-      }),
-      searchingStaff({
-        variable: variable,
-        employees: companyInfo.employees,
-      }),
-      searchingInventory(variable, companySqlId, checkoutSerials),
-      searchingMembers(variable, companySqlId),
-      searchingInventoryLocations(variable, companySqlId),
-      searchingMemberAssignments(variable, companySqlId),
-      // One physical unit = one result, however many buckets surface it.
-      countDistinctUnits(variable, companySqlId, checkoutSerials),
+      deviceTransactionPromise,
+      runDevice ? searchingDevicePool(variable, company) : Promise.resolve(EMPTY_DEVICE_POOL_RESULT),
+      runEvent
+        ? searchingEvents({ variable: variable, company: companyInfo.company_name })
+        : Promise.resolve(EMPTY_EVENT_RESULT),
+      runStaff
+        ? searchingStaff({ variable: variable, employees: companyInfo.employees })
+        : Promise.resolve(EMPTY_STAFF_RESULT),
+      inventoryAndUnitsPromise,
+      runMembers
+        ? withSectionTimeout(searchingMembers(variable, companySqlId), EMPTY_MEMBER_RESULT, "searchingMembers")
+        : Promise.resolve(EMPTY_MEMBER_RESULT),
+      runInventory
+        ? withSectionTimeout(
+            searchingInventoryLocations(variable, companySqlId),
+            EMPTY_INVENTORY_LOCATION_RESULT,
+            "searchingInventoryLocations"
+          )
+        : Promise.resolve(EMPTY_INVENTORY_LOCATION_RESULT),
+      runDevice
+        ? withSectionTimeout(
+            searchingMemberAssignments(variable, companySqlId),
+            EMPTY_ASSIGNMENT_RESULT,
+            "searchingMemberAssignments"
+          )
+        : Promise.resolve(EMPTY_ASSIGNMENT_RESULT),
     ]);
     const totals = {
       units: unitTotal,
@@ -2780,12 +2916,56 @@ const advanceSearchingQuery = async (request, response) => {
     });
   }
 };
+/**
+ * Construye un filtro MongoDB con $expr para eventos que se solapan con
+ * el rango [startDate, endDate], con tolerancia de ±1 día usando
+ * operadores de agregación ($dateSubtract / $dateAdd).
+ *
+ * @param {Date} startDate
+ * @param {Date} endDate
+ * @returns {object} filtro MongoDB compatible con Collection.find()
+ */
+function buildDateRangeQuery(startDate, endDate) {
+  return {
+    $expr: {
+      $and: [
+        {
+          $lte: [
+            {
+              $dateSubtract: {
+                startDate: '$eventInfoDetail.dateBegin',
+                unit: 'day',
+                amount: 1,
+              },
+            },
+            endDate,
+          ],
+        },
+        {
+          $gte: [
+            {
+              $dateAdd: {
+                startDate: '$eventInfoDetail.dateEnd',
+                unit: 'day',
+                amount: 1,
+              },
+            },
+            startDate,
+          ],
+        },
+      ],
+    },
+  };
+}
+
 module.exports = {
   searching,
+  resolveSearchCategory,
   moreConsumer,
   moreEvents,
   moreStaff,
   moreDeviceTransaction,
   previousConsumer,
   advanceSearchingQuery,
+  buildDateRangeQuery,
 };

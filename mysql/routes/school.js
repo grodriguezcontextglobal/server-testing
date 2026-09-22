@@ -1,91 +1,96 @@
 /**
- * School Route
- * host + /api/school
+ * School (education) namespace — host + /api/school
  *
- * Guardian consent lifecycle for Education companies. Staff routes require an
- * authenticated session and an Education tenant, per
- * FRONTEND_server_updates_2026-07.md §3.
- *
- * The two /public routes are deliberately unauthenticated: a guardian follows
- * a link from an email and has no account. They are guarded by the one-time
- * code instead — only its SHA-256 is stored, it is single-use, and it is
- * cleared the moment a decision is recorded.
+ * Every route requires an authenticated staff session AND an Education company.
+ * The vertical is gated by `company.industry` (requireIndustry), NOT a request
+ * keyword — a non-Education tenant can never reach these endpoints.
  */
-
 const { Router } = require("express");
-const getConnection = require("../database/config");
 const {
-  getSchoolSettings,
-  updateConsentEnforcement,
-  listGuardians,
-  addGuardian,
+  schoolDashboard,
+  schoolRoster,
+  listStudentGuardians,
+  addStudentGuardian,
   searchGuardians,
-  getMemberConsent,
-  getConsentStatusSummary,
+  recordConsent,
   requestConsent,
   resendConsent,
   publicRetrieveConsent,
   publicRespondConsent,
+  listMemberConsents,
+  listCompanyConsents,
+  consentStatus,
+  getSchoolSettings,
+  setConsentEnforcement,
+  studentExport,
+  studentErase,
+  studentAccessLog,
 } = require("../controllers/school");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
-
-const connection = getConnection();
-
-/**
- * Reject non-Education tenants with the 403 the frontend spec documents.
- * Fails closed: a company we can't resolve doesn't get the school namespace.
- */
-const requireEducationCompany = async (request, response, next) => {
-  try {
-    const companyId = request.body?.company_id;
-    if (!companyId) {
-      return response
-        .status(400)
-        .json({ ok: false, msg: "company_id is required." });
-    }
-
-    const [rows] = await connection.query(
-      "SELECT industry FROM company_info WHERE company_id = ?",
-      [companyId]
-    );
-
-    if (String(rows[0]?.industry ?? "").toLowerCase() !== "education") {
-      return response.status(403).json({
-        ok: false,
-        msg: "Forbidden: this feature is only available to Education companies",
-      });
-    }
-
-    return next();
-  } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
-  }
-};
+const { requireIndustry } = require("../../middlewares/requireIndustry");
+const { auditPiiAccess } = require("../../middlewares/auditPiiAccess");
+const { authorizePermission } = require("../../middlewares/authorizePermission");
 
 const router = Router();
 
-const staff = [validateJWT, checkTokenVersion, requireEducationCompany];
+// FERPA/COPPA: record every access to student PII on this namespace (additive —
+// logs on response finish via the durable staff-activity log, never blocks).
+router.use(auditPiiAccess("SchoolPII"));
 
-// ---- settings -------------------------------------------------------------
-router.post("/settings", staff, getSchoolSettings);
-router.post("/settings/consent-enforcement", staff, updateConsentEnforcement);
+const canRead = [
+  validateJWT,
+  checkTokenVersion,
+  requireIndustry("Education"),
+  authorizePermission("member", "read"),
+];
+const canCreate = [
+  validateJWT,
+  checkTokenVersion,
+  requireIndustry("Education"),
+  authorizePermission("member", "create"),
+];
+const canUpdate = [
+  validateJWT,
+  checkTokenVersion,
+  requireIndustry("Education"),
+  authorizePermission("member", "update"),
+];
 
-// ---- guardians ------------------------------------------------------------
-router.post("/guardians", staff, listGuardians);
-router.post("/guardians/add", staff, addGuardian);
-router.post("/guardians/search", staff, searchGuardians);
+// 1:1 device-program dashboard: status counts + per-grade breakdown for the company.
+router.post("/dashboard", canRead, schoolDashboard);
 
-// ---- consent (staff) ------------------------------------------------------
-router.post("/consent", staff, getMemberConsent);
-// District-wide posture in one call. The readiness dashboard used to ask
-// /consent once per minor — ~961 requests on the demo district.
-router.post("/consent/status", staff, getConsentStatusSummary);
-router.post("/consent/request", staff, requestConsent);
-router.post("/consent/resend", staff, resendConsent);
+// Student roster (optionally by grade/homeroom) with devices-out per student.
+router.post("/roster", canRead, schoolRoster);
 
-// ---- consent (guardian, no session) ---------------------------------------
+// Guardians for a student (normalized + the embedded primary).
+router.post("/guardians", canRead, listStudentGuardians);
+
+// Attach a new guardian to a student.
+router.post("/guardians/add", canCreate, addStudentGuardian);
+
+// Search guardians by email, member_id, or guardian_id within a company.
+router.post("/guardians/search", canRead, searchGuardians);
+
+// Consent / AUP: record a signed policy, list a student's consents, and the
+// company-wide compliance status (who has / hasn't signed).
+router.post("/consent/record", canCreate, recordConsent);
+router.post("/consent/request", canCreate, requestConsent);
+router.post("/consent/resend", canCreate, resendConsent);
 router.post("/consent/public/retrieve", publicRetrieveConsent);
 router.post("/consent/public/respond", publicRespondConsent);
+router.post("/consent", canRead, listMemberConsents);
+// Company-wide, cualquier estado, con filtro por status y paginación.
+router.post("/consent/list", canRead, listCompanyConsents);
+router.post("/consent/status", canRead, consentStatus);
+
+// School settings — read + opt-in toggle for consent enforcement (per company).
+router.post("/settings", canRead, getSchoolSettings);
+router.post("/settings/consent-enforcement", canUpdate, setConsentEnforcement);
+
+// FERPA/COPPA data-subject rights: staff-mediated export and erase/anonymize.
+router.post("/student/export", canRead, studentExport);
+router.post("/student/erase", canUpdate, studentErase);
+router.post("/student/access-log", canRead, studentAccessLog);
 
 module.exports = router;

@@ -1,6 +1,10 @@
 const getConnection = require("../database/config");
 const logger = require("../../helpers/logger");
 const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
+const { chunkArray } = require("../../helpers/chunkArray");
+
+// Rows per statement for bulk writes -- see bulkAssignInventory.
+const BULK_UPDATE_BATCH_SIZE = 500;
 
 /**
  * Helper to process location data (Find or Create) within a transaction
@@ -95,7 +99,7 @@ const createLocation = async (req, res) => {
 };
 
 const bulkAssignInventory = async (req, res) => {
-  const connection = getConnection();
+  const pool = getConnection();
   const { id: location_id } = req.params; // location_id from URL
   const { item_ids, company_id } = req.body;
 
@@ -111,8 +115,12 @@ const bulkAssignInventory = async (req, res) => {
     });
   }
 
+  // A real transaction needs one dedicated connection for its whole lifetime --
+  // the pool itself has no beginTransaction/commit/rollback, and calling
+  // execute() straight on it can hand each call a different underlying
+  // connection, so the "transaction" below was never actually atomic.
+  const connection = await pool.getConnection();
   try {
-    // Start transaction
     await connection.beginTransaction();
 
     // 1. Get location details to ensure it exists and get the name for backward compatibility
@@ -128,33 +136,39 @@ const bulkAssignInventory = async (req, res) => {
 
     const location_name = locations[0].location_name;
 
-    // 2. Update item_inv
-    // We update both location_id and location (name) for backward compatibility
-    const placeholders = item_ids.map(() => "?").join(",");
-    const updateQuery = `
-      UPDATE item_inv
-      SET location_id = ?, location = ?
-      WHERE item_id IN (${placeholders}) AND company_id = ?
-    `;
-
-    const [result] = await connection.execute(updateQuery, [
-      location_id,
-      location_name,
-      ...item_ids,
-      company_id,
-    ]);
+    // 2. Update item_inv in batches -- an unbounded IN (...) for thousands of
+    // item_ids risks max_allowed_packet/parameter limits and holds the
+    // request open for the whole write. All batches share this transaction.
+    let updated_count = 0;
+    for (const batch of chunkArray(item_ids, BULK_UPDATE_BATCH_SIZE)) {
+      const placeholders = batch.map(() => "?").join(",");
+      const updateQuery = `
+        UPDATE item_inv
+        SET location_id = ?, location = ?
+        WHERE item_id IN (${placeholders}) AND company_id = ?
+      `;
+      const [result] = await connection.execute(updateQuery, [
+        location_id,
+        location_name,
+        ...batch,
+        company_id,
+      ]);
+      updated_count += result.affectedRows || 0;
+    }
 
     await connection.commit();
 
     return res.status(200).json({
       ok: true,
       msg: "Inventory assigned successfully",
-      updated_count: result.affectedRows,
+      updated_count,
     });
   } catch (error) {
     await connection.rollback();
     logger.error("bulkAssignInventory error:", error);
     return res.status(500).json({ ok: false, msg: error.message });
+  } finally {
+    connection.release();
   }
 };
 
@@ -535,11 +549,42 @@ const deleteLocation = async (req, res) => {
   }
 };
 
+/**
+ * Flat list of ALL active locations for a company — the location-dimension
+ * counterpart of listCompanyCategories (POST /api/db_company/categories).
+ * Intended for admin UIs such as scope assignment: unlike getCompanyLocations,
+ * it is NOT filtered by the caller's own inventory scope, so it always returns
+ * the full company set. Returns { ok, result: [{ location_id, location_name }] }.
+ */
+const listCompanyLocations = async (request, response) => {
+  try {
+    const { company_id } = request.body;
+    if (!company_id) {
+      return response.status(400).json({ ok: false, msg: "company_id is required" });
+    }
+
+    const connection = getConnection();
+    const [rows] = await connection.execute(
+      `SELECT location_id, location_name
+       FROM locations
+       WHERE company_id = ? AND status = 'active'
+       ORDER BY location_name ASC`,
+      [company_id],
+    );
+
+    return response.status(200).json({ ok: true, result: rows });
+  } catch (error) {
+    logger.error("listCompanyLocations error:", error);
+    return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 module.exports = {
   createLocation,
   bulkAssignInventory,
   getCompanyLocations,
   getCompanyLocationTree,
+  listCompanyLocations,
   processLocation,
   deleteLocation,
 };

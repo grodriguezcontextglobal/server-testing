@@ -52,6 +52,30 @@ While the server validates inputs, the client should perform preliminary validat
   - Validate required fields (email, passwords, IDs) before sending requests.
   - Ensure data types match expected schema (e.g., numbers are not strings).
 
+## 7. Payload esperado por endpoint (referencia generada)
+
+Para tipar cada `fetch` en el cliente hay dos artefactos generados desde el código
+del servidor (no escritos a mano, y regenerables):
+
+- **`docs/api-payloads.md`** — tabla por módulo: campos requeridos vs. opcionales,
+  `params`, `query`, middlewares de auth y `archivo:línea` del handler.
+- **`docs/api-payloads.d.ts`** — interfaces TypeScript por endpoint y el mapa
+  `ApiEndpoints` (`"POST /api/db_item/delete-item"` → `{ body, params, query }`).
+
+Regenerar tras cambiar rutas o controladores:
+
+```powershell
+node scripts/extract-api-payloads.js
+```
+
+Advertencias al usarlos:
+
+- Los **nombres** de campo salen del código; los **tipos** del `.d.ts` están
+  inferidos por nombre (salvo los que vienen de un esquema Mongoose, que son reales).
+- `requerido` = el handler responde `400/403` si falta. Que un campo sea opcional en
+  el tipo no significa que la columna SQL lo acepte nulo.
+- El JWT va en el header **`x-token`**, no en `Authorization: Bearer`.
+
 ## Summary of Server Changes
 - Installed `express-async-errors` to prevent server crashes from unhandled async rejections.
 - Installed `helmet` for security headers.

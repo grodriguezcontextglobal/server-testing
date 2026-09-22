@@ -54,7 +54,19 @@ const ErrorLogs = require("../../models/ErrorLogs");
 
 register("log:event", createModelInsertHandler((payload) => EventLog.create(payload)));
 register("log:notification", createModelInsertHandler((payload) => NotificationLog.create(payload)));
-register("log:staff-activity", createModelInsertHandler((payload) => StaffActivityLog.create(payload)));
+// No usa el genérico: `company_id` puede llegar como NOMBRE de compañía (los
+// call-sites de inventario no tienen otro dato) y el reporte scopea por id.
+// Ver queue/handlers/staffActivityLog.js.
+const { createStaffActivityLogHandler } = require("./staffActivityLog");
+const Company = require("../../models/Company");
+
+register(
+  "log:staff-activity",
+  createStaffActivityLogHandler((payload) => StaffActivityLog.create(payload), {
+    findCompaniesByName: (name, limit) =>
+      Company.find({ company_name: name }, { _id: 1 }).limit(limit).lean(),
+  })
+);
 // payload incluye el _id pre-generado en controller/errorLog.js (para que el
 // errorId respondido al cliente coincida con el documento que termina persistido).
 register("log:error", createModelInsertHandler((payload) => ErrorLogs.create(payload)));
@@ -88,6 +100,86 @@ register(
     uploadPdfToS3,
     createDocument: (fields) => Document.create(fields),
   })
+);
+
+const { createInventoryBulkInsertHandler } = require("./inventoryBulkInsert");
+const getSqlConnection = require("../../mysql/database/config");
+
+// Hasta ~15,000 seriales por job (ver controller/item.js §
+// insertBulkItemAlhpanumericFormat y DESIGN_task_queue.md § Fase 4b). Corre en
+// una única transacción con conexión dedicada del pool.
+register(
+  "inventory:bulk-insert-alphanumeric",
+  createInventoryBulkInsertHandler({ getConnection: getSqlConnection })
+);
+
+const { createInventoryBulkUpdateAlphanumericHandler } = require("./inventoryBulkUpdateAlphanumeric");
+
+// UPDATE masivo de item_inv por lista de seriales o por criterio (updateAll)
+// — ver mysql/controllers/item.js § updateItemsBasedOnAlphanumericSerialNumber.
+register(
+  "inventory:bulk-update-alphanumeric",
+  createInventoryBulkUpdateAlphanumericHandler({ getConnection: getSqlConnection })
+);
+
+const { createEventItemShippingBulkUpdateHandler } = require("./eventItemShippingBulkUpdate");
+
+// UPDATE masivo de event_item_shipping — ver
+// mysql/controllers/items_events.js § bulkUpdateEventItemShipping.
+register(
+  "event:bulk-update-item-shipping",
+  createEventItemShippingBulkUpdateHandler({ getConnection: getSqlConnection })
+);
+
+const { createBulkInsertItemRangeHandler } = require("./bulkInsertItemRange");
+
+// Rango min/max de serial que el SERVIDOR expande a filas -- sin techo
+// natural, ver project_bulk_queue_migration_plan.md. El controller
+// (mysql/controllers/item.js § insertBulkItem) espera este job con
+// waitForJobOutcome y responde igual que antes de migrar si termina rápido.
+register(
+  "inventory:bulk-insert-range",
+  createBulkInsertItemRangeHandler({ getConnection: getSqlConnection })
+);
+
+const { createBulkReturnMemberLeasesHandler } = require("./bulkReturnMemberLeases");
+
+// Fin de trimestre: si no se manda member_ids/grade toca TODOS los leases
+// pendientes de la compañía -- ver project_bulk_queue_migration_plan.md y
+// mysql/controllers/members.js § bulkReturnMemberLeases.
+register(
+  "member:bulk-return-leases",
+  createBulkReturnMemberLeasesHandler({ getConnection: getSqlConnection })
+);
+
+const { createDeleteBulkItemBasedOnCriteriaHandler } = require("./deleteBulkItemBasedOnCriteria");
+
+// Sin serial_number, borra TODA una categoría/ubicación del inventario --
+// sin techo natural, ver project_bulk_queue_migration_plan.md y
+// mysql/controllers/item.js § deleteBulkItemBasedOnCriteria.
+register(
+  "inventory:bulk-delete-by-criteria",
+  createDeleteBulkItemBasedOnCriteriaHandler({ getConnection: getSqlConnection })
+);
+
+const { createDeleteBulkItemsByIdsHandler } = require("./deleteBulkItemsByIds");
+
+// Gemela del anterior, por LISTA DE IDS -- el borrado vive en el Go worker
+// desde antes de migrar, así que el handler solo mueve la llamada y agrega el
+// troceo que faltaba (ver mysql/controllers/item.js § deleteBulkItems).
+register(
+  "inventory:bulk-delete-by-ids",
+  createDeleteBulkItemsByIdsHandler({ runGoWorker })
+);
+
+const { createBulkInsertMembersHandler } = require("./bulkInsertMembers");
+
+// Import de estudiantes/miembros vía CSV -- un import a nivel de distrito
+// puede ser miles de filas, ver project_bulk_queue_migration_plan.md y
+// mysql/controllers/members.js § insertBulkMembers.
+register(
+  "member:bulk-insert",
+  createBulkInsertMembersHandler({ getConnection: getSqlConnection })
 );
 
 module.exports = { register, getHandler, handlers };

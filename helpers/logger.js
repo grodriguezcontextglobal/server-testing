@@ -43,15 +43,23 @@ const logger = winston.createLogger({
       maxFiles: 10,
     }),
   ],
-  // Handle exceptions and rejections
+  // Handle exceptions and rejections.
+  // Estos dos SÍ necesitan techo: son los que se llenan en un bucle de crashes,
+  // una línea por excepción no capturada y por instancia del cluster. El 9-sep,
+  // con uuid tumbando el arranque, esto escribió miles de líneas en minutos
+  // sobre un disco que estaba al 10% libre.
   exceptionHandlers: [
     new winston.transports.File({
       filename: path.join(logsDir, 'exceptions.log'),
+      maxsize: 5242880, // 5MB
+      maxFiles: 5,
     }),
   ],
   rejectionHandlers: [
     new winston.transports.File({
       filename: path.join(logsDir, 'rejections.log'),
+      maxsize: 5242880, // 5MB
+      maxFiles: 5,
     }),
   ],
 });

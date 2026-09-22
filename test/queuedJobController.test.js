@@ -89,6 +89,23 @@ test('createQueuedJobController: aplica idempotencyKeyFn cuando se provee', asyn
   assert.equal(capturedOpts.idempotencyKey, 'entity:E1');
 });
 
+test('createQueuedJobController: idempotencyKeyFn recibe la request, para claves que viven en un header', async () => {
+  let capturedOpts;
+  const fakeEnqueue = async (type, payload, opts) => { capturedOpts = opts; return { id: 'JOB1' }; };
+
+  const controller = createQueuedJobController('log:event', (body) => body, {
+    enqueueFn: fakeEnqueue,
+    extractContextFn: () => ({ uid: null, companyId: null, sqlStaffId: null }),
+    idempotencyKeyFn: (_body, req) => req.get('Idempotency-Key'),
+  });
+
+  await controller(
+    { body: {}, get: (h) => (h.toLowerCase() === 'idempotency-key' ? 'from-header' : undefined) },
+    mockRes(),
+  );
+  assert.equal(capturedOpts.idempotencyKey, 'from-header');
+});
+
 test('createQueuedJobController: si enqueue falla, responde 500 sin lanzar', async () => {
   const fakeEnqueue = async () => { throw new Error('Mongo down'); };
   const controller = createQueuedJobController('log:event', (body) => body, {

@@ -413,6 +413,90 @@ const deleteConsumerLeaseInfo = async (request, response) => {
   }
 };
 
+// ─── Unified device-lease status (all tracks) ───────────────────────────────
+// Reads the `all_device_leases` view, which normalizes the three lease tracks
+// (staff / consumer / member) into one shape. Company-scoped (multi-tenant).
+const LEASE_TYPES = ["staff", "consumer", "member"];
+
+// Pure + exported so the classification is unit-testable without a DB.
+// `now` is injectable for deterministic tests.
+const classifyLease = (row, now = Date.now()) => {
+  const outstanding = Number(row.outstanding) === 1;
+  const due = row.expected_return_date
+    ? new Date(row.expected_return_date).getTime()
+    : NaN;
+  const overdue = outstanding && !Number.isNaN(due) && due < now;
+  let status;
+  if (row.return_status === "lost" || row.return_status === "damaged") {
+    status = row.return_status; // explicit end-state (member track) wins
+  } else if (overdue) {
+    status = "overdue";
+  } else if (outstanding) {
+    status = "outstanding";
+  } else {
+    status = "returned";
+  }
+  return { outstanding, overdue, status };
+};
+
+// POST /api/db_lease/status  { company_id, lessee_type?, only_overdue? }
+// Returns a per-lease status list + a company-wide summary (for dashboards).
+const retrieveLeaseStatus = async (request, response) => {
+  const connection = getConnection();
+  const { company_id, lessee_type, only_overdue } = request.body || {};
+
+  if (company_id === undefined || company_id === null || String(company_id).trim() === "") {
+    return response.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  if (lessee_type && !LEASE_TYPES.includes(lessee_type)) {
+    return response
+      .status(400)
+      .json({ ok: false, msg: `lessee_type must be one of: ${LEASE_TYPES.join(", ")}` });
+  }
+
+  const where = ["company_id = ?"];
+  const values = [company_id];
+  if (lessee_type) {
+    where.push("lessee_type = ?");
+    values.push(lessee_type);
+  }
+
+  try {
+    const [rows] = await connection.execute(
+      `SELECT lessee_type, lease_key, lessee_id, assigned_by, device_id, company_id,
+              assigned_date, expected_return_date, returned_date, outstanding,
+              location, return_status, condition_note
+         FROM all_device_leases
+        WHERE ${where.join(" AND ")}`,
+      values
+    );
+
+    const now = Date.now();
+    const leases = rows.map((r) => ({ ...r, ...classifyLease(r, now) }));
+
+    // Summary is always over the full (company + type) set so dashboard totals
+    // stay meaningful; the returned list can be narrowed with only_overdue.
+    const summary = {
+      total: leases.length,
+      outstanding: leases.filter((l) => l.outstanding).length,
+      overdue: leases.filter((l) => l.overdue).length,
+      returned: leases.filter((l) => l.status === "returned").length,
+      lost: leases.filter((l) => l.status === "lost").length,
+      damaged: leases.filter((l) => l.status === "damaged").length,
+      by_type: LEASE_TYPES.reduce((acc, t) => {
+        acc[t] = leases.filter((l) => l.lessee_type === t).length;
+        return acc;
+      }, {}),
+    };
+
+    const items = only_overdue ? leases.filter((l) => l.overdue) : leases;
+    return response.status(200).json({ ok: true, summary, leases: items });
+  } catch (error) {
+    logger.error("retrieveLeaseStatus error:", error.message);
+    return response.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 module.exports = {
   insertingNewLease,
   insertingNewLeaseConsumer,
@@ -422,4 +506,6 @@ module.exports = {
   updateConsumerLeaseInfo,
   deleteLeaseInfo,
   deleteConsumerLeaseInfo,
+  retrieveLeaseStatus,
+  classifyLease,
 };

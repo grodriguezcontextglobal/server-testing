@@ -31,10 +31,13 @@ const {
   consumerLeaseEndedDeviceReturnedNotification,
   liabilityContractMemberNotification,
   returningDeviceLeaseMemberNotification,
+  memberDeviceIncidentNotification,
+  memberDeviceFeeReceiptNotification,
   completedTask,
   failedTask,
   forcingRevokingActiveSession,
-  memberEmailNotification
+  memberEmailNotification,
+  customizeMessage
 } = require("../nodeMailer/notifications");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
@@ -173,6 +176,22 @@ router.post("/consumer-lease-return-device-notification", consumerLeaseEndedDevi
 //notification for returned device in member lease
 router.post("/member-lease-return-device-notification", returningDeviceLeaseMemberNotification)
 
+// Lost / damaged device declared on a member lease, and the receipt for the fee
+// charged over it. These two carry a student's name, a guardian's address and an
+// amount, so they are mounted BEHIND validateJWT — unlike the rest of this file,
+// which is unauthenticated. The frontend already sends x-token to both.
+// The remaining routes here are to be reviewed separately (decision 2026-08-13).
+router.post(
+  "/member-device-incident-notification",
+  validateJWT,
+  memberDeviceIncidentNotification
+);
+router.post(
+  "/member-device-fee-receipt-notification",
+  validateJWT,
+  memberDeviceFeeReceiptNotification
+);
+
 //notification for completed task
 router.post("/completed-task-notification", completedTask)
 
@@ -184,5 +203,16 @@ router.post("/forcing-revoking-active-session", forcingRevokingActiveSession)
 
 //member email notification
 router.post("/member-email-notification", memberEmailNotification);
+
+// Free-form notification: the caller chooses the recipient, the subject AND the
+// HTML body, which is interpolated into the template verbatim.
+//
+// Every route in this file is unauthenticated, so this one is consistent with
+// the rest — but it is not equivalent in what that costs. The others are
+// template-driven: a caller controls the data, while the template constrains
+// the shape. This one lets a caller send arbitrary markup to an arbitrary
+// address from noreply@devitrak.com, which is a ready-made phishing primitive.
+// Gate it (validateJWT + checkTokenVersion) before it becomes load-bearing.
+router.post("/customize-message-notification", customizeMessage);
 
 module.exports = router;

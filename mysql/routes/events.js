@@ -38,11 +38,14 @@ const {
   getGroupedItemInventory,
   getGroupedItemWithFormatInventory,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  runNamedInventoryQuery,
+  returnEventDevicesToWarehouse,
   confirmItemsReturnedToStock,
 } = require("../controllers/item");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
 const { authorizePermission } = require("../../middlewares/authorizePermission");
+const { reconcileEventCount, closeEventCount } = require("../controllers/eventCount");
 const router = Router();
 
 //check event info
@@ -113,8 +116,14 @@ router.post(
 );
 
 //inserting items in event from container item
+// Era anónima. Además del hueco obvio (INSERT al evento sin sesión), sin
+// validateJWT el job encolado queda SIN DUEÑO (context.uid = null), y entonces
+// GET /api/jobs/owned/:jobId devuelve 404 para el jobId que este endpoint
+// acaba de entregar — el cliente no podía consultar su propio trabajo.
 router.post(
   "/inserting-items-in-event-from-container",
+  validateJWT,
+  checkTokenVersion,
   insertingDeviceInEventDirectlyFromContainer,
 );
 
@@ -145,17 +154,51 @@ router.post(
   getGroupedItemWithFormatInventory,
 );
 
-//consulting company inventory based on submitted parameters
+// Consulting company inventory based on submitted parameters.
+// This handler executes SQL supplied in the request body, so it MUST stay
+// authenticated. It was reachable anonymously here (and on /api/db_item),
+// while the identical /api/db_company route was gated — anyone on the internet
+// could run arbitrary statements against production. Do not remove these.
 router.post(
   "/inventory-based-on-submitted-parameters",
+  validateJWT,
+  checkTokenVersion,
   consultingCompanyInventoryBasedOnSubmittedParameters,
 );
 
-//allocate
-router.post("/allocate-device-event", allocateDeviceToEvent);
+// Replacement for the route above: the client names a catalog entry instead of
+// sending SQL. Mounted on all three routers so call sites can migrate without
+// also changing which namespace they post to.
+router.post(
+  "/inventory-query",
+  validateJWT,
+  checkTokenVersion,
+  runNamedInventoryQuery,
+);
 
+// Return event devices to the warehouse atomically. Replaces three separate
+// raw-SQL calls (UPDATE warehouse / SELECT ids / DELETE assignments) that were
+// three independent transactions.
+router.post(
+  "/return-event-devices",
+  validateJWT,
+  checkTokenVersion,
+  returnEventDevicesToWarehouse,
+);
+
+//allocate
+router.post("/allocate-device-event", validateJWT, checkTokenVersion, authorizePermission("event", "update"), allocateDeviceToEvent);
+
+// Variante de contenedor de /allocate-device-event, y era anónima mientras la
+// otra ya estaba gateada: hace UPDATE item_inv + INSERT al evento sobre los
+// item_id que expande del contenedor. Falta todavía el
+// authorizePermission("event", "update") que sí lleva su hermana — se dejó
+// fuera a propósito para no convertir esto en un 403 sorpresa para staff sin
+// ese permiso; decisión pendiente.
 router.post(
   "/allocate-device-container-event",
+  validateJWT,
+  checkTokenVersion,
   allocateDeviceMarkedAsContainerInEvent,
 );
 
@@ -173,5 +216,25 @@ router.post("/remove-reserved-items-for-event", removeReservedItemsInInventoryFo
 
 //lock items to be used in event
 router.post("/lock-items-for-event", lockItemsForEvent);
+
+// ─── Conteo de cierre de evento por identificador (RFID / código de barras) ───
+// Ver DESIGN_rfid_event_count.md § 8. Dos operaciones separadas a propósito:
+// `reconcile` es solo lectura y repetible (el operador barre, ve qué falta, va a
+// buscarlo y barre otra vez); `close` es la que escribe.
+router.post(
+  "/event-count/reconcile",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("inventory", "read"),
+  reconcileEventCount,
+);
+
+router.post(
+  "/event-count/close",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("inventory", "update"),
+  closeEventCount,
+);
 
 module.exports = router;

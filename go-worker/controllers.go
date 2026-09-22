@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -112,23 +113,47 @@ type InsertDeviceFromContainerRequest struct {
 	RefDatabase []map[string]interface{} `json:"refDatabase"`
 }
 
-// InsertDeviceInEventDirectlyFromContainer handles bulk insert from container
-func InsertDeviceInEventDirectlyFromContainer(db *sql.DB, req InsertDeviceFromContainerRequest) error {
+// InsertDeviceInEventDirectlyFromContainer handles bulk insert from container.
+// Devuelve cuántas filas insertó realmente, para que el job de la cola pueda
+// reportar "N de M" en vez de un mensaje genérico — igual que insert-item-event.
+func InsertDeviceInEventDirectlyFromContainer(db *sql.DB, req InsertDeviceFromContainerRequest) (int64, error) {
 	LogInfo("Starting InsertDeviceInEventDirectlyFromContainer", map[string]interface{}{
 		"event_id":   req.EventID,
 		"item_count": len(req.RefDatabase),
 	})
 
 	if len(req.RefDatabase) == 0 {
-		return nil
+		return 0, nil
 	}
 
-	query := `INSERT INTO item_inv_assigned_event (item_id, event_id) VALUES `
+	// INSERT IGNORE: este comando se encola y el cliente reintenta, así que el
+	// mismo lote puede llegar dos veces; con INSERT plano duplicaba filas en
+	// item_inv_assigned_event. El camino síncrono equivalente
+	// (allocateDeviceMarkedAsContainerInEvent) ya usaba IGNORE.
+	// Efecto secundario útil: RowsAffected pasa a contar solo lo realmente
+	// insertado, así que total - inserted = lo que ya estaba asignado.
+	query := `INSERT IGNORE INTO item_inv_assigned_event (item_id, event_id) VALUES `
 	var values []interface{}
 	var placeholders []string
+	var inserted int64
 
 	batchSize := 1000
 	currentBatch := 0
+
+	flush := func() error {
+		stmt := query + strings.Join(placeholders, ",")
+		res, err := db.Exec(stmt, values...)
+		if err != nil {
+			return err
+		}
+		if affected, err := res.RowsAffected(); err == nil {
+			inserted += affected
+		}
+		placeholders = nil
+		values = nil
+		currentBatch = 0
+		return nil
+	}
 
 	for _, item := range req.RefDatabase {
 		itemID := item["item_id"]
@@ -137,26 +162,19 @@ func InsertDeviceInEventDirectlyFromContainer(db *sql.DB, req InsertDeviceFromCo
 
 		currentBatch++
 		if currentBatch >= batchSize {
-			stmt := query + strings.Join(placeholders, ",")
-			_, err := db.Exec(stmt, values...)
-			if err != nil {
-				return err
+			if err := flush(); err != nil {
+				return inserted, err
 			}
-			placeholders = nil
-			values = nil
-			currentBatch = 0
 		}
 	}
 
 	if currentBatch > 0 {
-		stmt := query + strings.Join(placeholders, ",")
-		_, err := db.Exec(stmt, values...)
-		if err != nil {
-			return err
+		if err := flush(); err != nil {
+			return inserted, err
 		}
 	}
 
-	return nil
+	return inserted, nil
 }
 
 // InsertItemEventRequest matches the Node.js request body
@@ -412,8 +430,9 @@ func InsertBulkItemAlpha(db *sql.DB, req BulkItemAlphaRequest) error {
 
 // RetrieveItemDataRequest matches the input for retrieving item data
 type RetrieveItemDataRequest struct {
-	CompanyID interface{} `json:"company_id"`
-	Locations []string    `json:"locations"`
+	CompanyID  interface{} `json:"company_id"`
+	Locations  []int       `json:"locations"`
+	Categories []string    `json:"categories"`
 }
 
 type GroupStats struct {
@@ -458,7 +477,15 @@ func RetrieveItemData(db *sql.DB, req RetrieveItemDataRequest) (int, int, Groupe
 			placeholders[i] = "?"
 			args = append(args, loc)
 		}
-		query += fmt.Sprintf(" AND location IN (%s)", strings.Join(placeholders, ","))
+		query += fmt.Sprintf(" AND location_id IN (%s)", strings.Join(placeholders, ","))
+	}
+	if len(req.Categories) > 0 {
+		placeholders := make([]string, len(req.Categories))
+		for i, cat := range req.Categories {
+			placeholders[i] = "?"
+			args = append(args, cat)
+		}
+		query += fmt.Sprintf(" AND category_name IN (%s)", strings.Join(placeholders, ","))
 	}
 	fmt.Println("query:", query)
 	fmt.Println("args:", args)
@@ -676,8 +703,9 @@ func ItemFinalStatusWhenEventIsFinished(db *sql.DB, req ItemFinalStatusRequest) 
 
 // CheckItemRequest matches the Node.js request body for checking items
 type CheckItemRequest struct {
-	Filters   map[string]interface{} `json:"filters"`
-	Locations []string               `json:"locations"`
+	Filters    map[string]interface{} `json:"filters"`
+	Locations  []int                  `json:"locations"`
+	Categories []string               `json:"categories"`
 }
 
 // CheckItem handles dynamic filtering of items
@@ -721,7 +749,16 @@ func CheckItem(db *sql.DB, req CheckItemRequest) ([]map[string]interface{}, erro
 			placeholders[i] = "?"
 			args = append(args, loc)
 		}
-		conditions = append(conditions, fmt.Sprintf("location IN (%s)", strings.Join(placeholders, ",")))
+		conditions = append(conditions, fmt.Sprintf("location_id IN (%s)", strings.Join(placeholders, ",")))
+	}
+
+	if len(req.Categories) > 0 {
+		placeholders := make([]string, len(req.Categories))
+		for i, cat := range req.Categories {
+			placeholders[i] = "?"
+			args = append(args, cat)
+		}
+		conditions = append(conditions, fmt.Sprintf("category_name IN (%s)", strings.Join(placeholders, ",")))
 	}
 
 	if len(conditions) > 0 {
@@ -744,8 +781,9 @@ func CheckItem(db *sql.DB, req CheckItemRequest) ([]map[string]interface{}, erro
 
 // InventoryCurrentStateRequest matches request for checking inventory current state
 type InventoryCurrentStateRequest struct {
-	CompanyID interface{} `json:"company_id"`
-	Locations []string    `json:"locations"`
+	CompanyID  interface{} `json:"company_id"`
+	Locations  []int       `json:"locations"`
+	Categories []string    `json:"categories"`
 }
 
 // CheckingInventoryCurrentState handles the complex join query for inventory state
@@ -784,7 +822,15 @@ func CheckingInventoryCurrentState(db *sql.DB, req InventoryCurrentStateRequest)
 			placeholders[i] = "?"
 			args = append(args, loc)
 		}
-		query += fmt.Sprintf(" AND ii.location IN (%s)", strings.Join(placeholders, ","))
+		query += fmt.Sprintf(" AND ii.location_id IN (%s)", strings.Join(placeholders, ","))
+	}
+	if len(req.Categories) > 0 {
+		placeholders := make([]string, len(req.Categories))
+		for i, cat := range req.Categories {
+			placeholders[i] = "?"
+			args = append(args, cat)
+		}
+		query += fmt.Sprintf(" AND ii.category_name IN (%s)", strings.Join(placeholders, ","))
 	}
 
 	query += " ORDER by iiae.event_id DESC"
@@ -1022,8 +1068,9 @@ func cleanHierarchyNode(node *HierarchyNode) {
 
 // UpdateItemWarehouseRequest matches the request for UpdateItemWarehouse
 type UpdateItemWarehouseRequest struct {
-	ItemIDs []int                  `json:"item_ids"`
-	Updates map[string]interface{} `json:"updates"`
+	ItemIDs   []int                  `json:"item_ids"`
+	Updates   map[string]interface{} `json:"updates"`
+	CompanyID interface{}            `json:"company_id"`
 }
 
 // UpdateItemWarehouse handles bulk update of item properties
@@ -1033,6 +1080,26 @@ func UpdateItemWarehouse(db *sql.DB, req UpdateItemWarehouseRequest) (int64, err
 	}
 	if len(req.Updates) == 0 {
 		return 0, fmt.Errorf("no update fields provided")
+	}
+
+	// Security fix: without a company_id filter, any caller could bulk-update
+	// another company's inventory rows just by knowing/guessing their item_ids
+	// (item_id is a globally sequential int, not scoped per company).
+	var companyID string
+	switch v := req.CompanyID.(type) {
+	case string:
+		companyID = v
+	case float64:
+		companyID = fmt.Sprintf("%.0f", v)
+	case int:
+		companyID = strconv.Itoa(v)
+	case nil:
+		return 0, fmt.Errorf("company_id is required")
+	default:
+		return 0, fmt.Errorf("invalid type for company_id: %T", v)
+	}
+	if companyID == "" {
+		return 0, fmt.Errorf("company_id is required")
 	}
 
 	// Whitelist of allowed columns to prevent SQL injection
@@ -1054,30 +1121,50 @@ func UpdateItemWarehouse(db *sql.DB, req UpdateItemWarehouseRequest) (int64, err
 		"location_id":         true,
 		"logistic_status":     true,
 		"enableAssignFeature": true,
+		// Devolución de un ítem rentado: el frontend manda estas dos junto con
+		// warehouse y enableAssignFeature en la misma llamada. Ambas existen en
+		// item_inv y las escribe el INSERT de insertingItem
+		// (mysql/controllers/item.js); faltaban solo acá, así que el camino de
+		// creación las aceptaba y el de actualización masiva las rechazaba.
+		"return_date":         true,
+		"returnedRentedInfo":  true,
 	}
 
 	var setClauses []string
 	var updateValues []interface{}
 
-	for col, val := range req.Updates {
+	// Se juntan TODAS las columnas rechazadas antes de fallar. Antes se
+	// devolvía en la primera, y como el recorrido de un map de Go es aleatorio,
+	// la misma request podía culpar a una columna distinta en cada intento —
+	// con lo cual el cliente arreglaba una y volvía a fallar por la siguiente.
+	var disallowed []string
+	for col := range req.Updates {
 		if !allowedColumns[col] {
-			return 0, fmt.Errorf("disallowed column for update: %s", col)
+			disallowed = append(disallowed, col)
 		}
+	}
+	if len(disallowed) > 0 {
+		sort.Strings(disallowed)
+		return 0, fmt.Errorf("disallowed column(s) for update: %s", strings.Join(disallowed, ", "))
+	}
+
+	for col, val := range req.Updates {
 		setClauses = append(setClauses, fmt.Sprintf("`%s` = ?", col))
 		updateValues = append(updateValues, val)
 	}
 
 	// Build query with placeholders
 	placeholders := make([]string, len(req.ItemIDs))
-	args := make([]interface{}, 0, len(updateValues)+len(req.ItemIDs))
+	args := make([]interface{}, 0, len(updateValues)+len(req.ItemIDs)+1)
 	args = append(args, updateValues...)
 
 	for i, id := range req.ItemIDs {
 		placeholders[i] = "?"
 		args = append(args, id)
 	}
+	args = append(args, companyID)
 
-	query := fmt.Sprintf("UPDATE item_inv SET %s WHERE item_id IN (%s)", strings.Join(setClauses, ", "), strings.Join(placeholders, ","))
+	query := fmt.Sprintf("UPDATE item_inv SET %s WHERE item_id IN (%s) AND company_id = ?", strings.Join(setClauses, ", "), strings.Join(placeholders, ","))
 
 	result, err := db.Exec(query, args...)
 	if err != nil {

@@ -40,7 +40,7 @@ router.post(
     check("name", "Name is mandatory").not().isEmpty(),
     check("lastName", "Last name is mandatory").not().isEmpty(),
     check("email", "Email is mandatory").isEmail(),
-    check("phoneNumber", "Phone number is mandatory").not().isEmpty(),
+    // check("phoneNumber", "Phone number is mandatory").not().isEmpty(),
     validateFields,
   ],
   newUser

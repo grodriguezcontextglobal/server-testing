@@ -10,6 +10,12 @@ const AdminUser = require('../models/AdminUser');
  * así que la única puerta razonable es: solo super_user de plataforma.
  *
  * Prerrequisito: validateJWT debe correr antes (setea req.uid).
+ *
+ * NOTA (2026-09-17): ahora mismo NO lo monta ninguna ruta. Los dos endpoints de
+ * observabilidad que lo usaban (/api/metrics y /api/jobs/stats) pasaron a
+ * `requirePlatformRead`, porque para LEER un panel no hace falta el bypass total
+ * de escritura que concede `super_user`. Se conserva a proposito: es la puerta
+ * correcta el dia que haya un endpoint de plataforma que ESCRIBA.
  */
 const requireSuperUser = async (req, res, next) => {
   try {

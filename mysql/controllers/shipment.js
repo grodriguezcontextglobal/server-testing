@@ -1,6 +1,6 @@
 const getConnection = require("../database/config");
 const logger = require("../../helpers/logger");
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID: uuidv4 } = require('crypto');
 
 const createShipment = async (req, res) => {
   const { 

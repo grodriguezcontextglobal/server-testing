@@ -7,24 +7,45 @@ const { ROLE_PERMISSIONS, hasPermission } = require('../constants/rolePermission
 
 // ─── contrato básico ──────────────────────────────────────────────────────────
 
-test('ROLE_PERMISSIONS exporta los 8 role_types canónicos', () => {
+test('ROLE_PERMISSIONS exporta los 10 role_types canónicos', () => {
   const expected = [
     'root_admin','admin','sale_manager','event_manager',
     'inventory_manager','assistant',
     'inventory_location_manager','inventory_location_assistant',
+    'category_manager','category_assistant',
   ];
   expected.forEach(rt => {
     assert.ok(ROLE_PERMISSIONS[rt] instanceof Set, `${rt} debe ser un Set`);
   });
-  assert.equal(Object.keys(ROLE_PERMISSIONS).length, 8, 'exactamente 8 entradas');
+  assert.equal(Object.keys(ROLE_PERMISSIONS).length, 10, 'exactamente 10 entradas');
 });
 
 // ─── staff:update_contact es ALL_ROLES ────────────────────────────────────────
 
-test('staff:update_contact está en los 8 roles', () => {
+test('staff:update_contact está en los 10 roles', () => {
   Object.entries(ROLE_PERMISSIONS).forEach(([role, perms]) => {
     assert.ok(perms.has('staff:update_contact'), `${role} debe tener staff:update_contact`);
   });
+});
+
+// ─── category-scoped roles (nivel 8/9) ────────────────────────────────────────
+
+test('category_manager: inventory CRUD, sin location ni otros recursos', () => {
+  const perms = ROLE_PERMISSIONS.category_manager;
+  ['create','read','update','delete'].forEach(a =>
+    assert.ok(perms.has(`inventory:${a}`), `debe tener inventory:${a}`));
+  assert.ok(!perms.has('location:read'),  'no debe tener permisos de location');
+  assert.ok(!perms.has('event:read'),     'no debe tener permisos de event');
+  assert.ok(!perms.has('company:read'),   'no debe tener permisos de company');
+});
+
+test('category_assistant: solo inventory read/update', () => {
+  const perms = ROLE_PERMISSIONS.category_assistant;
+  assert.ok(perms.has('inventory:read'));
+  assert.ok(perms.has('inventory:update'));
+  assert.ok(!perms.has('inventory:create'), 'no debe tener inventory:create');
+  assert.ok(!perms.has('inventory:delete'), 'no debe tener inventory:delete');
+  assert.ok(!perms.has('location:read'),    'no debe tener permisos de location');
 });
 
 // ─── full-access roles (0,1,2) ───────────────────────────────────────────────

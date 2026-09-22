@@ -1,6 +1,7 @@
 const express = require("express");
 const NotificationLog = require("../models/NotificationLog");
 const logger = require("../helpers/logger");
+const { fromSecondary } = require("../helpers/mongoRead");
 const { createQueuedJobController } = require("../helpers/queuedController");
 
 // Se encola en vez de guardar inline: sobrevive una caída de Mongo/servidor en
@@ -10,7 +11,12 @@ const feedNotificationLog = createQueuedJobController("log:notification", (body)
 
 const notificationLogList = async (request, response) => {
   try {
-    const logList = await NotificationLog.find();
+    // Listado de diagnostico: a nadie le afecta que una notificacion tarde
+    // unos segundos en aparecer aqui, asi que puede servirla una secundaria.
+    // OJO, deuda conocida y aparte de esto: el find() no lleva filtro ni
+    // limite, o sea que devuelve la coleccion ENTERA. Mandar un escaneo
+    // completo a una secundaria no lo arregla, solo lo mueve de nodo.
+    const logList = await fromSecondary(NotificationLog.find());
     return response.status(201).json({
       ok: true,
       logList,

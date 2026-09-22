@@ -17,6 +17,8 @@ const {
   insertBulkMembers,
   insertNewRowINMemberAssignedDeviceTableForLeaseTracking,
   updateMemberAssignedDeviceLeaseRow,
+  settleMemberFee,
+  retrieveMemberFees,
   deleteMemberAssignedDeviceLeaseRows,
   retrieveMembersAssignedDevices,
   removeRowAssignedDeviceLeaseMember,
@@ -63,6 +65,12 @@ router.post(
   canUpdate,
   updateMemberAssignedDeviceLeaseRow
 );
+
+//fees for lost/damaged devices — one student, or the whole company
+router.post("/member-fees", canRead, retrieveMemberFees);
+
+//settle a fee for a lost/damaged device once the card has been charged
+router.post("/settle-member-fee", canUpdate, settleMemberFee);
 
 //delete row in member_assigned_device_lease table for lease tracking
 router.post(

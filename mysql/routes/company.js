@@ -27,6 +27,8 @@ const {
   checkingInventoryCurrentState,
   getGroupedItemInventory,
   consultingCompanyInventoryBasedOnSubmittedParameters,
+  runNamedInventoryQuery,
+  returnEventDevicesToWarehouse,
   updateAllItemsInInventory,
   updateItemsBasedOnAlphanumericSerialNumber,
   updateItemsBasedOnSerialNumber,
@@ -49,6 +51,7 @@ const {
   deleteGroup,
   getInventoryGroupedFull,
 } = require("../controllers/categories_groups");
+const { listCompanyLocations } = require("../controllers/location");
 const router = Router();
 router.use(require('express').json());
 
@@ -98,8 +101,13 @@ router.get("/check-company-exists", checkInventoryCompanyExists);
 router.post("/update-content-in-container", updateContentInContainerItem);
 
 //company inventory pagination
+// OBSOLETA a favor de POST /api/db_item/inventory-page. Iba sin token y su
+// handler caía a `WHERE 1=1` con el body vacío, así que paginaba item_inv de
+// TODAS las compañías. El scope ahora lo impone el controlador.
 router.post(
   "/company-inventory-pagination",
+  validateJWT,
+  checkTokenVersion,
   consultingCompanyInventoryWithPagination
 );
 
@@ -135,12 +143,34 @@ router.post(
   consultingCompanyInventoryBasedOnSubmittedParameters
 );
 
+// Replacement for the route above: the client names a catalog entry instead of
+// sending SQL. Mounted on all three routers so call sites can migrate without
+// also changing which namespace they post to.
+router.post(
+  "/inventory-query",
+  validateJWT,
+  checkTokenVersion,
+  runNamedInventoryQuery
+);
+
+// Return event devices to the warehouse atomically. Replaces three separate
+// raw-SQL calls (UPDATE warehouse / SELECT ids / DELETE assignments) that were
+// three independent transactions.
+router.post(
+  "/return-event-devices",
+  validateJWT,
+  checkTokenVersion,
+  returnEventDevicesToWarehouse
+);
+
 //update all items in inventory company based on submitted parameters
 router.post("/update-all-items-in-inventory", updateAllItemsInInventory);
 
 //update all items in inventory company based on submitted parameters
 router.post(
   "/update-items-based-on-alphanumeric-serial-number",
+  validateJWT,
+  checkTokenVersion,
   updateItemsBasedOnAlphanumericSerialNumber
 );
 
@@ -165,7 +195,13 @@ router.post("/get-grouped-inventory-by-search-parameter", getGroupedInventoryByS
 router.post("/filter-suppliers-info-items", filterSuppliersInfoItems);
 
 //bulk delete items
-router.post("/delete-bulk-items", deleteBulkItems);
+// Misma cadena que su gemela de mysql/routes/item.js:107. Iba sin middleware, y
+// desde 61edc32 (2026-07-20, "enforce can_* write flags on bulk/queue item
+// ops") el controller exige `request.sqlStaffId` para resolver el scope de
+// borrado. Ese commit toco el controller pero no las rutas, asi que esta quedo
+// atras: sin validateJWT no hay sqlStaffId, getStaffCompanyAccess devuelve null
+// y respondia 403 "Staff record not found for this company" a TODA llamada.
+router.post("/delete-bulk-items", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteBulkItems);
 
 //checking item info
 router.post("/check-item", validateJWT, checkTokenVersion, checkingItem);
@@ -174,14 +210,15 @@ router.post("/check-item", validateJWT, checkTokenVersion, checkingItem);
 router.post("/retrieve-company-items-with-locations", retrieveCompanyInventory);
 
 // ─── Categories ──────────────────────────────────────────────────────────────
-router.post("/categories", validateJWT, checkTokenVersion, listCompanyCategories);
-router.post("/categories/upsert", validateJWT, checkTokenVersion, upsertCategory);
-router.delete("/categories/:category_id", validateJWT, checkTokenVersion, deleteCategory);
+router.post("/categories", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), listCompanyCategories);
+router.post("/locations", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), listCompanyLocations);
+router.post("/categories/upsert", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), upsertCategory);
+router.delete("/categories/:category_id", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteCategory);
 
 // ─── Groups ──────────────────────────────────────────────────────────────────
-router.post("/groups", validateJWT, checkTokenVersion, listCompanyGroups);
-router.post("/groups/upsert", validateJWT, checkTokenVersion, upsertGroup);
-router.delete("/groups/:group_id", validateJWT, checkTokenVersion, deleteGroup);
+router.post("/groups", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), listCompanyGroups);
+router.post("/groups/upsert", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), upsertGroup);
+router.delete("/groups/:group_id", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteGroup);
 
 // ─── Inventory grouped with sub-levels (new — does not affect existing endpoints)
 router.post(

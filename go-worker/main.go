@@ -72,11 +72,23 @@ func main() {
 }
 
 func startServer() {
+	// Lightweight liveness endpoint for container/service health checks
+	// (compose healthcheck, nssm/monitoring, load balancer). GET, no auth.
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
 	// Wrap handler with panic recovery
 	http.HandleFunc("/", recoverMiddleware(handleRequest))
 	port := os.Getenv("GO_WORKER_PORT")
 	if port == "" {
-		port = "8081"
+		// Must stay in sync with DEFAULT_GO_WORKER_PORT in helpers/goWorker.js.
+		// These two defaults used to disagree (8081 here vs 7453 there), so an
+		// environment that set GO_WORKER_PORT for only ONE of the two processes
+		// left them silently talking past each other — the root cause of the
+		// "Go Worker Connection Failed / circuit breaker open" outages in prod.
+		port = "7453"
 	}
 	fmt.Printf("Go worker server listening on port %s\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, nil))
@@ -187,10 +199,14 @@ func executeCommand(command string, byteValue []byte) Response {
 			if err := json.Unmarshal(byteValue, &req); err != nil {
 				return Response{Status: "error", Message: fmt.Sprintf("Invalid JSON format: %v", err)}
 			}
-			if err := InsertDeviceInEventDirectlyFromContainer(db, req); err != nil {
+			inserted, err := InsertDeviceInEventDirectlyFromContainer(db, req)
+			if err != nil {
 				return Response{Status: "error", Message: fmt.Sprintf("Device container insert failed: %v", err)}
 			}
-			return Response{Status: "success", Message: "Devices from container inserted successfully"}
+			return Response{Status: "success", Message: "Devices from container inserted successfully", Data: map[string]interface{}{
+				"inserted_items": inserted,
+				"total_items":    len(req.RefDatabase),
+			}}
 		} else if command == "insert-item-event" {
 			var req InsertItemEventRequest
 			if err := json.Unmarshal(byteValue, &req); err != nil {
