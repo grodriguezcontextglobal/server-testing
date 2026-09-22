@@ -524,11 +524,26 @@ server's exclusion and this document:
   `inventory:export`, `inventory:bulk-insert-from-spreadsheet`): trabajo pesado
   que **nadie espera** — sus controllers responden `202 + jobId`. Ver el aviso de abajo: **necesita consumidor**.
   `inventory:export` sube el .xlsx a S3, así que el servicio que sirva `heavy`
-  necesita `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y
-  `AWS_S3_BUCKET_NAME` — los toma del `.env` del repositorio, que
-  `queue\standalone.js` carga con dotenv igual que el server; no hay que
-  duplicarlos en nssm. También escribe un fichero temporal en `os.tmpdir()`
-  del usuario del servicio.
+  necesita `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+  `AWS_S3_BUCKET_NAME` y **`AWS_S3_EXPORTS_BUCKET`** — los toma del `.env` del
+  repositorio, que `queue\standalone.js` carga con dotenv igual que el server; no
+  hay que duplicarlos en nssm. También escribe un fichero temporal en
+  `os.tmpdir()` del usuario del servicio.
+
+  > **`AWS_S3_EXPORTS_BUCKET=devitrak-inventory-exports`** (us-east-2, creado el
+  > 2026-09-22 con una regla que borra los objetos al día). Va en el `.env` del
+  > repositorio y **no** en `nssm`: dotenv lo carga en los cuatro servicios de
+  > una vez, y así no hay que volver a montar un `AppEnvironmentExtra` entero
+  > —que es como se borró un `GO_WORKER_PORT` en este mismo despliegue—.
+  >
+  > Si no está definida, los exports caen al bucket de documentos y **siguen
+  > funcionando**: por eso el código se puede desplegar antes de tocar el `.env`.
+  > Lo que no funcionaría es tenerla puesta a medias, así que es una sola línea
+  > en un solo sitio.
+  >
+  > El bucket tiene que estar en **us-east-2**, la misma región que el cliente
+  > S3: las URLs prefirmadas se firman con la región, y una firmada para Ohio
+  > contra un bucket de Virginia no valida.
 
 ### Estado real de producción — verificado en la VM el 2026-09-22
 

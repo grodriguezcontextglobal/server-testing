@@ -171,8 +171,12 @@ function createInventoryExportHandler({
 
       await writer.commit();
 
-      const { key } = await uploadExport({ filePath, companyId, fileName });
-      const url = await getDownloadUrl(key, DOWNLOAD_URL_MINUTES);
+      // El bucket lo dice QUIEN SUBIÓ, no el entorno: los exports viven en su
+      // propio bucket (con borrado al día) y los documentos en el de siempre.
+      // Firmar contra el bucket equivocado no lanza -- produce una URL válida
+      // hacia donde el fichero no está, y el job terminaría en `done`.
+      const { key, bucket } = await uploadExport({ filePath, companyId, fileName });
+      const url = await getDownloadUrl(key, DOWNLOAD_URL_MINUTES, { bucket });
 
       return {
         url,

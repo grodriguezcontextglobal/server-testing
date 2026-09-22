@@ -462,3 +462,52 @@ test('si el export revienta antes de subir, el .xlsx a medias no se queda en el 
   assert.equal(fsSync.existsSync(writtenPath), false, 'el temporal sigue ahí');
   fsSync.rmSync(tmpDir, { recursive: true, force: true });
 });
+
+/* ------------------------------------------------------------------ *
+ * El bucket de los exports (2026-09-22): devitrak-inventory-exports,
+ * con borrado al día, separado del de documentos
+ * ------------------------------------------------------------------ */
+
+const { exportsBucket } = require('../helpers/s3Upload');
+
+test('el bucket de exports cae al de documentos mientras no se configure', () => {
+  // Para poder desplegar el código ANTES de crear el bucket sin cambiar nada.
+  const previous = process.env.AWS_S3_EXPORTS_BUCKET;
+  delete process.env.AWS_S3_EXPORTS_BUCKET;
+  process.env.AWS_S3_BUCKET_NAME = 'devitrak.documents.admin.dashboard';
+  assert.equal(exportsBucket(), 'devitrak.documents.admin.dashboard');
+
+  process.env.AWS_S3_EXPORTS_BUCKET = 'devitrak-inventory-exports';
+  assert.equal(exportsBucket(), 'devitrak-inventory-exports');
+
+  if (previous === undefined) delete process.env.AWS_S3_EXPORTS_BUCKET;
+  else process.env.AWS_S3_EXPORTS_BUCKET = previous;
+});
+
+test('la URL se firma contra el bucket DONDE SE SUBIÓ, no contra el del entorno', async () => {
+  // El fallo que esto blinda no lanza: firmar contra otro bucket produce una URL
+  // válida hacia donde el fichero no está, y el job terminaría en `done` con un
+  // enlace que le da un error de S3 al usuario.
+  const connection = {
+    execute: async () => [[]],
+  };
+  let signedAgainst = null;
+
+  const handler = createInventoryExportHandler({
+    getConnection: () => connection,
+    uploadExport: async () => ({
+      key: 'companies/7/inventory-exports/1-inventory.xlsx',
+      bucket: 'devitrak-inventory-exports',
+    }),
+    getDownloadUrl: async (key, minutes, options) => {
+      signedAgainst = options && options.bucket;
+      return `https://s3.us-east-2.amazonaws.com/${signedAgainst}/${key}`;
+    },
+    createWorkbookWriter: () => ({ addRow: () => {}, commit: async () => {} }),
+  });
+
+  const result = await handler({ companyId: 7, access: { scoped: false } }, { id: 'job-b' });
+
+  assert.equal(signedAgainst, 'devitrak-inventory-exports');
+  assert.match(result.url, /devitrak-inventory-exports/);
+});
