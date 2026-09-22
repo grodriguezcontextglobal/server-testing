@@ -18,8 +18,11 @@
  * que es lo que convierte un error de MySQL en un motivo por serial.
  */
 
-const { IMPORT_BATCH_SIZE } = require('../../mysql/queries/inventoryImportQuery');
-const { buildExistingSerialsQuery } = require('../../mysql/queries/inventoryImportQuery');
+const {
+  IMPORT_BATCH_SIZE,
+  buildExistingSerialsQuery,
+  buildLocationLookupQuery,
+} = require('../../mysql/queries/inventoryImportQuery');
 
 const INSERT_QUERY = `
   INSERT INTO item_inv (
@@ -50,6 +53,26 @@ const chunk = (arr, size) => {
 const nowSql = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
 /**
+ * `returnedRentedInfo` y `container_id` son columnas JSON, y una cadena vacía NO
+ * es JSON válido: MySQL responde `Invalid JSON text: "The document is empty."` y
+ * rechaza la fila.
+ *
+ * Esto tumbó el primer import real en produccion -- 581 de 581 filas -- porque el
+ * cliente manda `"returnedRentedInfo": ""` en sus `defaults` y aquí se respetaba
+ * tal cual. `inventoryBulkInsert.js` nunca se topó con ello porque IGNORA el
+ * payload y hardcodea `'[]'`; al hacer configurable lo que allí era fijo, el
+ * valor del cliente llegó por primera vez hasta la columna.
+ *
+ * Vacío y nulo caen al array vacío. Un JSON inválido de verdad se deja pasar a
+ * MySQL a propósito: reescribirlo en silencio escondería un fallo del cliente, y
+ * el rechazo ya sale por fila con su motivo.
+ */
+const asJsonText = (value, fallback = '[]') => {
+  if (value === undefined || value === null || value === '') return fallback;
+  return typeof value === 'string' ? value : JSON.stringify(value);
+};
+
+/**
  * Los valores fijos del import. Vienen del cuerpo (`defaults`) porque son los
  * mismos que el cliente manda hoy en cada petición del endpoint viejo, pero con
  * respaldo aquí: un import no puede depender de que el cliente se acuerde de
@@ -63,9 +86,8 @@ const withDefaults = (defaults = {}) => ({
   container: defaults.container === undefined ? 0 : defaults.container,
   containerSpotLimit:
     defaults.containerSpotLimit === undefined ? null : defaults.containerSpotLimit,
-  containerId: defaults.containerId === undefined ? '[]' : defaults.containerId,
-  returnedRentedInfo:
-    defaults.returnedRentedInfo === undefined ? '[]' : defaults.returnedRentedInfo,
+  containerId: asJsonText(defaults.containerId),
+  returnedRentedInfo: asJsonText(defaults.returnedRentedInfo),
   return_date: defaults.return_date === undefined ? null : defaults.return_date,
   supplier_info: defaults.supplier_info === undefined ? '' : defaults.supplier_info,
 });
@@ -147,14 +169,30 @@ function createInventoryImportHandler({
       // cliente lo hacía con una llamada por locación antes de importar, y esas
       // llamadas gastaban del mismo presupuesto de peticiones que el import.
       const locationIdByName = new Map(Object.entries(locationIds).map(([k, v]) => [k, Number(v)]));
-      for (const unit of units) {
-        if (locationIdByName.has(unit.location_name)) continue;
-        const created = await processLocation(connection, {
-          company_id: companyId,
-          location_name: unit.location_name,
-        });
-        locationIdByName.set(unit.location_name, Number(created.location_id));
-        locationsCreated += 1;
+      const unresolved = [...new Set(units.map((u) => u.location_name))].filter(
+        (name) => !locationIdByName.has(name)
+      );
+
+      if (unresolved.length > 0) {
+        // Se vuelven a buscar antes de crear: `processLocation` es find-or-create y
+        // no dice cuál de las dos hizo, así que contar sus llamadas daba por
+        // "creadas" locaciones que ya existían. El numero lo lee una persona para
+        // decidir si el fichero traia locaciones nuevas de verdad.
+        const lookup = buildLocationLookupQuery(companyId, unresolved);
+        const [existing] = await connection.execute(lookup.sql, lookup.params);
+        for (const row of existing) {
+          locationIdByName.set(row.location_name, Number(row.location_id));
+        }
+
+        for (const name of unresolved) {
+          if (locationIdByName.has(name)) continue;
+          const created = await processLocation(connection, {
+            company_id: companyId,
+            location_name: name,
+          });
+          locationIdByName.set(name, Number(created.location_id));
+          locationsCreated += 1;
+        }
       }
 
       // ── 2. Sub-locaciones ──────────────────────────────────────────────
@@ -271,6 +309,7 @@ module.exports = {
   createInventoryImportHandler,
   buildUnitRow,
   withDefaults,
+  asJsonText,
   INSERT_QUERY,
   MAX_REPORTED_FAILURES,
 };
