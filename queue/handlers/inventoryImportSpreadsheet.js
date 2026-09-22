@@ -21,7 +21,9 @@
 const {
   IMPORT_BATCH_SIZE,
   buildExistingSerialsQuery,
-  buildLocationLookupQuery,
+  buildCompanyLocationsQuery,
+  indexLocationsByKey,
+  normalizeLocationKey,
 } = require('../../mysql/queries/inventoryImportQuery');
 
 const INSERT_QUERY = `
@@ -168,31 +170,31 @@ function createInventoryImportHandler({
       // Las que el controller no encontró se crean AQUÍ, una vez cada una. El
       // cliente lo hacía con una llamada por locación antes de importar, y esas
       // llamadas gastaban del mismo presupuesto de peticiones que el import.
-      const locationIdByName = new Map(Object.entries(locationIds).map(([k, v]) => [k, Number(v)]));
-      const unresolved = [...new Set(units.map((u) => u.location_name))].filter(
-        (name) => !locationIdByName.has(name)
+      // El indice viene del controller, pero se RELEE aqui: entre encolar y
+      // procesar puede haber minutos, y otro import o una alta manual pueden
+      // haber creado la locacion. Sin esta relectura, ese hueco de tiempo es
+      // exactamente donde nace un duplicado.
+      const locationIdByName = new Map(
+        Object.entries(locationIds).map(([k, v]) => [normalizeLocationKey(k), Number(v)])
       );
+      const lookup = buildCompanyLocationsQuery(companyId);
+      const [companyLocations] = await connection.execute(lookup.sql, lookup.params);
+      for (const [key, id] of indexLocationsByKey(companyLocations)) {
+        locationIdByName.set(key, id);
+      }
 
-      if (unresolved.length > 0) {
-        // Se vuelven a buscar antes de crear: `processLocation` es find-or-create y
-        // no dice cuál de las dos hizo, así que contar sus llamadas daba por
-        // "creadas" locaciones que ya existían. El numero lo lee una persona para
-        // decidir si el fichero traia locaciones nuevas de verdad.
-        const lookup = buildLocationLookupQuery(companyId, unresolved);
-        const [existing] = await connection.execute(lookup.sql, lookup.params);
-        for (const row of existing) {
-          locationIdByName.set(row.location_name, Number(row.location_id));
-        }
-
-        for (const name of unresolved) {
-          if (locationIdByName.has(name)) continue;
-          const created = await processLocation(connection, {
-            company_id: companyId,
-            location_name: name,
-          });
-          locationIdByName.set(name, Number(created.location_id));
-          locationsCreated += 1;
-        }
+      for (const name of new Set(units.map((u) => u.location_name))) {
+        const key = normalizeLocationKey(name);
+        if (locationIdByName.has(key)) continue;
+        // Solo aqui se crea, y solo se cuenta lo que se crea: `processLocation`
+        // es find-or-create y no dice cual de las dos hizo, asi que contar sus
+        // llamadas daba por "creadas" locaciones que ya existian.
+        const created = await processLocation(connection, {
+          company_id: companyId,
+          location_name: name,
+        });
+        locationIdByName.set(key, Number(created.location_id));
+        locationsCreated += 1;
       }
 
       // ── 2. Sub-locaciones ──────────────────────────────────────────────
@@ -203,7 +205,7 @@ function createInventoryImportHandler({
       const brokenPaths = new Map();
       for (const unit of units) {
         if (!unit.sub_location_segments || unit.sub_location_segments.length === 0) continue;
-        const locationId = locationIdByName.get(unit.location_name);
+        const locationId = locationIdByName.get(normalizeLocationKey(unit.location_name));
         const key = `${locationId}::${unit.sub_location_segments.join('>')}`;
         if (subLocationIdByKey.has(key) || brokenPaths.has(key)) continue;
         try {
@@ -238,7 +240,7 @@ function createInventoryImportHandler({
           });
           continue;
         }
-        const locationId = locationIdByName.get(unit.location_name);
+        const locationId = locationIdByName.get(normalizeLocationKey(unit.location_name));
         const key = `${locationId}::${(unit.sub_location_segments || []).join('>')}`;
         if (brokenPaths.has(key)) {
           failures.push({
