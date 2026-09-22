@@ -204,6 +204,26 @@ const uploadNotificationAttachment = async ({ content, filename, contentType }) 
 const UPLOAD_MAX_ATTEMPTS = Number(process.env.S3_EXPORT_UPLOAD_ATTEMPTS || 3);
 
 /**
+ * Bucket de los exports de inventario.
+ *
+ * Va aparte del de documentos porque su ciclo de vida es el contrario: un
+ * documento que sube un cliente se guarda, y un export es un fichero de usar y
+ * tirar -- la URL prefirmada dura 15 minutos y el objeto no le sirve a nadie
+ * despues. `devitrak-inventory-exports` (us-east-2) tiene una regla que los
+ * borra al dia; sin ella, cada pulsacion del boton Export dejaba en el bucket de
+ * documentos, para siempre, el inventario completo de una compania.
+ *
+ * SE LEE EN CADA LLAMADA, no al cargar el modulo: nssm y dotenv definen el
+ * entorno antes de que arranque el proceso, pero las pruebas lo cambian entre
+ * casos, y un valor congelado al `require` haria pasar pruebas que mienten.
+ *
+ * Cae a `AWS_S3_BUCKET_NAME` si no esta definida, para que este codigo se pueda
+ * desplegar ANTES de configurar la variable sin cambiar el comportamiento.
+ */
+const exportsBucket = () =>
+  process.env.AWS_S3_EXPORTS_BUCKET || process.env.AWS_S3_BUCKET_NAME;
+
+/**
  * Errores de subida que merecen otro intento: cortes de red y fallos del lado
  * de S3. Un 403 (credenciales) o un 404 (bucket) NO se reintentan — repetirlos
  * solo retrasa el error de verdad y lo entierra bajo tres trazas iguales.
@@ -275,13 +295,18 @@ const uploadInventoryExportToS3 = async ({ filePath, companyId, fileName }) => {
   // La clave se calcula UNA vez, fuera del bucle: un reintento tiene que
   // sobrescribir el mismo objeto, no dejar uno huérfano por intento.
   const key = `companies/${companyId}/inventory-exports/${Date.now()}-${fileName}`;
+  // El bucket se resuelve UNA vez y se devuelve con la clave: quien firme la URL
+  // tiene que firmar contra el mismo sitio donde se subio. Leerlo dos veces del
+  // entorno invita a que subida y firma discrepen -- y eso no falla, produce una
+  // URL que da error de S3 mientras el job dice `done`.
+  const bucket = exportsBucket();
 
   try {
     await sendWithRetry({
       send: (command) => s3Client.send(command),
       buildCommand: () =>
         new PutObjectCommand({
-          Bucket: process.env.AWS_S3_BUCKET_NAME,
+          Bucket: bucket,
           Key: key,
           Body: fs.createReadStream(filePath),
           ContentType:
@@ -301,7 +326,7 @@ const uploadInventoryExportToS3 = async ({ filePath, companyId, fileName }) => {
         ),
     });
 
-    return { key };
+    return { key, bucket };
   } finally {
     // Una sola vez, después del último intento: borrarlo entre intentos dejaría
     // al siguiente sin fichero que subir.
@@ -347,11 +372,18 @@ function extractS3Key(fullUrl) {
  * Generates a temporary download URL for an S3 object
  * @param {string} key - The S3 object key
  * @param {number} expirationMinutes - URL expiration time in minutes (default: 5)
+ * @param {Object} [options]
+ * @param {string} [options.bucket] - Bucket donde vive el objeto. Sin esto, la
+ *   firma iba SIEMPRE contra `AWS_S3_BUCKET_NAME`, así que un objeto subido a
+ *   otro bucket —los exports, desde que tienen el suyo— producía una URL
+ *   perfectamente válida apuntando a donde el fichero no está: error de S3 en la
+ *   cara del usuario con el job en `done`. Quien sube devuelve su bucket; quien
+ *   firma lo usa.
  * @returns {Promise<string>} - The temporary download URL
  */
-const getTemporaryDownloadUrl = async (key, expirationMinutes = 5) => {
+const getTemporaryDownloadUrl = async (key, expirationMinutes = 5, { bucket } = {}) => {
   let sanitazedKey = key;
-  const bucketName = process.env.AWS_S3_BUCKET_NAME;
+  const bucketName = bucket || process.env.AWS_S3_BUCKET_NAME;
 
   // Only sanitize if it looks like a URL or starts with the bucket name
   if (
@@ -364,7 +396,7 @@ const getTemporaryDownloadUrl = async (key, expirationMinutes = 5) => {
   try {
     logger.info(`Generating download URL for key: ${sanitazedKey}`);
     const command = new GetObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Bucket: bucketName,
       Key: sanitazedKey,
     });
 
@@ -405,6 +437,7 @@ module.exports = {
   uploadPdfToS3,
   uploadExcelToS3,
   uploadInventoryExportToS3,
+  exportsBucket,
   sendWithRetry,
   isRetriableUploadError,
   uploadNotificationAttachment,
