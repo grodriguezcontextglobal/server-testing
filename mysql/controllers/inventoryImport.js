@@ -29,7 +29,8 @@ const {
   validateImportBody,
   distinctLocationNames,
   distinctCategoryNames,
-  buildLocationLookupQuery,
+  buildCompanyLocationsQuery,
+  indexLocationsByKey,
   checkImportScope,
   ImportValidationError,
   MAX_IMPORT_UNITS,
@@ -55,13 +56,15 @@ function createPostInventoryImport({
       const locationNames = distinctLocationNames(units);
       const categoryNames = distinctCategoryNames(units);
 
-      // Una sola consulta para todas las locaciones del fichero. Las que no
-      // estén se crean en el job (y se cuentan en su resultado); aquí solo hace
-      // falta saber cuáles existen para poder chequear el scope.
+      // Las locaciones que YA tiene la compañía, en una sola consulta, indexadas
+      // por nombre normalizado: para una persona `"Almeria"` y `"almeria "` son
+      // la misma, y resolver por nombre exacto es lo que crea duplicados. Las
+      // que de verdad no existan se crean en el job y se cuentan en su
+      // resultado; aquí solo hace falta saber cuáles hay para chequear el scope.
       const connection = connectionFn();
-      const lookup = buildLocationLookupQuery(resolved.companyId, locationNames);
+      const lookup = buildCompanyLocationsQuery(resolved.companyId);
       const [rows] = await connection.execute(lookup.sql, lookup.params);
-      const locationIdsByName = new Map(rows.map((r) => [r.location_name, r.location_id]));
+      const locationIdsByName = indexLocationsByKey(rows);
 
       // Scope de escritura sobre el fichero ENTERO, todo o nada, y nombrando el
       // primer par que sobra para que se pueda arreglar en la hoja.

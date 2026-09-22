@@ -224,17 +224,55 @@ function distinctCategoryNames(units) {
 }
 
 /**
- * Resuelve en UNA consulta los ids de todas las locaciones del fichero. El
- * endpoint viejo hace una por petición; el cliente venía haciendo además una
- * llamada por locación antes de importar, y eso gastaba del mismo presupuesto
- * de peticiones que el import.
+ * Clave con la que se comparan nombres de locación.
+ *
+ * Para una persona, `"Almeria"`, `"almeria "` y `"ALMERIA"` son la MISMA
+ * locación de su compañía. Para un `WHERE location_name = ?` son tres, y cada
+ * variante del fichero acabaría creando una locación nueva: el inventario
+ * quedaría repartido entre duplicados que nadie distingue en pantalla.
+ *
+ * Se normaliza en JavaScript y no en SQL a propósito: un `WHERE
+ * LOWER(TRIM(location_name)) = ?` no puede usar el índice, y aquí se comparan
+ * decenas de nombres, no miles.
  */
-function buildLocationLookupQuery(companyId, names) {
-  const placeholders = names.map(() => '?').join(', ');
+const normalizeLocationKey = (name) => String(name || '').trim().toLowerCase();
+
+/**
+ * TODAS las locaciones de la compañía, para resolver contra ellas en memoria.
+ *
+ * Es una sola consulta y sin `IN (...)` de nombres a propósito. Con `IN` hay que
+ * acertar el nombre EXACTO —y el fichero trae variantes de mayúsculas y
+ * espacios—, así que un `IN` que no casa se traduce en una locación duplicada.
+ * Una compañía tiene decenas de locaciones, no miles: traerlas todas y comparar
+ * normalizado es mas barato que el duplicado que evita.
+ */
+function buildCompanyLocationsQuery(companyId) {
   return {
-    sql: `SELECT location_id, location_name FROM locations WHERE company_id = ? AND location_name IN (${placeholders})`,
-    params: [companyId, ...names],
+    sql: 'SELECT location_id, location_name FROM locations WHERE company_id = ? ORDER BY location_id ASC',
+    params: [companyId],
   };
+}
+
+/**
+ * Índice normalizado de las locaciones que ya tiene la compañía.
+ *
+ * Si dos filas normalizan igual —porque el duplicado ya existe de antes— gana la
+ * de menor `location_id`, que es la primera que se creó. Elegir siempre la misma
+ * importa: si el criterio variara entre ejecuciones, dos imports del mismo
+ * fichero repartirían el inventario entre las dos.
+ */
+function indexLocationsByKey(rows = []) {
+  const byKey = new Map();
+  for (const row of rows) {
+    const key = normalizeLocationKey(row.location_name);
+    const id = Number(row.location_id);
+    const current = byKey.get(key);
+    // El mínimo explícito, no "la primera fila que llegó": la consulta ordena
+    // por id, pero una función cuya corrección depende del ORDER BY de quien la
+    // llama es una trampa esperando a que alguien reordene la consulta.
+    if (current === undefined || id < current) byKey.set(key, id);
+  }
+  return byKey;
 }
 
 /**
@@ -278,7 +316,7 @@ function checkImportScope(writableScope, { locationIdsByName, locationNames, cat
   if (writableScope.dimension === 'location') {
     const allowed = new Set((writableScope.values || []).map(Number));
     for (const name of locationNames) {
-      const id = locationIdsByName.get(name);
+      const id = locationIdsByName.get(normalizeLocationKey(name));
       if (id === undefined) {
         return {
           ok: false,
@@ -312,7 +350,9 @@ module.exports = {
   validateImportBody,
   distinctLocationNames,
   distinctCategoryNames,
-  buildLocationLookupQuery,
+  buildCompanyLocationsQuery,
+  indexLocationsByKey,
+  normalizeLocationKey,
   buildExistingSerialsQuery,
   checkImportScope,
   subLocationSegments,

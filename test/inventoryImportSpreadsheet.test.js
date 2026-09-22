@@ -17,7 +17,9 @@ const assert = require('node:assert');
 const {
   validateImportBody,
   checkImportScope,
-  buildLocationLookupQuery,
+  buildCompanyLocationsQuery,
+  indexLocationsByKey,
+  normalizeLocationKey,
   buildExistingSerialsQuery,
   distinctLocationNames,
   ImportValidationError,
@@ -207,7 +209,10 @@ test('un rol sin scope importa el fichero completo', () => {
 });
 
 test('un rol por locación necesita TODAS las locaciones del fichero, no la primera', () => {
-  const locationIdsByName = new Map([['Miami, FL', 5], ['Orlando, FL', 9]]);
+  const locationIdsByName = indexLocationsByKey([
+    { location_id: 5, location_name: 'Miami, FL' },
+    { location_id: 9, location_name: 'Orlando, FL' },
+  ]);
   const ok = checkImportScope(
     { full: false, dimension: 'location', values: [5, 9] },
     { locationIdsByName, locationNames: ['Miami, FL', 'Orlando, FL'], categoryNames: ['Audio'] }
@@ -229,7 +234,7 @@ test('un rol por locación NO crea locaciones nuevas de rebote', () => {
   const denied = checkImportScope(
     { full: false, dimension: 'location', values: [5] },
     {
-      locationIdsByName: new Map([['Miami, FL', 5]]),
+      locationIdsByName: indexLocationsByKey([{ location_id: 5, location_name: 'Miami, FL' }]),
       locationNames: ['Miami, FL', 'Tampa, FL'],
       categoryNames: ['Audio'],
     }
@@ -241,7 +246,7 @@ test('un rol por locación NO crea locaciones nuevas de rebote', () => {
 
 test('un rol por categoría se comprueba contra todas las categorías del fichero', () => {
   const target = {
-    locationIdsByName: new Map([['Miami, FL', 5]]),
+    locationIdsByName: indexLocationsByKey([{ location_id: 5, location_name: 'Miami, FL' }]),
     locationNames: ['Miami, FL'],
     categoryNames: ['Audio', 'Video'],
   };
@@ -261,7 +266,7 @@ test('un scope vacío no deja escribir nada (falla cerrado)', () => {
   const denied = checkImportScope(
     { full: false, dimension: 'location', values: [] },
     {
-      locationIdsByName: new Map([['Miami, FL', 5]]),
+      locationIdsByName: indexLocationsByKey([{ location_id: 5, location_name: 'Miami, FL' }]),
       locationNames: ['Miami, FL'],
       categoryNames: ['Audio'],
     }
@@ -271,10 +276,33 @@ test('un scope vacío no deja escribir nada (falla cerrado)', () => {
 
 // ─── Las consultas ───────────────────────────────────────────────────────────
 
-test('las locaciones del fichero se resuelven en UNA consulta', () => {
-  const { sql, params } = buildLocationLookupQuery(7, ['Miami, FL', 'Orlando, FL']);
-  assert.match(sql, /IN \(\?, \?\)/);
-  assert.deepStrictEqual(params, [7, 'Miami, FL', 'Orlando, FL']);
+test('las locaciones de la compañía se traen en UNA consulta, sin IN de nombres', () => {
+  // Con `IN (nombres)` hay que acertar el nombre EXACTO, y el fichero trae
+  // variantes de mayúsculas y espacios: un IN que no casa es una locación
+  // duplicada. Se traen todas y se comparan normalizadas.
+  const { sql, params } = buildCompanyLocationsQuery(7);
+  assert.match(sql, /WHERE company_id = \?/);
+  assert.doesNotMatch(sql, /IN \(/);
+  assert.deepStrictEqual(params, [7]);
+});
+
+test('"Almeria", "almeria " y "ALMERIA" son la MISMA locación de la compañía', () => {
+  const byKey = indexLocationsByKey([{ location_id: 5, location_name: 'Almeria' }]);
+  for (const variant of ['Almeria', 'almeria ', ' ALMERIA', 'aLmErIa']) {
+    assert.strictEqual(byKey.get(normalizeLocationKey(variant)), 5, variant);
+  }
+});
+
+test('si el duplicado ya existe en la base, gana el location_id más bajo', () => {
+  // El primero que se creó. Elegir siempre el mismo importa: si el criterio
+  // variara entre ejecuciones, dos imports del mismo fichero repartirían el
+  // inventario entre las dos locaciones.
+  const byKey = indexLocationsByKey([
+    { location_id: 9, location_name: 'almeria' },
+    { location_id: 5, location_name: 'Almeria' },
+  ]);
+  assert.strictEqual(byKey.size, 1);
+  assert.strictEqual(byKey.get('almeria'), 5);
 });
 
 test('el chequeo de seriales existentes va parametrizado, no interpolado', () => {
@@ -317,7 +345,7 @@ test('el camino feliz: 202, jobId y una fila por unidad en el payload', async ()
   assert.strictEqual(enqueued[0].type, JOB_TYPE);
   assert.strictEqual(enqueued[0].payload.units.length, 2);
   // Los ids ya resueltos viajan con el job para no repetir la consulta.
-  assert.deepStrictEqual(enqueued[0].payload.locationIds, { 'Miami, FL': 5 });
+  assert.deepStrictEqual(enqueued[0].payload.locationIds, { 'miami, fl': 5 });
 });
 
 test('un fichero con filas malas da 400 con las filas, y NO encola', async () => {
@@ -746,4 +774,69 @@ test('locationsCreated cuenta las CREADAS, no las que ya existian', async () => 
 
   assert.deepStrictEqual(created, ['Tampa, FL'], 'solo se crea la que no existia');
   assert.strictEqual(result.locationsCreated, 1);
+});
+
+test('una locación que ya existe NO se duplica aunque el fichero la escriba distinto', async () => {
+  // Lo que pidió el usuario: verificar contra las locaciones de ESA compañía y
+  // reutilizar su location_id. Antes se buscaba por nombre exacto, así que
+  // "ALMERIA " creaba una locación nueva junto a la "Almeria" que ya existía, y
+  // el inventario quedaba repartido entre dos que en pantalla son la misma.
+  const inserts = [];
+  const created = [];
+  const connection = {
+    execute: async (sql) => {
+      if (/FROM locations/.test(sql)) {
+        return [[{ location_id: 5, location_name: 'Almeria' }]];
+      }
+      return [[]]; // ningún serial existe todavía
+    },
+    query: async (sql, params) => {
+      inserts.push(...params[0]);
+      return [{ affectedRows: params[0].length }];
+    },
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+  };
+
+  const handler = createInventoryImportHandler({
+    getConnection: () => ({ getConnection: async () => connection }),
+    processLocation: async (conn, data) => {
+      created.push(data.location_name);
+      return { location_id: 999 };
+    },
+    processSubLocationPath: async () => null,
+  });
+
+  const result = await handler({
+    companyId: 129,
+    company: 'testing inc',
+    units: validateImportBody({
+      units: [
+        unit({ serial_number: 'A-1', location: 'ALMERIA ' }),
+        unit({ serial_number: 'A-2', location: 'almeria' }),
+        unit({ serial_number: 'A-3', location: 'Almeria' }),
+      ],
+    }).units,
+    defaults: {},
+    // El controller no la encontró (o el job se encoló hace rato): da igual, el
+    // handler relee las locaciones de la compañía antes de crear nada.
+    locationIds: {},
+    skipped: [],
+  });
+
+  assert.deepStrictEqual(created, [], 'no debería crear ninguna locación');
+  assert.strictEqual(result.locationsCreated, 0);
+  assert.strictEqual(result.inserted, 3);
+
+  const columns = INSERT_QUERY.match(/\(([^)]+)\)\s*VALUES/)[1]
+    .split(',')
+    .map((c) => c.trim());
+  const locationIdIndex = columns.indexOf('location_id');
+  assert.deepStrictEqual(
+    inserts.map((row) => row[locationIdIndex]),
+    [5, 5, 5],
+    'las tres unidades van a la locación que ya existía'
+  );
 });
