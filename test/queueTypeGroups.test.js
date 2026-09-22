@@ -160,6 +160,7 @@ test('heavy contiene los tipos que nadie espera, incluido el export', () => {
   assert.deepStrictEqual([...HEAVY_ASYNC_TYPES].sort(), [
     'event:bulk-update-item-shipping',
     'inventory:bulk-insert-alphanumeric',
+    'inventory:bulk-insert-from-spreadsheet',
     'inventory:bulk-update-alphanumeric',
     'inventory:export',
   ]);

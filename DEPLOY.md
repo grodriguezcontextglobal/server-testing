@@ -521,8 +521,8 @@ server's exclusion and this document:
 - **`DevitrakDeleteWorker`**: `QUEUE_GROUP=delete` and `QUEUE_POLL_MS=300`.
 - **Grupo `heavy`** (`inventory:bulk-insert-alphanumeric`,
   `inventory:bulk-update-alphanumeric`, `event:bulk-update-item-shipping`,
-  `inventory:export`): trabajo pesado que **nadie espera** — sus controllers
-  responden `202 + jobId`. Ver el aviso de abajo: **necesita consumidor**.
+  `inventory:export`, `inventory:bulk-insert-from-spreadsheet`): trabajo pesado
+  que **nadie espera** — sus controllers responden `202 + jobId`. Ver el aviso de abajo: **necesita consumidor**.
   `inventory:export` sube el .xlsx a S3, así que el servicio que sirva `heavy`
   necesita `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
   `AWS_S3_BUCKET_NAME` y **`AWS_S3_EXPORTS_BUCKET`** — los toma del `.env` del

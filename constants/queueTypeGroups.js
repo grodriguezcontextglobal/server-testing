@@ -66,6 +66,7 @@ const HEAVY_ASYNC_TYPES = [
   'inventory:bulk-update-alphanumeric',
   'event:bulk-update-item-shipping',
   'inventory:export',
+  'inventory:bulk-insert-from-spreadsheet',
 ];
 
 const GROUPS = Object.freeze({

@@ -10,6 +10,7 @@ const {
   suggestSerials,
 } = require("../controllers/inventoryPage");
 const { postInventoryExport } = require("../controllers/inventoryExport");
+const { postInventoryImport } = require("../controllers/inventoryImport");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
 const { authorizePermission } = require("../../middlewares/authorizePermission");
 const {
@@ -87,6 +88,12 @@ router.get("/serial-suggest", validateJWT, suggestSerials);
 // paginación, así que exporta EXACTAMENTE lo que la tabla está enseñando.
 // Va aquí arriba por lo mismo que las tres de encima: el catch-all /:id.
 router.post("/inventory-export", validateJWT, checkTokenVersion, postInventoryExport);
+
+// Import de una hoja de calculo entera: una fila por unidad, en UNA peticion.
+// El endpoint por grupos (/bulk-item-alphanumeric) necesita 499 peticiones para
+// un fichero de 500 unidades, contra un limite de 300 cada 15 minutos.
+// Tambien aqui arriba por el catch-all /:id.
+router.post("/bulk-item-from-spreadsheet", validateJWT, checkTokenVersion, postInventoryImport);
 
 //check table
 router.post("/items_information", consultingItemTable);
