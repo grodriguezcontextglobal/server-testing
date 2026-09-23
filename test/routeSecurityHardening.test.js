@@ -473,3 +473,36 @@ for (const [modulePath, method, routePath] of INVENTORY_READ_ROUTES) {
     );
   });
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE G — borrado de sub-locación (mysql/routes/location.js, 2026-09-22)
+//
+// POST /sub-location-path/delete borra la ruta y TODO su subárbol de
+// company_sub_location_paths. Se añadió sin validateJWT, leyendo company_id del
+// body: cualquiera que alcanzara el host podía borrar el árbol de sub-locaciones
+// de cualquier compañía. El hermano destructivo del mismo fichero
+// (POST /locations/:id -> deleteLocation) sigue anónimo y ya provocó el borrado
+// de location_id = 1 en producción durante una auditoría; ese queda aparte.
+//
+// authorizePermission no reemplaza el company_id del body: lo comprueba contra
+// company_staff para el llamante autenticado, así que deja de ser una afirmación
+// que se acepta tal cual.
+// ════════════════════════════════════════════════════════════════════════════
+
+test('mysql/routes/location.js: POST /sub-location-path/delete lleva validateJWT, checkTokenVersion y authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/location');
+  const handlers = getRouteHandlers(router, 'POST', '/sub-location-path/delete');
+  assert.ok(handlers !== null, 'La ruta POST /sub-location-path/delete debe existir');
+  assert.ok(
+    handlers.includes(validateJWT),
+    'validateJWT debe estar en la cadena de POST /sub-location-path/delete',
+  );
+  assert.ok(
+    handlers.includes(checkTokenVersion),
+    'checkTokenVersion debe estar en la cadena de POST /sub-location-path/delete',
+  );
+  assert.ok(
+    hasAuthzPermission(handlers),
+    'authorizePermission debe estar en la cadena de POST /sub-location-path/delete',
+  );
+});

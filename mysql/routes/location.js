@@ -2,6 +2,8 @@ const { Router } = require("express");
 const { check } = require("express-validator");
 const validateFields = require("../../middlewares/validate-field");
 const { validateJWT } = require("../../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
+const { authorizePermission } = require("../../middlewares/authorizePermission");
 const {
   createLocation,
   bulkAssignInventory,
@@ -56,8 +58,19 @@ router.post(
   createSubLocationPath
 );
 
+// Destructive: drops the path and its whole descendant subtree. `company_id`
+// still arrives in the body, but authorizePermission checks it against
+// company_staff for the authenticated caller, so it is a parameter that has to
+// be earned rather than a claim that is taken at face value. Without this the
+// route deleted any company's sub-location tree for anyone who could reach the
+// host. location:delete is held by root_admin/admin/sale_manager (full access),
+// inventory_manager and inventory_location_manager; inventory_location_assistant
+// has only read/update, which is the intent for a structural delete.
 router.post(
   "/sub-location-path/delete",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("location", "delete"),
   [
     check("company_id", "company_id is required").not().isEmpty(),
     check("location_id", "location_id is required").not().isEmpty(),
