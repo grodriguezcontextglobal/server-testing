@@ -831,12 +831,12 @@ const disableMfa = async (req, res) => {
 };
 
 const forceEndSession = async (request, response) => {
-  const { email, password } = request.body;
+  const { email } = request.body; //, password 
   try {
-    if (!email || !password) {
+    if (!email /*|| !password*/) {
       return response
         .status(400)
-        .json({ ok: false, msg: "Email and password are required." });
+        .json({ ok: false, msg: "Email is required." });
     }
 
     const adminUser = await AdminUser.findOne({ email });
@@ -844,10 +844,10 @@ const forceEndSession = async (request, response) => {
       return response.status(404).json({ ok: false, msg: "User not found." });
     }
 
-    const validPassword = await bcrypt.compare(password, adminUser.password);
-    if (!validPassword) {
-      return response.status(401).json({ ok: false, msg: "Invalid credentials." });
-    }
+    // const validPassword = await bcrypt.compare(password, adminUser.password);
+    // if (!validPassword) {
+    //   return response.status(401).json({ ok: false, msg: "Invalid credentials." });
+    // }
 
     const redis = await clientRedis();
     const sessionKey = `staff_session:${adminUser.id}`;
