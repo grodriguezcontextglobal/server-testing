@@ -512,6 +512,52 @@ const getCompanyLocationTree = async (req, res) => {
  * @param {Object} res - Express response object
  * @returns {Object} JSON response indicating success or failure
  */
+/**
+ * Resolves WHICH company owns the location named in the URL, and parks it where
+ * `authorizePermission` will find it.
+ *
+ * `POST /locations/:id` identifies the resource by id alone: no company_id in
+ * params, body or query, and the dashboard sends no `s-company-lq` header on
+ * this call. `readCompanyId` would therefore come up empty and the middleware
+ * would answer 401 to every request, token or not.
+ *
+ * Reading the owner from the row instead of from the caller is not a
+ * workaround, it is the stronger version: `resolveCompanyContext` treats the
+ * header as "a convenience, not a security boundary" precisely because the
+ * client supplies it. A company id derived from the resource cannot be claimed.
+ * `authorizePermission` then decides whether THIS caller is an active member of
+ * THAT company holding location:delete.
+ *
+ * 404 rather than 400 for an unknown id: a caller with no rights to the row
+ * should not learn whether it exists.
+ */
+const resolveLocationCompanyId = async (req, res, next) => {
+  const { id: location_id } = req.params;
+  if (!location_id) {
+    return res.status(400).json({ ok: false, msg: "Location ID is required" });
+  }
+
+  try {
+    const connection = getConnection();
+    const [[row]] = await connection.execute(
+      "SELECT company_id FROM locations WHERE location_id = ? LIMIT 1",
+      [location_id]
+    );
+
+    if (!row) {
+      return res.status(404).json({ ok: false, msg: "Location not found" });
+    }
+
+    // authorizePermission reads params -> body -> query -> s-company-lq header.
+    req.body = req.body || {};
+    req.body.company_id = row.company_id;
+    return next();
+  } catch (error) {
+    logger.error("resolveLocationCompanyId error:", error);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
 const deleteLocation = async (req, res) => {
   const connection = getConnection();
   const { id: location_id } = req.params;
@@ -520,10 +566,23 @@ const deleteLocation = async (req, res) => {
     return res.status(400).json({ ok: false, msg: "Location ID is required" });
   }
 
+  // Set by resolveLocationCompanyId and already checked by authorizePermission.
+  // Re-applied to the statement so the delete is tenant-scoped in its own right:
+  // if this handler is ever mounted without that chain, the worst case is a
+  // no-op instead of deleting another company's row. The previous statement was
+  // `WHERE location_id = ?` alone, which is how an audit caller hard-deleted
+  // location_id = 1 on production.
+  const company_id = req.body?.company_id;
+  if (!company_id) {
+    return res
+      .status(400)
+      .json({ ok: false, msg: "Company context is required to delete a location." });
+  }
+
   try {
     const [result] = await connection.execute(
-      "DELETE FROM locations WHERE location_id = ?",
-      [location_id]
+      "DELETE FROM locations WHERE location_id = ? AND company_id = ?",
+      [location_id, company_id]
     );
 
     if (result.affectedRows === 0) {
@@ -587,4 +646,5 @@ module.exports = {
   listCompanyLocations,
   processLocation,
   deleteLocation,
+  resolveLocationCompanyId,
 };

@@ -10,6 +10,7 @@ const {
   getCompanyLocations,
   getCompanyLocationTree,
   deleteLocation,
+  resolveLocationCompanyId,
 } = require("../controllers/location");
 const {
   createSubLocationPath,
@@ -29,7 +30,24 @@ router.post(
   createLocation
 );
 
-router.post("/locations/:id", deleteLocation);
+// Hard DELETE, and it was anonymous: no token, and the statement was
+// `WHERE location_id = ?` with no company clause, so anyone who could reach the
+// host could delete any company's location by id. During an audit an automated
+// caller did exactly that to location_id = 1 on production.
+//
+// resolveLocationCompanyId runs first because this route names its resource by
+// id alone — see the note on that middleware for why the owning company is read
+// from the row rather than from the caller. The dashboard's only call site
+// (RenderingFilters.jsx) sends no body and no s-company-lq header, and needs no
+// change: its axios interceptor already attaches x-token.
+router.post(
+  "/locations/:id",
+  validateJWT,
+  checkTokenVersion,
+  resolveLocationCompanyId,
+  authorizePermission("location", "delete"),
+  deleteLocation
+);
 
 router.put(
   "/locations/:id/inventory",
