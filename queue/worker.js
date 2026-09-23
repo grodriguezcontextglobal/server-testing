@@ -35,7 +35,12 @@ const { includeTypes: INCLUDE_TYPES, excludeTypes: EXCLUDE_TYPES } = resolveWork
 // Latido hacia el monitor externo. El nombre sale de cómo está configurado
 // ESTE proceso (QUEUE_GROUP), así que cada servicio nssm late por su cuenta sin
 // una variable extra en nssm — ver helpers/heartbeat.js.
-const { sendHeartbeat, resolveQueueServiceName } = require("../helpers/heartbeat");
+const {
+  sendHeartbeat,
+  resolveQueueServiceName,
+  resolveHeartbeatUrl,
+  envKeyFor,
+} = require("../helpers/heartbeat");
 const HEARTBEAT_NAME = resolveQueueServiceName();
 
 let timer = null;
@@ -143,6 +148,15 @@ function start() {
       ? `types=all-except[${EXCLUDE_TYPES.join(",")}]`
       : "types=all";
   logger.info(`Task queue worker starting (id=${WORKER_ID}, poll=${POLL_MS}ms, batch=${BATCH}, ${scope})`);
+  // Que una variable ausente no diga NADA es demasiado silencioso: el latido se
+  // desactiva solo y el monitor se pone rojo sin que nada en el log lo explique.
+  // Una línea al arrancar contesta "¿está configurado y con qué nombre?" de un
+  // vistazo. Nunca se registra la URL: lleva el token del monitor.
+  logger.info(
+    `queue: heartbeat '${HEARTBEAT_NAME}' ${
+      resolveHeartbeatUrl(HEARTBEAT_NAME) ? "configurado" : `SIN CONFIGURAR (falta ${envKeyFor(HEARTBEAT_NAME)})`
+    }`
+  );
   // Al arrancar, recuperar cualquier colgado de una caída previa.
   recoverStale().catch((err) => logger.error("queue: recoverStale falló", { error: err.message }));
   timer = setInterval(tick, POLL_MS);
