@@ -902,7 +902,13 @@ To close that gap (future work, not covered by this setup):
 
 > Añadido el **2026-09-23**. El diseño y el porqué están en
 > `DESIGN_monitoring_uptime_kuma.md`; aquí van los pasos y las trampas.
-> **Nada de esto está instalado todavía en la VM.**
+>
+> **Estado:** Kuma **instalado y corriendo** en la VM (2.5.4, servicio
+> `UptimeKuma`), con los cinco monitores de sondeo y los cuatro latidos de
+> workers en verde. **Pendiente:** el canal de notificación —sin él un monitor
+> en rojo no avisa a nadie—, los dos latidos de schedulers (verdes cuando corran
+> a su hora), y la vigilancia externa, que desde dentro de la VM no se puede
+> hacer (§C.1).
 
 ### A. Las variables de entorno — van al `.env` del repositorio, NO a nssm
 
@@ -956,62 +962,224 @@ El freno importa: los workers dedicados hacen tick cada **300 ms**
 servicio**. Un cambio de estado (caída o recuperación) **salta el freno** y sale
 en el acto.
 
-### B. Instalar Kuma como servicio nssm
+### B. Instalar Kuma — hecho el 2026-09-23, y esto es lo que pasó de verdad
 
-Mismo patrón que los workers. Lo importante, y en este orden:
+Instalado y corriendo en la VM. **Versión 2.5.4, sobre un Node 22 propio.** Lo
+que sigue no es el procedimiento ideal: es el que funcionó, con las cuatro
+paradas que costaron tiempo.
 
-1. **Directorio propio**, fuera del repositorio. Kuma no debe leer nuestro
-   `.env`: ahí están AWS, Stripe y las bases de datos.
-2. **Su propio Node** si su versión no coincide con el 20.11.0 de la VM. **No
-   se mueve el Node de producción para instalar un vigilante.**
-3. Servicio nssm (`UptimeKuma`), con `AppDirectory` en su carpeta y su propia
-   carpeta de logs, igual que los demás.
-4. **Atarlo a `127.0.0.1:3001`.** Para entrar desde fuera: VPN, túnel, o IIS ARR
-   con autenticación. No se publica el 3001.
-5. Usuario y contraseña propios de Kuma, y 2FA.
+#### B.1 · La documentación de terceros que circula está desactualizada
 
-### C. Los monitores, y el único que se suele configurar mal
+Las guías tipo «Install Uptime Kuma on Windows Server» dicen `git clone` +
+`npm install` + `npm start`. **Eso no funciona hoy**, por dos razones a la vez:
 
-| Monitor | Tipo | Objetivo |
+- **`master` es `3.0.0-beta.0` y exige Node ≥ 26.2.0.** Clonar y quedarse ahí te
+  pone en una beta que esta máquina no puede correr.
+- **`npm install` no descarga el frontend compilado.** En la línea 1.x ese
+  comando se llama, literalmente, `install-legacy`.
+
+Lo correcto es el script del propio repositorio, que hace las tres cosas bien:
+
+```
+"setup": "git checkout 2.5.4 && npm ci --omit dev --no-audit && npm run download-dist"
+```
+
+```powershell
+cd C:\Services\uptime-kuma
+npm run setup      # fija la version estable, instala prod y baja el dist
+git describe --tags   # 2.5.4
+```
+
+Te deja en **detached HEAD** sobre el tag. Es lo correcto: un vigilante con
+versión fijada. Para actualizar, `git checkout <tag nuevo>` y repetir `setup`.
+
+#### B.2 · Kuma 2.5.4 NO arranca con el Node de producción
+
+Declara `engines: ">= 20.4.0"`, pero es optimista. Con el **20.11.0** de la VM:
+
+```
+Error [ERR_REQUIRE_ESM]: require() of ES Module ...\unlimited-timeout\index.js
+```
+
+`unlimited-timeout` es ESM, y `require(esm)` llegó a la línea 20 **en la
+20.19.0** (por defecto desde esa versión; antes iba tras un flag). O sea que el
+rango real es `>= 20.19`, no `>= 20.4`.
+
+**No se actualiza el Node de la máquina.** Es el runtime que sirve la API, el
+`package.json` del servidor fija `>= 20.11.0`, y cambiarlo para poder instalar un
+vigilante es invertir la relación. La salida es un Node propio, porque **nssm
+recibe la ruta absoluta del ejecutable y le da igual el PATH**:
+
+```powershell
+# el ZIP, NO el MSI: el MSI reescribe el PATH del sistema
+Expand-Archive "$env:USERPROFILE\Downloads\node-v22.23.2-win-x64.zip" -DestinationPath C:\Services\
+$dir = Get-ChildItem C:\Services -Directory -Filter "node-v22.*-win-x64" | Select-Object -First 1
+Rename-Item -Path $dir.FullName -NewName node22      # Rename-Item NO acepta comodines en -Path
+& C:\Services\node22\node.exe -v                      # v22.23.2
+node -v                                               # 20.11.0 — produccion intacta
+```
+
+**Y hay que reinstalar las dependencias con el Node nuevo.** El `npm ci` anterior
+resolvió binarios para el ABI de Node 20:
+
+```powershell
+cd C:\Services\uptime-kuma
+Remove-Item -Recurse -Force node_modules
+$env:Path = "C:\Services\node22;" + $env:Path    # solo en esta ventana
+node -v                                          # v22.23.2 antes de seguir
+npm ci --omit dev --no-audit
+```
+
+> `npm start` usa el Node del PATH. Si la cabecera del arranque dice
+> `Your Node.js version: 20.11.0`, estás corriendo con el equivocado por mucho
+> que el 22 esté instalado.
+
+#### B.3 · Primera ejecución y base de datos
+
+```powershell
+$env:UPTIME_KUMA_HOST="127.0.0.1"
+$env:UPTIME_KUMA_PORT="3001"
+npm start
+```
+
+La 2.x pregunta primero **qué base de datos**. Elegido **SQLite**: para ~11
+monitores a 60 s el volumen es mínimo, y MariaDB sería otro servicio que
+instalar, respaldar y mantener — justo lo que no queremos de un vigilante.
+
+Después, crear el usuario administrador, activar 2FA en *Profile → Security*, y
+poner en *Settings → Appearance* la misma zona horaria del servidor, o los
+incidentes no cuadrarán con los logs de winston.
+
+#### B.4 · El servicio
+
+```powershell
+nssm install UptimeKuma "C:\Services\node22\node.exe"
+nssm set UptimeKuma AppParameters "server/server.js"
+nssm set UptimeKuma AppDirectory "C:\Services\uptime-kuma"
+nssm set UptimeKuma AppEnvironmentExtra UPTIME_KUMA_HOST=127.0.0.1 UPTIME_KUMA_PORT=3001
+nssm set UptimeKuma AppStdout "C:\Services\logs\kuma-out.log"
+nssm set UptimeKuma AppStderr "C:\Services\logs\kuma-err.log"
+nssm set UptimeKuma Start SERVICE_AUTO_START
+nssm start UptimeKuma
+```
+
+Tres cosas que se pagan si se saltan:
+
+- **`AppDirectory` no es opcional.** El arranque anuncia `Data Dir: ./data/`, que
+  es **relativo**: sin él, el servicio crea una base vacía en otro sitio y parece
+  que perdiste toda la configuración.
+- **La ruta del ejecutable es el Node 22**, no `node.exe` a secas: el servicio no
+  hereda el PATH de tu sesión y volvería el `ERR_REQUIRE_ESM`.
+- **Fuera de `C:\Users\`.** Los servicios de esta máquina corren como la cuenta
+  de equipo (`DEVITRACKDB$`), no como CGAdmin, y Kuma escribe su base
+  continuamente. Si el log de error muestra permisos sobre `data`:
+  ```powershell
+  icacls "C:\Services\uptime-kuma" /grant "DEVITRACKDB$:(OI)(CI)M" /T
+  ```
+
+La comprobación que importa: abrir `http://127.0.0.1:3001` y **entrar con el
+usuario ya creado**. Si pide crear uno nuevo, el servicio está usando otro
+`data`.
+
+### C. Los monitores
+
+#### C.1 · Desde dentro de la VM no se puede vigilar el dominio público
+
+`https://db.devitrak.net` **no se resuelve desde la propia máquina** (hairpin
+NAT: sale a la IP pública y el cortafuegos no la devuelve hacia dentro). Así que
+los monitores apuntan a `localhost`, y **la cadena externa —DNS, TLS, IIS— y la
+caducidad del certificado se quedan sin cubrir desde aquí**.
+
+No es un problema a rodear: es el punto ciego de
+`DESIGN_monitoring_uptime_kuma.md` §3.e, el mismo por el que un vigilante
+interno tampoco podría avisar si la máquina entera cayera. Se cubre **desde
+fuera**, con el Worker de Cloudflare o un monitor externo gratuito.
+
+> **No lo arregles con el fichero `hosts`.** Apuntar el dominio a `127.0.0.1`
+> cambia la resolución de nombres para TODA la máquina, aplicación incluida, y
+> encima el monitor mentiría: diría que el endpoint público funciona cuando lo
+> único probado es el bucle local.
+
+#### C.2 · Los cinco de sondeo (intervalo 60 s, 2 reintentos)
+
+| Friendly Name | Type | Config |
 |---|---|---|
-| API viva | HTTP | `http://localhost:34001/health` |
-| API pública | HTTP | `https://db.devitrak.net/health` (vigila además el certificado) |
-| Dependencias críticas | HTTP | `https://db.devitrak.net/ready` (da 503 si MySQL o Mongo caen) |
-| **Redis** | **JSON query** | `/ready` → `checks.redis.ok` **= true** |
-| **Go worker** | **JSON query** | `/ready` → `checks.goWorker.ok` **= true** |
-| Go worker directo | HTTP/TCP | `http://localhost:7453/health` |
-| Los 3 workers + API | **Push** | pegar cada URL generada en la variable de §A |
-| Los 2 schedulers | **Push**, intervalo **> 24 h** | ídem |
+| `API liveness (local)` | HTTP(s) | `http://localhost:34001/health` |
+| `API readiness` | HTTP(s) | `http://localhost:34001/ready` |
+| `Redis dependency` | HTTP(s) - Json Query | `http://localhost:34001/ready` · query `checks.redis.ok` · expected `true` |
+| `Go worker dependency` | HTTP(s) - Json Query | `http://localhost:34001/ready` · query `checks.goWorker.ok` · expected `true` |
+| `Go worker direct` | HTTP(s) | `http://localhost:7453/health` |
 
-> ⚠️ **Los dos monitores de JSON query no son opcionales.** `/ready` responde
-> **200** con Redis o el Go worker caídos —son degradación, no criticidad
-> (`helpers/readiness.js`)—, así que un monitor por código de estado **nunca**
-> avisará de que Redis se cayó. Y Redis caído se lleva la caché, la idempotencia
-> de pagos y el volcado de `/api/metrics`.
+*Accepted Status Codes* en `200-299`: así el **503** de `/ready` cuando cae MySQL
+o Mongo cuenta como caída, que es lo que se quiere.
 
-Dos detalles más al configurarlos:
+> #### Los dos de Json Query usan **jsonata**, no JSONPath
+>
+> La expresión correcta es `checks.redis.ok`, **sin `$` delante**. En jsonata
+> `$checks` significa «la variable llamada checks», que no existe, así que
+> devuelve vacío y el monitor se queda en rojo con las cuatro dependencias
+> perfectamente sanas. El `$.` de delante es costumbre de JSONPath, que es otro
+> lenguaje. Un `$` sí es válido en funciones: `$string(checks.redis.ok)`, útil si
+> alguna vez el booleano no casa con el texto del campo *Expected Value*.
+>
+> Y estos dos monitores no son opcionales: `/ready` responde **200** con Redis o
+> el Go worker caídos, porque degradan sin descalificar
+> (`helpers/readiness.js`). Un monitor por código de estado **nunca** avisaría.
 
-- **Intervalo de 60 s**, no los 20 s por defecto: el disco de esta VM es lento y
-  Kuma escribe un latido por monitor y por intervalo.
-- **Nunca usar `?force=1`** en la URL de `/ready`: salta la caché de 2 s y
-  golpea las cuatro dependencias en cada llamada, y su presupuesto son **6 por
-  minuto** (`middlewares/readinessRateLimit.js`). El sondeo normal tiene 120/min,
-  de sobra para un monitor cada 60 s.
+Nunca `?force=1` en la URL: salta la caché de 2 s, golpea las cuatro
+dependencias en cada llamada y su presupuesto son 6 por minuto
+(`middlewares/readinessRateLimit.js`).
+
+#### C.3 · Los seis de Push
+
+| Friendly Name | Interval | Variable del `.env` |
+|---|---|---|
+| `Email worker` | 120 | `HEARTBEAT_URL_QUEUE_EMAIL` |
+| `Bulk worker (bulk + heavy)` | 120 | `HEARTBEAT_URL_QUEUE_BULK` |
+| `Delete worker` | 120 | `HEARTBEAT_URL_QUEUE_DELETE` |
+| `In-process worker (API)` | 120 | `HEARTBEAT_URL_QUEUE_API` |
+| `Overdue reminders (daily)` | ~90000 (25 h) | `HEARTBEAT_URL_SCHEDULER_OVERDUE` |
+| `Consent expiry (daily)` | ~90000 (25 h) | `HEARTBEAT_URL_SCHEDULER_CONSENT` |
+
+Kuma compone la Push URL con la URL base que tenga configurada, que puede no ser
+la buena: **quédate con el token y fuerza el host a `http://127.0.0.1:3001`** —
+los workers corren en la misma máquina, así que el latido no sale de ella.
+
+Cuidado al emparejar token y servicio: si se cruzan dos, **ambos monitores se
+ponen verdes** y estarás vigilando el worker equivocado.
+
+Y el nombre del monitor es lo que aparecerá en el mensaje de alerta a las tres de
+la mañana, así que `Bulk worker (bulk + heavy)` y no `queue_bulk`. Los nombres
+internos (`queue_bulk`, `HEARTBEAT_URL_*`) viven en el código y en el `.env` y no
+tienen por qué coincidir: son dos capas a propósito.
+
+#### C.4 · Ajuste antes de salir del panel
+
+*Settings → Monitor History*: retención a **60 días**. El disco de esta VM es
+lento y Kuma escribe un latido por monitor y por intervalo.
 
 ### D. Comprobar que funciona de verdad
 
 ```powershell
-# 1. Los latidos: parar un worker a propósito y esperar a que Kuma lo marque caído
+# 1. Los cuatro monitores de workers deben ponerse verdes en menos de 2 minutos
+#    tras reiniciar los servicios con el .env ya editado.
+
+# 2. La prueba que vale: parar un worker a proposito
 nssm stop DevitrakDeleteWorker
-# ... el monitor debe ponerse rojo y AVISAR AL CANAL, no solo cambiar de color
+# ... el monitor debe ponerse rojo Y MANDAR EL AVISO AL CANAL, no solo cambiar de color
 nssm start DevitrakDeleteWorker
 
-# 2. El dead-man de los schedulers no se puede esperar 24h: forzar un latido a mano
-Invoke-RestMethod "https://<kuma>/api/push/xxxxxxxx?status=up&msg=prueba"
+# 3. Los schedulers no se pueden esperar 24h: forzar un latido a mano
+Invoke-RestMethod "http://127.0.0.1:3001/api/push/<token>?status=up&msg=prueba"
 ```
 
-La prueba del punto 1 es la que importa: el botón de "Test" de la notificación
-prueba el webhook, **no la cadena entera**. Y con Teams, ojo con la propiedad
-del flujo de Power Automate — si pertenece a una cuenta personal y esa persona
-sale, las alertas dejan de llegar en silencio
-(`DESIGN_monitoring_uptime_kuma.md` §8.4).
+**Si un monitor de worker se queda en rojo, sospecha del token antes que del
+código.** El helper registra un `warn` cuando el monitor
+responde con un código de error, así que un token equivocado deja rastro:
+
+```
+heartbeat 'queue_bulk': el monitor respondió 404 — revisa el token de HEARTBEAT_URL_QUEUE_BULK
+```
+
+El botón de «Test» de la notificación prueba el webhook, **no la cadena entera**:
+solo el paso 2 demuestra que un fallo real acaba en el canal.
