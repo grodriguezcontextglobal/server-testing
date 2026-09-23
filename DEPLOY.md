@@ -895,3 +895,123 @@ To close that gap (future work, not covered by this setup):
 - Retries with backoff on the frontend, to absorb short blips.
 - A second instance behind a load balancer (restart one at a time), or migrate to a managed service
   (Azure App Service / Container Apps) with multiple replicas and rolling updates.
+
+---
+
+## Monitoreo: Uptime Kuma interno y los latidos
+
+> Añadido el **2026-09-23**. El diseño y el porqué están en
+> `DESIGN_monitoring_uptime_kuma.md`; aquí van los pasos y las trampas.
+> **Nada de esto está instalado todavía en la VM.**
+
+### A. Las variables de entorno — van al `.env` del repositorio, NO a nssm
+
+Los seis latidos se configuran con una variable cada uno **en el `.env` del
+repositorio**, que `index.js` y `queue/standalone.js` cargan con dotenv en los
+cuatro servicios:
+
+```
+HEARTBEAT_URL_QUEUE_EMAIL=https://<kuma>/api/push/xxxxxxxx
+HEARTBEAT_URL_QUEUE_BULK=https://<kuma>/api/push/xxxxxxxx
+HEARTBEAT_URL_QUEUE_DELETE=https://<kuma>/api/push/xxxxxxxx
+HEARTBEAT_URL_QUEUE_API=https://<kuma>/api/push/xxxxxxxx
+HEARTBEAT_URL_SCHEDULER_OVERDUE=https://<kuma>/api/push/xxxxxxxx
+HEARTBEAT_URL_SCHEDULER_CONSENT=https://<kuma>/api/push/xxxxxxxx
+```
+
+> #### Por qué en el `.env` y no en `AppEnvironmentExtra`
+>
+> `nssm set <servicio> AppEnvironmentExtra` **reemplaza el bloque entero**. Así
+> es como se borró `GO_WORKER_PORT` el 2026-09-22 y así se repitió el incidente
+> del 2026-08-06. Seis variables más multiplicadas por cuatro servicios es
+> multiplicar esa probabilidad por seis. En el `.env` se escriben una vez, las
+> leen los cuatro, y **no hay que tocar nssm ni reconstruir ninguna línea**.
+
+**Qué servicio lee cuál**: el worker deduce su nombre de `QUEUE_GROUP`, que ya
+está puesto (`helpers/heartbeat.js` § `resolveQueueServiceName`):
+
+| Servicio | `QUEUE_GROUP` | Variable que lee |
+|---|---|---|
+| `DevitrakEmailWorker` | `email` | `HEARTBEAT_URL_QUEUE_EMAIL` |
+| `DevitrakBulkWorker` | `bulk,heavy` | `HEARTBEAT_URL_QUEUE_BULK` (el **primer** grupo da el nombre) |
+| `DevitrakDeleteWorker` | `delete` | `HEARTBEAT_URL_QUEUE_DELETE` |
+| `DevitrakServer` | *(sin grupo)* | `HEARTBEAT_URL_QUEUE_API` |
+
+Los dos schedulers laten con su propio nombre y solo desde el proceso dueño
+(`isNativeMaster || isPM2FirstInstance`), así que **no llegan cuatro latidos**.
+
+**Sin variable, el código no hace absolutamente nada**: ni una petición, ni un
+log. Por eso se puede desplegar antes de que Kuma exista, y desactivar un latido
+es borrar una línea y reiniciar ese servicio.
+
+Dos ajustes opcionales, ambos con valor por defecto sensato:
+
+```
+HEARTBEAT_MIN_INTERVAL_MS=60000   # como mucho un latido por minuto y servicio
+HEARTBEAT_TIMEOUT_MS=5000         # corta el envío si el monitor no responde
+```
+
+El freno importa: los workers dedicados hacen tick cada **300 ms**
+(`QUEUE_POLL_MS=300`), que sin freno serían ~200 peticiones por minuto **por
+servicio**. Un cambio de estado (caída o recuperación) **salta el freno** y sale
+en el acto.
+
+### B. Instalar Kuma como servicio nssm
+
+Mismo patrón que los workers. Lo importante, y en este orden:
+
+1. **Directorio propio**, fuera del repositorio. Kuma no debe leer nuestro
+   `.env`: ahí están AWS, Stripe y las bases de datos.
+2. **Su propio Node** si su versión no coincide con el 20.11.0 de la VM. **No
+   se mueve el Node de producción para instalar un vigilante.**
+3. Servicio nssm (`UptimeKuma`), con `AppDirectory` en su carpeta y su propia
+   carpeta de logs, igual que los demás.
+4. **Atarlo a `127.0.0.1:3001`.** Para entrar desde fuera: VPN, túnel, o IIS ARR
+   con autenticación. No se publica el 3001.
+5. Usuario y contraseña propios de Kuma, y 2FA.
+
+### C. Los monitores, y el único que se suele configurar mal
+
+| Monitor | Tipo | Objetivo |
+|---|---|---|
+| API viva | HTTP | `http://localhost:34001/health` |
+| API pública | HTTP | `https://db.devitrak.net/health` (vigila además el certificado) |
+| Dependencias críticas | HTTP | `https://db.devitrak.net/ready` (da 503 si MySQL o Mongo caen) |
+| **Redis** | **JSON query** | `/ready` → `checks.redis.ok` **= true** |
+| **Go worker** | **JSON query** | `/ready` → `checks.goWorker.ok` **= true** |
+| Go worker directo | HTTP/TCP | `http://localhost:7453/health` |
+| Los 3 workers + API | **Push** | pegar cada URL generada en la variable de §A |
+| Los 2 schedulers | **Push**, intervalo **> 24 h** | ídem |
+
+> ⚠️ **Los dos monitores de JSON query no son opcionales.** `/ready` responde
+> **200** con Redis o el Go worker caídos —son degradación, no criticidad
+> (`helpers/readiness.js`)—, así que un monitor por código de estado **nunca**
+> avisará de que Redis se cayó. Y Redis caído se lleva la caché, la idempotencia
+> de pagos y el volcado de `/api/metrics`.
+
+Dos detalles más al configurarlos:
+
+- **Intervalo de 60 s**, no los 20 s por defecto: el disco de esta VM es lento y
+  Kuma escribe un latido por monitor y por intervalo.
+- **Nunca usar `?force=1`** en la URL de `/ready`: salta la caché de 2 s y
+  golpea las cuatro dependencias en cada llamada, y su presupuesto son **6 por
+  minuto** (`middlewares/readinessRateLimit.js`). El sondeo normal tiene 120/min,
+  de sobra para un monitor cada 60 s.
+
+### D. Comprobar que funciona de verdad
+
+```powershell
+# 1. Los latidos: parar un worker a propósito y esperar a que Kuma lo marque caído
+nssm stop DevitrakDeleteWorker
+# ... el monitor debe ponerse rojo y AVISAR AL CANAL, no solo cambiar de color
+nssm start DevitrakDeleteWorker
+
+# 2. El dead-man de los schedulers no se puede esperar 24h: forzar un latido a mano
+Invoke-RestMethod "https://<kuma>/api/push/xxxxxxxx?status=up&msg=prueba"
+```
+
+La prueba del punto 1 es la que importa: el botón de "Test" de la notificación
+prueba el webhook, **no la cadena entera**. Y con Teams, ojo con la propiedad
+del flujo de Power Automate — si pertenece a una cuenta personal y esa persona
+sale, las alertas dejan de llegar en silencio
+(`DESIGN_monitoring_uptime_kuma.md` §8.4).
