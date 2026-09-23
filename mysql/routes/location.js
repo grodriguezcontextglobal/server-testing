@@ -20,8 +20,17 @@ const {
 
 const router = Router();
 
+// Crea una locación para la compañía que diga el body. Antes anónima: bastaba
+// alcanzar el host para sembrar locaciones en cualquier inquilino.
+// authorizePermission contrasta ese company_id contra company_staff, así que
+// deja de ser una afirmación. Las dos llamadas vivas del dashboard
+// (CreateLocationModal y verifyLocationBeforeCreateNewInventory) ya mandan
+// company_id en el body y x-token por el interceptor, así que no cambian.
 router.post(
   "/locations",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("location", "create"),
   [
     check("company_id", "Company ID is required").not().isEmpty(),
     check("location_name", "Location name is required").not().isEmpty(),
@@ -49,8 +58,16 @@ router.post(
   deleteLocation
 );
 
+// Reasigna en bloque la locación de N items. El controlador ya acota por
+// compañía en las dos sentencias (el SELECT de la locación y el UPDATE de
+// item_inv), así que no había cruce de inquilinos por id; lo que faltaba era
+// autenticar al que dice ser de esa compañía. Resource inventory, no location:
+// lo que se escribe son filas de item_inv.
 router.put(
   "/locations/:id/inventory",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("inventory", "update"),
   [
     check("item_ids", "Item IDs array is required").isArray(),
     check("company_id", "Company ID is required").not().isEmpty(),
@@ -63,7 +80,17 @@ router.get("/companies/:id/locations", validateJWT, getCompanyLocations);
 
 router.post("/companies/:id/locations", validateJWT, getCompanyLocations);
 
-router.get("/companies/:id/locations/tree", getCompanyLocationTree);
+// Devuelve el árbol completo de locaciones y sub-locaciones de una compañía.
+// Era anónimo: la estructura interna de cualquier inquilino a quien la pidiera.
+// El parámetro pasa de :id a :company_id para que readCompanyId lo encuentre
+// —la URL es la misma— y los controladores aceptan ambos nombres.
+router.get(
+  "/companies/:company_id/locations/tree",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("location", "read"),
+  getCompanyLocationTree
+);
 
 // Escritura sobre la estructura de locaciones, antes anónima: cualquiera que
 // alcanzara el host podía crear rutas de sub-locación en la compañía que
@@ -111,6 +138,12 @@ router.post(
   deleteSubLocationPath
 );
 
-router.get("/companies/:id/location-paths-tree", getLocationPathsTree);
+router.get(
+  "/companies/:company_id/location-paths-tree",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("location", "read"),
+  getLocationPathsTree
+);
 
 module.exports = router;

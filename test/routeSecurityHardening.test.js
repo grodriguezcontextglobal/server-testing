@@ -542,3 +542,46 @@ test('mysql/routes/location.js: POST /sub-location-path lleva validateJWT, check
     'authorizePermission debe estar en la cadena de POST /sub-location-path',
   );
 });
+
+// Resto de mysql/routes/location.js (2026-09-23). Las dos escrituras que
+// quedaban anónimas y los dos árboles de lectura, que exponían la estructura
+// interna de locaciones de cualquier inquilino a quien la pidiera.
+const LOCATION_ROUTES = [
+  ['POST',   '/locations'],
+  ['PUT',    '/locations/:id/inventory'],
+  ['GET',    '/companies/:company_id/locations/tree'],
+  ['GET',    '/companies/:company_id/location-paths-tree'],
+];
+
+for (const [method, routePath] of LOCATION_ROUTES) {
+  test(`mysql/routes/location.js: ${method} ${routePath} lleva validateJWT, checkTokenVersion y authorizePermission`, () => {
+    const router = loadRouter('../mysql/routes/location');
+    const handlers = getRouteHandlers(router, method, routePath);
+    assert.ok(handlers !== null, `La ruta ${method} ${routePath} debe existir`);
+    assert.ok(
+      handlers.includes(validateJWT),
+      `validateJWT debe estar en la cadena de ${method} ${routePath}`,
+    );
+    assert.ok(
+      handlers.includes(checkTokenVersion),
+      `checkTokenVersion debe estar en la cadena de ${method} ${routePath}`,
+    );
+    assert.ok(
+      hasAuthzPermission(handlers),
+      `authorizePermission debe estar en la cadena de ${method} ${routePath}`,
+    );
+  });
+}
+
+// Red de seguridad: que no vuelva a aparecer una ruta anónima en este fichero.
+// Las dos lecturas /companies/:id/locations llevan validateJWT y comprueban el
+// scope dentro del controlador (getStaffCompanyAccess), así que se exige token
+// pero no authorizePermission.
+test('mysql/routes/location.js: ninguna ruta queda sin validateJWT', () => {
+  const router = loadRouter('../mysql/routes/location');
+  const anonymous = router.stack
+    .filter((l) => l.route)
+    .filter((l) => !l.route.stack.map((x) => x.handle).includes(validateJWT))
+    .map((l) => `${Object.keys(l.route.methods)[0].toUpperCase()} ${l.route.path}`);
+  assert.deepEqual(anonymous, [], `rutas anónimas: ${anonymous.join(', ')}`);
+});

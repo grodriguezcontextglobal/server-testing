@@ -356,7 +356,9 @@ const getCompanyLocations = async (req, res) => {
 
 const getCompanyLocationTree = async (req, res) => {
   const connection = getConnection();
-  const { id: company_id } = req.params;
+  // The route names this :company_id so authorizePermission's readCompanyId can
+  // see it; :id is kept as a fallback in case the handler is mounted elsewhere.
+  const company_id = req.params.company_id ?? req.params.id;
 
   if (!company_id) {
     return res.status(400).json({ ok: false, msg: "Company ID is required" });

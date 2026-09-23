@@ -56,7 +56,9 @@ const createSubLocationPath = async (req, res) => {
 };
 
 const getLocationPathsTree = async (req, res) => {
-  const company_id = req.params.id;
+  // See getCompanyLocationTree: the route names this :company_id for
+  // readCompanyId, with :id kept as a fallback.
+  const company_id = req.params.company_id ?? req.params.id;
 
   if (!company_id) {
     return res.status(400).json({ ok: false, msg: "company_id is required" });
