@@ -16,12 +16,12 @@ const {
  * Doble de fetch
  * ---------------------------------------------------------------- */
 
-const makeFetch = ({ fail = false } = {}) => {
+const makeFetch = ({ fail = false, status = 200 } = {}) => {
   const calls = [];
   const fetchImpl = async (url, options) => {
     calls.push({ url, options });
     if (fail) throw new Error('ECONNREFUSED');
-    return { ok: true, status: 200 };
+    return { ok: status >= 200 && status < 300, status };
   };
   return { fetchImpl, calls };
 };
@@ -178,6 +178,17 @@ test('un monitor caído no lanza ni rompe a quien late', async () => {
 
   assert.deepStrictEqual(result, { sent: false, reason: 'error' });
   assert.strictEqual(calls.length, 1);
+});
+
+test('un token equivocado no pasa por latido correcto: el 404 se registra', async () => {
+  _resetHeartbeatState();
+  const env = { HEARTBEAT_URL_QUEUE_BULK: 'https://kuma/push/token-malo' };
+  const { fetchImpl, calls } = makeFetch({ status: 404 });
+
+  const result = await sendHeartbeat('queue_bulk', { env, fetchImpl });
+
+  assert.deepStrictEqual(result, { sent: false, reason: 'rejected' });
+  assert.strictEqual(calls.length, 1, 'la peticion sale; lo que falla es que el monitor la rechaza');
 });
 
 test('el envío lleva timeout: un monitor que acepta y no responde no cuelga sockets', async () => {

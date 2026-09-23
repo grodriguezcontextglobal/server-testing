@@ -147,7 +147,21 @@ const sendHeartbeat = async (
     if (typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function") {
       options.signal = AbortSignal.timeout(limit);
     }
-    await doFetch(buildUrl(base, { status, msg, pingMs }), options);
+    const response = await doFetch(buildUrl(base, { status, msg, pingMs }), options);
+
+    // Un token equivocado en la URL es el fallo de configuración más probable, y
+    // sin esta comprobación sería INVISIBLE: la petición sale, el monitor
+    // responde 404, y desde aquí parecería un latido perfecto mientras el
+    // monitor se pone rojo por no recibir nada. Ese es justo el tipo de silencio
+    // que este trabajo venía a eliminar, así que se registra y se nombra la
+    // variable que hay que revisar.
+    if (response && response.ok === false) {
+      logger.warn(
+        `heartbeat '${name}': el monitor respondió ${response.status} — revisa el token de ${envKeyFor(name)}`
+      );
+      return { sent: false, reason: "rejected" };
+    }
+
     return { sent: true, reason: "ok" };
   } catch (error) {
     // `warn`, no `error`: que el monitor no conteste no es una avería de este
