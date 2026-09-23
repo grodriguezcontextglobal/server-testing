@@ -80,13 +80,36 @@ const resolveQueueServiceName = (env = process.env) => {
   return firstGroup ? `queue_${firstGroup}` : "queue_api";
 };
 
+/** Los tres parámetros que define el protocolo de push y que ponemos nosotros. */
+const PROTOCOL_PARAMS = /^(status|msg|ping)=/i;
+
 const buildUrl = (base, { status, msg, pingMs }) => {
-  // El protocolo de push de Kuma es `?status=up|down&msg=...&ping=<ms>`. Se
-  // construye a mano en vez de con URL/searchParams para no romper si la URL
-  // ya trae parámetros propios del monitor.
-  const params = [`status=${encodeURIComponent(status)}`, `msg=${encodeURIComponent(msg)}`];
+  // El protocolo de push de Kuma es `?status=up|down&msg=...&ping=<ms>`.
+  //
+  // POR QUÉ SE LIMPIA LA URL EN VEZ DE AÑADIR DETRÁS (2026-09-23, incidente
+  // real): el panel de Kuma muestra la URL de push CON parámetros de ejemplo
+  // —`?status=up&msg=OK&ping=`— y copiarla entera es lo natural. Si nos
+  // limitáramos a concatenar los nuestros, `status` viajaría DOS VECES; Express
+  // parsea un parámetro repetido como **array**, la comparación `status === "up"`
+  // del lado de Kuma falla, y el latido se registra como **caída**.
+  //
+  // Ese es el peor fallo posible aquí: el servicio late, el monitor se pone
+  // rojo, y parece una avería real que no existe. Un vigilante que inventa
+  // caídas se desactiva en una semana.
+  //
+  // Se conserva cualquier otro parámetro de la URL por si el monitor lo
+  // necesitara, y se descartan solo los tres del protocolo.
+  const [path, query = ""] = String(base).split("?");
+  const preserved = query.split("&").filter((part) => part && !PROTOCOL_PARAMS.test(part));
+
+  const params = [
+    ...preserved,
+    `status=${encodeURIComponent(status)}`,
+    `msg=${encodeURIComponent(msg)}`,
+  ];
   if (Number.isFinite(pingMs)) params.push(`ping=${encodeURIComponent(Math.round(pingMs))}`);
-  return `${base}${base.includes("?") ? "&" : "?"}${params.join("&")}`;
+
+  return `${path}?${params.join("&")}`;
 };
 
 /**

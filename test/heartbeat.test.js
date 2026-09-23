@@ -35,12 +35,33 @@ test('envKeyFor normaliza el nombre del servicio a una variable de entorno', () 
   assert.strictEqual(envKeyFor('scheduler-overdue'), 'HEARTBEAT_URL_SCHEDULER_OVERDUE');
 });
 
-test('buildUrl respeta una URL que ya trae parámetros', () => {
+test('buildUrl conserva parámetros ajenos y no duplica los del protocolo', () => {
   const withoutQuery = buildUrl('https://kuma/api/push/abc', { status: 'up', msg: 'OK' });
   assert.ok(withoutQuery.startsWith('https://kuma/api/push/abc?status=up'));
 
   const withQuery = buildUrl('https://kuma/api/push/abc?token=x', { status: 'up', msg: 'OK' });
   assert.ok(withQuery.includes('?token=x&status=up'), withQuery);
+});
+
+test('la URL copiada del panel CON sus parámetros de ejemplo no duplica status', () => {
+  // El caso real del 2026-09-23: pegar la URL entera hacía que `status` viajara
+  // dos veces, Express lo parseaba como array y Kuma registraba CAÍDA.
+  const pegadaDelPanel = 'http://127.0.0.1:3001/api/push/oB1RJZiK?status=up&msg=OK&ping=';
+  const url = buildUrl(pegadaDelPanel, { status: 'up', msg: '3 jobs', pingMs: 12 });
+
+  assert.strictEqual(url.match(/status=/g).length, 1, 'status aparece una sola vez');
+  assert.strictEqual(url.match(/msg=/g).length, 1, 'msg aparece una sola vez');
+  assert.strictEqual(url.match(/ping=/g).length, 1, 'ping aparece una sola vez');
+  assert.ok(url.startsWith('http://127.0.0.1:3001/api/push/oB1RJZiK?'), url);
+  assert.ok(url.includes('msg=3%20jobs'), 'gana nuestro mensaje, no el OK de ejemplo');
+});
+
+test('una caída se registra como caída aunque la URL pegada dijera status=up', () => {
+  const pegadaDelPanel = 'http://127.0.0.1:3001/api/push/abc?status=up&msg=OK&ping=';
+  const url = buildUrl(pegadaDelPanel, { status: 'down', msg: 'Mongo caido' });
+
+  assert.ok(url.includes('status=down'), url);
+  assert.ok(!url.includes('status=up'), 'el status de ejemplo no puede tapar la caida');
 });
 
 test('buildUrl escapa el mensaje y solo incluye ping si es un número', () => {
