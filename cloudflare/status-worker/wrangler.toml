@@ -1,0 +1,24 @@
+name = "devitrak-status"
+main = "src/index.js"
+compatibility_date = "2026-09-23"
+
+# Cada minuto. Es el mínimo que admite Cloudflare y, con dos componentes, son
+# ~2.880 escrituras al día en D1: muy por debajo del plan gratuito.
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# El origen que se vigila. No es secreto: es la URL pública del servicio.
+TARGET_ORIGIN = "https://db.devitrak.net"
+
+# La base D1. Crear antes con:
+#   wrangler d1 create devitrak-status
+# y pegar aquí el database_id que devuelve.
+[[d1_databases]]
+binding = "DB"
+database_name = "devitrak-status"
+database_id = "PENDIENTE — pegar el id que devuelve `wrangler d1 create`"
+
+# TEAMS_WEBHOOK_URL NO va aquí: lleva la firma `sig=` y es una credencial.
+# Se guarda cifrada con:
+#   wrangler secret put TEAMS_WEBHOOK_URL

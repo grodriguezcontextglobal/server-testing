@@ -1183,3 +1183,53 @@ heartbeat 'queue_bulk': el monitor respondió 404 — revisa el token de HEARTBE
 
 El botón de «Test» de la notificación prueba el webhook, **no la cadena entera**:
 solo el paso 2 demuestra que un fallo real acaba en el canal.
+
+> #### Dos cosas que hacen parecer que la alerta no funciona, y funciona
+>
+> **1. Kuma solo avisa en los CAMBIOS de estado.** Si un monitor ya estaba rojo
+> —por una configuración a medias, por ejemplo— parar el servicio no produce
+> ninguna transición y **no llega nada**. Antes de probar una caída, asegúrate de
+> que el monitor está en verde.
+>
+> **2. Un fallo real tarda unos SEIS minutos en notificar**, con la
+> configuración recomendada (intervalo 120 s, *Retries* 2, *Retry Interval*
+> 120 s): 120 s del primer fallo más los dos reintentos. Y en ese hueco el
+> monitor está en **PENDING**, que cambia de color pero todavía no avisa. Es el
+> anti-parpadeo que queremos: más vale tardar seis minutos que despertar a
+> alguien por un tropiezo de red.
+>
+> Donde sí conviene apretar es en `API liveness (local)`: **Retries 1**, para
+> avisar en ~2 minutos. Es el único monitor donde el reloj corre contra los
+> usuarios.
+>
+> Para distinguir un caso del otro, la página del monitor tiene **Important
+> Events**: si no hay un evento `Down` a la hora en que paraste el servicio, es
+> el caso 1 o el 2; si lo hay y no llegó mensaje, la notificación no está
+> asignada a ese monitor (*Edit → Notifications*).
+
+### E. El canal de Teams
+
+Los conectores clásicos de Office 365 **están retirados desde el 18–22 de mayo de
+2026**: si encuentras un «Incoming Webhook» viejo en un canal, ya no funciona. El
+camino es **Workflows (Power Automate)**, y el proveedor `Microsoft Teams` de
+Kuma 2.5.4 ya envía **Adaptive Card**, que es lo que ese disparador consume — no
+hace falta el webhook genérico.
+
+1. Canal **dedicado a alertas**. Si caen donde se conversa, en una semana están
+   silenciadas.
+2. En el canal → `⋯` → **Workflows** → plantilla *«Post to a channel when a
+   webhook request is received»* → da una URL HTTP.
+3. En Kuma: *Settings → Notifications → Setup Notification* → tipo `Microsoft
+   Teams` → pegar la URL → marcar **Default enabled** y **Apply on all existing
+   monitors**.
+
+> ⚠️ **La URL lleva una firma `sig=` y es una credencial**: quien la tenga puede
+> publicar en el canal. No se pega en documentos ni en conversaciones.
+>
+> ⚠️ **El flujo pertenece a la cuenta que lo crea.** Si esa persona sale de la
+> organización o pierde la licencia, el flujo se para y **las alertas dejan de
+> llegar en silencio**. Créalo con una cuenta de servicio, no con una personal, y
+> anota aquí de cuál depende.
+
+El paso 3 tiene truco: una notificación configurada **pero no asignada a ningún
+monitor** pasa el *Test* y no avisa de nada, y el panel no lo señala.
