@@ -65,8 +65,21 @@ router.post("/companies/:id/locations", validateJWT, getCompanyLocations);
 
 router.get("/companies/:id/locations/tree", getCompanyLocationTree);
 
+// Escritura sobre la estructura de locaciones, antes anónima: cualquiera que
+// alcanzara el host podía crear rutas de sub-locación en la compañía que
+// dijera. El controlador ya comprueba que location_id pertenezca a company_id,
+// así que no había cruce de inquilinos por id — lo que faltaba era que el
+// company_id del body dejara de ser una afirmación. authorizePermission lo
+// contrasta contra company_staff del llamante autenticado.
+//
+// location:create lo tienen root_admin/admin/sale_manager, inventory_manager e
+// inventory_location_manager; inventory_location_assistant se queda en
+// read/update, que es la línea que ya aplica el borrado hermano.
 router.post(
   "/sub-location-path",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("location", "create"),
   [
     check("company_id", "company_id is required").not().isEmpty(),
     check("location_id", "location_id is required").not().isEmpty(),

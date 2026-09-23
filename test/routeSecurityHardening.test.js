@@ -524,3 +524,21 @@ test('mysql/routes/location.js: POST /locations/:id lleva validateJWT, checkToke
     'authorizePermission debe estar en la cadena de POST /locations/:id',
   );
 });
+
+test('mysql/routes/location.js: POST /sub-location-path lleva validateJWT, checkTokenVersion y authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/location');
+  const handlers = getRouteHandlers(router, 'POST', '/sub-location-path');
+  assert.ok(handlers !== null, 'La ruta POST /sub-location-path debe existir');
+  assert.ok(
+    handlers.includes(validateJWT),
+    'validateJWT debe estar en la cadena de POST /sub-location-path',
+  );
+  assert.ok(
+    handlers.includes(checkTokenVersion),
+    'checkTokenVersion debe estar en la cadena de POST /sub-location-path',
+  );
+  assert.ok(
+    hasAuthzPermission(handlers),
+    'authorizePermission debe estar en la cadena de POST /sub-location-path',
+  );
+});
