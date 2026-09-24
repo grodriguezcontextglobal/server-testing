@@ -105,6 +105,49 @@ test('la recuperación es inmediata: un solo sondeo bueno basta', async () => {
   assert.strictEqual(result.changed, true, 'anunciar de mas una recuperacion dura un minuto');
 });
 
+/* ---------------------------------------------------------------- *
+ * La página no puede mentir en verde
+ * ---------------------------------------------------------------- */
+
+test('sin ningún dato, el titular NO es "todo operativo"', async () => {
+  const { overallOf } = await load();
+
+  const overall = overallOf([{ status: 'unknown' }, { status: 'unknown' }]);
+
+  assert.strictEqual(overall, 'unknown', 'no tener datos no es estar bien');
+});
+
+test('un estado viejo se publica como "sin datos", no como lo que decía', async () => {
+  const { publishedStatus, STALE_AFTER_MS } = await load();
+  const now = Date.parse('2026-09-24T12:00:00.000Z');
+
+  const fresco = { status: 'operational', updated_at: '2026-09-24T11:59:00.000Z' };
+  const viejo = { status: 'operational', updated_at: new Date(now - STALE_AFTER_MS - 1000).toISOString() };
+
+  assert.strictEqual(publishedStatus(fresco, now), 'operational');
+  assert.strictEqual(
+    publishedStatus(viejo, now),
+    'unknown',
+    'si el cron muere, la pagina no puede seguir diciendo que todo va bien'
+  );
+});
+
+test('sin fila guardada, o con una fecha ilegible, es "sin datos"', async () => {
+  const { publishedStatus } = await load();
+
+  assert.strictEqual(publishedStatus(undefined), 'unknown');
+  assert.strictEqual(publishedStatus({ status: 'operational', updated_at: 'nada' }), 'unknown');
+});
+
+test('una caída conocida manda sobre un componente sin datos', async () => {
+  const { overallOf } = await load();
+
+  assert.strictEqual(overallOf([{ status: 'down' }, { status: 'unknown' }]), 'down');
+  assert.strictEqual(overallOf([{ status: 'degraded' }, { status: 'unknown' }]), 'degraded');
+  assert.strictEqual(overallOf([{ status: 'operational' }, { status: 'unknown' }]), 'unknown');
+  assert.strictEqual(overallOf([{ status: 'operational' }, { status: 'operational' }]), 'operational');
+});
+
 test('estando ya caído, un sondeo malo más no vuelve a anunciar nada', async () => {
   const { nextState } = await load();
 

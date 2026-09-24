@@ -68,6 +68,21 @@ const FAILURES_BEFORE_DOWN = 2;
 const PROBE_TIMEOUT_MS = 10_000;
 const HISTORY_DAYS = 90;
 
+/**
+ * A partir de aquí, un estado guardado deja de ser creíble y se publica como
+ * «sin datos».
+ *
+ * POR QUÉ ES IMPRESCINDIBLE: si el cron dejara de ejecutarse —cuota agotada,
+ * despliegue roto, un cambio de plan— las filas se quedarían congeladas y la
+ * página seguiría afirmando que todo va bien **indefinidamente**, con datos de
+ * hace semanas. Una página de estado que miente en verde es peor que no
+ * tenerla: es la única que un cliente mira cuando algo le falla.
+ *
+ * Diez minutos son diez rondas perdidas. Suficiente para no saltar por un
+ * reintento del propio Cloudflare, y poco para no sostener una mentira.
+ */
+const STALE_AFTER_MS = 10 * 60_000;
+
 /* ------------------------------------------------------------------ *
  * Sondeo
  * ------------------------------------------------------------------ */
@@ -265,9 +280,34 @@ const runChecks = async (env) => {
  * dependencias, ni latencias por ruta.
  * ------------------------------------------------------------------ */
 
+/**
+ * El estado publicable de un componente: lo guardado, salvo que sea viejo.
+ * «No lo sé» es una respuesta honesta; «todo bien» con datos de ayer no lo es.
+ */
+const publishedStatus = (state, now = Date.now()) => {
+  if (!state) return "unknown";
+  const updatedAt = Date.parse(state.updated_at);
+  if (!Number.isFinite(updatedAt) || now - updatedAt > STALE_AFTER_MS) return "unknown";
+  return state.status;
+};
+
+/**
+ * El titular de la página.
+ *
+ * El orden importa: una caída conocida manda sobre un componente sin datos
+ * —es más accionable—, pero `unknown` manda sobre `operational`, porque no
+ * tener datos NO es estar bien.
+ */
+const overallOf = (components) => {
+  if (components.some((c) => c.status === "down")) return "down";
+  if (components.some((c) => c.status === "degraded")) return "degraded";
+  if (components.some((c) => c.status === "unknown")) return "unknown";
+  return "operational";
+};
+
 const buildSnapshot = async (env) => {
   const states = await env.DB.prepare(
-    "SELECT component, status, since FROM component_state"
+    "SELECT component, status, since, updated_at FROM component_state"
   ).all();
   const byComponent = new Map((states.results || []).map((row) => [row.component, row]));
 
@@ -283,23 +323,24 @@ const buildSnapshot = async (env) => {
 
   const components = CHECKS.map((check) => {
     const state = byComponent.get(check.key);
+    const status = publishedStatus(state);
     return {
       key: check.key,
       name: check.label,
       description: check.description,
-      status: state ? state.status : "unknown",
-      since: state ? state.since : null,
+      status,
+      // Si el dato es viejo, tampoco se publica desde cuándo: sería una fecha
+      // que sugiere una certeza que ya no tenemos.
+      since: status === "unknown" ? null : state.since,
       uptime90d: uptimeBy.has(check.key) ? uptimeBy.get(check.key) : null,
     };
   });
 
-  const worst = components.some((c) => c.status === "down")
-    ? "down"
-    : components.some((c) => c.status === "degraded")
-      ? "degraded"
-      : "operational";
-
-  return { overall: worst, components, generatedAt: new Date().toISOString() };
+  return {
+    overall: overallOf(components),
+    components,
+    generatedAt: new Date().toISOString(),
+  };
 };
 
 /* ------------------------------------------------------------------ *
@@ -310,7 +351,15 @@ const LABEL = {
   operational: "Operational",
   degraded: "Degraded",
   down: "Down",
-  unknown: "No data yet",
+  unknown: "No recent data",
+};
+
+const HEADLINE = {
+  operational: "All systems operational",
+  degraded: "Partially degraded service",
+  down: "Service disruption",
+  // Nunca "todo bien": si no hay datos recientes, se dice.
+  unknown: "Status data unavailable",
 };
 
 const page = (snapshot) => `<!doctype html>
@@ -372,13 +421,7 @@ const page = (snapshot) => `<!doctype html>
 
   <div class="overall ${snapshot.overall}">
     <span class="dot"></span>
-    <span>${
-      snapshot.overall === "operational"
-        ? "All systems operational"
-        : snapshot.overall === "degraded"
-          ? "Partially degraded service"
-          : "Service disruption"
-    }</span>
+    <span>${HEADLINE[snapshot.overall] || HEADLINE.unknown}</span>
   </div>
 
   <ul>
@@ -410,7 +453,7 @@ const page = (snapshot) => `<!doctype html>
 
 /** Se exportan las piezas puras para poder probarlas: son las que deciden lo que
  *  ve un cliente, y equivocarse ahí es anunciar caídas que no existen. */
-export { nextState, CHECKS, FAILURES_BEFORE_DOWN };
+export { nextState, CHECKS, FAILURES_BEFORE_DOWN, publishedStatus, overallOf, STALE_AFTER_MS };
 
 export default {
   async scheduled(event, env, ctx) {
