@@ -17,6 +17,10 @@ crons = ["* * * * *"]
 # El origen que se vigila. No es secreto: es la URL pública del servicio.
 TARGET_ORIGIN = "https://db.devitrak.net"
 
+# Quién puede empotrar `/` y `/embed` en un iframe. `/admin` va siempre a
+# 'none', pase lo que pase aquí: es la única página con un campo de token.
+FRAME_ANCESTORS = "'self' https://admin.devitrak.net"
+
 # La base D1. Crear antes con:
 #   wrangler d1 create devitrak-status
 # y pegar aquí el database_id que devuelve.
