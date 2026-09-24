@@ -50,3 +50,27 @@ CREATE TABLE IF NOT EXISTS monitor_state (
   updated_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_state_component ON monitor_state (component);
+
+-- Incidentes escritos A MANO. El estado automatico contesta "esta arriba?"; un
+-- cliente que ve rojo quiere leer "estamos investigando, afecta a los correos,
+-- actualizamos en 30 min". Eso no lo genera un sondeo.
+CREATE TABLE IF NOT EXISTS incidents (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  title       TEXT NOT NULL,
+  state       TEXT NOT NULL,   -- investigating | identified | monitoring | resolved
+  started_at  TEXT NOT NULL,
+  resolved_at TEXT             -- NULL mientras sigue abierto
+);
+CREATE INDEX IF NOT EXISTS idx_incidents_open ON incidents (resolved_at, started_at);
+
+-- Cada actualizacion publicada de un incidente. Se guardan todas, y se muestran
+-- en orden: el valor de una pagina de estado no es el ultimo mensaje, es poder
+-- seguir como se fue resolviendo.
+CREATE TABLE IF NOT EXISTS incident_updates (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  incident_id INTEGER NOT NULL,
+  at          TEXT NOT NULL,
+  state       TEXT NOT NULL,
+  message     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_incident_updates ON incident_updates (incident_id, at);
