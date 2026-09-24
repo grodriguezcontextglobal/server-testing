@@ -206,3 +206,58 @@ y ninguna es gratis:
 
 La 2 es la que menos mueve y la que más quita. Requiere tocar
 `helpers/readiness.js` y `routes/health.js`, así que es decisión aparte.
+
+---
+
+## Empotrar el estado dentro de la aplicación
+
+`GET /embed` sirve una versión compacta —sin título, sin pie y con fondo
+transparente— pensada para un `<iframe>`:
+
+```html
+<iframe src="https://devitrak-status.<subdominio>.workers.dev/embed"
+        title="Service status" style="width:100%;height:210px;border:0"
+        loading="lazy"></iframe>
+```
+
+### La distinción que hay que entender
+
+**Un iframe en el frontend está bien. Un proxy en el backend, no.**
+
+En un iframe es el **navegador del usuario** quien pide la página al Worker: la
+aplicación no participa, así que el estado no queda detrás de lo que vigila. Si
+en cambio se sirviera desde una ruta de Node o de IIS (`db.devitrak.net/status`),
+el día que la API se caiga **la página que debe explicarlo se cae con ella**, que
+es exactamente lo que este diseño lleva evitando desde el principio.
+
+Y son **dos trabajos distintos**, no la misma página en dos tamaños:
+
+| | Para qué |
+|---|---|
+| `/embed` dentro de la app | Un usuario con sesión entiende por qué su exportación va lenta |
+| `/` en su dirección propia | Para cuando **no puede entrar**. Es la que va en una propuesta comercial y en un correo de incidencia |
+
+Empotrar **no sustituye** a publicar la dirección directa.
+
+### Quién puede empotrarla
+
+La variable `FRAME_ANCESTORS` de `wrangler.toml` acota los orígenes permitidos:
+
+```toml
+FRAME_ANCESTORS = "https://app.devitrak.net https://dashboard.devitrak.net"
+```
+
+Sin ella no se manda la cabecera y cualquiera puede empotrarla — para una página
+pública no es grave, pero acotarlo evita que alguien la monte dentro de una web
+suya y la haga pasar por propia.
+
+> `/admin` va **siempre** a `frame-ancestors 'none'`, pase lo que pase en el
+> entorno: es la única página con un campo de token, y un formulario de
+> credenciales dentro del iframe de otro es un robo esperando a ocurrir.
+
+### La alternativa, si se quiere que parezca nativo
+
+`GET /api/status.json` ya responde con `access-control-allow-origin: *`, así que
+el dashboard puede leerlo y pintarlo con sus propios componentes. Es más trabajo
+de frontend, pero evita el iframe entero: nada de alturas fijas, ni de temas que
+no casan, ni de dos barras de desplazamiento.

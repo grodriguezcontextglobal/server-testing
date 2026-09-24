@@ -652,6 +652,66 @@ const adminPage = () => `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * Versión compacta para empotrar en la aplicación, sin título, sin pie y sin
+ * fondo propio: hereda el del contenedor.
+ *
+ * ES OTRO TRABAJO, NO LA MISMA PÁGINA MÁS PEQUEÑA. Dentro de la aplicación, a
+ * un usuario con la sesión iniciada le sirve para entender por qué su
+ * exportación va lenta. La página de `/` sirve para cuando NO puede entrar —
+ * por eso vive fuera, y por eso es la que va en una propuesta comercial o en un
+ * correo de incidencia. Empotrar no sustituye a tener la dirección directa.
+ */
+const embedPage = (snapshot) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Service status</title>
+<style>
+  :root { --fg:#1a1a18; --muted:#6b6b66; --line:#e6e6e2; --ok:#2f8f5b; --warn:#b8791f; --bad:#c0392b; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --fg:#ececea; --muted:#9a9a95; --line:#2c2c33; --ok:#4caf7d; --warn:#d69a3c; --bad:#e06c5a; } }
+  * { box-sizing:border-box; }
+  /* Fondo transparente a proposito: el contenedor pone el suyo y no hay un
+     rectangulo de otro color flotando dentro de la aplicacion. */
+  body { margin:0; background:transparent; color:var(--fg);
+         font:15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .row { display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--line); }
+  .row:first-of-type { border-top:none; }
+  .dot { width:9px; height:9px; border-radius:50%; flex:none; }
+  .dot.operational { background:var(--ok); } .dot.degraded { background:var(--warn); }
+  .dot.down { background:var(--bad); } .dot.unknown { background:var(--muted); }
+  .head { font-weight:600; display:flex; align-items:center; gap:10px; padding-bottom:8px; }
+  .state { margin-left:auto; font-size:.84rem; color:var(--muted); }
+  .state.operational { color:var(--ok); } .state.degraded { color:var(--warn); }
+  .state.down { color:var(--bad); }
+  .note { font-size:.84rem; color:var(--muted); margin:8px 0 0; }
+  a { color:inherit; font-size:.8rem; }
+</style>
+</head>
+<body>
+  <div class="head"><span class="dot ${snapshot.overall}"></span>${HEADLINE[snapshot.overall] || HEADLINE.unknown}</div>
+  ${
+    snapshot.incident
+      ? `<p class="note"><strong>${escapeHtml(snapshot.incident.title)}</strong><br>${escapeHtml(
+          (snapshot.incident.updates[0] || {}).message || ""
+        )}</p>`
+      : ""
+  }
+  ${snapshot.components
+    .map(
+      (component) => `<div class="row">
+    <span class="dot ${component.status}"></span>
+    <span>${component.name}</span>
+    <span class="state ${component.status}">${LABEL[component.status] || component.status}</span>
+  </div>`
+    )
+    .join("\n  ")}
+</body>
+</html>`;
+
 /* ------------------------------------------------------------------ *
  * Rutas
  * ------------------------------------------------------------------ */
@@ -690,6 +750,21 @@ const INCIDENT_TEMPLATE = {
   resolved:
     "This incident has been resolved. [One line on what happened, if useful.]",
 };
+
+/**
+ * Quién puede empotrar la página.
+ *
+ * `FRAME_ANCESTORS` es una lista de orígenes separados por espacios. Sin ella no
+ * se manda la cabecera y cualquiera puede empotrarla — que para una página de
+ * estado pública no es grave, pero acotarlo evita que alguien la monte dentro de
+ * una web suya y la haga pasar por propia.
+ *
+ * `/admin` NO usa esto: va siempre a `'none'`, pase lo que pase en el entorno.
+ */
+const frameHeaders = (env) =>
+  env.FRAME_ANCESTORS
+    ? { "content-security-policy": `frame-ancestors ${env.FRAME_ANCESTORS}` }
+    : {};
 
 const escapeHtml = (value) =>
   String(value)
@@ -912,7 +987,25 @@ export default {
 
     if (url.pathname === "/admin") {
       return new Response(adminPage(), {
-        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "no-store",
+          // NUNCA empotrable, y esta sí es una cabecera que importa: es la única
+          // página con un campo de token. Dentro del iframe de otro, un
+          // formulario de credenciales es un robo esperando a ocurrir.
+          "content-security-policy": "frame-ancestors 'none'",
+        },
+      });
+    }
+
+    if (url.pathname === "/embed") {
+      const snapshot = await buildSnapshot(env);
+      return new Response(embedPage(snapshot), {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "public, max-age=30",
+          ...frameHeaders(env),
+        },
       });
     }
 
@@ -931,7 +1024,11 @@ export default {
     if (url.pathname === "/") {
       const snapshot = await buildSnapshot(env);
       return new Response(page(snapshot), {
-        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=30" },
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "cache-control": "public, max-age=30",
+          ...frameHeaders(env),
+        },
       });
     }
 
