@@ -2,6 +2,12 @@ name = "devitrak-status"
 main = "src/index.js"
 compatibility_date = "2026-09-23"
 
+# La cuenta contra la que se despliega. Es un identificador, no una credencial:
+# no da acceso a nada por sí solo. Va aquí porque el token de `wrangler login`
+# puede venir sin el permiso `account:read`, y entonces wrangler no sabe elegir
+# cuenta y falla antes de empezar.
+account_id = "be7a2067c263394367833649bbb0be4a"
+
 # Cada minuto. Es el mínimo que admite Cloudflare y, con dos componentes, son
 # ~2.880 escrituras al día en D1: muy por debajo del plan gratuito.
 [triggers]
@@ -17,7 +23,7 @@ TARGET_ORIGIN = "https://db.devitrak.net"
 [[d1_databases]]
 binding = "DB"
 database_name = "devitrak-status"
-database_id = "PENDIENTE — pegar el id que devuelve `wrangler d1 create`"
+database_id = "8ef818d5-dad4-456b-badd-ff88a725f61d"
 
 # TEAMS_WEBHOOK_URL NO va aquí: lleva la firma `sig=` y es una credencial.
 # Se guarda cifrada con:
