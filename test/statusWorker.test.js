@@ -106,6 +106,72 @@ test('la recuperación es inmediata: un solo sondeo bueno basta', async () => {
 });
 
 /* ---------------------------------------------------------------- *
+ * Lo que Kuma empuja
+ * ---------------------------------------------------------------- */
+
+test('los latidos de Kuma se traducen, y lo pendiente no cuenta como un hecho', async () => {
+  const { kumaStatus } = await load();
+
+  assert.strictEqual(kumaStatus(1), 'operational');
+  assert.strictEqual(kumaStatus(0), 'down');
+  assert.strictEqual(kumaStatus(2), null, 'pending todavia no es una caida');
+  assert.strictEqual(kumaStatus(3), null, 'mantenimiento tampoco');
+});
+
+test('un monitor sin mapear se ignora: crear uno en Kuma no cambia la página pública', async () => {
+  const { MONITOR_COMPONENT } = await load();
+
+  assert.strictEqual(MONITOR_COMPONENT['Delete worker'], 'background_jobs');
+  assert.strictEqual(MONITOR_COMPONENT['Monitor nuevo que alguien creo'], undefined);
+  assert.strictEqual(
+    MONITOR_COMPONENT['API readiness'],
+    undefined,
+    'las dependencias las sondea el Worker; dos fuentes no pueden pisar el mismo componente'
+  );
+});
+
+test('un worker parado degrada el componente, no lo tumba', async () => {
+  const { componentFromMonitors } = await load();
+
+  assert.strictEqual(
+    componentFromMonitors([{ status: 'operational' }, { status: 'down' }]),
+    'degraded',
+    'la cola es durable: el trabajo se retrasa, no se pierde'
+  );
+  assert.strictEqual(componentFromMonitors([{ status: 'down' }, { status: 'down' }]), 'degraded');
+  assert.strictEqual(
+    componentFromMonitors([{ status: 'operational' }, { status: 'operational' }]),
+    'operational',
+    'cuando vuelve el ultimo caido, el componente se restaura solo'
+  );
+});
+
+test('background_jobs existe como componente publicado y se alimenta por push', async () => {
+  const { COMPONENTS, CHECKS } = await load();
+
+  const jobs = COMPONENTS.find((c) => c.key === 'background_jobs');
+  assert.strictEqual(jobs.source, 'push');
+  assert.ok(!CHECKS.some((c) => c.key === 'background_jobs'), 'no se sondea desde fuera');
+  assert.strictEqual(CHECKS.length, 2);
+});
+
+test('lo empujado NO caduca: un sistema sano puede pasar semanas sin decir nada', async () => {
+  const { publishedStatus, STALE_AFTER_MS } = await load();
+  const now = Date.parse('2026-09-24T12:00:00.000Z');
+  const viejo = {
+    status: 'operational',
+    updated_at: new Date(now - STALE_AFTER_MS * 100).toISOString(),
+  };
+
+  assert.strictEqual(publishedStatus(viejo, now, { source: 'push' }), 'operational');
+  assert.strictEqual(
+    publishedStatus(viejo, now, { source: 'probe' }),
+    'unknown',
+    'lo que se sondea cada minuto SI caduca'
+  );
+});
+
+/* ---------------------------------------------------------------- *
  * La página no puede mentir en verde
  * ---------------------------------------------------------------- */
 
