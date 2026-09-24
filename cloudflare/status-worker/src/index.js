@@ -37,10 +37,11 @@
  * cambiar lo que se enseña sin tocar lo que se mide.
  * ------------------------------------------------------------------ */
 
-const CHECKS = [
+const COMPONENTS = [
   {
     key: "application",
     label: "Application",
+    source: "probe",
     // Las etiquetas y descripciones son TEXTO DE CARA AL CLIENTE, así que van en
     // inglés aunque los comentarios de este repositorio estén en español.
     description: "The service responds over the public internet",
@@ -50,6 +51,7 @@ const CHECKS = [
   {
     key: "core_services",
     label: "Core services",
+    source: "probe",
     description: "Database and supporting services",
     path: "/ready",
     // `/ready` devuelve 503 solo si cae una dependencia CRÍTICA (MySQL o Mongo);
@@ -61,7 +63,69 @@ const CHECKS = [
       return "operational";
     },
   },
+  {
+    key: "background_jobs",
+    label: "Background jobs",
+    source: "push",
+    description: "Emails, exports and bulk operations",
+  },
 ];
+
+/** Los que este Worker sondea por su cuenta. */
+const CHECKS = COMPONENTS.filter((component) => component.source === "probe");
+
+/* ------------------------------------------------------------------ *
+ * Lo que Kuma cuenta desde dentro
+ *
+ * Un worker de la cola parado NO se ve desde fuera: `/ready` comprueba MySQL,
+ * Mongo, Redis y el worker de Go, y los tres workers de Node no están en esa
+ * lista. Kuma sí lo ve, porque no sondea: espera un latido. Así que Kuma es el
+ * sensor y este Worker el publicador.
+ *
+ * REPARTO, para no duplicar avisos: quien avisa a Teams de estos cambios es
+ * KUMA, que ya lo hace con sus reintentos y su anti-parpadeo. El `/ingest` solo
+ * actualiza lo que se publica. Si notificara también, cada incidente llegaría
+ * dos veces al canal y en una semana nadie los leería.
+ * ------------------------------------------------------------------ */
+
+/**
+ * Qué monitor de Kuma alimenta qué componente público.
+ *
+ * Un monitor que no esté aquí se IGNORA a propósito: crear un monitor nuevo en
+ * Kuma no puede cambiar por accidente lo que ven los clientes. Para publicar
+ * algo nuevo hay que añadirlo aquí, que es una decisión y deja rastro.
+ *
+ * Los monitores de la API y de las dependencias no aparecen: esos los sondea
+ * este Worker por su cuenta, y dejar que Kuma los tocara sería que dos fuentes
+ * se pisaran el mismo componente.
+ */
+const MONITOR_COMPONENT = {
+  "Email worker": "background_jobs",
+  "Bulk worker (bulk + heavy)": "background_jobs",
+  "Delete worker": "background_jobs",
+  "In-process worker (API)": "background_jobs",
+  "Overdue reminders (daily)": "background_jobs",
+  "Consent expiry (daily)": "background_jobs",
+};
+
+/** Estados de latido de Kuma: 0 caído, 1 arriba, 2 pendiente, 3 mantenimiento. */
+const kumaStatus = (value) => {
+  if (value === 1 || value === "1") return "operational";
+  if (value === 0 || value === "0") return "down";
+  return null; // pendiente o mantenimiento: todavía no es un hecho
+};
+
+/**
+ * De los monitores al componente.
+ *
+ * Un worker parado es **degraded**, no **down**, y la distinción importa: la
+ * cola es durable (`claimOne` reclama de forma atómica y `recoverStale` rescata
+ * lo que quedó a medias), así que el trabajo no se pierde — se retrasa. Decirle
+ * a un cliente que está "caído" algo que solo va con retraso es exagerar, y una
+ * página de estado que exagera se deja de mirar igual que una que miente.
+ */
+const componentFromMonitors = (rows) =>
+  rows.some((row) => row.status === "down") ? "degraded" : "operational";
 
 /** Fallos consecutivos antes de cambiar el estado publicado. Ver §8.3: un
  *  tropiezo de red no puede anunciarle a tus clientes que estás caído. */
@@ -288,8 +352,19 @@ const runChecks = async (env) => {
  * El estado publicable de un componente: lo guardado, salvo que sea viejo.
  * «No lo sé» es una respuesta honesta; «todo bien» con datos de ayer no lo es.
  */
-const publishedStatus = (state, now = Date.now()) => {
+const publishedStatus = (state, now = Date.now(), { source = "probe" } = {}) => {
   if (!state) return "unknown";
+
+  // La caducidad solo aplica a lo que SONDEAMOS, porque eso se refresca cada
+  // minuto y su silencio es una anomalía. Lo que llega empujado desde Kuma solo
+  // llega cuando algo CAMBIA: un sistema sano puede pasar semanas sin decir
+  // nada, y caducarlo lo pondría en "sin datos" justo por ir todo bien.
+  //
+  // La contrapartida, y hay que tenerla presente: si Kuma dejara de funcionar
+  // con la VM en pie, este componente se quedaría congelado en su último valor.
+  // Esa clase de fallo la cubre el sondeo de `/health` y `/ready`, no esto.
+  if (source === "push") return state.status;
+
   const updatedAt = Date.parse(state.updated_at);
   if (!Number.isFinite(updatedAt) || now - updatedAt > STALE_AFTER_MS) return "unknown";
   return state.status;
@@ -325,9 +400,9 @@ const buildSnapshot = async (env) => {
     .all();
   const uptimeBy = new Map((uptime.results || []).map((row) => [row.component, row.pct]));
 
-  const components = CHECKS.map((check) => {
+  const components = COMPONENTS.map((check) => {
     const state = byComponent.get(check.key);
-    const status = publishedStatus(state);
+    const status = publishedStatus(state, Date.now(), { source: check.source });
     return {
       key: check.key,
       name: check.label,
@@ -455,9 +530,114 @@ const page = (snapshot) => `<!doctype html>
  * Rutas
  * ------------------------------------------------------------------ */
 
+/* ------------------------------------------------------------------ *
+ * /ingest — lo que Kuma empuja
+ * ------------------------------------------------------------------ */
+
+/**
+ * Recibe una notificación webhook de Uptime Kuma y actualiza el componente que
+ * corresponda.
+ *
+ * NO HAY FRENO AL PARPADEO AQUÍ, y es deliberado: Kuma ya lo aplicó antes de
+ * mandar nada (dos reintentos de 120 s antes de dar un monitor por caído). Un
+ * segundo freno encima solo añadiría minutos al aviso sin quitar ni un falso
+ * positivo.
+ *
+ * TAMPOCO AVISA A TEAMS: Kuma acaba de hacerlo. Ver el comentario de
+ * MONITOR_COMPONENT.
+ */
+const ingest = async (request, env) => {
+  if (!env.INGEST_TOKEN) {
+    return new Response("ingest not configured", { status: 503 });
+  }
+
+  const provided =
+    request.headers.get("x-status-token") ||
+    new URL(request.url).searchParams.get("token");
+  if (provided !== env.INGEST_TOKEN) {
+    return new Response("unauthorized", { status: 401 });
+  }
+
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return new Response("invalid json", { status: 400 });
+  }
+
+  const monitorName = payload && payload.monitor ? payload.monitor.name : null;
+  const component = MONITOR_COMPONENT[monitorName];
+  // Se responde 200 a lo que se ignora, no un error: un monitor sin mapear no
+  // es un fallo de Kuma, y devolverle un error llenaría SU panel de alertas.
+  if (!component) return Response.json({ ok: true, ignored: monitorName || "unknown monitor" });
+
+  const status = kumaStatus(payload.heartbeat ? payload.heartbeat.status : null);
+  if (!status) return Response.json({ ok: true, ignored: "pending or maintenance" });
+
+  const at = new Date().toISOString();
+
+  await env.DB.prepare(
+    `INSERT INTO monitor_state (monitor, component, status, updated_at) VALUES (?, ?, ?, ?)
+     ON CONFLICT(monitor) DO UPDATE SET
+       component = excluded.component,
+       status = excluded.status,
+       updated_at = excluded.updated_at`
+  )
+    .bind(monitorName, component, status, at)
+    .run();
+
+  const rows = await env.DB.prepare(
+    "SELECT status FROM monitor_state WHERE component = ?"
+  )
+    .bind(component)
+    .all();
+  const derived = componentFromMonitors(rows.results || []);
+
+  const previous = await env.DB.prepare(
+    "SELECT status FROM component_state WHERE component = ?"
+  )
+    .bind(component)
+    .first();
+
+  const changed = !previous || previous.status !== derived;
+
+  await env.DB.prepare(
+    `INSERT INTO component_state (component, status, failures, since, updated_at)
+     VALUES (?, ?, 0, ?, ?)
+     ON CONFLICT(component) DO UPDATE SET
+       status = excluded.status,
+       since = CASE WHEN component_state.status = excluded.status
+                    THEN component_state.since ELSE excluded.since END,
+       updated_at = excluded.updated_at`
+  )
+    .bind(component, derived, at, at)
+    .run();
+
+  if (changed) {
+    await env.DB.prepare(
+      "INSERT INTO events (component, at, from_status, to_status, detail) VALUES (?, ?, ?, ?, ?)"
+    )
+      .bind(component, at, previous ? previous.status : null, derived, `kuma: ${monitorName} ${status}`)
+      .run();
+  }
+
+  return Response.json({ ok: true, component, status: derived, monitor: monitorName });
+};
+
 /** Se exportan las piezas puras para poder probarlas: son las que deciden lo que
  *  ve un cliente, y equivocarse ahí es anunciar caídas que no existen. */
-export { nextState, CHECKS, FAILURES_BEFORE_DOWN, publishedStatus, overallOf, STALE_AFTER_MS };
+export {
+  nextState,
+  CHECKS,
+  COMPONENTS,
+  FAILURES_BEFORE_DOWN,
+  publishedStatus,
+  overallOf,
+  STALE_AFTER_MS,
+  MONITOR_COMPONENT,
+  kumaStatus,
+  componentFromMonitors,
+};
 
 export default {
   async scheduled(event, env, ctx) {
@@ -466,6 +646,11 @@ export default {
 
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    if (url.pathname === "/ingest") {
+      if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+      return ingest(request, env);
+    }
 
     if (url.pathname === "/api/status.json") {
       const snapshot = await buildSnapshot(env);

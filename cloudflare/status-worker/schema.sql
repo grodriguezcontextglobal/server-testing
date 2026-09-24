@@ -38,3 +38,15 @@ CREATE TABLE IF NOT EXISTS events (
   detail      TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_at ON events (at);
+
+-- Lo que Kuma cuenta desde dentro de la VM, monitor a monitor. El estado del
+-- componente publico se DERIVA de estas filas (ver componentFromMonitors), asi
+-- que un worker parado degrada el componente y su recuperacion lo restaura sin
+-- que haya que recordar cuantos habia caidos.
+CREATE TABLE IF NOT EXISTS monitor_state (
+  monitor    TEXT PRIMARY KEY,
+  component  TEXT NOT NULL,
+  status     TEXT NOT NULL,   -- operational | down
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_monitor_state_component ON monitor_state (component);
