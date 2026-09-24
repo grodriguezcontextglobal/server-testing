@@ -41,14 +41,16 @@ const CHECKS = [
   {
     key: "application",
     label: "Application",
-    description: "El servicio responde desde internet",
+    // Las etiquetas y descripciones son TEXTO DE CARA AL CLIENTE, así que van en
+    // inglés aunque los comentarios de este repositorio estén en español.
+    description: "The service responds over the public internet",
     path: "/health",
     evaluate: (response) => (response.ok ? "operational" : "down"),
   },
   {
     key: "core_services",
     label: "Core services",
-    description: "Base de datos y servicios de apoyo",
+    description: "Database and supporting services",
     path: "/ready",
     // `/ready` devuelve 503 solo si cae una dependencia CRÍTICA (MySQL o Mongo);
     // Redis y el worker de Go degradan manteniendo el 200. Se respeta esa
@@ -181,15 +183,17 @@ const notifyTeams = async (env, { label, status, previous, detail }) => {
               size: "Medium",
               weight: "Bolder",
               color: STATUS_COLOR[status] || "default",
-              text: `[${label}] ${status === "operational" ? "recuperado" : status}`,
+              // En inglés, igual que las alertas de Uptime Kuma: caen en el
+              // mismo canal y mezclar idiomas hace ilegible un hilo de incidente.
+              text: `[${label}] ${status === "operational" ? "recovered" : `went ${status}`}`,
             },
             {
               type: "FactSet",
               facts: [
-                { title: "Origen", value: "Vigilante externo (Cloudflare)" },
-                { title: "Anterior", value: previous || "—" },
-                { title: "Detalle", value: detail || "—" },
-                { title: "Hora (UTC)", value: new Date().toISOString() },
+                { title: "Source", value: "External watchdog (Cloudflare)" },
+                { title: "Previous", value: previous || "—" },
+                { title: "Detail", value: detail || "—" },
+                { title: "Time (UTC)", value: new Date().toISOString() },
               ],
             },
           ],
