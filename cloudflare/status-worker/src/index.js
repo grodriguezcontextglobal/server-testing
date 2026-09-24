@@ -19,10 +19,13 @@
  *             de los workers. Todo el detalle que NO se publica.
  *   - Este  → la verdad publicada: ¿se llega al servicio desde internet?
  *
- * LO QUE ESTA PRIMERA VERSIÓN NO HACE, a propósito: no recibe latidos empujados
- * desde la VM. Con ellos podría publicar componentes como "Correos" o
- * "Informes"; sin ellos solo puede hablar de lo que sondea. Se añade cuando haga
- * falta, no antes.
+ * Y LO QUE NO PUEDE VER SONDEANDO se lo cuenta Kuma por `POST /ingest`: un
+ * worker de la cola parado no cambia nada de `/health` ni de `/ready`, así que
+ * desde fuera es invisible. Kuma es el sensor, este Worker el publicador.
+ *
+ * Sobre lo publicado se pueden escribir INCIDENTES a mano (`/admin`), porque el
+ * estado automático contesta "¿está arriba?" y un cliente que ve rojo quiere
+ * leer qué pasa y cuándo volverán a contarle algo.
  */
 
 /* ------------------------------------------------------------------ *
@@ -418,6 +421,7 @@ const buildSnapshot = async (env) => {
   return {
     overall: overallOf(components),
     components,
+    incident: await activeIncident(env),
     generatedAt: new Date().toISOString(),
   };
 };
@@ -489,6 +493,16 @@ const page = (snapshot) => `<!doctype html>
   .state.operational { color: var(--ok); }
   .state.degraded { color: var(--warn); }
   .state.down { color: var(--bad); }
+  .incident { border: 1px solid var(--line); border-left: 3px solid var(--warn);
+              border-radius: 12px; background: var(--card); padding: 20px; margin-bottom: 28px; }
+  .incident h2 { font-size: 1rem; margin: 0 0 2px; }
+  .incident .when { color: var(--muted); font-size: .8rem; margin-bottom: 14px; }
+  .upd { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+  .upd:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+  .upd .head { font-size: .78rem; text-transform: uppercase; letter-spacing: .04em;
+               color: var(--warn); font-weight: 600; }
+  .upd .at { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; }
+  .upd p { margin: 4px 0 0; }
   footer { color: var(--muted); font-size: .78rem; margin-top: 28px; }
   @media (max-width: 480px) { .wrap { padding-top: 32px; } .desc { display: none; } }
 </style>
@@ -502,6 +516,23 @@ const page = (snapshot) => `<!doctype html>
     <span class="dot"></span>
     <span>${HEADLINE[snapshot.overall] || HEADLINE.unknown}</span>
   </div>
+
+  ${
+    snapshot.incident
+      ? `<div class="incident">
+    <h2>${escapeHtml(snapshot.incident.title)}</h2>
+    <div class="when">Started ${escapeHtml(snapshot.incident.started_at)}</div>
+    ${snapshot.incident.updates
+      .map(
+        (update) => `<div class="upd">
+      <div class="head">${INCIDENT_LABEL[update.state] || escapeHtml(update.state)} <span class="at">· ${escapeHtml(update.at)}</span></div>
+      <p>${escapeHtml(update.message)}</p>
+    </div>`
+      )
+      .join("\n    ")}
+  </div>`
+      : ""
+  }
 
   <ul>
     ${snapshot.components
@@ -526,9 +557,228 @@ const page = (snapshot) => `<!doctype html>
 </body>
 </html>`;
 
+/**
+ * Formulario para publicar incidentes.
+ *
+ * POR QUÉ UNA PÁGINA Y NO SOLO `curl`: esto se usa con el servicio caído, con
+ * prisa y probablemente desde el móvil. Un comando con comillas anidadas y una
+ * cabecera es justo lo que no se acierta en ese momento. La página no contiene
+ * ningún secreto: el token lo escribe quien la usa y solo vive en su navegador.
+ */
+const adminPage = () => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Post status update</title>
+<style>
+  :root { --bg:#fbfbfa; --fg:#1a1a18; --muted:#6b6b66; --card:#fff; --line:#e6e6e2; --accent:#b8791f; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    --bg:#16161a; --fg:#ececea; --muted:#9a9a95; --card:#1e1e23; --line:#2c2c33; --accent:#d69a3c; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:16px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .wrap { max-width:560px; margin:0 auto; padding:40px 16px 64px; }
+  h1 { font-size:1.2rem; margin:0 0 4px; }
+  p.sub { color:var(--muted); font-size:.88rem; margin:0 0 24px; }
+  label { display:block; font-size:.82rem; font-weight:600; margin:16px 0 6px; }
+  input, select, textarea { width:100%; padding:10px 12px; font:inherit; color:var(--fg);
+    background:var(--card); border:1px solid var(--line); border-radius:8px; }
+  textarea { min-height:120px; resize:vertical; }
+  button { margin-top:20px; padding:11px 18px; font:inherit; font-weight:600; cursor:pointer;
+    background:var(--accent); color:#fff; border:none; border-radius:8px; }
+  #out { margin-top:16px; font-size:.86rem; color:var(--muted); white-space:pre-wrap; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Post a status update</h1>
+  <p class="sub">Publishes to the public status page. Each update is kept — the timeline is the point.</p>
+
+  <label for="token">Token</label>
+  <input id="token" type="password" autocomplete="off" placeholder="INGEST_TOKEN">
+
+  <label for="title">Title <span style="font-weight:400;color:var(--muted)">(only used when opening a new incident)</span></label>
+  <input id="title" type="text" placeholder="Delayed emails and exports">
+
+  <label for="state">State</label>
+  <select id="state">
+    ${INCIDENT_STATES.map((s) => `<option value="${s}">${INCIDENT_LABEL[s]}</option>`).join("\n    ")}
+  </select>
+
+  <label for="message">Message</label>
+  <textarea id="message"></textarea>
+
+  <button id="send">Publish</button>
+  <div id="out"></div>
+</div>
+<script>
+  var TEMPLATES = ${JSON.stringify(INCIDENT_TEMPLATE)};
+  var state = document.getElementById('state');
+  var message = document.getElementById('message');
+  var out = document.getElementById('out');
+
+  function applyTemplate() { message.placeholder = TEMPLATES[state.value] || ''; }
+  state.addEventListener('change', applyTemplate);
+  applyTemplate();
+
+  // El token se recuerda solo en esta pestaña: sobrevive a un envio y muere al
+  // cerrarla. Nada de localStorage en un dispositivo que puede ser compartido.
+  try { document.getElementById('token').value = sessionStorage.getItem('t') || ''; } catch (e) {}
+
+  document.getElementById('send').addEventListener('click', async function () {
+    var token = document.getElementById('token').value.trim();
+    try { sessionStorage.setItem('t', token); } catch (e) {}
+    out.textContent = 'Publishing...';
+    try {
+      var response = await fetch('/incident', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-status-token': token },
+        body: JSON.stringify({
+          state: state.value,
+          title: document.getElementById('title').value,
+          message: message.value
+        })
+      });
+      var body = await response.text();
+      out.textContent = response.status + ' ' + body;
+      if (response.ok) message.value = '';
+    } catch (error) {
+      out.textContent = 'Failed: ' + error.message;
+    }
+  });
+</script>
+</body>
+</html>`;
+
 /* ------------------------------------------------------------------ *
  * Rutas
  * ------------------------------------------------------------------ */
+
+/* ------------------------------------------------------------------ *
+ * Incidentes escritos a mano
+ *
+ * El estado automático contesta «¿está arriba?». Un cliente que ve rojo quiere
+ * leer otra cosa: qué pasa, a qué le afecta y cuándo vuelven a contarle algo.
+ * Eso no lo genera un sondeo, lo escribe una persona.
+ *
+ * EL VOCABULARIO ES EL ESTÁNDAR DE LA INDUSTRIA (investigating → identified →
+ * monitoring → resolved) y no un invento nuestro, por una razón práctica: es el
+ * que ya han visto en la página de estado de cualquier proveedor suyo, así que
+ * no hay que explicarlo. Y el texto es libre: los cuatro estados dan la forma,
+ * la frase la escribe quien sabe qué está pasando.
+ * ------------------------------------------------------------------ */
+
+const INCIDENT_STATES = ["investigating", "identified", "monitoring", "resolved"];
+
+const INCIDENT_LABEL = {
+  investigating: "Investigating",
+  identified: "Identified",
+  monitoring: "Monitoring",
+  resolved: "Resolved",
+};
+
+/** Texto sugerido para cada estado, en inglés porque la página lo está. */
+const INCIDENT_TEMPLATE = {
+  investigating:
+    "We're investigating an issue affecting [component]. We'll post an update within 30 minutes.",
+  identified:
+    "We've identified the cause and are working on a fix. [What customers can expect meanwhile.]",
+  monitoring:
+    "A fix has been applied and we're monitoring the results.",
+  resolved:
+    "This incident has been resolved. [One line on what happened, if useful.]",
+};
+
+const escapeHtml = (value) =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+const activeIncident = async (env) => {
+  const incident = await env.DB.prepare(
+    "SELECT id, title, state, started_at FROM incidents WHERE resolved_at IS NULL ORDER BY started_at DESC LIMIT 1"
+  ).first();
+  if (!incident) return null;
+
+  const updates = await env.DB.prepare(
+    "SELECT at, state, message FROM incident_updates WHERE incident_id = ? ORDER BY at DESC"
+  )
+    .bind(incident.id)
+    .all();
+
+  return { ...incident, updates: updates.results || [] };
+};
+
+/**
+ * Publica una actualización de incidente.
+ *
+ * Abre uno si no hay ninguno abierto, y lo cierra cuando el estado es
+ * `resolved`. Deliberadamente NO borra: un incidente resuelto deja su rastro en
+ * la tabla, porque el valor de esto para vender no es enseñar que nunca falla
+ * nada — es enseñar que cuando falla algo se cuenta y se cierra.
+ */
+const postIncident = async (request, env) => {
+  if (!env.INGEST_TOKEN) return new Response("not configured", { status: 503 });
+
+  const provided =
+    request.headers.get("x-status-token") ||
+    new URL(request.url).searchParams.get("token");
+  if (provided !== env.INGEST_TOKEN) return new Response("unauthorized", { status: 401 });
+
+  let payload;
+  try {
+    payload = await request.json();
+  } catch {
+    return new Response("invalid json", { status: 400 });
+  }
+
+  const state = String(payload.state || "").toLowerCase();
+  const message = String(payload.message || "").trim();
+
+  if (!INCIDENT_STATES.includes(state)) {
+    return Response.json({ ok: false, msg: `state must be one of: ${INCIDENT_STATES.join(", ")}` }, { status: 400 });
+  }
+  if (!message) {
+    return Response.json({ ok: false, msg: "message is required" }, { status: 400 });
+  }
+
+  const at = new Date().toISOString();
+  let incident = await env.DB.prepare(
+    "SELECT id FROM incidents WHERE resolved_at IS NULL ORDER BY started_at DESC LIMIT 1"
+  ).first();
+
+  if (!incident) {
+    // Cerrar algo que no está abierto no crea un incidente fantasma.
+    if (state === "resolved") {
+      return Response.json({ ok: false, msg: "no open incident to resolve" }, { status: 409 });
+    }
+    const title = String(payload.title || "Service incident").trim();
+    const created = await env.DB.prepare(
+      "INSERT INTO incidents (title, state, started_at) VALUES (?, ?, ?) RETURNING id"
+    )
+      .bind(title, state, at)
+      .first();
+    incident = created;
+  } else {
+    await env.DB.prepare(
+      `UPDATE incidents SET state = ?, resolved_at = ? WHERE id = ?`
+    )
+      .bind(state, state === "resolved" ? at : null, incident.id)
+      .run();
+  }
+
+  await env.DB.prepare(
+    "INSERT INTO incident_updates (incident_id, at, state, message) VALUES (?, ?, ?, ?)"
+  )
+    .bind(incident.id, at, state, message)
+    .run();
+
+  return Response.json({ ok: true, incident: incident.id, state });
+};
 
 /* ------------------------------------------------------------------ *
  * /ingest — lo que Kuma empuja
@@ -627,6 +877,9 @@ const ingest = async (request, env) => {
 /** Se exportan las piezas puras para poder probarlas: son las que deciden lo que
  *  ve un cliente, y equivocarse ahí es anunciar caídas que no existen. */
 export {
+  INCIDENT_STATES,
+  INCIDENT_TEMPLATE,
+  escapeHtml,
   nextState,
   CHECKS,
   COMPONENTS,
@@ -650,6 +903,17 @@ export default {
     if (url.pathname === "/ingest") {
       if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
       return ingest(request, env);
+    }
+
+    if (url.pathname === "/incident") {
+      if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+      return postIncident(request, env);
+    }
+
+    if (url.pathname === "/admin") {
+      return new Response(adminPage(), {
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+      });
     }
 
     if (url.pathname === "/api/status.json") {
