@@ -122,13 +122,32 @@ alcance — los 11 eventos o solo los recientes.
 
 ---
 
-## 6. Cuándo estará vivo
+## 6. Ya está vivo — podéis reintentar
 
-Esto es el **worker de Go**, no Node, así que **no basta con desplegar el
-servidor**: hay que recompilar el binario en la máquina de producción
-(`scripts/restart-go-worker.ps1`, que para, construye, arranca y comprueba).
+**Desplegado en producción el 2026-09-25.** Esto era el **worker de Go**, no
+Node, así que hizo falta recompilar el binario en la máquina
+(`scripts/restart-go-worker.ps1`: para, construye, arranca y comprueba). La
+compilación entró —`worker.exe` reemplazado— y el worker responde `{"status":
+"ok"}` en su puerto.
 
-**Hasta ese `go build`, el error 1292 sigue igual.** Os avisamos cuando esté.
+**Reintentad el cierre del evento 698 con el mismo cuerpo.** No hace falta nada
+nuevo de vuestro lado.
+
+Si podéis, confirmadnos dos cosas del resultado:
+
+1. Que responde 200 (o sea, que el 1292 se fue).
+2. Que los estados **se escribieron de verdad**. Esto es lo que antes era
+   invisible:
+
+```sql
+SELECT ii.serial_number, iiae.status, iiae.`condition`, iiae.active, iiae.updated_at
+FROM item_inv_assigned_event iiae
+JOIN item_inv ii ON ii.item_id = iiae.item_id
+WHERE iiae.event_id = 698;
+```
+
+Si `condition` deja de ser un calco de `status`, el segundo arreglo —el del §3—
+también está haciendo efecto.
 
 ## 7. Lo que este documento no afirma
 
