@@ -560,6 +560,11 @@ type DeviceStatusHistory struct {
 type SimpleInventoryItem struct {
 	SerialNumber string `json:"serial_number"`
 	Status       string `json:"status"`
+	// Condition faltaba, y por eso el CASE de iiae.condition recibia el valor
+	// del status: cerrar un evento sobrescribia la condicion con el estado.
+	// Se queda opcional a proposito -- si el cliente no la manda, la fila
+	// conserva la que tenia en vez de recibir una cadena vacia.
+	Condition string `json:"condition"`
 }
 
 // ItemFinalStatusWhenEventIsFinished handles bulk status updates for event completion
@@ -589,29 +594,66 @@ func ItemFinalStatusWhenEventIsFinished(db *sql.DB, req ItemFinalStatusRequest) 
 		}
 		batch := allInventory[i:end]
 
-		// Build CASE statements
-		var caseParts []string
-		var values []interface{}
-		var serialNumbers []string
+		// UNA SOLA FORMA DE CASE, LA BUSCADA.
+		//
+		// La version anterior mezclaba las dos formas que tiene MySQL, que son
+		// excluyentes:
+		//
+		//   CASE expr WHEN valor     THEN ...   -- simple: compara expr con cada valor
+		//   CASE      WHEN condicion THEN ...   -- buscada: evalua cada condicion
+		//
+		// y escribia `CASE ii.serial_number WHEN serial_number = ? THEN ?`, o sea
+		// la primera con el cuerpo de la segunda. `serial_number = ?` no es un
+		// valor, es una condicion, y MySQL la evalua a 0 o 1; luego compara un
+		// varchar contra ese entero casteando el texto a DOUBLE.
+		//
+		// Con un serial alfanumerico eso es el error 1292 y el cierre falla a la
+		// vista. CON UN SERIAL NUMERICO NO FALLA: el cast funciona, no coincide
+		// con ningun WHEN, y el CASE cae al ELSE. La consulta termina bien, el
+		// evento se cierra con 200, y status/condition se quedan como estaban.
+		// El fallo silencioso era el peligroso.
+		statusCases := make([]string, 0, len(batch))
+		conditionCases := make([]string, 0, len(batch))
+		statusValues := make([]interface{}, 0, len(batch)*2)
+		conditionValues := make([]interface{}, 0, len(batch)*2)
+		serialNumbers := make([]string, 0, len(batch))
 
-		// Add CASE values
 		for _, item := range batch {
 			status := item.Status
-			// Check if exists in groupingDevices and has history
+			// El historial de Mongo, cuando existe, manda sobre lo que venga en
+			// la fila de inventario.
 			if history, ok := groupingDevices[item.SerialNumber]; ok && len(history) > 0 {
 				status = history[len(history)-1].Status
 			}
 
-			caseParts = append(caseParts, "WHEN serial_number = ? THEN ?")
-			values = append(values, item.SerialNumber, status)
+			statusCases = append(statusCases, "WHEN ii.serial_number = ? THEN ?")
+			statusValues = append(statusValues, item.SerialNumber, status)
+
+			// Sin condicion en el cuerpo NO se emite un WHEN: la fila cae al
+			// ELSE y conserva la suya. Escribir "" seria peor que no tocarla.
+			if item.Condition != "" {
+				conditionCases = append(conditionCases, "WHEN ii.serial_number = ? THEN ?")
+				conditionValues = append(conditionValues, item.SerialNumber, item.Condition)
+			}
+
 			serialNumbers = append(serialNumbers, item.SerialNumber)
 		}
 
-		// Add update_at and active = false
-		values = append(values, req.UpdateAt)
+		// El orden de este slice ES el contrato con los `?` de la consulta, y
+		// armarlo en el mismo sitio donde se arma el SQL es lo que evita que
+		// vuelvan a desalinearse.
+		values := make([]interface{}, 0, len(statusValues)+len(conditionValues)+2+len(serialNumbers))
+		values = append(values, statusValues...)
 
-		// Add WHERE clause params
-		values = append(values, req.EventID)
+		// `condition` va entre comillas invertidas: es palabra reservada en MySQL.
+		conditionAssignment := ""
+		if len(conditionCases) > 0 {
+			conditionAssignment = fmt.Sprintf("\n\t\t\t\tiiae.`condition` = CASE %s ELSE iiae.`condition` END,",
+				strings.Join(conditionCases, " "))
+			values = append(values, conditionValues...)
+		}
+
+		values = append(values, req.UpdateAt, req.EventID)
 		for _, sn := range serialNumbers {
 			values = append(values, sn)
 		}
@@ -621,75 +663,23 @@ func ItemFinalStatusWhenEventIsFinished(db *sql.DB, req ItemFinalStatusRequest) 
 			placeholders[j] = "?"
 		}
 
+		// Todas las columnas cualificadas: en un UPDATE sobre un join, dejarlas
+		// desnudas hace que la consulta dependa de que la otra tabla no tenga
+		// una columna con ese nombre. Hoy no la tiene; manana es un cambio de
+		// esquema ajeno el que rompe esto.
 		query := fmt.Sprintf(`
 			UPDATE item_inv_assigned_event iiae
 			JOIN item_inv ii ON iiae.item_id = ii.item_id
-			SET 
-				iiae.status = CASE ii.serial_number 
-					%s 
-					ELSE iiae.status 
-				END,
-				iiae.condition = CASE ii.serial_number 
-					%s 
-					ELSE iiae.condition 
-				END,
+			SET
+				iiae.`+"`status`"+` = CASE %s ELSE iiae.`+"`status`"+` END,%s
 				iiae.updated_at = ?,
-				active = false
-			WHERE 
+				iiae.active = false
+			WHERE
 				iiae.event_id = ? AND
 				ii.serial_number IN (%s)
-		`, strings.Join(caseParts, " "), strings.Join(caseParts, " "), strings.Join(placeholders, ", "))
+		`, strings.Join(statusCases, " "), conditionAssignment, strings.Join(placeholders, ", "))
 
 		res, err := db.Exec(query, values...)
-		// Note: we are duplicating values for the second CASE statement in the query string logic above
-		// Wait, the values slice needs to match the placeholders order.
-		// My construction above:
-		// values: [sn1, stat1, sn2, stat2, ..., update_at, event_id, sn1, sn2, ...]
-		// Query:
-		// CASE ii.serial_number WHEN ? THEN ? ...
-		// CASE ii.serial_number WHEN ? THEN ? ...
-		//
-		// The second CASE block needs its own set of values if I use ? placeholders again!
-		//
-		// Correct approach: duplicating the [sn, status] pairs in the values slice is required if I repeat the placeholders.
-
-		// Let's reconstruct values to match exactly:
-		// 1. First CASE: [sn, stat, sn, stat...]
-		// 2. Second CASE: [sn, stat, sn, stat...]
-		// 3. update_at
-		// 4. event_id
-		// 5. IN clause: [sn, sn...]
-
-		finalValues := []interface{}{}
-
-		// 1. First CASE
-		for _, item := range batch {
-			status := item.Status
-			if history, ok := groupingDevices[item.SerialNumber]; ok && len(history) > 0 {
-				status = history[len(history)-1].Status
-			}
-			finalValues = append(finalValues, item.SerialNumber, status)
-		}
-
-		// 2. Second CASE (same values)
-		for _, item := range batch {
-			status := item.Status
-			if history, ok := groupingDevices[item.SerialNumber]; ok && len(history) > 0 {
-				status = history[len(history)-1].Status
-			}
-			finalValues = append(finalValues, item.SerialNumber, status)
-		}
-
-		finalValues = append(finalValues, req.UpdateAt, req.EventID)
-		for _, sn := range serialNumbers {
-			finalValues = append(finalValues, sn)
-		}
-
-		if err != nil {
-			// If construction failed before exec? No, strict strings.Join
-		}
-
-		res, err = db.Exec(query, finalValues...)
 		if err != nil {
 			return totalAffectedRows, err
 		}
