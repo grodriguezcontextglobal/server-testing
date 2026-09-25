@@ -10,7 +10,16 @@ transacciones** en vez de que todo el dinero caiga en la cuenta de la plataforma
 
 ---
 
-## 1. Lo que YA existe (y es más de lo que parece)
+## 1. Lo que YA existe — trabajo adelantado a propósito
+
+**No es código olvidado ni muerto: se adelantó deliberadamente.** Hoy todo está
+conectado a la cuenta principal de Stripe y estas rutas **no se usan**, pero se
+construyeron pensando justo en este momento — que cada cliente acabe cobrando en
+su propia cuenta de comerciante.
+
+Queda dicho aquí porque el estado «vivo pero sin usar» se malinterpreta solo:
+quien audite rutas dentro de unos meses vería tres endpoints sin tráfico y
+podría darlos por sobrantes. **No lo son.**
 
 La mitad de la incorporación está construida:
 
@@ -21,6 +30,17 @@ La mitad de la incorporación está construida:
 | Sesión de componentes embebidos | `controller/stripe.js:118` `stripeAccountSession` |
 | Rutas | `routes/stripe.js:68,71,74` — `/accounts`, `/account_link`, `/account_sessions` |
 | Modelo | `models/StripeConnectedAccount.js` |
+
+> ⚠️ **Pero «sin usar» no es «inofensivo».** Las tres rutas llevan `optionalJWT`
+> (`routes/stripe.js:68,71,74`), que deja pasar la petición sin sesión. Así que
+> hoy **cualquiera puede llamar a `POST /api/stripe/accounts`** y crear cuentas
+> conectadas reales bajo nuestra plataforma, sin autenticarse.
+>
+> No mueve dinero, pero ensucia la cuenta con objetos que alguien tendrá que
+> limpiar, y es exactamente el tipo de puerta que no conviene dejar abierta
+> mientras no se usa. **Cerrarlas es independiente del resto de la tarea** y
+> cuesta una línea por ruta: son de alta de comerciante, no de cobro público, así
+> que no tienen por qué aceptar llamadas anónimas.
 
 Y las cuentas ya se crean con el modelo de control moderno
 (`controller.fees.payer = "application"`, `losses.payments = "application"`,
