@@ -62,7 +62,7 @@ const {
 } = require("../controller/transaction");
 
 //create customer
-router.post("/customer", stripeCustomer);
+router.post("/customer", optionalJWT, stripeCustomer);
 
 //create account
 router.post("/accounts", optionalJWT, stripeAccountCreate);
@@ -94,7 +94,7 @@ router.post(
 );
 
 //create new company customer for subscriptions
-router.post("/new-company-account", companyInformationAccountStripe);
+router.post("/new-company-account", optionalJWT, companyInformationAccountStripe);
 
 //route to create subscription from tiers and make charges monthly/yearly
 router.post("/create-subscriptions", optionalJWT, creatingSubscription);
@@ -252,7 +252,7 @@ router.delete("/remove-duplicate/:id",  optionalJWT, removeDuplicateEntries);
 
 //!new route for transaction model fro new design
 //*saving new transaction
-router.post("/save-transaction", saveTransaction);
+router.post("/save-transaction", optionalJWT, saveTransaction);
 
 //*saving new transaction
 router.post("/save-transaction-admin-dashboard", optionalJWT, saveTransactionAdmin);
