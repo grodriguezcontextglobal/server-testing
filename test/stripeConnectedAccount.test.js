@@ -42,15 +42,16 @@ test('una compañía sin el campo, o con el campo vacío, cae al caso null', () 
 });
 
 test('un valor a medias NO produce una cabecera inválida', () => {
-  // Cadena vacía, un objeto guardado entero por error, un undefined
-  // serializado. Todos tienen que cobrar en la cuenta madre, nunca provocar una
-  // llamada con una cabecera que Stripe rechace.
+  // Cadena vacía, un undefined serializado, un identificador de otro tipo, un
+  // objeto sin `id`. Todos tienen que cobrar en la cuenta madre, nunca provocar
+  // una llamada con una cabecera que Stripe rechace.
   const casos = [
     { test: '' },
-    { test: { id: 'acct_123' } },
     { test: 'undefined' },
     { test: 'cus_123' },
     { test: 12345 },
+    { test: { login_links: {} } },
+    { test: { id: 'cus_123' } },
   ];
   for (const stripe_connected_account of casos) {
     assert.equal(
@@ -59,6 +60,42 @@ test('un valor a medias NO produce una cabecera inválida', () => {
       `deberia caer a null: ${JSON.stringify(stripe_connected_account)}`
     );
   }
+});
+
+test('la forma REAL de producción resuelve: el objeto entero de accounts.create', () => {
+  // Lo que el dashboard guarda hoy, copiado de una compañía real. Si esto no
+  // resolviera, la cuenta conectada existiria y no se usaria nunca -- que es
+  // exactamente el fallo que tenia la primera version de este helper.
+  const company = {
+    stripe_connected_account: {
+      test: {
+        id: 'acct_1U3wd6JNGnMoHT28',
+        login_links: { object: 'list', data: [], has_more: false, total_count: 0 },
+      },
+      live: null,
+    },
+  };
+
+  assert.equal(
+    resolveConnectedAccountId(company, { mode: 'test' }),
+    'acct_1U3wd6JNGnMoHT28'
+  );
+  assert.equal(
+    resolveConnectedAccountId(company, { mode: 'live' }),
+    null,
+    'esa compania no tiene cuenta en produccion: cobra la cuenta madre'
+  );
+});
+
+test('las dos formas conviven y resuelven igual', () => {
+  const objeto = { stripe_connected_account: { test: { id: 'acct_X' } } };
+  const cadena = { stripe_connected_account: { test: 'acct_X' } };
+
+  assert.equal(
+    resolveConnectedAccountId(objeto, { mode: 'test' }),
+    resolveConnectedAccountId(cadena, { mode: 'test' }),
+    'normalizar en la lectura evita migrar datos y coordinar un despliegue con el frontend'
+  );
 });
 
 /* ---------------------------------------------------------------- *
