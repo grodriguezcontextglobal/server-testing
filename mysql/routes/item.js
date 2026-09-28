@@ -79,9 +79,9 @@ router.post("/warehouse-items", validateJWT, consultingItemInWarehouseTable);
 // más abajo. Ese catch-all captura cualquier POST de un solo segmento, y hoy ya
 // deja sin efecto a catorce rutas registradas después que él —entre ellas
 // /inventory-query y /inventory-pagination—, que acaban en `deleteItem`.
-router.post("/inventory-page", validateJWT, getInventoryPage);
-router.post("/inventory-facets", validateJWT, getInventoryFacets);
-router.get("/serial-suggest", validateJWT, suggestSerials);
+router.post("/inventory-page", validateJWT, checkTokenVersion, getInventoryPage);
+router.post("/inventory-facets", validateJWT, checkTokenVersion, getInventoryFacets);
+router.get("/serial-suggest", validateJWT, checkTokenVersion, suggestSerials);
 
 // Export del inventario completo, en cola: responde 202 + jobId y el fichero se
 // recoge por `GET /api/jobs/owned/:jobId`. Mismo cuerpo que /inventory-page sin
@@ -96,7 +96,10 @@ router.post("/inventory-export", validateJWT, checkTokenVersion, postInventoryEx
 router.post("/bulk-item-from-spreadsheet", validateJWT, checkTokenVersion, postInventoryImport);
 
 //check table
-router.post("/items_information", consultingItemTable);
+// Devuelve el inventario de la compañía. Antes iba sin token y filtraba por el
+// NOMBRE de la compañía tomado del body; ahora exige JWT y usa el company_id
+// verificado. Queda obsoleta a favor de /inventory-page.
+router.post("/items_information", validateJWT, checkTokenVersion, consultingItemTable);
 
 //check inventory current state by query
 router.post("/current-inventory", consultingInventoryCurrentState);
@@ -127,8 +130,22 @@ router.post("/edit-item", validateJWT, checkTokenVersion, authorizePermission("i
 router.post("/item-out-warehouse", validateJWT, checkTokenVersion, authorizePermission("inventory", "update"), updateItemInWarehouseAfterBeingAddedToEvent);
 
 //updateItemInWarehouseAfterBeingAddedToEvent
-//delete item (catch-all POST /:id — must stay authenticated; scope enforced in the controller)
-router.post("/:id", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
+// Borrar un ítem. El parámetro está acotado a DÍGITOS a propósito.
+//
+// Sin `(\\d+)` esto captura cualquier POST de un solo segmento y deja sin efecto
+// a las catorce rutas registradas después —comprobado recorriendo el stack del
+// router—, que acaban todas en `deleteItem`. Once tenían gemelo vivo en otro
+// prefijo (/api/db_company, /api/db_event) y por eso nada parecía roto; tres no:
+// /consulting-row-item-assigned-event, /inventory-pagination y /retrieve-item-data.
+//
+// Y había un filo peor que el enrutado: `deleteItem` lee item_id y company_id
+// del BODY e ignora `req.params.id`, así que cualquier petición a una de esas
+// rutas que llevara los dos campos borraba ese ítem.
+//
+// El handler no usa el parámetro; esta ruta es un duplicado de /delete-item.
+// Se puede borrar del todo cuando las métricas confirmen que nadie llama a la
+// forma numérica.
+router.post("/:id(\\d+)", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
 
 //delete item in inventory
 router.post("/delete-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
@@ -176,7 +193,10 @@ router.post(
 );
 
 //company inventory pagination
-router.post("/inventory-pagination", consultingCompanyInventoryWithPagination);
+// OBSOLETA a favor de /inventory-page (arriba), que pagina con allowlist de
+// filtros, hasMore y columnas explícitas. Se le añade el token porque al quitar
+// la sombra del catch-all `/:id` esta ruta vuelve a ser alcanzable.
+router.post("/inventory-pagination", validateJWT, checkTokenVersion, consultingCompanyInventoryWithPagination);
 
 //company inventory based on location and sublocation
 router.post(

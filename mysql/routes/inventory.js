@@ -40,7 +40,16 @@ router.put("/container/:container_item_id", validateJWT, checkTokenVersion, upda
 
 router.post("/check-large-data", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), checkLargeData);
 
-router.post("/update-location-sub-location", updateSubLocation);
+// Renombra una locación o sub-locación y propaga el nombre a item_inv: es una
+// escritura sobre inventario y antes iba sin token. El company_id sale ahora
+// del contexto verificado, no del body.
+router.post(
+  "/update-location-sub-location",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("inventory", "update"),
+  updateSubLocation
+);
 
 //update large data
 router.post("/update-large-data", validateJWT, checkTokenVersion, authorizePermission("inventory", "update"), updateLargeData);

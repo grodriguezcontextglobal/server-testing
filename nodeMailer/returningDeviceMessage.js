@@ -222,12 +222,16 @@ const linkToLoginExistingConsumerMessageHtml = (props, branding) =>
     ],
   });
 
-/** Password reset for an admin-dashboard account. Devitrak's own mail. */
+/**
+ * Password reset for an admin-dashboard account. Devitrak's own mail.
+ * The dashboard posts the URL as `linkToResetPassword`; `link` is kept because
+ * it is what every other chassis template reads.
+ */
 const linkToResetUserPassword = (props) =>
   renderBrandedEmail({
     title: "Reset your password",
     intro: "Please click the button below to reset your password to Devitrak.",
-    cta: { label: "Reset password", href: props.link },
+    cta: { label: "Reset password", href: props.linkToResetPassword ?? props.link },
   });
 
 const newUserInvitationMessageHtml = (props, branding) =>

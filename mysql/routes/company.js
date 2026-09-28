@@ -101,8 +101,13 @@ router.get("/check-company-exists", checkInventoryCompanyExists);
 router.post("/update-content-in-container", updateContentInContainerItem);
 
 //company inventory pagination
+// OBSOLETA a favor de POST /api/db_item/inventory-page. Iba sin token y su
+// handler caía a `WHERE 1=1` con el body vacío, así que paginaba item_inv de
+// TODAS las compañías. El scope ahora lo impone el controlador.
 router.post(
   "/company-inventory-pagination",
+  validateJWT,
+  checkTokenVersion,
   consultingCompanyInventoryWithPagination
 );
 

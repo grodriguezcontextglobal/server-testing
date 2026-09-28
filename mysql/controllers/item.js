@@ -8,6 +8,9 @@ const {
   buildNamedQuery,
   QueryParamError,
 } = require("../queries/inventoryQueryCatalog");
+const {
+  FILTERABLE: FILTERABLE_INVENTORY_COLUMNS,
+} = require("../queries/inventoryPageQuery");
 const { resolveCompanyContext } = require("../helpers/companyContext");
 const {
   processSubLocation,
@@ -652,14 +655,57 @@ const deleteItem = async (request, response) => {
   }
 };
 
+/**
+ * Inventario de la compañía.
+ *
+ * OBSOLETA a favor de `POST /api/db_item/inventory-page`, que pagina y proyecta
+ * columnas. Se mantiene mientras el frontend migra.
+ *
+ * Antes iba SIN TOKEN y filtraba por `company` —el NOMBRE de la compañía, tal
+ * cual venía del body—, así que cualquiera podía volcar el inventario de
+ * cualquier cliente sabiendo cómo se llama. Ahora el `company_id` sale del
+ * contexto verificado y se aplica además el scope del rol.
+ */
 const consultingItemTable = async (request, response) => {
   try {
+    const context = await resolveCompanyContext(request);
+    if (!context.ok) {
+      return response.status(context.status).json({ ok: false, msg: context.msg });
+    }
+
     const connection = getConnection();
-    const query = "SELECT * FROM item_inv WHERE company=?;";
-    const values = [request.body.company];
-    const [result] = await connection.execute(query, values);
+    const scope = buildInventoryScopeFilter(context.access);
+    const where = scope.sql ? `company_id = ? AND ${scope.sql}` : "company_id = ?";
+
+    // TECHO DE FILAS, y deliberadamente NO silencioso.
+    //
+    // Sin él, una compañía con 50.000 ítems produce un array de mysql2 y una
+    // cadena JSON de decenas de MB, y el `JSON.stringify` bloquea el event loop
+    // del worker que atiende la petición: con cuatro procesos, se congela a un
+    // cuarto de los clientes. Truncar en silencio sería peor que el problema
+    // —el cliente creería tener el inventario entero—, así que la respuesta
+    // dice `truncated` y cuántas filas se sirvieron.
+    //
+    // La salida de verdad es `POST /api/db_item/inventory-page`. El techo es
+    // configurable para poder subirlo en caliente si a alguien le corta antes
+    // de migrar.
+    const maxRows = Number(process.env.ITEMS_INFORMATION_MAX_ROWS || 5000);
+    const query = `SELECT * FROM item_inv WHERE ${where} ORDER BY item_id ASC LIMIT ${maxRows + 1};`;
+    const values = [context.companyId, ...scope.params];
+    const [rows] = await connection.execute(query, values);
+
+    const truncated = rows.length > maxRows;
+    const items = truncated ? rows.slice(0, maxRows) : rows;
+    if (truncated) {
+      logger.warn(
+        `items_information truncado: company ${context.companyId} supera ${maxRows} filas; migrar a /inventory-page`
+      );
+    }
+
     return response.status(201).json({
-      items: result,
+      items,
+      truncated,
+      limit: maxRows,
       ok: true,
     });
   } catch (error) {
@@ -1915,8 +1961,27 @@ const getGroupedItemInventory = async (request, response) => {
   }
 };
 
+/**
+ * OBSOLETA a favor de `POST /api/db_item/inventory-page`, que pagina con
+ * allowlist de filtros, `hasMore` y columnas explícitas. Se mantiene mientras el
+ * frontend migra, con dos agujeros cerrados:
+ *
+ *  1. Iba SIN TOKEN y sin filtro de compañía: con el body vacío, `filters`
+ *     caía a `"1=1"` y paginaba `item_inv` de TODAS las compañías. Ahora el
+ *     `company_id` sale del contexto verificado y nunca puede faltar.
+ *  2. Los nombres de columna se concatenaban desde `Object.keys(request.body)`.
+ *     Scopear por compañía NO bastaba para cerrarlo: una clave como
+ *     `"item_id = 1 OR 1"` produce `company_id = ? AND item_id = 1 OR 1 = ?`, y
+ *     como AND liga más fuerte que OR, eso devuelve la tabla entera. Por eso los
+ *     filtros pasan ahora por la misma allowlist que `/inventory-page`.
+ */
 const consultingCompanyInventoryWithPagination = async (request, response) => {
   try {
+    const context = await resolveCompanyContext(request);
+    if (!context.ok) {
+      return response.status(context.status).json({ ok: false, msg: context.msg });
+    }
+
     const connection = getConnection();
 
     // Safe fallback for body
@@ -1927,13 +1992,40 @@ const consultingCompanyInventoryWithPagination = async (request, response) => {
     const { lastItemId, direction = "forward" } = request.query;
     const pageSize = 10;
 
-    // Filter non-undefined keys for WHERE clause
+    // Solo columnas de la allowlist; `company_id` y `company` se ignoran como
+    // filtro porque el scope ya lo impone el contexto verificado.
     const filterKeys = Object.keys(body).filter(
-      (key) => body[key] !== undefined,
+      (key) =>
+        body[key] !== undefined &&
+        key !== "company_id" &&
+        key !== "company" &&
+        FILTERABLE_INVENTORY_COLUMNS.has(key),
     );
+    const rejected = Object.keys(body).filter(
+      (key) =>
+        body[key] !== undefined &&
+        key !== "company_id" &&
+        key !== "company" &&
+        !FILTERABLE_INVENTORY_COLUMNS.has(key),
+    );
+    if (rejected.length > 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: `Unsupported filter(s): ${rejected.join(", ")}`,
+        detail: { allowed: [...FILTERABLE_INVENTORY_COLUMNS].sort() },
+      });
+    }
+
+    const scope = buildInventoryScopeFilter(context.access);
+    const scopeClause = scope.sql ? ` AND ${scope.sql}` : "";
     const filters =
-      filterKeys.map((key) => `${key} = ?`).join(" AND ") || "1=1";
-    const filterValues = filterKeys.map((key) => body[key]);
+      ["company_id = ?", ...filterKeys.map((key) => `\`${key}\` = ?`)].join(" AND ") +
+      scopeClause;
+    const filterValues = [
+      context.companyId,
+      ...filterKeys.map((key) => body[key]),
+      ...scope.params,
+    ];
 
     // Cursor-based condition
     let cursorCondition = "";
@@ -3169,167 +3261,186 @@ function createUpdateLargeData({ runGoWorkerFn = runGoWorker } = {}) {
 }
 const updateLargeData = createUpdateLargeData();
 
-const updateSubLocation = async (req, res) => {
+/** Error con código HTTP, para salir de una transacción sin `return`. */
+const httpError = (statusCode, body) => {
+  const error = new Error(body.message || "Request failed");
+  error.statusCode = statusCode;
+  error.body = body;
+  return error;
+};
+
+/**
+ * Renombra una locación o sub-locación y propaga el nombre nuevo a `item_inv`.
+ *
+ * SON DOS ESCRITURAS Y ANTES NO IBAN EN UNA TRANSACCIÓN: si la segunda fallaba,
+ * la locación quedaba renombrada y los ítems seguían apuntando al nombre viejo
+ * — desaparecían de la locación nueva sin aparecer en ninguna otra.
+ *
+ * Dos detalles del arreglo que no son opcionales:
+ *
+ *  1. `getConnection()` devuelve el POOL, que no expone `beginTransaction`.
+ *     Hace falta una conexión dedicada (`pool.getConnection()`), igual que en
+ *     `containerItemsDetails`.
+ *  2. Los `return res.status(404)` de en medio pasan a ser excepciones con
+ *     `statusCode`, el patrón de `performUpdateLargeData`. Un `return` dentro de
+ *     una transacción abierta devuelve la conexión al pool CON la transacción
+ *     viva: `mysql2` no la deshace al liberarla, se la hereda quien la reciba
+ *     después, y bajo carga eso agota el pool. Ahora hay un solo `catch` que
+ *     hace rollback y un solo `finally` que libera.
+ *
+ * Fábrica para poder inyectar el pool en los tests, como `createUpdateLargeData`.
+ */
+const createUpdateSubLocation = ({
+  connectionFn = getConnection,
+  resolveContextFn = resolveCompanyContext,
+} = {}) => async (req, res) => {
+  const { newName, path, currentIndex } = req.body || {};
+
+  if (
+    !newName ||
+    !Array.isArray(path) ||
+    currentIndex === undefined ||
+    path.length === 0
+  ) {
+    return res.status(400).json({
+      message: "Missing required fields: newName, path (array) and currentIndex",
+      success: false,
+    });
+  }
+
+  // El company_id sale del contexto verificado, no del body: esta ruta iba sin
+  // token y renombraba la estructura de la compañía que dijera el cuerpo.
+  const context = await resolveContextFn(req);
+  if (!context.ok) {
+    return res.status(context.status).json({ ok: false, msg: context.msg });
+  }
+  const declared = (req.body || {}).company_id;
+  if (declared !== undefined && String(declared) !== String(context.companyId)) {
+    return res.status(400).json({
+      ok: false,
+      msg: "Company mismatch between header and body",
+      detail: { header: context.companyId, body: declared },
+    });
+  }
+  const company_id = context.companyId;
+
+  const pool = connectionFn();
+  const connection = await pool.getConnection();
+
   try {
-    const { newName, path, currentIndex, company_id } = req.body;
+    await connection.beginTransaction();
+    let payload;
 
-    // Validate required fields
-    if (
-      !newName ||
-      !Array.isArray(path) ||
-      currentIndex === undefined ||
-      !company_id ||
-      path.length === 0
-    ) {
-      return res.status(400).json({
-        message:
-          "Missing required fields: newName, path (array), currentIndex, and company_id",
-        success: false,
-      });
-    }
-
-    const connection = getConnection();
-
-    // Handle location update (index 0)
     if (currentIndex === 0) {
-      // Update locations table
-      const updateLocationQuery = `
-        UPDATE locations
-        SET location_name = ?
-        WHERE company_id = ? AND location_name = ?
-      `;
+      const [locResult] = await connection.query(
+        `UPDATE locations SET location_name = ? WHERE company_id = ? AND location_name = ?`,
+        [newName, company_id, path[0]],
+      );
 
-      const [locResult] = await connection.query(updateLocationQuery, [
-        newName,
-        company_id,
-        path[0],
-      ]);
+      // Compatibilidad: item_inv.location guarda el nombre, no el id.
+      await connection.query(
+        `UPDATE item_inv SET location = ? WHERE company_id = ? AND location = ?`,
+        [newName, company_id, path[0]],
+      );
 
-      // Backward compatibility: Update item_inv.location (string)
-      const updateItemInvQuery = `
-        UPDATE item_inv
-        SET location = ?
-        WHERE company_id = ? AND location = ?
-      `;
-      await connection.query(updateItemInvQuery, [
-        newName,
-        company_id,
-        path[0],
-      ]);
-
-      return res.status(200).json({
+      payload = {
         affectedRows: locResult.affectedRows,
         message: "Location updated successfully",
         ok: true,
-      });
-    }
-
-    // Handle sub_location update (index > 0)
-    // For relational structure, we need to find the specific sub_location record and update its name
-    // The 'path' array represents the hierarchy: [Location, Sub1, Sub2, ...]
-
-    // 1. Find the location_id
-    const [locations] = await connection.query(
-      "SELECT location_id FROM locations WHERE company_id = ? AND location_name = ?",
-      [company_id, path[0]],
-    );
-
-    if (locations.length === 0) {
-      return res.status(404).json({ message: "Location not found", ok: false });
-    }
-    const locationId = locations[0].location_id;
-
-    // 2. Traverse the hierarchy to find the target sub_location_id
-    // path: ["Building A", "Floor 3", "Room 101"]
-    // currentIndex: 2 (updating "Room 101" to newName)
-    // We need to find the ID of "Room 101" which is a child of "Floor 3", which is a child of "Building A"
-
-    let currentParentId = null;
-    let targetSubLocationId = null;
-
-    // Iterate up to the target index
-    for (let i = 1; i <= currentIndex; i++) {
-      const nameToFind = path[i];
-
-      let query =
-        "SELECT sub_location_id FROM sub_locations WHERE location_id = ? AND name = ?";
-      const params = [locationId, nameToFind];
-
-      if (currentParentId === null) {
-        query += " AND parent_id IS NULL";
-      } else {
-        query += " AND parent_id = ?";
-        params.push(currentParentId);
-      }
-
-      const [subs] = await connection.query(query, params);
-
-      if (subs.length === 0) {
-        // If we can't find the path in relational table, we might need to fallback to JSON update or fail
-        // For now, let's assume migration has run and fail if not found
-        return res.status(404).json({
-          message: `Sub-location segment '${nameToFind}' not found in relational structure`,
-          ok: false,
-        });
-      }
-
-      currentParentId = subs[0].sub_location_id;
-      if (i === currentIndex) {
-        targetSubLocationId = currentParentId;
-      }
-    }
-
-    if (targetSubLocationId) {
-      // Update the sub_locations table
-      await connection.query(
-        "UPDATE sub_locations SET name = ? WHERE sub_location_id = ?",
-        [newName, targetSubLocationId],
+      };
+    } else {
+      const [locations] = await connection.query(
+        "SELECT location_id FROM locations WHERE company_id = ? AND location_name = ?",
+        [company_id, path[0]],
       );
+      if (locations.length === 0) {
+        throw httpError(404, { message: "Location not found", ok: false });
+      }
+      const locationId = locations[0].location_id;
+
+      let currentParentId = null;
+      let targetSubLocationId = null;
+
+      for (let i = 1; i <= currentIndex; i++) {
+        const nameToFind = path[i];
+        let query =
+          "SELECT sub_location_id FROM sub_locations WHERE location_id = ? AND name = ?";
+        const params = [locationId, nameToFind];
+
+        if (currentParentId === null) {
+          query += " AND parent_id IS NULL";
+        } else {
+          query += " AND parent_id = ?";
+          params.push(currentParentId);
+        }
+
+        const [subs] = await connection.query(query, params);
+        if (subs.length === 0) {
+          throw httpError(404, {
+            message: `Sub-location segment '${nameToFind}' not found in relational structure`,
+            ok: false,
+          });
+        }
+
+        currentParentId = subs[0].sub_location_id;
+        if (i === currentIndex) targetSubLocationId = currentParentId;
+      }
+
+      if (targetSubLocationId) {
+        await connection.query(
+          "UPDATE sub_locations SET name = ? WHERE sub_location_id = ?",
+          [newName, targetSubLocationId],
+        );
+      }
+
+      const updateIndex = currentIndex - 1;
+      const pathConditions = path
+        .slice(1)
+        .map(
+          (_, index) =>
+            `JSON_UNQUOTE(JSON_EXTRACT(sub_location, '$[${index}]')) = ?`,
+        )
+        .join(" AND ");
+
+      const [updateResult] = await connection.query(
+        `UPDATE item_inv
+         SET sub_location = JSON_SET(sub_location, '$[${updateIndex}]', CAST(? AS JSON))
+         WHERE company_id = ?
+         AND location = ?
+         ${pathConditions ? "AND " + pathConditions : ""}`,
+        [JSON.stringify(newName), company_id, path[0], ...path.slice(1)],
+      );
+
+      payload = {
+        affectedRows: updateResult.affectedRows,
+        message: "Sub location updated successfully",
+        ok: true,
+      };
     }
 
-    // Maintain Backward Compatibility: Update JSON in item_inv
-    // This logic mimics the original JSON update behavior
-    const updateIndex = currentIndex - 1;
-    const pathConditions = path
-      .slice(1)
-      .map(
-        (_, index) =>
-          `JSON_UNQUOTE(JSON_EXTRACT(sub_location, '$[${index}]')) = ?`,
-      )
-      .join(" AND ");
-
-    const updateQuery = `
-      UPDATE item_inv
-      SET sub_location = JSON_SET(
-        sub_location,
-        '$[${updateIndex}]',
-        CAST(? AS JSON)
-      )
-      WHERE company_id = ? 
-      AND location = ?
-      ${pathConditions ? "AND " + pathConditions : ""}`;
-
-    const [updateResult] = await connection.query(updateQuery, [
-      JSON.stringify(newName),
-      company_id,
-      path[0],
-      ...path.slice(1),
-    ]);
-
-    return res.status(200).json({
-      affectedRows: updateResult.affectedRows,
-      message: "Sub location updated successfully",
-      ok: true,
-    });
+    await connection.commit();
+    return res.status(200).json(payload);
   } catch (error) {
+    await connection.rollback().catch((rollbackError) => {
+      logger.error("updateSubLocation rollback failed:", rollbackError.message);
+    });
+
+    if (error.statusCode) {
+      return res.status(error.statusCode).json(error.body);
+    }
+
     logger.error("Error updating sub location:", error);
     return res.status(500).json({
       error: error.message,
       message: "Internal server error while updating sub location",
       ok: false,
     });
+  } finally {
+    connection.release();
   }
 };
+
+const updateSubLocation = createUpdateSubLocation();
 
 const getInventoryHierarchyWithTypes = async (request, response) => {
   try {
@@ -4156,4 +4267,5 @@ module.exports = {
   updateItemsBasedOnSerialNumber,
   updateLargeData,
   updateSubLocation,
+  createUpdateSubLocation,
 };
