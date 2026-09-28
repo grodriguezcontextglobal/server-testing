@@ -56,7 +56,9 @@ const createSubLocationPath = async (req, res) => {
 };
 
 const getLocationPathsTree = async (req, res) => {
-  const company_id = req.params.id;
+  // See getCompanyLocationTree: the route names this :company_id for
+  // readCompanyId, with :id kept as a fallback.
+  const company_id = req.params.company_id ?? req.params.id;
 
   if (!company_id) {
     return res.status(400).json({ ok: false, msg: "company_id is required" });
@@ -202,4 +204,111 @@ const getLocationPathsTree = async (req, res) => {
   }
 };
 
-module.exports = { createSubLocationPath, getLocationPathsTree };
+/**
+ * Delete a registered sub-location path (and any of its descendant paths) for
+ * a company/location. Identity is the composite (company_id, location_id,
+ * path_key) — sub-location paths have no standalone id in the tree responses.
+ *
+ * Refuses (409) if any inventory item still lives in the target path or a
+ * descendant, so an accidental non-empty delete can't orphan devices. The
+ * frontend already only offers this on empty nodes; this is defense-in-depth.
+ */
+const deleteSubLocationPath = async (req, res) => {
+  const { company_id, location_id, sub_location_path } = req.body;
+
+  if (!company_id) {
+    return res.status(400).json({ ok: false, msg: "company_id is required" });
+  }
+  if (!location_id) {
+    return res.status(400).json({ ok: false, msg: "location_id is required" });
+  }
+  if (!Array.isArray(sub_location_path) || sub_location_path.length === 0) {
+    return res
+      .status(400)
+      .json({ ok: false, msg: "sub_location_path must be a non-empty array" });
+  }
+
+  const segments = sub_location_path
+    .map((s) => String(s).trim())
+    .filter(Boolean);
+  if (segments.length === 0) {
+    return res.status(400).json({
+      ok: false,
+      msg: "sub_location_path must contain at least one non-empty segment",
+    });
+  }
+
+  const pathKey = segments.join(" > ");
+  // Escape LIKE wildcards in the prefix so a segment containing % or _ can't
+  // widen the match. Uses '|' as the ESCAPE char (no backslash quoting needed).
+  const escapeLike = (s) => s.replace(/[|%_]/g, (c) => `|${c}`);
+  const descendantPattern = `${escapeLike(pathKey)} > %`;
+
+  const connection = getConnection();
+
+  try {
+    // Guard: refuse if any item lives in this sub-location or a descendant.
+    const [inventoryRows] = await connection.execute(
+      `SELECT JSON_UNQUOTE(sub_location) AS sub_location_json
+         FROM item_inv
+        WHERE company_id = ? AND location_id = ?`,
+      [company_id, location_id]
+    );
+
+    const hasInventory = inventoryRows.some((row) => {
+      let parsed;
+      try {
+        parsed = JSON.parse(row.sub_location_json);
+      } catch {
+        return false;
+      }
+      if (!Array.isArray(parsed)) return false;
+      const rowKey = parsed
+        .map((s) => String(s).trim())
+        .filter(Boolean)
+        .join(" > ");
+      return rowKey === pathKey || rowKey.startsWith(`${pathKey} > `);
+    });
+
+    if (hasInventory) {
+      return res.status(409).json({
+        ok: false,
+        msg: "Cannot delete a sub-location that still contains inventory. Move or remove the items first.",
+      });
+    }
+
+    // Delete the path itself and every descendant path (the whole subtree).
+    const [result] = await connection.execute(
+      `DELETE FROM company_sub_location_paths
+        WHERE company_id = ?
+          AND location_id = ?
+          AND (path_key = ? OR path_key LIKE ? ESCAPE '|')`,
+      [company_id, location_id, pathKey, descendantPattern]
+    );
+
+    if (result.affectedRows === 0) {
+      return res
+        .status(404)
+        .json({ ok: false, msg: "Sub-location path not found" });
+    }
+
+    logger.info(
+      `Sub-location path deleted: company=${company_id} location=${location_id} path="${pathKey}" (${result.affectedRows} row(s))`
+    );
+
+    return res.status(200).json({
+      ok: true,
+      msg: "Sub-location deleted successfully",
+      deleted: result.affectedRows,
+    });
+  } catch (error) {
+    logger.error("deleteSubLocationPath error:", error);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+
+module.exports = {
+  createSubLocationPath,
+  getLocationPathsTree,
+  deleteSubLocationPath,
+};
