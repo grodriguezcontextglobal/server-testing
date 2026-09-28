@@ -306,6 +306,14 @@ const runChecks = async (env) => {
       env.DB.prepare(
         "INSERT INTO checks (component, at, observed, latency_ms, detail) VALUES (?, ?, ?, ?, ?)"
       ).bind(check.key, at, observed.status, observed.latencyMs, observed.detail),
+      // Agregado diario, en la misma tanda: dos numeros por componente y dia.
+      // Es lo que permite que la pagina no tenga que recorrer el historial.
+      env.DB.prepare(
+        `INSERT INTO daily_uptime (component, day, ok, total) VALUES (?, ?, ?, 1)
+         ON CONFLICT(component, day) DO UPDATE SET
+           ok = daily_uptime.ok + excluded.ok,
+           total = daily_uptime.total + 1`
+      ).bind(check.key, at.slice(0, 10), observed.status === "down" ? 0 : 1),
       env.DB.prepare(
         `INSERT INTO component_state (component, status, failures, since, updated_at)
          VALUES (?, ?, ?, ?, ?)
@@ -338,8 +346,20 @@ const runChecks = async (env) => {
 
   // Poda: el historial que se publica son 90 días, y sin esto la tabla crece sin
   // techo a 1.440 filas por componente y día.
-  const cutoff = new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString();
-  await env.DB.prepare("DELETE FROM checks WHERE at < ?").bind(cutoff).run();
+  //
+  // UNA VEZ AL DÍA, NO EN CADA RONDA, y esto no es una optimización: es la causa
+  // de una caída real. Este DELETE recorre la tabla entera, así que ejecutarlo
+  // cada minuto eran ~8.900 filas leídas × 1.440 rondas ≈ 12,8 millones al día,
+  // contra el límite gratuito de 5 millones de D1. El 2026-09-28 la cuota se
+  // agotó a las 10:14 UTC y el vigilante se quedó mudo el resto del día — sin
+  // avisar a nadie, porque el que avisa es él.
+  //
+  // A las 03:0x UTC, que es la franja más tranquila y no compite con nada.
+  const now = new Date();
+  if (now.getUTCHours() === 3 && now.getUTCMinutes() < 2) {
+    const cutoff = new Date(Date.now() - HISTORY_DAYS * 86_400_000).toISOString();
+    await env.DB.prepare("DELETE FROM checks WHERE at < ?").bind(cutoff).run();
+  }
 };
 
 /* ------------------------------------------------------------------ *
@@ -393,11 +413,12 @@ const buildSnapshot = async (env) => {
   ).all();
   const byComponent = new Map((states.results || []).map((row) => [row.component, row]));
 
-  const since = new Date(Date.now() - 90 * 86_400_000).toISOString();
+  // Del agregado diario, no del historial crudo: 90 filas por componente en vez
+  // de ~259.000. Ver el comentario de `daily_uptime` en schema.sql.
+  const since = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
   const uptime = await env.DB.prepare(
-    `SELECT component,
-            ROUND(100.0 * SUM(CASE WHEN observed = 'down' THEN 0 ELSE 1 END) / COUNT(*), 2) AS pct
-       FROM checks WHERE at >= ? GROUP BY component`
+    `SELECT component, ROUND(100.0 * SUM(ok) / SUM(total), 2) AS pct
+       FROM daily_uptime WHERE day >= ? AND total > 0 GROUP BY component`
   )
     .bind(since)
     .all();
@@ -973,6 +994,23 @@ export default {
   },
 
   async fetch(request, env) {
+    try {
+      return await route(request, env);
+    } catch (error) {
+      // Sin esto, una excepción se convierte en el error 1101 de Cloudflare: una
+      // página blanca sin una sola pista, ni en la respuesta ni en los logs.
+      // Para un vigilante eso es lo peor que puede pasarle — el unico sitio al
+      // que alguien mira cuando algo falla, fallando en silencio.
+      console.log(`fetch failed on ${new URL(request.url).pathname}: ${error && error.stack ? error.stack : error}`);
+      return new Response(
+        JSON.stringify({ ok: false, msg: "status worker error", detail: String(error && error.message ? error.message : error) }),
+        { status: 500, headers: { "content-type": "application/json" } }
+      );
+    }
+  },
+};
+
+const route = async (request, env) => {
     const url = new URL(request.url);
 
     if (url.pathname === "/ingest") {
@@ -1016,9 +1054,39 @@ export default {
       });
     }
 
-    // Sondeo del propio Worker, para poder vigilar al vigilante.
+    // Sondeo del propio Worker — y ahora dice algo.
+    //
+    // Antes devolvia "ok" mientras el proceso respondiera, que es exactamente lo
+    // que fallo el 2026-09-28: el cron llevaba horas muerto por cuota agotada,
+    // `/healthz` seguia en verde, y nadie se entero. Un vigilante sin vigilante
+    // es un vigilante hasta que se rompe.
+    //
+    // Ahora informa de la EDAD del ultimo sondeo y responde 503 si es mayor que
+    // la ventana de caducidad, para que Kuma pueda avisarnos desde dentro de la
+    // VM -- que es la unica pieza que sigue viva si esto se cae.
     if (url.pathname === "/healthz") {
-      return new Response("ok", { headers: { "content-type": "text/plain" } });
+      // No puede lanzar: si la base no contesta -- cuota agotada, por ejemplo --
+      // eso ES el diagnostico, y tiene que salir como 503 legible y no como una
+      // excepcion. Esta ruta es la que alguien sondea para saber si confiar en
+      // el resto de la pagina.
+      try {
+        const last = await env.DB.prepare("SELECT MAX(updated_at) AS at FROM component_state").first();
+        const ageMs = last && last.at ? Date.now() - Date.parse(last.at) : null;
+        const stale = ageMs === null || ageMs > STALE_AFTER_MS;
+        return Response.json(
+          {
+            ok: !stale,
+            lastCheckAt: last ? last.at : null,
+            ageSeconds: ageMs === null ? null : Math.round(ageMs / 1000),
+          },
+          { status: stale ? 503 : 200, headers: { "cache-control": "no-store" } }
+        );
+      } catch (error) {
+        return Response.json(
+          { ok: false, reason: "state unreadable", detail: String(error && error.message ? error.message : error) },
+          { status: 503, headers: { "cache-control": "no-store" } }
+        );
+      }
     }
 
     if (url.pathname === "/") {
@@ -1033,5 +1101,4 @@ export default {
     }
 
     return new Response("Not found", { status: 404 });
-  },
 };

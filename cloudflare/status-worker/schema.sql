@@ -74,3 +74,21 @@ CREATE TABLE IF NOT EXISTS incident_updates (
   message     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_incident_updates ON incident_updates (incident_id, at);
+
+-- Indice para la poda diaria: sin el, el DELETE por fecha recorre la tabla.
+CREATE INDEX IF NOT EXISTS idx_checks_at ON checks (at);
+
+-- Agregado diario de disponibilidad.
+--
+-- POR QUE EXISTE: el porcentaje se calculaba recorriendo `checks` entero en CADA
+-- visita a la pagina. Con 90 dias de historial eso son ~259.000 filas leidas por
+-- carga, y la cuota gratuita de D1 son 5 millones al dia. Este agregado lo deja
+-- en 90 filas por componente: dos escrituras minusculas por ronda a cambio de no
+-- volver a escanear nada.
+CREATE TABLE IF NOT EXISTS daily_uptime (
+  component TEXT NOT NULL,
+  day       TEXT NOT NULL,   -- YYYY-MM-DD en UTC
+  ok        INTEGER NOT NULL DEFAULT 0,
+  total     INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (component, day)
+);
