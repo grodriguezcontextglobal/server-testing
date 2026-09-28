@@ -14,6 +14,17 @@ const logger = require("../helpers/logger");
 // runStripeMutation para que un Stripe caído falle rápido.
 const { stripe, runStripeMutation } = require("../helpers/stripeClient");
 
+// A qué cuenta se cobra. Ver helpers/stripeConnectedAccount.js: mientras
+// ninguna compañía tenga `acct_` guardado esto no cambia nada, y el día que lo
+// tenga es un cambio de dato y no de código.
+const Company = require("../models/Company");
+const { resolveCompanyContext } = require("../helpers/companyContext");
+const {
+  persistConnectedAccountId,
+  resolveConnectedAccountId,
+  stripeOptionsFor,
+} = require("../helpers/stripeConnectedAccount");
+
 const stripeCustomer = async (request, response) => {
   const { email, name, phoneNumber } = request.body;
   try {
@@ -76,6 +87,24 @@ const stripeAccountCreate = async (request, response) => {
         },
       },
     });
+
+    // Guardar el mapa compañía → acct_. Hasta ahora el identificador se
+    // devolvía al cliente y NO se guardaba en ningún sitio, así que el servidor
+    // no sabía qué cuenta conectada era de quién — y sin ese mapa no se puede
+    // enrutar un cobro sin fiarse de lo que mande el cliente, que en rutas
+    // públicas sería cobrar contra la cuenta de cualquiera.
+    //
+    // Es best-effort a propósito: la cuenta YA existe en Stripe en este punto.
+    // Si no se puede guardar, se registra y se devuelve igual, porque un error
+    // aquí haría que el cliente creara una segunda cuenta.
+    const companyId = resolveCompanyContext(request);
+    if (companyId) {
+      await persistConnectedAccountId(Company, companyId, account.id, { logger });
+    } else {
+      logger.warn(
+        `stripe: cuenta conectada ${account.id} creada sin contexto de compañía; no se guardó el mapa`
+      );
+    }
 
     return response.status(201).json({
       ok: true,
@@ -276,6 +305,16 @@ const stripePaymentIntent = async (request, response) => {
   const idempotencyKey = request.idempotencyKey;
 
   try {
+    // A qué cuenta se cobra, resuelto en el SERVIDOR desde la compañía. Hoy
+    // devuelve `{}` para todo el mundo —ninguna compañía tiene `acct_` guardado
+    // todavía— así que el comportamiento es idéntico al de siempre: la cuenta
+    // madre. Ver helpers/stripeConnectedAccount.js.
+    const { options: accountOptions, companyId } = await resolveStripeContextForRequest(request, {
+      Company,
+      resolveCompany: resolveCompanyContext,
+      logger,
+    });
+
     const paymentIntent = await stripe.paymentIntents.create(
       {
         amount: total,
@@ -283,8 +322,12 @@ const stripePaymentIntent = async (request, response) => {
         payment_method_types: ["card"],
         capture_method: "manual",
         receipt_email: customerEmail,
+        // Mientras TODOS los cobros caigan en la misma cuenta, esto es lo único
+        // que permite saber después de quién era cada uno. Barato, y sirve
+        // aunque las cuentas conectadas no se activen nunca.
+        ...(companyId ? { metadata: { company_id: String(companyId) } } : {}),
       },
-      idempotencyKey ? { idempotencyKey } : undefined
+      { ...(idempotencyKey ? { idempotencyKey } : {}), ...accountOptions }
     );
 
     logger.info("public_payment_intent_created", {
