@@ -71,6 +71,81 @@ nssm status DevitrakServer                # SERVICE_RUNNING
 
 ---
 
+## ⚠️ `NODE_ENV` must be set on every Node service
+
+`NODE_ENV` is **not** in the repo `.env` on the production box, and until recently was not in
+`.env.example` either. Node does not default it to anything, so on that box
+`process.env.NODE_ENV` is `undefined` and every `=== "production"` check in the codebase is
+false. Nothing crashes and nothing logs a warning — the box simply runs as though it were a
+developer laptop.
+
+What is actually gated on it today (verified against `main`):
+
+| Site | With `NODE_ENV` unset |
+|------|----------------------|
+| `controller/admin.js:64` | session cookie set **without** `secure`, so the browser will replay the JWT cookie over plain `http://` |
+| `controller/admin.js:874` | same flag on the logout cookie |
+| `helpers/logger.js:68` | winston keeps the **Console** transport, duplicating every log line into `logs/service-out.log` |
+
+The cookie flag is the one that matters. IIS terminates TLS in front of Node, so the browser
+leg is HTTPS regardless; what is missing is the browser's own refusal to ever send that cookie
+to an `http://` URL. `httpOnly` and `sameSite: "strict"` are set either way.
+
+### Setting it
+
+`AppEnvironmentExtra` **replaces the whole extra-env block** (the same trap as the
+`GO_WORKER_PORT` outage above), so `NODE_ENV=production` has to be **added to the existing
+list, not set on its own** — dropping `PM2_HOME` puts the service straight into
+`SERVICE_PAUSED`. PowerShell **as Administrator**:
+
+```powershell
+# Read the current value FIRST and build the new line from it, rather than copying this file:
+nssm get DevitrakServer AppEnvironmentExtra
+nssm get DevitrakEmailWorker AppEnvironmentExtra
+nssm get DevitrakBulkWorker AppEnvironmentExtra
+nssm get DevitrakDeleteWorker AppEnvironmentExtra
+```
+
+Assuming the services are on the group form documented above, that gives:
+
+```powershell
+nssm set DevitrakServer AppEnvironmentExtra PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2 GO_WORKER_EXTERNAL=true QUEUE_EXCLUDE_GROUPS=dedicated NODE_ENV=production
+nssm set DevitrakEmailWorker AppEnvironmentExtra QUEUE_GROUP=email NODE_ENV=production
+nssm set DevitrakBulkWorker AppEnvironmentExtra QUEUE_GROUP=bulk QUEUE_POLL_MS=300 NODE_ENV=production
+nssm set DevitrakDeleteWorker AppEnvironmentExtra QUEUE_GROUP=delete QUEUE_POLL_MS=300 NODE_ENV=production
+
+nssm restart DevitrakServer
+nssm restart DevitrakEmailWorker
+nssm restart DevitrakBulkWorker
+nssm restart DevitrakDeleteWorker
+```
+
+**All four Node services**, not just the API: `queue\standalone.js` requires
+`helpers/logger.js` at line 22, so the console-transport branch applies to each worker
+independently. `DevitrakGoWorker` is Go and ignores `NODE_ENV` entirely.
+
+> Setting it in the repo `.env` instead would also work for the cookie and the logger, since
+> `dotenv` fills variables that are absent from the real environment. Do it on the services
+> anyway: the rule this file already draws from the `GO_WORKER_PORT` outage is that anything
+> the service depends on is set **explicitly on the service**, never inherited from a `.env`
+> that a `git pull` or a stray edit can change underneath it.
+
+### Verifying
+
+```powershell
+# Per pm2 process, straight from the running cluster (not from a fresh shell):
+node .\node_modules\pm2\bin\pm2 env 0 | Select-String NODE_ENV
+
+# And that the console transport is gone: after a restart, logs\service-out.log
+# should show pm2's own banner but no application log lines — those go to logs\*.log.
+```
+
+A browser check for the cookie flag: sign in against `db.devitrak.net` and confirm the
+`token` cookie shows **Secure** in DevTools → Application → Cookies. Before this change it
+shows only `HttpOnly`.
+
+---
+
 ## Deploy (update production code)
 
 Replaces the old `pm2-pull-run` script from `package.json`. From PowerShell **as Administrator**:
@@ -844,8 +919,12 @@ nssm set DevitrakServer AppStderr "C:\Users\CGAdmin\Documents\Github\server-test
 nssm set DevitrakServer AppExit Default Restart
 nssm set DevitrakServer AppRestartDelay 3000
 
-# 4. MANDATORY! Without this, pm2-runtime crashes on Windows (see gotcha above)
-nssm set DevitrakServer AppEnvironmentExtra PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2
+# 4. MANDATORY! Without this, pm2-runtime crashes on Windows (see gotcha above).
+#    NODE_ENV belongs on the same line: this call REPLACES the whole extra-env
+#    block, and without it the box runs in development mode (see the NODE_ENV
+#    section above). Add back GO_WORKER_EXTERNAL / QUEUE_EXCLUDE_GROUPS here too
+#    if the split services are in play.
+nssm set DevitrakServer AppEnvironmentExtra PM2_HOME=C:\Users\CGAdmin\Documents\Github\server-testing\.pm2 NODE_ENV=production
 
 # 5. Start and verify
 nssm start DevitrakServer
@@ -877,7 +956,7 @@ And `https://db.devitrak.net` must respond on its own.
 | Service          | `DevitrakServer` (nssm, auto-start on boot)                              |
 | Runs             | `node node_modules\pm2\bin\pm2-runtime start index.js -i max`            |
 | Working dir      | `C:\Users\CGAdmin\Documents\Github\server-testing`                       |
-| Required var     | `PM2_HOME=...\server-testing\.pm2`                                        |
+| Required vars    | `PM2_HOME=...\server-testing\.pm2` and `NODE_ENV=production`              |
 | Node port        | `34001`                                                                  |
 | IIS              | reverse proxy `db.devitrak.net:80/443` → `localhost:34001` (`public/web.config`) |
 | node.exe         | `C:\Program Files\nodejs\node.exe`                                        |
