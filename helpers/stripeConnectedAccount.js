@@ -57,16 +57,31 @@ const resolveConnectedAccountId = (company, { mode = stripeModeFromKey() } = {})
   if (!company) return null;
 
   const stored = company.stripe_connected_account;
-  if (!stored) return null;
+  if (!stored || typeof stored !== 'object') return null;
 
-  const value = typeof stored === 'object' ? stored[mode] : null;
-  if (typeof value !== 'string') return null;
+  const value = stored[mode];
 
-  const trimmed = value.trim();
-  // Solo un identificador de cuenta con la forma correcta. Un valor a medias
-  // —cadena vacía, un objeto que alguien guardó entero, un `undefined`
-  // serializado— tiene que caer al caso `null` y cobrar en la cuenta madre,
-  // nunca provocar una llamada con una cabecera inválida.
+  // DOS FORMAS, porque en producción conviven.
+  //
+  // El dashboard guarda el objeto ENTERO que devuelve `accounts.create`:
+  //   { test: { id: "acct_1U3...", login_links: {...} }, live: null }
+  // y aquí se escribe la forma limpia, la cadena. Normalizar en la LECTURA es
+  // lo que permite arreglar el formato sin migrar nada ni coordinar un despliegue
+  // con el frontend: los dos datos resuelven al mismo identificador.
+  const raw =
+    typeof value === 'string'
+      ? value
+      : value && typeof value === 'object' && typeof value.id === 'string'
+        ? value.id
+        : null;
+
+  if (typeof raw !== 'string') return null;
+
+  const trimmed = raw.trim();
+  // Solo un identificador con la forma correcta. Un valor a medias —cadena
+  // vacía, un `undefined` serializado, un `cus_`, un objeto sin `id`— tiene que
+  // caer al caso `null` y cobrar en la cuenta madre, nunca provocar una llamada
+  // con una cabecera inválida.
   return trimmed.startsWith('acct_') ? trimmed : null;
 };
 
