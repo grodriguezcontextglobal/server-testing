@@ -473,3 +473,115 @@ for (const [modulePath, method, routePath] of INVENTORY_READ_ROUTES) {
     );
   });
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE G — borrado de sub-locación (mysql/routes/location.js, 2026-09-22)
+//
+// POST /sub-location-path/delete borra la ruta y TODO su subárbol de
+// company_sub_location_paths. Se añadió sin validateJWT, leyendo company_id del
+// body: cualquiera que alcanzara el host podía borrar el árbol de sub-locaciones
+// de cualquier compañía. El hermano destructivo del mismo fichero
+// (POST /locations/:id -> deleteLocation) sigue anónimo y ya provocó el borrado
+// de location_id = 1 en producción durante una auditoría; ese queda aparte.
+//
+// authorizePermission no reemplaza el company_id del body: lo comprueba contra
+// company_staff para el llamante autenticado, así que deja de ser una afirmación
+// que se acepta tal cual.
+// ════════════════════════════════════════════════════════════════════════════
+
+test('mysql/routes/location.js: POST /sub-location-path/delete lleva validateJWT, checkTokenVersion y authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/location');
+  const handlers = getRouteHandlers(router, 'POST', '/sub-location-path/delete');
+  assert.ok(handlers !== null, 'La ruta POST /sub-location-path/delete debe existir');
+  assert.ok(
+    handlers.includes(validateJWT),
+    'validateJWT debe estar en la cadena de POST /sub-location-path/delete',
+  );
+  assert.ok(
+    handlers.includes(checkTokenVersion),
+    'checkTokenVersion debe estar en la cadena de POST /sub-location-path/delete',
+  );
+  assert.ok(
+    hasAuthzPermission(handlers),
+    'authorizePermission debe estar en la cadena de POST /sub-location-path/delete',
+  );
+});
+
+test('mysql/routes/location.js: POST /locations/:id lleva validateJWT, checkTokenVersion y authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/location');
+  const handlers = getRouteHandlers(router, 'POST', '/locations/:id');
+  assert.ok(handlers !== null, 'La ruta POST /locations/:id debe existir');
+  assert.ok(
+    handlers.includes(validateJWT),
+    'validateJWT debe estar en la cadena de POST /locations/:id',
+  );
+  assert.ok(
+    handlers.includes(checkTokenVersion),
+    'checkTokenVersion debe estar en la cadena de POST /locations/:id',
+  );
+  assert.ok(
+    hasAuthzPermission(handlers),
+    'authorizePermission debe estar en la cadena de POST /locations/:id',
+  );
+});
+
+test('mysql/routes/location.js: POST /sub-location-path lleva validateJWT, checkTokenVersion y authorizePermission', () => {
+  const router = loadRouter('../mysql/routes/location');
+  const handlers = getRouteHandlers(router, 'POST', '/sub-location-path');
+  assert.ok(handlers !== null, 'La ruta POST /sub-location-path debe existir');
+  assert.ok(
+    handlers.includes(validateJWT),
+    'validateJWT debe estar en la cadena de POST /sub-location-path',
+  );
+  assert.ok(
+    handlers.includes(checkTokenVersion),
+    'checkTokenVersion debe estar en la cadena de POST /sub-location-path',
+  );
+  assert.ok(
+    hasAuthzPermission(handlers),
+    'authorizePermission debe estar en la cadena de POST /sub-location-path',
+  );
+});
+
+// Resto de mysql/routes/location.js (2026-09-23). Las dos escrituras que
+// quedaban anónimas y los dos árboles de lectura, que exponían la estructura
+// interna de locaciones de cualquier inquilino a quien la pidiera.
+const LOCATION_ROUTES = [
+  ['POST',   '/locations'],
+  ['PUT',    '/locations/:id/inventory'],
+  ['GET',    '/companies/:company_id/locations/tree'],
+  ['GET',    '/companies/:company_id/location-paths-tree'],
+];
+
+for (const [method, routePath] of LOCATION_ROUTES) {
+  test(`mysql/routes/location.js: ${method} ${routePath} lleva validateJWT, checkTokenVersion y authorizePermission`, () => {
+    const router = loadRouter('../mysql/routes/location');
+    const handlers = getRouteHandlers(router, method, routePath);
+    assert.ok(handlers !== null, `La ruta ${method} ${routePath} debe existir`);
+    assert.ok(
+      handlers.includes(validateJWT),
+      `validateJWT debe estar en la cadena de ${method} ${routePath}`,
+    );
+    assert.ok(
+      handlers.includes(checkTokenVersion),
+      `checkTokenVersion debe estar en la cadena de ${method} ${routePath}`,
+    );
+    assert.ok(
+      hasAuthzPermission(handlers),
+      `authorizePermission debe estar en la cadena de ${method} ${routePath}`,
+    );
+  });
+}
+
+// Red de seguridad: que no vuelva a aparecer una ruta anónima en este fichero.
+// Las dos lecturas /companies/:id/locations llevan validateJWT y comprueban el
+// scope dentro del controlador (getStaffCompanyAccess), así que se exige token
+// pero no authorizePermission.
+test('mysql/routes/location.js: ninguna ruta queda sin validateJWT', () => {
+  const router = loadRouter('../mysql/routes/location');
+  const anonymous = router.stack
+    .filter((l) => l.route)
+    .filter((l) => !l.route.stack.map((x) => x.handle).includes(validateJWT))
+    .map((l) => `${Object.keys(l.route.methods)[0].toUpperCase()} ${l.route.path}`);
+  assert.deepEqual(anonymous, [], `rutas anónimas: ${anonymous.join(', ')}`);
+});

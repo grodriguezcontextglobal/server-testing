@@ -39,6 +39,42 @@ const mulberry32 = (a) => () => {
 const rand = mulberry32(20260715);
 const pick = (arr) => arr[Math.floor(rand() * arr.length)];
 
+/**
+ * A birthdate consistent with the student's grade.
+ *
+ * US convention: a student is about (grade + 5) at the start of the school
+ * year and turns (grade + 6) during it. Seniors flagged as adults have to
+ * already be 18; everyone else has to still read as a minor, and grades 6-7
+ * land under 13 so the COPPA branch of the consent flow gets real data.
+ *
+ * Ages are relative to the day the seed runs rather than a frozen date, so a
+ * demo restored months from now still shows plausible ages. The PRNG still
+ * picks which day of the year each birthday falls on, so a re-run against a
+ * fresh database still generates the same people.
+ */
+function dobForGrade(grade, isAdult) {
+  const age = isAdult ? 18 : Math.min(Number(grade) + 5, 17);
+  const d = new Date();
+  d.setUTCFullYear(d.getUTCFullYear() - age);
+  // Step back up to a year so birthdays spread across the calendar. Going
+  // earlier only makes them older within the same year of age, so nobody tips
+  // into the next bracket and flips minor/adult.
+  d.setUTCDate(d.getUTCDate() - Math.floor(rand() * 365));
+  return d.toISOString().slice(0, 10);
+}
+
+/** Add date_of_birth when the schema predates it — MySQL has no ADD COLUMN IF NOT EXISTS. */
+async function ensureDateOfBirthColumn(conn) {
+  const [[{ n }]] = await conn.query(
+    `SELECT COUNT(*) AS n FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'members_info'
+        AND COLUMN_NAME = 'date_of_birth'`);
+  if (n === 0) {
+    await conn.query("ALTER TABLE members_info ADD COLUMN date_of_birth DATE NULL");
+    console.log("✓ members_info.date_of_birth column added");
+  } else console.log("• members_info.date_of_birth column already present");
+}
+
 const FIRST = ["Aiden","Sofia","Liam","Emma","Noah","Olivia","Ethan","Ava","Lucas","Isabella","Mason","Mia","Logan","Charlotte","James","Amelia","Elijah","Harper","Ben","Evelyn","Alex","Abigail","Daniel","Emily","Matteo","Ella","Jayden","Scarlett","Sebastian","Grace","Jack","Chloe","Owen","Camila","Gabriel","Aria","Carter","Nora","Julian","Zoey","Leo","Riley","Isaac","Layla","Miles","Lily","Nathan","Hazel","Diego","Maya","Kai","Ruby","Omar","Nadia","Marcus","Priya","Andre","Keiko","Rafael","Amara","Tomas","Ingrid","Jamal","Yuki","Mateo","Fatima","Cole","Sasha","Finn","Leila"];
 const LAST = ["Anderson","Martinez","Thompson","Nguyen","Garcia","Kim","Patel","Johnson","Lee","Hernandez","Brown","Chen","Davis","Lopez","Wilson","Park","Moore","Singh","Taylor","Ramirez","Thomas","Wang","White","Torres","Harris","Ali","Clark","Flores","Lewis","Yamamoto","Walker","Rivera","Hall","Cruz","Young","Reyes","King","Morales","Wright","Ortiz","Scott","Gutierrez","Green","Chavez","Adams","Mendoza","Baker","Vargas","Nelson","Castillo","Carter","Jimenez","Mitchell","Rossi","Perez","Okafor","Roberts","Haddad","Turner","Kowalski"];
 const STREETS = ["Cedar Ave","Alder St","Birch Rd","Spruce Ln","Maple Ct","Willow Way","Oak Dr","Elm Pl","Laurel St","Madrone Ave","Redwood Blvd","Juniper Ct","Sycamore Ln","Bayview Dr","Hilltop Rd"];
@@ -163,6 +199,7 @@ const sqlDate = (d) => d.toISOString().slice(0, 19).replace("T", " ");
   }
 
   // ── students ─────────────────────────────────────────────────────────────
+  await ensureDateOfBirthColumn(conn);
   const [[{ n: existingStudents }]] = await conn.query(
     "SELECT COUNT(*) AS n FROM members_info WHERE company_id=?", [CIDs]);
   if (existingStudents < 100) {
@@ -194,6 +231,7 @@ const sqlDate = (d) => d.toISOString().slice(0, 19).replace("T", " ");
             isAdult || missingRep ? null : gLast,
             isAdult || missingRep ? null : `${gFirst}.${gLast}.${extId}@example.com`.toLowerCase(),
             isAdult || missingRep ? null : `(415) 555-${String(1000 + ((extId + 7) % 9000)).padStart(4, "0")}`,
+            dobForGrade(grade, isAdult),
           ]);
           extId++;
         }
@@ -204,12 +242,42 @@ const sqlDate = (d) => d.toISOString().slice(0, 19).replace("T", " ");
       await conn.query(
         `INSERT INTO members_info
           (first_name,last_name,email,phone_number,external_id,address,address_street,address_city,address_state,address_zip,
-           company_id,grade,homeroom,minor,parent_guardian_first_name,parent_guardian_last_name,parent_guardian_email,parent_guardian_phone_number)
-         VALUES ${chunk.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",")}`,
+           company_id,grade,homeroom,minor,parent_guardian_first_name,parent_guardian_last_name,parent_guardian_email,parent_guardian_phone_number,
+           date_of_birth)
+         VALUES ${chunk.map(() => "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").join(",")}`,
         chunk.flat());
     }
     console.log(`✓ ${rows.length} students enrolled (Lincoln 6-8, Roosevelt 9-12)`);
   } else console.log(`• students already enrolled (${existingStudents})`);
+
+  // ── backfill birthdates ──────────────────────────────────────────────────
+  // Earlier runs of this seeder wrote `minor` directly and never set a
+  // birthdate, so every student already in the database reads as an adult to
+  // anything deriving age from date_of_birth. Fill those in from the grade
+  // that's already on the record. Only touches NULLs, so it's safe to re-run
+  // and won't overwrite a birthdate someone entered by hand.
+  const [missingDob] = await conn.query(
+    `SELECT member_id, grade, minor FROM members_info
+      WHERE company_id=? AND date_of_birth IS NULL AND grade IS NOT NULL AND grade <> ''`,
+    [CIDs]);
+  if (missingDob.length) {
+    for (let i = 0; i < missingDob.length; i += 200) {
+      const chunk = missingDob.slice(i, i + 200);
+      // One UPDATE ... CASE per chunk rather than a query per student.
+      const cases = chunk
+        .map(() => "WHEN ? THEN ?")
+        .join(" ");
+      const params = [];
+      chunk.forEach((r) => {
+        params.push(r.member_id, dobForGrade(r.grade, Number(r.minor) === 0));
+      });
+      await conn.query(
+        `UPDATE members_info SET date_of_birth = CASE member_id ${cases} END
+          WHERE member_id IN (${chunk.map(() => "?").join(",")})`,
+        [...params, ...chunk.map((r) => r.member_id)]);
+    }
+    console.log(`✓ ${missingDob.length} student birthdates backfilled from grade`);
+  } else console.log("• all students already have a birthdate");
 
   // ── inventory ────────────────────────────────────────────────────────────
   for (const line of INVENTORY) {
