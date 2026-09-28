@@ -242,3 +242,24 @@ es justo lo que podría abaratar esto. Por eso la tarea 0.1 es la primera.
 
 Tampoco es una evaluación de controles: es un plan de ingeniería basado en lo
 que he visto del repositorio y de producción estas dos semanas.
+
+---
+
+# ⚠️ OBSOLETO EN TRES PUNTOS — leer antes `fedRAMP/CONTRASTE_repo_2026-09-28.md`
+
+Este plan se escribió sobre la estructura del programa **anterior a la reforma de
+2026**. El informe *Devitrak FedRAMP Readiness* (16-sep) lo corrige:
+
+- **No hace falta patrocinador de agencia** para las Clases A, B y C: se
+  autonomina. Solo la D lo exige.
+- **FedRAMP Ready pasó a legado el 28-jul-2026**; la Etapa 4 de este plan ya no
+  existe.
+- **No hay requisito de correr sobre infraestructura certificada** en el ruleset
+  de 2026. Lo que bloquea la VM de Windows es la familia PE (fuego, energía), no
+  la nube. **No re-plataformar por motivos de FedRAMP.**
+
+Y el informe aporta dos vías que este plan no contemplaba: la **exclusión por
+uso de agencia** (inquilino único dentro de la nube de la propia agencia) y que
+**GovRAMP vale como credencial de entrada** a la Clase A.
+
+**La secuencia válida es la del informe.** Lo que sigue queda como registro.
