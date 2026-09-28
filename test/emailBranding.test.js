@@ -575,6 +575,27 @@ test('forceLogoutNotificationHtmlTemplate: a hostile address cannot break out of
   assert.ok(!html.includes('"><script'));
 });
 
+test('linkToResetUserPassword: the button survives the payload the dashboard actually sends', () => {
+  // ForgotPassword.jsx and ResetPasswordLink.jsx post `linkToResetPassword`, not
+  // `link`. The chassis migration read only `link`, so the reset email went out
+  // with no button at all — the platform case above passes `link` and could not
+  // see it. Built through the route's own builder, with the dashboard's payload.
+  const { buildLinkToResetPasswordMessage } = require('../nodeMailer/notifications');
+  const resetUrl = 'https://admin.devitrak.net/reset-password?uid=66a1f0c2e4b0&stamp-time=Mon%20Sep%2028%202026%2014:30:00';
+  const { html } = buildLinkToResetPasswordMessage({
+    adminUser: { firstName: 'Ana', lastName: 'Diaz' },
+    linkToResetPassword: resetUrl,
+    contactInfo: { email: 'ana@bridgespcs.org', company: 'Bridges PCS' },
+  });
+  assert.ok(html.includes(`href="${escapeHtml(resetUrl)}"`), 'the button links to the reset page');
+  assert.ok(html.includes('Reset password'), 'the button label renders');
+});
+
+test('linkToResetUserPassword: still honours `link`, the key every other chassis template reads', () => {
+  const html = linkToResetUserPassword({ link: 'https://admin.devitrak.net/reset' });
+  assert.ok(html.includes('href="https://admin.devitrak.net/reset"'));
+});
+
 test('documentSigningCompletion: the staff and consumer twins share one renderer, differing only in the signer', () => {
   const contract_list = [{ document_name: 'Device liability', date: '8/28/2026' }];
   const staffHtml = documentSigningCompletionMessageHtml(
