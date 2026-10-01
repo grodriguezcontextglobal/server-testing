@@ -133,6 +133,23 @@ test('insertBulkMembers: salta las filas que no cumplen, encola el resto y dice 
   ]);
 });
 
+test('insertBulkMembers: el 202 de un import grande también dice qué filas se saltaron', async () => {
+  const { createInsertBulkMembers } = loadController(async () => [SCHEMA]);
+  const controller = createInsertBulkMembers({
+    enqueueFn: async () => ({ id: 'JOB-BIG' }),
+    extractContextFn: () => ({}),
+    waitForJobOutcomeFn: async (job) => ({ outcome: 'timeout', job }),
+  });
+  const res = mockRes();
+  await controller({ body: { rows: [
+    { first_name: 'Ad', last_name: 'Ok', email: 'a@b.com', phone_number: '555' },
+    { first_name: 'Ad', last_name: 'NoEmail', phone_number: '555' },
+  ] } }, res);
+  assert.equal(res.statusCode, 202);
+  assert.equal(res.payload.skipped, 1);
+  assert.deepEqual(res.payload.contact_skipped.map((s) => s.row), [1]);
+});
+
 test('insertBulkMembers: 400 si ninguna fila cumple la regla (no encola)', async () => {
   const { createInsertBulkMembers } = loadController(async () => [SCHEMA]);
   let enqueued = 0;

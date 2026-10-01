@@ -474,6 +474,8 @@ function createInsertBulkMembers({
     return response.status(202).json({
       ok: true,
       jobId: job.id,
+      skipped,
+      contact_skipped,
       msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
     });
   } catch (error) {
