@@ -255,6 +255,11 @@ const deleteEvent = async (request, response) => {
     // });
   } catch (error) {
     console.error("Error:", error.message);
+    // Sin respuesta aquí, el middleware de timeout contesta 408 y tapa el error real
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
   }
 };
 
@@ -284,6 +289,12 @@ const insertingStaffInEvent = async (request, response) => {
     // });
   } catch (error) {
     console.error("Error:", error.message);
+    // Sin respuesta aquí, el middleware de timeout contesta 408 y tapa el error real
+    const status = error.code === "ER_DUP_ENTRY" ? 409 : 500;
+    response.status(status).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
   }
 };
 
