@@ -88,6 +88,14 @@ const createGetStaffActivityLogs = ({
       staff_member_id,
       action,
       target_model,
+      target_id,
+      event_id,
+      serial_number,
+      item_id,
+      member_id,
+      consumer,
+      actor_type,
+      source,
       start_date,
       end_date,
       limit = 50,
@@ -157,6 +165,17 @@ const createGetStaffActivityLogs = ({
     if (staff_member_id) query.staff_member_id = staff_member_id;
     if (action) query.action = action;
     if (target_model) query.target_model = target_model;
+    if (target_id) query.target_id = String(target_id);
+    if (actor_type) query.actor_type = String(actor_type);
+    if (source) query.source = String(source);
+    // Filtros del audit trail por evento y por dispositivo (ask del dashboard
+    // 2026-10-05 §5.4). Un dispositivo se busca por serial o por item_id: las
+    // acciones de SQL traen uno u otro según la ruta.
+    if (event_id) query["context.event_id"] = String(event_id);
+    if (serial_number) query["context.serial_numbers"] = String(serial_number);
+    if (item_id) query["context.item_ids"] = String(item_id);
+    if (member_id) query["context.member_id"] = String(member_id);
+    if (consumer) query["context.consumer"] = String(consumer);
 
     if (start_date || end_date) {
       query.timestamp = {};
@@ -221,6 +240,7 @@ const createRegisterStaffActivity = ({
       target_model,
       target_id,
       details,
+      source: "client",
       ip_address: req.ip,
       device_info: req.headers["user-agent"],
     });

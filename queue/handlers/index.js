@@ -65,6 +65,25 @@ register(
   createStaffActivityLogHandler((payload) => StaffActivityLog.create(payload), {
     findCompaniesByName: (name, limit) =>
       Company.find({ company_name: name }, { _id: 1 }).limit(limit).lean(),
+    // Rutas /api/db_*: solo traen el id SQL de la compañía (s-company-lq).
+    findCompanyNameBySqlId: async (sqlId) => {
+      const getConnection = require("../../mysql/database/config");
+      const [[row]] = await getConnection().execute(
+        "SELECT company_name FROM company_info WHERE company_id = ? LIMIT 1",
+        [String(sqlId)]
+      );
+      return row?.company_name ?? null;
+    },
+    // Sin ninguna cabecera de compañía: las compañías activas del autor, con el
+    // mismo criterio de membresía que el reporte (findMemberships).
+    findActorCompanyIds: async (uid) => {
+      const AdminUser = require("../../models/AdminUser");
+      const { findMemberships } = require("../../controller/staffActivityLog");
+      const user = await AdminUser.findById(uid).select("email").lean();
+      if (!user) return [];
+      const companies = await findMemberships({ id: uid, email: user.email });
+      return companies.map((c) => String(c._id));
+    },
   })
 );
 // payload incluye el _id pre-generado en controller/errorLog.js (para que el

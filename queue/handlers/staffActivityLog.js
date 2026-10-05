@@ -22,7 +22,10 @@ const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
  * un registro bajo el nombre viejo sigue siendo legible (el reporte consulta
  * ambas claves), uno vacío no aparece en ningún lado.
  */
-function createStaffActivityLogHandler(createFn, { findCompaniesByName } = {}) {
+function createStaffActivityLogHandler(
+  createFn,
+  { findCompaniesByName, findCompanyNameBySqlId, findActorCompanyIds } = {}
+) {
   // Cache por proceso. La clave es el nombre: si la compañía se renombra
   // después, el _id al que apunta esa entrada sigue siendo el correcto.
   const idByName = new Map();
@@ -48,11 +51,46 @@ function createStaffActivityLogHandler(createFn, { findCompaniesByName } = {}) {
     return (await resolveCompanyId(value)) || value;
   };
 
+  // Las rutas /api/db_* solo traen el id SQL (header s-company-lq). Se pasa
+  // por el NOMBRE, que es lo único que comparten company_info y Company, y de
+  // ahí al mismo normalize de arriba. Si falla, company_sql_id queda guardado.
+  const companyFromSqlId = async (sqlId) => {
+    if (!sqlId || !findCompanyNameBySqlId) return null;
+    try {
+      const name = await findCompanyNameBySqlId(sqlId);
+      if (!name) return null;
+      const id = await normalize(name);
+      return OBJECT_ID.test(String(id)) ? id : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Último recurso, para las rutas a las que el dashboard no manda ninguna
+  // cabecera de compañía (/api/receiver, /api/event, /api/document…): si el
+  // autor pertenece a UNA sola compañía, es esa. Con varias no se adivina —un
+  // registro mal atribuido es peor que uno sin compañía— y queda en null.
+  const companyFromActor = async (uid) => {
+    if (!uid || !findActorCompanyIds) return null;
+    try {
+      const ids = await findActorCompanyIds(uid);
+      return ids?.length === 1 ? String(ids[0]) : null;
+    } catch {
+      return null;
+    }
+  };
+
   return async function staffActivityLogHandler(payload) {
-    const doc = await createFn({
-      ...payload,
-      company_id: await normalize(payload?.company_id),
-    });
+    let company_id = await normalize(payload?.company_id);
+    if (!company_id && payload?.company_sql_id) {
+      company_id = await companyFromSqlId(payload.company_sql_id);
+    }
+    let details = payload?.details;
+    if (!company_id && payload?.source === 'server' && payload?.staff_member_id) {
+      company_id = await companyFromActor(payload.staff_member_id);
+      if (company_id) details = { ...(details || {}), company_inferred: true };
+    }
+    const doc = await createFn({ ...payload, details, company_id: company_id ?? null });
     return { id: doc.id };
   };
 }
