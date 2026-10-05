@@ -101,6 +101,59 @@ test('login y force-logout (registros de los controladores, sin ruta)', () => {
   );
 });
 
+// ── Casos que el dry-run contra producción sacó mal (2026-10-05) ────────────
+
+test('plurales correctos: companies, categories', () => {
+  assert.equal(describeEntry({ action: 'DELETE', target_model: 'Company', context: { count: 2 } }).summary, 'Deleted 2 companies');
+  assert.equal(describeEntry({ action: 'UPDATE', target_model: 'Category', context: { count: 3 } }).summary, 'Updated 3 categories');
+});
+
+test('editar la propia cuenta se dice así, no "staff account #<id>"', () => {
+  const out = describeEntry({
+    action: 'UPDATE', target_model: 'AdminUser', target_id: 'U1', staff_member_id: 'U1',
+  });
+  assert.equal(out.summary, 'Updated their own profile');
+});
+
+test('los registros viejos de Stripe (CREATE StripeLink) se corrigen a OPEN StripeAccount', () => {
+  const out = describeEntry({
+    action: 'CREATE', target_model: 'StripeLink', details: route('POST /api/stripe/account_sessions'),
+  });
+  assert.equal(out.action, 'OPEN');
+  assert.equal(out.target_model, 'StripeAccount');
+});
+
+test('cerrar la propia sesión en otro sitio, y la de otro con su email', () => {
+  assert.equal(
+    describeEntry({ action: 'FORCE_LOGOUT', target_model: 'AdminUser', target_id: 'U1', staff_member_id: 'U1' }).summary,
+    'Ended their own active session elsewhere',
+  );
+  assert.equal(
+    describeEntry({ action: 'FORCE_LOGOUT', target_model: 'AdminUser', target_id: 'U2', staff_member_id: 'U1', target_label: 'bob@x.com' }).summary,
+    'Ended the active session of bob@x.com',
+  );
+});
+
+test('registro viejo sobre un staff: el id sale del body guardado', () => {
+  const out = describeEntry({
+    action: 'UPDATE', target_model: 'Staff', details: { request: { staff_id: 207, role: 'admin' } },
+  });
+  assert.equal(out.summary, 'Updated staff member #207');
+});
+
+test('una compañía (o evento, documento) se nombra por su nombre, no por su id', () => {
+  const out = describeEntry({
+    action: 'UPDATE', target_model: 'Company', target_id: '6a7d9ef2',
+    details: { request: { company_name: 'Test Company 8/13/2023', phone: '1' } },
+  });
+  assert.equal(out.summary, 'Updated company Test Company 8/13/2023');
+});
+
+test('una acción sobre un staff member dice cuál', () => {
+  const out = describeEntry({ action: 'UPDATE', target_model: 'Staff', target_label: 'bob@x.com' });
+  assert.equal(out.summary, 'Updated staff member bob@x.com');
+});
+
 test('una acción sin clasificar se describe igual y lo dice', () => {
   const out = describeEntry({
     action: 'CREATE',

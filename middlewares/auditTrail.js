@@ -91,9 +91,21 @@ function collectIds(body) {
 function countOf(body) {
   if (Array.isArray(body)) return body.length;
   let max = 0;
-  for (const v of Object.values(body || {})) if (Array.isArray(v)) max = Math.max(max, v.length);
+  // Solo las listas que SON el objeto de la acción (items, devices, rows…). Un
+  // array cualquiera del body (la lista de empleados de una compañía, sus
+  // locaciones) no dice cuántas cosas se tocaron: contarlo daba "Updated 2
+  // companies" al editar una sola.
+  for (const k of COUNT_KEYS) {
+    const v = body?.[k];
+    if (Array.isArray(v)) max = Math.max(max, v.length);
+  }
   return max || undefined;
 }
+
+const COUNT_KEYS = [
+  'items', 'devices', 'deviceList', 'serials', 'serial_numbers', 'serialNumbers',
+  'receivers', 'rows', 'list', 'data', 'members', 'item_ids', 'itemIds', 'ids', 'units',
+];
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RECIPIENT_KEYS = ['to', 'email', 'emails', 'recipient', 'recipients', 'consumer', 'member', 'staff', 'user'];
@@ -220,6 +232,24 @@ function resolveActor(req, verifyToken) {
 const header = (req, name) =>
   (typeof req.header === 'function' ? req.header(name) : req.headers?.[name]) || null;
 
+// Cuando la acción es SOBRE una persona (staff, member, consumidor), su id y su
+// email en el body son el objetivo, no "en nombre de quién". targetIdOf los
+// descarta en general; aquí se recuperan solo para estos modelos.
+const PERSON_MODELS = new Set(['Staff', 'AdminUser', 'Member', 'Consumer', 'User', 'Guardian']);
+const PERSON_ID_KEYS = ['staff_id', 'staffId', 'member_id', 'memberId', 'consumer_id', 'consumerId', 'user_id', 'userId'];
+const PERSON_EMAIL_KEYS = ['email', 'staff_email', 'staffEmail', 'member_email', 'user'];
+
+function personTarget(req, spec) {
+  if (!PERSON_MODELS.has(spec.target_model)) return {};
+  const b = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const idKey = PERSON_ID_KEYS.find((k) => isPrimitive(b[k]));
+  const emailKey = PERSON_EMAIL_KEYS.find((k) => typeof b[k] === 'string' && EMAIL.test(b[k].trim()));
+  return {
+    id: idKey ? String(b[idKey]) : undefined,
+    label: emailKey ? b[emailKey].trim() : undefined,
+  };
+}
+
 function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
   const actor = resolveActor(req, verifyToken);
   const resBody = res.locals?.auditResponseBody;
@@ -228,7 +258,10 @@ function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
     const consumer = consumerFromResponse(resBody);
     if (consumer) context.consumer = consumer;
   }
+  const person = personTarget(req, spec);
+  const hasParamId = Object.values(req.params || {}).some(isPrimitive);
   return {
+    ...(person.label ? { target_label: person.label } : {}),
     staff_member_id: actor,
     actor_type: actor ? 'staff' : 'anonymous',
     // Mongo id de la compañía si viene; si no, el id SQL que manda el dashboard
@@ -237,7 +270,7 @@ function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
     company_sql_id: header(req, 's-company-lq'),
     action: spec.action,
     target_model: spec.target_model,
-    target_id: targetIdOf(req, resBody),
+    target_id: (!hasParamId && person.id) || targetIdOf(req, resBody),
     context,
     details: {
       route: `${req.method} ${resolveRoute(req)}`,

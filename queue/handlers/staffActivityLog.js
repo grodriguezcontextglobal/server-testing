@@ -115,15 +115,33 @@ function createStaffActivityLogHandler(
 
     const context = await enrichContext({ ...payload, details }, { findReceiver, findPoolEntry });
     const actor = payload?.actor || (await actorSnapshot(payload?.staff_member_id));
-    const entry = { ...payload, details, context, company_id: company_id ?? null };
-    const { summary, target_label, action } = describeEntry(entry);
+    // Una acción sobre OTRA cuenta de staff (force-logout, editar a otro): su
+    // email dice sobre quién mejor que el ObjectId.
+    let targetLabel = payload?.target_label;
+    if (
+      !targetLabel &&
+      payload?.target_model === 'AdminUser' &&
+      payload?.target_id &&
+      String(payload.target_id) !== String(payload?.staff_member_id || '')
+    ) {
+      targetLabel = (await actorSnapshot(payload.target_id))?.email;
+    }
+    const entry = {
+      ...payload,
+      details,
+      context,
+      company_id: company_id ?? null,
+      ...(targetLabel ? { target_label: targetLabel } : {}),
+    };
+    const { summary, target_label, action, target_model } = describeEntry(entry);
 
     const doc = await createFn({
       ...entry,
       ...(action ? { action } : {}),
+      ...(target_model ? { target_model } : {}),
       ...(actor ? { actor } : {}),
       summary: payload?.summary || summary,
-      target_label: payload?.target_label || target_label,
+      target_label: entry.target_label || target_label,
     });
     return { id: doc.id };
   };

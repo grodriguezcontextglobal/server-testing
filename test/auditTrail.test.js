@@ -24,6 +24,8 @@ const REGISTRY = {
   'POST /api/fails': { action: 'UPDATE', target_model: 'Inventory' },
   'PATCH /api/receiver/receiver-update/:id': { action: 'UPDATE', target_model: 'Device' },
   'POST /api/stripe/account_sessions': { action: 'OPEN', target_model: 'StripeAccount' },
+  'PATCH /api/db_staff/company-staff': { action: 'UPDATE', target_model: 'Staff' },
+  'PATCH /api/company/update-company/:id': { action: 'UPDATE', target_model: 'Company' },
 };
 
 let logged;
@@ -68,6 +70,14 @@ before(async () => {
   const stripe = express.Router();
   stripe.post('/account_sessions', (req, res) => res.status(201).json({ client_secret: 'x' }));
   app.use('/api/stripe', stripe);
+
+  const sqlStaff = express.Router();
+  sqlStaff.patch('/company-staff', (req, res) => res.json({ ok: true }));
+  app.use('/api/db_staff', sqlStaff);
+
+  const company = express.Router();
+  company.patch('/update-company/:id', (req, res) => res.json({ ok: true }));
+  app.use('/api/company', company);
 
   // Una escritura que nadie clasificó: tiene que registrarse igual.
   const mailer = express.Router();
@@ -251,6 +261,24 @@ test('el id del objeto sale del body si no está en la URL ni en la respuesta (e
     body: { connectedAccountId: 'acct_1U3wd6JNGnMoHT28' },
   });
   assert.equal(logged.at(-1).target_id, 'acct_1U3wd6JNGnMoHT28');
+});
+
+test('una acción sobre un staff member lo identifica (staff_id y email del body)', async () => {
+  await call('PATCH', '/api/db_staff/company-staff', {
+    headers: { 'x-token': token },
+    body: { staff_id: 207, email: 'bob@x.com', company_id: 137, role: 'admin' },
+  });
+  const e = logged.at(-1);
+  assert.equal(e.target_id, '207');
+  assert.equal(e.target_label, 'bob@x.com');
+});
+
+test('un array cualquiera del body no se cuenta como "N objetos" (Updated 2 companies)', async () => {
+  await call('PATCH', '/api/company/update-company/C1', {
+    headers: { 'x-token': token },
+    body: { company_name: 'Acme', employees: [{ user: 'a@x.com' }, { user: 'b@x.com' }] },
+  });
+  assert.equal(logged.at(-1).context.count, undefined);
 });
 
 test('la IP es la del cliente (x-forwarded-for), no la del proxy, y sin puerto', async () => {

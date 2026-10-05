@@ -114,6 +114,14 @@ const routePath = (entry) => String(entry?.details?.route || '').split(' ')[1] |
 const lastSegment = (entry) => routePath(entry).split('/').filter(Boolean).pop() || '';
 const humanize = (slug) => slug.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
 
+/** company → companies, device → devices; el inventario se cuenta en items. */
+function plural(noun, { inventory = 'items' } = {}) {
+  if (noun === 'inventory') return inventory;
+  if (/[^aeiou]y$/.test(noun)) return `${noun.slice(0, -1)}ies`;
+  if (/(s|x|ch|sh)$/.test(noun)) return `${noun}es`;
+  return `${noun}s`;
+}
+
 /** "device SN-1" / "3 devices (SN-1, SN-2, SN-3)" / "5 inventory items". */
 function objectPhrase(entry, noun) {
   const ctx = entry.context || {};
@@ -122,11 +130,15 @@ function objectPhrase(entry, noun) {
   if (serials.length > 1) {
     const shown = serials.slice(0, SHOW_SERIALS).join(', ');
     const more = serials.length > SHOW_SERIALS ? `, +${serials.length - SHOW_SERIALS} more` : '';
-    return `${serials.length} ${noun === 'inventory' ? 'items' : `${noun}s`} (${shown}${more})`;
+    return `${serials.length} ${plural(noun)} (${shown}${more})`;
   }
-  if (ctx.count > 1) return `${ctx.count} ${noun === 'inventory' ? 'inventory items' : `${noun}s`}`;
-  if (entry.target_label) return `${noun} ${entry.target_label}`;
-  if (entry.target_id) return `${noun} #${entry.target_id}`;
+  if (ctx.count > 1) return `${ctx.count} ${plural(noun, { inventory: 'inventory items' })}`;
+  const label =
+    entry.target_label ||
+    (PERSON_MODELS.has(entry.target_model) ? emailIn(entry.details?.request) : nameIn(entry.details?.request));
+  if (label) return `${noun} ${label}`;
+  const id = entry.target_id || (PERSON_MODELS.has(entry.target_model) ? personIdIn(entry.details?.request) : undefined);
+  if (id) return `${noun} #${id}`;
   return noun;
 }
 
@@ -190,10 +202,33 @@ const SPECIAL = [
     },
   },
   {
+    // Registros previos al 2026-10-05 dicen "CREATE StripeLink": se corrigen al
+    // describirlos.
     test: (e) => /\/api\/stripe\/account_(sessions|link)$/.test(routePath(e)),
     describe: (e) => ({
+      action: 'OPEN',
+      target_model: 'StripeAccount',
       summary: `Opened the Stripe payments dashboard${e.target_id ? ` (account ${e.target_id})` : ''}`,
     }),
+  },
+  {
+    // El autor editando su propia cuenta (PATCH /api/admin/profile/:id).
+    test: (e) =>
+      e.target_model === 'AdminUser' &&
+      e.action === 'UPDATE' &&
+      e.target_id &&
+      e.staff_member_id &&
+      String(e.target_id) === String(e.staff_member_id),
+    describe: () => ({ summary: 'Updated their own profile' }),
+  },
+  {
+    // Cerrar la propia sesión abierta en otro sitio (pantalla de login).
+    test: (e) =>
+      e.action === 'FORCE_LOGOUT' &&
+      e.target_id &&
+      e.staff_member_id &&
+      String(e.target_id) === String(e.staff_member_id),
+    describe: () => ({ summary: 'Ended their own active session elsewhere' }),
   },
   {
     // La llama el dashboard sola después de cada acción: se registra, pero se
@@ -203,6 +238,29 @@ const SPECIAL = [
   },
 ];
 
+const PERSON_MODELS = new Set(['Staff', 'AdminUser', 'Member', 'Consumer', 'User', 'Guardian']);
+const emailIn = (req) => {
+  if (!req || typeof req !== 'object') return undefined;
+  const v = ['email', 'staff_email', 'staffEmail', 'member_email', 'user'].map((k) => req[k])
+    .find((x) => typeof x === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x.trim()));
+  return v ? v.trim() : undefined;
+};
+
+// Nombre legible del objeto (compañía, evento, documento…) si el body lo trae.
+const nameIn = (req) => {
+  if (!req || typeof req !== 'object') return undefined;
+  const v = ['company_name', 'event_name', 'document_name', 'title', 'name']
+    .map((k) => req[k]).find((x) => typeof x === 'string' && x.trim());
+  return v ? v.trim().slice(0, 80) : undefined;
+};
+
+const personIdIn = (req) => {
+  if (!req || typeof req !== 'object') return undefined;
+  const v = ['staff_id', 'staffId', 'member_id', 'memberId', 'consumer_id', 'user_id', 'userId']
+    .map((k) => req[k]).find((x) => (typeof x === 'string' && x) || typeof x === 'number');
+  return v !== undefined ? String(v) : undefined;
+};
+
 function describeEntry(entry) {
   const special = SPECIAL.find((s) => s.test(entry));
   const override = special ? special.describe(entry) || {} : {};
@@ -210,14 +268,22 @@ function describeEntry(entry) {
 
   // En login/logout el objeto es la propia cuenta del autor: no hay "sobre qué".
   const selfAction = ['LOGIN', 'LOGOUT'].includes(action);
+  // Registros anteriores a target_label: si la acción es sobre una persona, su
+  // email suele estar en el body guardado.
+  const personEmail = PERSON_MODELS.has(entry.target_model) ? emailIn(entry.details?.request) : undefined;
   const target_label = selfAction ? undefined :
     entry.target_label ||
+    personEmail ||
     (entry.context?.serial_numbers?.length === 1 ? entry.context.serial_numbers[0] : undefined) ||
     entry.context?.consumer ||
     entry.target_id ||
     undefined;
 
-  if (override.summary) return { summary: override.summary, target_label, ...(override.action ? { action } : {}) };
+  const corrections = {
+    ...(override.action ? { action } : {}),
+    ...(override.target_model ? { target_model: override.target_model } : {}),
+  };
+  if (override.summary) return { summary: override.summary, target_label, ...corrections };
 
   const verb = VERB[action] || humanize(String(action || 'Acted on')).toLowerCase();
   const noun = MODEL[entry.target_model] || humanize(String(entry.target_model || 'record')).toLowerCase();
@@ -226,14 +292,14 @@ function describeEntry(entry) {
   if (action === 'LOGIN' || action === 'LOGOUT') {
     summary = verb;
   } else if (action === 'FORCE_LOGOUT') {
-    summary = `${verb} ${entry.context?.consumer || entry.target_label || `staff #${entry.target_id || '?'}`}`;
+    summary = `${verb} ${entry.target_label || entry.context?.consumer || `staff #${entry.target_id || '?'}`}`;
   } else {
     const fromWarehouse = action === 'CHECK_OUT' ? ' from the warehouse' : '';
     summary = `${verb} ${objectPhrase(entry, noun)}${fromWarehouse}${personPhrase(entry, action)}${eventPhrase(entry, action)}`;
   }
   if (entry.details?.inferred) summary += ' (unclassified action)';
 
-  return { summary, target_label, ...(override.action ? { action } : {}) };
+  return { summary, target_label, ...corrections };
 }
 
 module.exports = { describeEntry, VERB, MODEL };
