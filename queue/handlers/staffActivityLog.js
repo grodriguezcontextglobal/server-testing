@@ -1,5 +1,7 @@
 'use strict';
 
+const { describeEntry } = require('../../helpers/auditDescribe');
+
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 
 /**
@@ -24,7 +26,14 @@ const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
  */
 function createStaffActivityLogHandler(
   createFn,
-  { findCompaniesByName, findCompanyNameBySqlId, findActorCompanyIds } = {}
+  {
+    findCompaniesByName,
+    findCompanyNameBySqlId,
+    findActorCompanyIds,
+    findActor,
+    findReceiver,
+    findPoolEntry,
+  } = {}
 ) {
   // Cache por proceso. La clave es el nombre: si la compañía se renombra
   // después, el _id al que apunta esa entrada sigue siendo el correcto.
@@ -80,7 +89,20 @@ function createStaffActivityLogHandler(
     }
   };
 
-  return async function staffActivityLogHandler(payload) {
+  // Quién era el autor, guardado con el registro (ver models/StaffActivityLog.js § actor).
+  const actorSnapshot = async (uid) => {
+    if (!uid || !findActor) return undefined;
+    try {
+      const u = await findActor(uid);
+      if (!u) return undefined;
+      const name = [u.name, u.lastName].filter(Boolean).join(' ').trim();
+      return { ...(name ? { name } : {}), ...(u.email ? { email: u.email } : {}) };
+    } catch {
+      return undefined;
+    }
+  };
+
+  const handler = async function staffActivityLogHandler(payload) {
     let company_id = await normalize(payload?.company_id);
     if (!company_id && payload?.company_sql_id) {
       company_id = await companyFromSqlId(payload.company_sql_id);
@@ -90,9 +112,61 @@ function createStaffActivityLogHandler(
       company_id = await companyFromActor(payload.staff_member_id);
       if (company_id) details = { ...(details || {}), company_inferred: true };
     }
-    const doc = await createFn({ ...payload, details, company_id: company_id ?? null });
+
+    const context = await enrichContext({ ...payload, details }, { findReceiver, findPoolEntry });
+    const actor = payload?.actor || (await actorSnapshot(payload?.staff_member_id));
+    const entry = { ...payload, details, context, company_id: company_id ?? null };
+    const { summary, target_label, action } = describeEntry(entry);
+
+    const doc = await createFn({
+      ...entry,
+      ...(action ? { action } : {}),
+      ...(actor ? { actor } : {}),
+      summary: payload?.summary || summary,
+      target_label: payload?.target_label || target_label,
+    });
     return { id: doc.id };
   };
+  return handler;
 }
 
-module.exports = { createStaffActivityLogHandler };
+const firstString = (v) => (Array.isArray(v) ? v.find((x) => typeof x === 'string' && x) : v);
+const serialOf = (device) =>
+  typeof device === 'string' ? device : device?.serialNumber || device?.serial_number || undefined;
+
+/**
+ * Rutas cuyo request no dice sobre quién ni dónde. receiver-update solo manda
+ * `{ id, device }` y la devolución al pool solo `{ id, activity }`: el
+ * consumidor, el evento y el serial viven en el documento. Se leen aquí, en el
+ * worker, para no cargarle la consulta a la petición. Si falla, se guarda lo
+ * que había: un registro con menos contexto es mejor que ninguno.
+ */
+async function enrichContext(entry, { findReceiver, findPoolEntry }) {
+  const ctx = { ...(entry.context || {}) };
+  const route = String(entry.details?.route || '');
+  try {
+    if (/receiver-update\/:id$/.test(route) && entry.target_id && findReceiver) {
+      const r = await findReceiver(entry.target_id);
+      if (r) {
+        ctx.consumer = ctx.consumer || r.user;
+        ctx.event_name = ctx.event_name || firstString(r.eventSelected);
+        ctx.event_id = ctx.event_id || (r.event_id != null ? String(r.event_id) : undefined);
+        const serial = serialOf(r.device);
+        if (serial && !(ctx.serial_numbers || []).length) ctx.serial_numbers = [serial];
+      }
+    } else if (/receivers-pool-update\/:id$/.test(route) && entry.target_id && findPoolEntry) {
+      const p = await findPoolEntry(entry.target_id);
+      if (p) {
+        ctx.event_name = ctx.event_name || firstString(p.eventSelected);
+        const serial = serialOf(p.device);
+        if (serial && !(ctx.serial_numbers || []).length) ctx.serial_numbers = [serial];
+      }
+    }
+  } catch {
+    // contexto incompleto, no registro perdido
+  }
+  for (const k of Object.keys(ctx)) if (ctx[k] === undefined) delete ctx[k];
+  return Object.keys(ctx).length ? ctx : entry.context;
+}
+
+module.exports = { createStaffActivityLogHandler, enrichContext };

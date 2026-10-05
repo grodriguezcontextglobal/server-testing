@@ -48,6 +48,7 @@ const ACTIVITY_ACTIONS = [
   'RECONCILE',
   'ACCEPT',
   'CLEAR',
+  'OPEN',
 ];
 
 const ACTIVITY_TARGET_MODELS = [
@@ -91,6 +92,7 @@ const ACTIVITY_TARGET_MODELS = [
   'Feedback',
   'Task',
   'Cache',
+  'StripeAccount',
 ];
 
 module.exports = { ACTIVITY_ACTIONS, ACTIVITY_TARGET_MODELS };

@@ -22,6 +22,8 @@ const REGISTRY = {
   'DELETE /api/db_shipment/:shipment_id': { action: 'DELETE', target_model: 'Shipment' },
   'POST /api/db_shipment': { action: 'CREATE', target_model: 'Shipment' },
   'POST /api/fails': { action: 'UPDATE', target_model: 'Inventory' },
+  'PATCH /api/receiver/receiver-update/:id': { action: 'UPDATE', target_model: 'Device' },
+  'POST /api/stripe/account_sessions': { action: 'OPEN', target_model: 'StripeAccount' },
 };
 
 let logged;
@@ -58,7 +60,14 @@ before(async () => {
   const receiver = express.Router();
   receiver.post('/receiver-assignation', (req, res) => res.status(201).json({ ok: true }));
   receiver.post('/receiver-assigned-list', (req, res) => res.json({ ok: true })); // consulta: no auditada
+  // Como en producción: la respuesta trae el consumidor (`user`), el request no.
+  receiver.patch('/receiver-update/:id', (req, res) =>
+    res.status(201).json({ ok: true, id: req.params.id, user: 'ana@x.com', device: req.body.device }));
   app.use('/api/receiver', receiver);
+
+  const stripe = express.Router();
+  stripe.post('/account_sessions', (req, res) => res.status(201).json({ client_secret: 'x' }));
+  app.use('/api/stripe', stripe);
 
   // Una escritura que nadie clasificó: tiene que registrarse igual.
   const mailer = express.Router();
@@ -223,6 +232,33 @@ test('sin token, o con uno inválido, la acción se registra como anónima', asy
     assert.equal(e.staff_member_id, null);
     assert.equal(e.actor_type, 'anonymous');
   }
+});
+
+test('el consumidor sale de la respuesta cuando el request no lo trae (receiver-update)', async () => {
+  await call('PATCH', '/api/receiver/receiver-update/R1', {
+    headers: { 'x-token': token },
+    body: { id: 'R1', device: { serialNumber: 'SN-100006', status: false } },
+  });
+  const e = logged.at(-1);
+  assert.equal(e.target_id, 'R1');
+  assert.equal(e.context.consumer, 'ana@x.com');
+  assert.deepEqual(e.context.serial_numbers, ['SN-100006']);
+});
+
+test('el id del objeto sale del body si no está en la URL ni en la respuesta (el caso de Stripe)', async () => {
+  await call('POST', '/api/stripe/account_sessions', {
+    headers: { 'x-token': token },
+    body: { connectedAccountId: 'acct_1U3wd6JNGnMoHT28' },
+  });
+  assert.equal(logged.at(-1).target_id, 'acct_1U3wd6JNGnMoHT28');
+});
+
+test('la IP es la del cliente (x-forwarded-for), no la del proxy, y sin puerto', async () => {
+  await call('POST', '/api/db_shipment', {
+    headers: { 'x-token': token, 'x-forwarded-for': '200.10.20.30:51234, 172.16.40.2' },
+    body: {},
+  });
+  assert.equal(logged.at(-1).ip_address, '200.10.20.30');
 });
 
 test('el id del objeto creado sale de la respuesta (insertId); la compañía SQL del header', async () => {

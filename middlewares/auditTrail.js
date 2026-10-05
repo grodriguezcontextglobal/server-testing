@@ -163,7 +163,13 @@ function boundedRequest(body) {
   return clean;
 }
 
-/** id del objeto afectado: el de la URL, o el que devolvió la respuesta. */
+// Claves del body que nombran el objeto de la acción (`connectedAccountId`,
+// `receiverId`, `document_id`…). Las de compañía y staff no: dicen en nombre
+// de quién, no sobre qué.
+const ID_KEY = /^(id|_id)$|(_id|Id)$/;
+const NOT_TARGET_KEY = /^(company|staff|admin|user|event)(_id|Id)$|^s(ql)?StaffId$/i;
+
+/** id del objeto afectado: el de la URL, el que devolvió la respuesta o el del body. */
 function targetIdOf(req, resBody) {
   const p = req.params || {};
   const fromParams = Object.values(p).find(isPrimitive);
@@ -171,7 +177,29 @@ function targetIdOf(req, resBody) {
   const r = resBody && typeof resBody === 'object' ? resBody : {};
   const fromRes =
     r.insertId ?? r.id ?? r._id ?? r.memberId ?? r.result?.insertId ?? r.data?.insertId ?? r.data?.id;
-  return isPrimitive(fromRes) ? String(fromRes) : undefined;
+  if (isPrimitive(fromRes)) return String(fromRes);
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const key = Object.keys(body).find((k) => ID_KEY.test(k) && !NOT_TARGET_KEY.test(k) && isPrimitive(body[k]));
+  return key ? String(body[key]) : undefined;
+}
+
+/**
+ * IP del cliente. Detrás del proxy, `req.ip` es la del proxy interno (lo que
+ * se veía: "172.16.40.2:44106"). La del cliente es el primer salto de
+ * x-forwarded-for; se le quita el puerto si viene con él.
+ */
+function clientIp(req) {
+  const fwd = header(req, 'x-forwarded-for');
+  const raw = (fwd ? String(fwd).split(',')[0] : req.ip || '').trim();
+  // IPv4 con puerto ("1.2.3.4:5678") → sin puerto. IPv6 se deja como viene.
+  return /^\d{1,3}(\.\d{1,3}){3}:\d+$/.test(raw) ? raw.replace(/:\d+$/, '') : raw;
+}
+
+/** Consumidor sobre el que se actuó, si la respuesta lo dice (receiver-update devuelve `user`). */
+function consumerFromResponse(resBody) {
+  const r = resBody && typeof resBody === 'object' ? resBody : {};
+  const v = r.user ?? r.consumer ?? r.email;
+  return typeof v === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) ? v.trim() : undefined;
 }
 
 const defaultVerify = (token) => jwt.verify(token, process.env.SECRET_JWT_SEED);
@@ -195,6 +223,11 @@ const header = (req, name) =>
 function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
   const actor = resolveActor(req, verifyToken);
   const resBody = res.locals?.auditResponseBody;
+  const context = extractContext(req);
+  if (!context.consumer) {
+    const consumer = consumerFromResponse(resBody);
+    if (consumer) context.consumer = consumer;
+  }
   return {
     staff_member_id: actor,
     actor_type: actor ? 'staff' : 'anonymous',
@@ -205,7 +238,7 @@ function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
     action: spec.action,
     target_model: spec.target_model,
     target_id: targetIdOf(req, resBody),
-    context: extractContext(req),
+    context,
     details: {
       route: `${req.method} ${resolveRoute(req)}`,
       status: res.statusCode,
@@ -213,7 +246,7 @@ function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
       ...(spec.inferred ? { inferred: true } : {}),
     },
     source: 'server',
-    ip_address: req.ip,
+    ip_address: clientIp(req),
     device_info: header(req, 'user-agent') || '',
   };
 }
