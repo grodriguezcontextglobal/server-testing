@@ -15,6 +15,9 @@ const {
   consumerDocumentSigningCompletionNotification,
 } = require("../nodeMailer/notifications");
 const AdminUser = require("../models/AdminUser");
+const { isValidObjectId } = require("mongoose");
+const { resolveCompanyContext } = require("../helpers/companyContext");
+const { findCompanyMembership } = require("../helpers/companyMembership");
 const logger = require("../helpers/logger");
 const { enqueue, extractJobContext } = require("../helpers/queue");
 const VerificationConsumersLeaseContracts = require("../models/VerificationConsumersLeaseContracts");
@@ -269,17 +272,115 @@ const getDocumentDownloadUrl = async (req, res) => {
   }
 };
 
+// Carga un documento SOLO si pertenece a la compañía del contexto del request
+// (header x-company-id) y quien llama es miembro activo de esa compañía, o
+// super_user de plataforma. Antes PATCH no existía y DELETE buscaba por id a
+// secas: cualquier usuario con token borraba documentos de otra compañía.
+// Un documento de otra compañía responde 404, no 403, para no confirmar que
+// ese id existe. Si responde, devuelve null y el llamador debe cortar.
+async function loadCompanyDocument(req, res) {
+  const companyId = resolveCompanyContext(req);
+  if (!companyId) {
+    res.status(400).json({
+      ok: false,
+      msg: "Company context required (send the x-company-id header).",
+    });
+    return null;
+  }
+
+  const caller = await AdminUser.findById(req.uid).select("super_user active email");
+  if (!caller || caller.active === false) {
+    res.status(403).json({ ok: false, msg: "Forbidden" });
+    return null;
+  }
+  if (!caller.super_user && !(await findCompanyMembership(companyId, caller))) {
+    res.status(403).json({ ok: false, msg: "Forbidden: not a member of this company" });
+    return null;
+  }
+
+  const { id } = req.params;
+  const document = isValidObjectId(id) ? await Document.findById(id) : null;
+  if (!document || String(document.company_id) !== String(companyId)) {
+    res.status(404).json({ ok: false, msg: "Document not found" });
+    return null;
+  }
+  return document;
+}
+
+// Lo que el dashboard puede corregir de un documento ya subido. Fuera a
+// propósito: company_id (no se cambia de dueño), document_url (el binario se
+// reemplaza subiendo otro), version/replaced_at (los lleva el versionado),
+// created_*, contadores de uso y document_config (reglas de la compañía).
+const DOCUMENT_EDITABLE_FIELDS = new Set([
+  "title",
+  "description",
+  "language",
+  "requires_signature",
+  "expiration_date",
+  "document_type",
+  "trigger_action",
+  "at_",
+  "status",
+  "applicable_locations",
+  "applicable_items",
+  "applicable_events",
+  "tags",
+  "metadata",
+]);
+// "replaced" lo pone el versionado (markAsReplaced), no el usuario.
+const DOCUMENT_EDITABLE_STATUS = new Set(["active", "archived"]);
+
+const updateDocument = async (req, res) => {
+  try {
+    // company_id puede venir en el body como selector de contexto
+    // (resolveCompanyContext lo acepta); no es un campo a editar.
+    const { company_id, ...updates } = req.body || {};
+    const keys = Object.keys(updates);
+    if (keys.length === 0) {
+      return res.status(400).json({ ok: false, msg: "No fields to update." });
+    }
+    const invalid = keys.filter((k) => !DOCUMENT_EDITABLE_FIELDS.has(k));
+    if (invalid.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        msg: `Field(s) not editable: ${invalid.join(", ")}`,
+        invalid_fields: invalid,
+      });
+    }
+    if ("status" in updates && !DOCUMENT_EDITABLE_STATUS.has(updates.status)) {
+      return res.status(400).json({
+        ok: false,
+        msg: "status must be 'active' or 'archived'.",
+      });
+    }
+
+    const document = await loadCompanyDocument(req, res);
+    if (!document) return;
+
+    document.set(updates);
+    document.updated_by = String(req.uid);
+    // save() y no findByIdAndUpdate: así corre el pre('save') del modelo, que
+    // valida document_type/trigger_action contra lo permitido a la compañía.
+    await document.save();
+
+    return res.json({ ok: true, document });
+  } catch (error) {
+    const isValidation =
+      error.name === "ValidationError" ||
+      error.name === "CastError" ||
+      /^Invalid (document type|trigger action)/.test(error.message);
+    return res.status(isValidation ? 400 : 500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
 const deleteDocument = async (req, res) => {
   try {
     const { id } = req.params;
-    const document = await Document.findById(id);
-
-    if (!document) {
-      return res.status(404).json({
-        ok: false,
-        msg: "Document not found",
-      });
-    }
+    const document = await loadCompanyDocument(req, res);
+    if (!document) return;
 
     // Delete the document from S3
     const deleteResult = await deleteDocumentFromS3(document.document_url);
@@ -1693,6 +1794,7 @@ module.exports = {
   createStaffMemberVerification,
   createMemberVerification,
   deleteDocument,
+  updateDocument,
   deleteFolder,
   generateTemporaryDownloadUrl,
   getCompanyDocumentByID,
