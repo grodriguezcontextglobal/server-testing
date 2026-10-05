@@ -35,6 +35,7 @@ const {
 } = require("../controller/staffActivityLog");
 const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
+const { validateMfaEnrollment } = require("../middlewares/validateMfaEnrollment");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { optionalJWT } = require("../middlewares/optionalJWT");
 const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
@@ -125,8 +126,10 @@ router.post("/receiver-assignation", addReceiverToTransaction);
 router.get("/check-online-status/:email", checkStatus);
 
 // MFA Routes
-router.post("/mfa/generate", validateJWT, generateMfaSecret);
-router.post("/mfa/verify", validateJWT, verifyMfaSetup);
+// Aceptan el token de enrolamiento (x-mfa-setup-token) que da el login a una
+// cuenta sin MFA, o un JWT de sesión.
+router.post("/mfa/generate", validateMfaEnrollment, generateMfaSecret);
+router.post("/mfa/verify", validateMfaEnrollment, verifyMfaSetup);
 router.post("/mfa/disable", validateJWT, disableMfa);
 
 // Canonical action / target_model list for the report's filter dropdown. Static

@@ -16,6 +16,7 @@ const logger = require("../helpers/logger");
 const crypto = require("crypto");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
+const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
 const { logStaffActivity } = require("./staffActivityLog");
 const { resolveCompanyContext } = require("../helpers/companyContext");
 
@@ -51,20 +52,21 @@ const createAdminUser = async (request, response = express.response) => {
 
     await adminUser.save();
 
-    //generate JWT
-    const token = await generateJWT(
-      adminUser.id,
-      adminUser.name,
-      adminUser.tokenVersion
-    );
+    // Una cuenta recién creada no tiene MFA, y MFA es obligatoria: en vez de
+    // sesión recibe el token de enrolamiento (ver loginUser).
+    const auth = isMfaRequired()
+      ? { mfaSetupRequired: true, mfaSetupToken: await generateMfaSetupToken(adminUser.id) }
+      : { token: await generateJWT(adminUser.id, adminUser.name, adminUser.tokenVersion) };
 
-    // Store JWT in a cookie
-    response.cookie("token", token, {
-      httpOnly: true, // Prevent client-side JavaScript from accessing the cookie
-      secure: process.env.NODE_ENV === "production", // Ensure cookies are only sent over HTTPS in production
-      sameSite: "strict", // Prevent CSRF attacks
-      maxAge: 8 * 60 * 60 * 1000, // 8 hours
-    });
+    if (auth.token) {
+      // Store JWT in a cookie
+      response.cookie("token", auth.token, {
+        httpOnly: true, // Prevent client-side JavaScript from accessing the cookie
+        secure: process.env.NODE_ENV === "production", // Ensure cookies are only sent over HTTPS in production
+        sameSite: "strict", // Prevent CSRF attacks
+        maxAge: 8 * 60 * 60 * 1000, // 8 hours
+      });
+    }
 
     return response.status(201).json({
       ok: true,
@@ -77,7 +79,7 @@ const createAdminUser = async (request, response = express.response) => {
       phone: adminUser.phone,
       // role: adminUser.role,
       // company: adminUser.company,
-      token,
+      ...auth,
     });
   } catch (error) {
     return response.status(500).json({
@@ -107,8 +109,27 @@ const loginUser = async (request, response) => {
       });
     }
 
+    // MFA obligatoria: sin MFA no se emite token de sesión ni se abre sesión.
+    // Se devuelve un token de enrolamiento que solo sirve para /mfa/generate y
+    // /mfa/verify; al terminar, el usuario vuelve a loguearse con su código.
+    // Va DESPUÉS de la contraseña: el token de enrolamiento también es prueba
+    // de que se conocía.
+    const userWithSecret = adminUser.mfaEnabled
+      ? await AdminUser.findById(adminUser.id).select("+mfaSecret")
+      : null;
+    const mfaReady = Boolean(userWithSecret?.mfaSecret?.base32);
+    if (!mfaReady && isMfaRequired()) {
+      const mfaSetupToken = await generateMfaSetupToken(adminUser.id);
+      return response.status(403).json({
+        ok: false,
+        msg: "MFA setup required. Set up an authenticator app to continue.",
+        mfaSetupRequired: true,
+        mfaSetupToken,
+      });
+    }
+
     // MFA Check
-    if (adminUser.mfaEnabled) {
+    if (mfaReady) {
       if (!mfaCode) {
         return response.status(403).json({
           ok: false,
@@ -116,10 +137,6 @@ const loginUser = async (request, response) => {
           mfaRequired: true,
         });
       }
-
-      const userWithSecret = await AdminUser.findById(adminUser.id).select(
-        "+mfaSecret"
-      );
 
       const verified = speakeasy.totp.verify({
         secret: userWithSecret.mfaSecret.base32,
@@ -562,6 +579,19 @@ const deleteAdminUser = async (request, response) => {
 const renewToken = async (request, response = express.response) => {
   const { uid, name, sqlStaffId: existingSqlStaffId } = request;
 
+  // Sin esto, una sesión abierta antes de que MFA fuera obligatoria se
+  // renovaría indefinidamente sin enrolarse nunca.
+  if (isMfaRequired()) {
+    const owner = await AdminUser.findById(uid).select("mfaEnabled").lean();
+    if (!owner?.mfaEnabled) {
+      return response.status(403).json({
+        ok: false,
+        msg: "MFA setup required. Log in again to set up an authenticator app.",
+        mfaSetupRequired: true,
+      });
+    }
+  }
+
   let sqlStaffId = existingSqlStaffId ?? null;
   if (!sqlStaffId) {
     try {
@@ -771,6 +801,13 @@ const generateMfaSecret = async (req, res) => {
     if (!adminUser)
       return res.status(404).json({ ok: false, msg: "User not found" });
 
+    // Generar sobrescribe el secreto al instante, antes de verificar nada. Con
+    // MFA ya activa eso dejaba fuera al usuario si abandonaba a medias, y
+    // permitía re-enrolar la MFA ajena con un token robado.
+    if (adminUser.mfaEnabled) {
+      return res.status(409).json({ ok: false, msg: "MFA is already enabled for this account." });
+    }
+
     const secret = speakeasy.generateSecret({
       name: `Devitrak:${adminUser.email}`,
     });
@@ -798,6 +835,9 @@ const verifyMfaSetup = async (req, res) => {
     const adminUser = await AdminUser.findById(req.uid).select("+mfaSecret");
     if (!adminUser)
       return res.status(404).json({ ok: false, msg: "User not found" });
+    if (!adminUser.mfaSecret?.base32) {
+      return res.status(400).json({ ok: false, msg: "Generate an MFA secret first." });
+    }
 
     const verified = speakeasy.totp.verify({
       secret: adminUser.mfaSecret.base32,
@@ -808,7 +848,9 @@ const verifyMfaSetup = async (req, res) => {
     if (verified) {
       adminUser.mfaEnabled = true;
       await adminUser.save();
-      res.json({ ok: true, msg: "MFA enabled successfully" });
+      // No se emite sesión aquí: el token solo sale del login. Quien se enroló
+      // con el token de enrolamiento tiene que volver a loguearse con su código.
+      res.json({ ok: true, msg: "MFA enabled successfully", reloginRequired: Boolean(req.mfaSetup) });
     } else {
       res.status(400).json({ ok: false, msg: "Invalid token" });
     }
@@ -819,6 +861,9 @@ const verifyMfaSetup = async (req, res) => {
 };
 
 const disableMfa = async (req, res) => {
+  if (isMfaRequired()) {
+    return res.status(403).json({ ok: false, msg: "MFA is mandatory and cannot be disabled." });
+  }
   try {
     const adminUser = await AdminUser.findById(req.uid);
     adminUser.mfaEnabled = false;
