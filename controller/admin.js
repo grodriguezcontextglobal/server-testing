@@ -16,9 +16,9 @@ const logger = require("../helpers/logger");
 const crypto = require("crypto");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
+const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
 const { logStaffActivity } = require("./staffActivityLog");
 const { resolveCompanyContext } = require("../helpers/companyContext");
-const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
 
 const createAdminUser = async (request, response = express.response) => {
   const { email, password } = request.body;
