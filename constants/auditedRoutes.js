@@ -1,31 +1,29 @@
 'use strict';
 
 /**
- * Rutas que el servidor registra en el audit trail (StaffActivityLog), con su
- * verbo y su modelo. Lo lee middlewares/auditTrail.js.
+ * Clasificación de TODAS las rutas de escritura para el audit trail
+ * (StaffActivityLog). Lo lee middlewares/auditTrail.js.
  *
- * La clave es `MÉTODO /ruta/montada`, tal como la compone resolveRoute
- * (baseUrl + route.path). test/auditedRoutes.test.js comprueba que cada clave
- * existe de verdad en los routers: una errata aquí sería una acción que deja de
- * registrarse sin que nadie lo note.
+ * La regla es "se registra todo lo que cambia algo". Por eso el middleware
+ * registra cualquier escritura que termine bien, salvo las de dos listas de
+ * excepciones:
+ *   - READ_ONLY_ROUTES: consultas que van por POST (`consulting-*`,
+ *     `retrieve-*`, `*-query`, listados, búsquedas). El método no decide;
+ *     decide si cambia datos.
+ *   - LOGGED_ELSEWHERE: lo que su controlador ya registra a mano (registrarlo
+ *     aquí lo duplicaría), lo que es en sí un registro (logs de error, de
+ *     notificaciones…) y la fila SQL de un evento, que es la misma acción que
+ *     /api/event ya registra.
+ * AUDITED_ROUTES solo pone nombre a la acción (verbo + modelo). Una ruta de
+ * escritura que no esté en ninguna lista SE REGISTRA IGUAL, con un verbo
+ * inferido de su nombre (inferSpec) y `details.inferred: true`: una ruta nueva
+ * que nadie clasificó no puede quedar fuera del trail.
  *
- * QUÉ NO ESTÁ, A PROPÓSITO:
- *   - Consultas que van por POST (`consulting-*`, `retrieve-*`, `*-query`,
- *     `check-*`, listados y búsquedas). El método no decide; decide si cambia
- *     datos.
- *   - Rutas que ya registran a mano con logStaffActivity: login y
- *     force-logout, PATCH /api/admin/profile/:id y DELETE /api/admin/:id
- *     (controller/admin.js), create/edit/delete de /api/event
- *     (controller/event.js) y de /api/inventory (controller/inventory.js).
- *     Ponerlas aquí las duplicaría.
- *   - La fila SQL de un evento (`/api/db_event/new_event`, `update-event`,
- *     `DELETE /api/db_event/:id`): el evento ya queda registrado una vez por
- *     /api/event.
- *   - Envíos de correo (/api/nodemailer): son efecto de una acción que ya se
- *     registra, no una acción en sí.
- *   - El propio registro manual (POST /api/admin/activity-logs).
+ * test/auditedRoutes.test.js exige que cada ruta de escritura montada esté en
+ * exactamente una de las tres listas, y que cada clave exista de verdad.
  *
- * Verbos y modelos: constants/activityVocabulary.js.
+ * La clave es `MÉTODO /ruta/montada`, como la compone resolveRoute
+ * (baseUrl + route.path). Verbos y modelos: constants/activityVocabulary.js.
  */
 
 const R = (action, target_model) => ({ action, target_model });
@@ -249,6 +247,263 @@ const AUDITED_ROUTES = {
   'POST /api/admin/logout': R('LOGOUT', 'AdminUser'),
   'POST /api/admin/manually_logout': R('LOGOUT', 'AdminUser'),
   'POST /api/admin/invalidate-all-sessions': R('FORCE_LOGOUT', 'AdminUser'),
+  'POST /api/admin/mfa/generate': R('UPDATE', 'AdminUser'),
+  'POST /api/registration/new': R('CREATE', 'Company'),
+  'POST /api/registration/add-company': R('CREATE', 'Company'),
+  'POST /api/registration/accept-invitation': R('ACCEPT', 'Invitation'),
+  'POST /api/devitrak/new_acceptance': R('ACCEPT', 'Terms'),
+  'PATCH /api/devitrak/:id': R('ACCEPT', 'Terms'),
+
+  // ── Añadidas 2026-10-05 al pasar a "registrar todo" ───────────────────────
+  // Import desde Excel, export, y el borrado por id numérico que el dashboard
+  // usa desde 13 pantallas (`/db_item/${id}`).
+  'POST /api/db_item/bulk-item-from-spreadsheet': R('IMPORT', 'Inventory'),
+  'POST /api/db_item/inventory-export': R('EXPORT', 'Inventory'),
+  'POST /api/db_item/:id(\\d+)': R('DELETE', 'Inventory'),
+  'POST /api/db_event/event-count/close': R('CLOSE', 'Event'),
+  'POST /api/db_event/event-count/reconcile': R('RECONCILE', 'Event'),
+  'POST /api/db_identifier/register': R('CREATE', 'Identifier'),
+  'POST /api/db_identifier/register-bulk': R('IMPORT', 'Identifier'),
+  'POST /api/db_location/sub-location-path/delete': R('DELETE', 'Location'),
+  'POST /api/company/event-consumer-signatures': R('CREATE', 'Signature'),
+  'POST /api/consumer/stripe/create-customer': R('CREATE', 'Consumer'),
+  'POST /api/stripe/account_link': R('CREATE', 'StripeLink'),
+  'POST /api/stripe/account_sessions': R('CREATE', 'StripeLink'),
+  'POST /api/image/new_image': R('UPLOAD', 'Image'),
+  'POST /api/post/new-post': R('CREATE', 'Post'),
+  'PATCH /api/post/post-update/:id': R('UPDATE', 'Post'),
+  'DELETE /api/post/post-delete/:id': R('DELETE', 'Post'),
+  'POST /api/article/article-creation': R('CREATE', 'Article'),
+  'PATCH /api/article/article-edit/:id': R('UPDATE', 'Article'),
+  'DELETE /api/article/article-delete/:id': R('DELETE', 'Article'),
+  'POST /api/feedback/new-feedback': R('CREATE', 'Feedback'),
+  'POST /api/heavy-task/process': R('CREATE', 'Task'),
+  'POST /api/cache_update/remove-cache': R('CLEAR', 'Cache'),
+
+  // ── Correos: cada envío que dispara alguien es una acción ─────────────────
+  // El destinatario queda en context.recipients.
+  ...Object.fromEntries(
+    [
+      'assignig-device-notification',
+      'completed-task-notification',
+      'confirm-returned-device-notification',
+      'confirmation-account',
+      'consumer-lease-return-device-notification',
+      'customize-message-notification',
+      'customized-notification',
+      'deposit-collected-notification',
+      'deposit-return-notification',
+      'device-report-per-transaction',
+      'early-remind-notification',
+      'edit-device-admin',
+      'event-staff-notification',
+      'events-begin-reminder',
+      'failed-task-notification',
+      'feedback-email-notification',
+      'forcing-revoking-active-session',
+      'internal-single-email-notification',
+      'invoice-notification',
+      'leased-equip-staff-notification',
+      'liability-contract-consumer-email-notification',
+      'liability-contract-email-notification',
+      'liability-contract-member-email-notification',
+      'login-existing-consumer',
+      'lost-device-fee-notification',
+      'massive-event-customer-notification',
+      'member-device-fee-receipt-notification',
+      'member-device-incident-notification',
+      'member-email-notification',
+      'member-lease-return-device-notification',
+      'new_invitation',
+      'refund-notification',
+      'reset-admin-password',
+      'returned-items-to-renter-notification',
+      'send-consumer-app-instructions',
+      'single-email-notification',
+      'staff_internal_notification',
+      'terms-and-conditions-acceptance',
+    ].map((p) => [`POST /api/nodemailer/${p}`, R('SEND', 'Email')]),
+  ),
 };
 
-module.exports = { AUDITED_ROUTES };
+/** Consultas por POST: no cambian nada, no se registran. */
+const READ_ONLY_ROUTES = new Set([
+  'POST /api/admin/users',
+  'POST /api/auth',
+  'POST /api/auth/user-query',
+  'POST /api/auth/users',
+  'POST /api/cash-report/cash-reports',
+  'POST /api/company/companies',
+  'POST /api/company/consulting-signatures',
+  'POST /api/company/consumer-signatures',
+  'POST /api/company/provider-company/:id',
+  'POST /api/company/search-company',
+  'POST /api/company/signatures',
+  'POST /api/company/signatures-for-consumer-member',
+  'POST /api/consumer/stripe/find-customer',
+  'POST /api/consumer/users',
+  'POST /api/db_company/categories',
+  'POST /api/db_company/check-item',
+  'POST /api/db_company/companies_information',
+  'POST /api/db_company/company-inventory-grouped-full',
+  'POST /api/db_company/company-inventory-pagination',
+  'POST /api/db_company/company-inventory-structure',
+  'POST /api/db_company/company-inventory-with-current-warehouse-status',
+  'POST /api/db_company/consulting-company',
+  'POST /api/db_company/filter-suppliers-info-items',
+  'POST /api/db_company/get-grouped-inventory-by-search-parameter',
+  'POST /api/db_company/get-inventory-company',
+  'POST /api/db_company/get-location-item-types-hierarchy',
+  'POST /api/db_company/groups',
+  'POST /api/db_company/industry',
+  'POST /api/db_company/inventory-based-on-location-and-sublocation',
+  'POST /api/db_company/inventory-based-on-submitted-parameters',
+  'POST /api/db_company/inventory-query',
+  'POST /api/db_company/locations',
+  'POST /api/db_company/retrieve-company-inventory',
+  'POST /api/db_company/retrieve-company-items-with-locations',
+  'POST /api/db_company/search-inventory',
+  'POST /api/db_consumer/consulting-consumer',
+  'POST /api/db_consumer/consumers_information',
+  'POST /api/db_consumer_attending_event_record/consulting-consumer-event',
+  'POST /api/db_consumer_attending_event_record/consumer-events',
+  'POST /api/db_event/consulting-event',
+  'POST /api/db_event/event-inventory/:id',
+  'POST /api/db_event/events_company',
+  'POST /api/db_event/events_information',
+  'POST /api/db_event/inventory-based-on-submitted-parameters',
+  'POST /api/db_event/inventory-query',
+  'POST /api/db_event/retrieve-item-group-location-quantity',
+  'POST /api/db_event/retrieve-item-group-quantity-with-format',
+  'POST /api/db_event/retrieve-item-location-quantity',
+  'POST /api/db_event/retrieve-item-location-quantity-full-details',
+  'POST /api/db_identifier/by-items',
+  'POST /api/db_inventory/check-item',
+  'POST /api/db_inventory/check-large-data',
+  'POST /api/db_item/check-item',
+  'POST /api/db_item/consulting-item',
+  'POST /api/db_item/consulting-row-item-assigned-event',
+  'POST /api/db_item/current-inventory',
+  'POST /api/db_item/event-items/search',
+  'POST /api/db_item/get-inventory-company',
+  'POST /api/db_item/inventory-based-on-location-and-sublocation',
+  'POST /api/db_item/inventory-based-on-submitted-parameters',
+  'POST /api/db_item/inventory-facets',
+  'POST /api/db_item/inventory-page',
+  'POST /api/db_item/inventory-pagination',
+  'POST /api/db_item/inventory-query',
+  'POST /api/db_item/inventory_event/:id',
+  'POST /api/db_item/items_information',
+  'POST /api/db_item/retrieve-item-data',
+  'POST /api/db_item/retrieve-item-location-quantity',
+  'POST /api/db_item/search-inventory',
+  'POST /api/db_item/tracking_item/:id',
+  'POST /api/db_item/warehouse-items',
+  'POST /api/db_lease/consulting-consumer-lease',
+  'POST /api/db_lease/consulting-lease',
+  'POST /api/db_lease/status',
+  'POST /api/db_location/companies/:id/locations',
+  'POST /api/db_member/consulting-member',
+  'POST /api/db_member/member-fees',
+  'POST /api/db_member/my-devices',
+  'POST /api/db_member/overdue-leases',
+  'POST /api/db_member/retrieve-members-assigned-devices',
+  'POST /api/db_record/checking',
+  'POST /api/db_record/checking-lease-information',
+  'POST /api/db_shipment/package-list',
+  'POST /api/db_shipment/search',
+  'POST /api/db_staff/company-staff/permissions',
+  'POST /api/db_staff/consulting-member',
+  'POST /api/db_stripe/consulting-stripe',
+  'POST /api/db_sub_location/sub-locations/check',
+  'POST /api/document/download/documentUrl',
+  'POST /api/document/folders',
+  'POST /api/document/verification/consumer_member/check_signed_document',
+  'POST /api/document/verification/member/check_signed_document',
+  'POST /api/document/verification/staff_member/check_signed_document',
+  'POST /api/event/event-list',
+  'POST /api/event/staff-all-events',
+  'POST /api/image/images',
+  'POST /api/item/list-items',
+  'POST /api/lease/lease-list',
+  'POST /api/nodemailer/branding-preview',
+  'POST /api/post/posts',
+  'POST /api/receiver/all-transaction-by-event-and-consumer',
+  'POST /api/receiver/list-receiver-returned-issue',
+  'POST /api/receiver/receiver-assigned',
+  'POST /api/receiver/receiver-assigned-list',
+  'POST /api/receiver/receiver-assigned-users-list',
+  'POST /api/receiver/receiver-pool-list',
+  'POST /api/school/consent',
+  'POST /api/school/consent/list',
+  'POST /api/school/consent/public/retrieve',
+  'POST /api/school/consent/status',
+  'POST /api/school/dashboard',
+  'POST /api/school/guardians',
+  'POST /api/school/guardians/search',
+  'POST /api/school/roster',
+  'POST /api/school/settings',
+  'POST /api/school/student/access-log',
+  'POST /api/staff/__staff-search',
+  'POST /api/staff/admin-users',
+  'POST /api/stripe/company-account-stripe/',
+  'POST /api/stripe/customers',
+  'POST /api/stripe/invoices',
+  'POST /api/stripe/setup-search',
+  'POST /api/stripe/stripe-transactions-saved-list',
+  'POST /api/subscription/company-subscription',
+  'POST /api/subscription/search_subscription',
+  'POST /api/transaction/transaction',
+]);
+
+/** Ya registradas por su controlador, o que son en sí un registro. */
+const LOGGED_ELSEWHERE = new Set([
+  // logStaffActivity explícito en el controlador
+  'POST /api/admin/login',
+  'PATCH /api/admin/profile/:id',
+  'DELETE /api/admin/:id',
+  'POST /api/staff/force-logout',
+  'POST /api/event/create-event',
+  'PATCH /api/event/edit-event/:id',
+  'PUT /api/event/edit-event/:id',
+  'PATCH /api/event/edit-staff-event/:id',
+  'DELETE /api/event/delete-event/:id',
+  'POST /api/inventory/create-inventory',
+  'PATCH /api/inventory/edit-inventory/:id',
+  'DELETE /api/inventory/delete-inventory/:id',
+  // la fila SQL del mismo evento que ya registra /api/event
+  'POST /api/db_event/new_event',
+  'POST /api/db_event/update-event/:event_id',
+  'DELETE /api/db_event/:id',
+  // son registros en sí: auditarlos sería registrar el registro
+  'POST /api/admin/activity-logs',
+  'POST /api/error_log/error_log',
+  'POST /api/event-log/feed-event-log',
+  'POST /api/notificationlog/notification-feed-log',
+  'POST /api/transaction-audit-log/create-audit',
+]);
+
+// Verbo de reserva para una escritura que nadie clasificó: se registra igual.
+const VERB_RULES = [
+  [/notification|email|mail|invitation|remind|send/i, 'SEND'],
+  [/import|bulk|spreadsheet|xlsx|upload/i, 'IMPORT'],
+  [/export/i, 'EXPORT'],
+  [/delete|remove|erase/i, 'DELETE'],
+  [/assign|allocate/i, 'ASSIGN'],
+  [/return/i, 'RETURN'],
+  [/refund/i, 'REFUND'],
+];
+const METHOD_VERB = { POST: 'CREATE', PUT: 'UPDATE', PATCH: 'UPDATE', DELETE: 'DELETE' };
+
+/** Verbo y modelo para una ruta sin entrada en AUDITED_ROUTES. */
+function inferSpec(routeKey) {
+  const [method, routePath = ''] = routeKey.split(' ');
+  const rule = VERB_RULES.find(([re]) => re.test(routePath));
+  const action = rule ? rule[1] : METHOD_VERB[method] || 'ACTION';
+  // El modelo es el espacio de la ruta: /api/db_item → Item, /api/nodemailer → Nodemailer.
+  const space = (routePath.split('/')[2] || 'Unknown').replace(/^db_/, '');
+  const target_model = space.charAt(0).toUpperCase() + space.slice(1);
+  return { action, target_model, inferred: true };
+}
+
+module.exports = { AUDITED_ROUTES, READ_ONLY_ROUTES, LOGGED_ELSEWHERE, inferSpec };

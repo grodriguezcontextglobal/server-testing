@@ -1,78 +1,63 @@
 'use strict';
 
 /**
- * Cada clave de constants/auditedRoutes.js tiene que ser una ruta que exista de
- * verdad. Si alguien renombra una ruta y no actualiza la lista, la acción deja
- * de registrarse en silencio; este test lo convierte en un fallo.
+ * Cobertura del audit trail: TODA ruta de escritura montada tiene que estar
+ * clasificada en exactamente una de las listas de constants/auditedRoutes.js:
+ *   - AUDITED_ROUTES  (se registra, con su verbo),
+ *   - READ_ONLY_ROUTES (consulta por POST, no se registra),
+ *   - LOGGED_ELSEWHERE (ya la registra su controlador, o es un registro).
  *
- * Los prefijos copian el montaje de index.js (configureRoutes). Si se monta un
- * router nuevo, hay que añadirlo aquí también.
+ * En ejecución, una ruta sin clasificar se registra igual con verbo inferido.
+ * Este test existe para que eso sea la red, no la norma: una ruta nueva no
+ * llega a producción sin que alguien decida cómo se registra.
  */
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { AUDITED_ROUTES } = require('../constants/auditedRoutes');
+const {
+  AUDITED_ROUTES,
+  READ_ONLY_ROUTES,
+  LOGGED_ELSEWHERE,
+  inferSpec,
+} = require('../constants/auditedRoutes');
 const { ACTIVITY_ACTIONS, ACTIVITY_TARGET_MODELS } = require('../constants/activityVocabulary');
+const { allMountedRoutes, writeRoutes } = require('./helpers/mountedRoutes');
 
-const MOUNTS = {
-  '/api/admin': '../routes/admin',
-  '/api/auth': '../routes/auth',
-  '/api/cash-report': '../routes/cashReport',
-  '/api/company': '../routes/company',
-  '/api/document': '../routes/document',
-  '/api/event': '../routes/event',
-  '/api/item': '../routes/item',
-  '/api/lease': '../routes/lease',
-  '/api/receiver': '../routes/receivers',
-  '/api/staff': '../routes/staff',
-  '/api/stripe': '../routes/stripe',
-  '/api/subscription': '../routes/subscription',
-  '/api/transaction': '../routes/transaction',
-  '/api/db_company': '../mysql/routes/company',
-  '/api/db_consumer_attending_event_record': '../mysql/routes/consumerAttendingEvent',
-  '/api/db_consumer': '../mysql/routes/consumers',
-  '/api/db_event': '../mysql/routes/events',
-  '/api/db_item': '../mysql/routes/item',
-  '/api/db_record': '../mysql/routes/recordEvent',
-  '/api/db_staff': '../mysql/routes/staff',
-  '/api/db_stripe': '../mysql/routes/stripe',
-  '/api/db_lease': '../mysql/routes/lease',
-  '/api/db_inventory': '../mysql/routes/inventory',
-  '/api/db_member': '../mysql/routes/members',
-  '/api/db_location': '../mysql/routes/location',
-  '/api/db_sub_location': '../mysql/routes/sub_location',
-  '/api/db_shipment': '../mysql/routes/shipment',
-  '/api/school': '../mysql/routes/school',
-};
+const mounted = allMountedRoutes();
+const writes = writeRoutes();
+const named = Object.keys(AUDITED_ROUTES);
 
-function routeKeys(base, router) {
-  const keys = new Set();
-  for (const layer of router.stack) {
-    if (!layer.route) continue;
-    const paths = Array.isArray(layer.route.path) ? layer.route.path : [layer.route.path];
-    for (const p of paths) {
-      const full = p === '/' ? base : `${base}${p}`;
-      for (const m of Object.keys(layer.route.methods)) keys.add(`${m.toUpperCase()} ${full}`);
-    }
-  }
-  return keys;
-}
-
-test('cada ruta auditada existe en los routers montados', () => {
-  const existing = new Set();
-  for (const [base, mod] of Object.entries(MOUNTS)) {
-    for (const k of routeKeys(base, require(mod))) existing.add(k);
-  }
-  const missing = Object.keys(AUDITED_ROUTES).filter((k) => !existing.has(k));
-  assert.deepEqual(missing, [], `rutas auditadas que no existen: ${missing.join(', ')}`);
+test('toda ruta de escritura montada está clasificada', () => {
+  const unclassified = writes.filter(
+    (k) => !(k in AUDITED_ROUTES) && !READ_ONLY_ROUTES.has(k) && !LOGGED_ELSEWHERE.has(k),
+  );
+  assert.deepEqual(
+    unclassified,
+    [],
+    `rutas de escritura sin clasificar en constants/auditedRoutes.js:\n${unclassified.join('\n')}`,
+  );
 });
 
-test('ninguna ruta auditada es un GET', () => {
-  const gets = Object.keys(AUDITED_ROUTES).filter((k) => k.startsWith('GET '));
-  assert.deepEqual(gets, []);
+test('ninguna ruta está en dos listas a la vez', () => {
+  const both = [
+    ...named.filter((k) => READ_ONLY_ROUTES.has(k) || LOGGED_ELSEWHERE.has(k)),
+    ...[...READ_ONLY_ROUTES].filter((k) => LOGGED_ELSEWHERE.has(k)),
+  ];
+  assert.deepEqual(both, []);
 });
 
-test('verbos y modelos de la lista están en el vocabulario publicado', () => {
+test('cada clave de las tres listas existe de verdad en los routers', () => {
+  const all = [...named, ...READ_ONLY_ROUTES, ...LOGGED_ELSEWHERE];
+  const missing = all.filter((k) => !mounted.has(k));
+  assert.deepEqual(missing, [], `claves que no son rutas montadas: ${missing.join(', ')}`);
+});
+
+test('ninguna ruta de las listas es un GET', () => {
+  const all = [...named, ...READ_ONLY_ROUTES, ...LOGGED_ELSEWHERE];
+  assert.deepEqual(all.filter((k) => k.startsWith('GET ')), []);
+});
+
+test('verbos y modelos nombrados están en el vocabulario publicado', () => {
   const badActions = new Set();
   const badModels = new Set();
   for (const { action, target_model } of Object.values(AUDITED_ROUTES)) {
@@ -83,21 +68,26 @@ test('verbos y modelos de la lista están en el vocabulario publicado', () => {
   assert.deepEqual([...badModels], []);
 });
 
-test('no se audita aquí lo que ya registra su controlador (duplicaría)', () => {
-  const explicit = [
-    'POST /api/admin/login',
-    'POST /api/staff/force-logout',
-    'PATCH /api/admin/profile/:id',
-    'DELETE /api/admin/:id',
-    'POST /api/event/create-event',
-    'DELETE /api/event/delete-event/:id',
-    'PATCH /api/event/edit-event/:id',
-    'PUT /api/event/edit-event/:id',
-    'PATCH /api/event/edit-staff-event/:id',
-    'POST /api/inventory/create-inventory',
-    'PATCH /api/inventory/edit-inventory/:id',
-    'DELETE /api/inventory/delete-inventory/:id',
-    'POST /api/admin/activity-logs',
-  ];
-  assert.deepEqual(explicit.filter((k) => k in AUDITED_ROUTES), []);
+test('los casos pedidos por el dashboard están cubiertos con su verbo', () => {
+  const expect = {
+    'POST /api/receiver/receiver-assignation': 'ASSIGN', // dispositivo a consumidor del evento
+    'POST /api/db_event/event_device': 'ASSIGN', // inventario al evento
+    'POST /api/db_item/item-out-warehouse': 'CHECK_OUT', // sale del almacén
+    'POST /api/db_item/edit-item': 'UPDATE', // cambia la info de un item
+    'POST /api/db_company/update-items-based-on-serial-number': 'UPDATE',
+    'POST /api/db_item/bulk-item-from-spreadsheet': 'IMPORT', // import desde Excel
+    'POST /api/nodemailer/single-email-notification': 'SEND', // envío de correo
+  };
+  for (const [k, verb] of Object.entries(expect)) {
+    assert.equal(AUDITED_ROUTES[k]?.action, verb, k);
+  }
+});
+
+test('inferSpec: una escritura sin clasificar recibe un verbo razonable', () => {
+  assert.equal(inferSpec('POST /api/nodemailer/some-new-notification').action, 'SEND');
+  assert.equal(inferSpec('POST /api/db_item/bulk-something').action, 'IMPORT');
+  assert.equal(inferSpec('DELETE /api/db_item/thing/:id').action, 'DELETE');
+  assert.equal(inferSpec('PATCH /api/foo/bar').action, 'UPDATE');
+  assert.equal(inferSpec('POST /api/db_item/whatever').target_model, 'Item');
+  assert.equal(inferSpec('POST /api/db_item/whatever').inferred, true);
 });

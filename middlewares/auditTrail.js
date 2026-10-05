@@ -1,7 +1,12 @@
 'use strict';
 
 const jwt = require('jsonwebtoken');
-const { AUDITED_ROUTES } = require('../constants/auditedRoutes');
+const {
+  AUDITED_ROUTES,
+  READ_ONLY_ROUTES,
+  LOGGED_ELSEWHERE,
+  inferSpec,
+} = require('../constants/auditedRoutes');
 const { resolveRoute } = require('./requestMetrics');
 const { logStaffActivity } = require('../controller/staffActivityLog');
 const logger = require('../helpers/logger');
@@ -12,10 +17,13 @@ const logger = require('../helpers/logger');
  *
  * Se monta UNA vez, antes de los routers (index.js), y decide en `finish`,
  * igual que requestMetrics: en ese momento Express ya sabe qué ruta casó y con
- * qué status terminó. Qué se registra lo decide la lista explícita de
- * constants/auditedRoutes.js; lo que no está ahí no se toca.
+ * qué status terminó.
  *
  * Reglas:
+ *   - Se registra TODA escritura (no-GET) que casó con una ruta, salvo las
+ *     consultas por POST (READ_ONLY_ROUTES) y lo ya registrado en otro sitio
+ *     (LOGGED_ELSEWHERE). Una ruta sin nombre en AUDITED_ROUTES se registra
+ *     igual, con verbo inferido: lo que nadie clasificó no puede perderse.
  *   - Solo respuestas correctas (< 400). Un intento fallido no cambió nada.
  *   - El autor sale del JWT. Si la ruta corrió validateJWT, de `req.uid`; si
  *     no (hay rutas de escritura sin auth), se verifica aquí el `x-token` SIN
@@ -43,9 +51,12 @@ const firstOf = (sources, keys) => {
 
 const SERIAL_KEYS = ['serial_number', 'serialNumber', 'serial', 'device'];
 const ITEM_KEYS = ['item_id', 'itemId'];
+// Dónde buscar seriales e item_ids anidados: listas, y también objetos sueltos
+// como el `device: { serialNumber }` que manda la asignación a un consumidor.
 const LIST_KEYS = [
   'items', 'devices', 'deviceList', 'serials', 'serial_numbers', 'serialNumbers',
   'receivers', 'rows', 'list', 'data', 'members', 'item_ids', 'itemIds', 'ids', 'status',
+  'device', 'item', 'receiver',
 ];
 
 /** Seriales e item_ids de la petición, vengan sueltos o dentro de listas. */
@@ -82,16 +93,33 @@ function countOf(body) {
   return max || undefined;
 }
 
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const RECIPIENT_KEYS = ['to', 'email', 'emails', 'recipient', 'recipients', 'consumer', 'member', 'staff', 'user'];
+
+/** Direcciones a las que va un correo, vengan sueltas, en listas o en objetos. */
+function collectRecipients(body) {
+  const out = new Set();
+  const visit = (v, depth) => {
+    if (depth > 3 || out.size >= 50 || v === null || v === undefined) return;
+    if (typeof v === 'string') { if (EMAIL.test(v.trim())) out.add(v.trim().toLowerCase()); return; }
+    if (Array.isArray(v)) return v.forEach((x) => visit(x, depth + 1));
+    if (typeof v === 'object') for (const k of RECIPIENT_KEYS) if (k in v) visit(v[k], depth + 1);
+  };
+  visit(body, 0);
+  return [...out];
+}
+
 /** Contexto filtrable: evento, dispositivo, member, consumidor. */
 function extractContext(req) {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const sources = [req.params, body, req.query];
   const ctx = {
     event_id: firstOf(sources, ['event_id', 'eventId', 'event_sql_id']),
-    event_name: firstOf(sources, ['event_name', 'eventName', 'event']),
+    event_name: firstOf(sources, ['event_name', 'eventName', 'eventSelected', 'event']),
     member_id: firstOf(sources, ['member_id', 'memberId']),
     consumer: firstOf(sources, ['consumer', 'consumer_id', 'consumerId', 'userId', 'user']),
     ...collectIds(body),
+    recipients: collectRecipients(body),
     count: countOf(body),
   };
   const single = firstOf(sources, SERIAL_KEYS);
@@ -180,6 +208,7 @@ function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
       route: `${req.method} ${resolveRoute(req)}`,
       status: res.statusCode,
       request: boundedRequest(req.body),
+      ...(spec.inferred ? { inferred: true } : {}),
     },
     source: 'server',
     ip_address: req.ip,
@@ -187,8 +216,17 @@ function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
   };
 }
 
+/** Qué registrar para esta ruta, o null si no se registra. */
+function specFor(routeKey, { registry, readOnly, loggedElsewhere }) {
+  if (routeKey.endsWith('__unmatched__')) return null; // 404 o cortada antes del router
+  if (readOnly.has(routeKey) || loggedElsewhere.has(routeKey)) return null;
+  return registry[routeKey] || inferSpec(routeKey);
+}
+
 const createAuditTrail = ({
   registry = AUDITED_ROUTES,
+  readOnly = READ_ONLY_ROUTES,
+  loggedElsewhere = LOGGED_ELSEWHERE,
   logFn = logStaffActivity,
   verifyToken = defaultVerify,
 } = {}) => (req, res, next) => {
@@ -206,7 +244,7 @@ const createAuditTrail = ({
   res.on('finish', () => {
     try {
       if (res.statusCode >= 400) return;
-      const spec = registry[`${req.method} ${resolveRoute(req)}`];
+      const spec = specFor(`${req.method} ${resolveRoute(req)}`, { registry, readOnly, loggedElsewhere });
       if (!spec) return;
       Promise.resolve(logFn(buildEntry(req, res, spec, { verifyToken }))).catch((err) =>
         logger.error('audit trail: could not enqueue entry', { err: err?.message }),
@@ -220,4 +258,4 @@ const createAuditTrail = ({
 
 const auditTrail = createAuditTrail();
 
-module.exports = { auditTrail, createAuditTrail, buildEntry, extractContext, sanitize };
+module.exports = { auditTrail, createAuditTrail, buildEntry, extractContext, sanitize, specFor };

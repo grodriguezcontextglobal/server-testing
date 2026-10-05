@@ -31,12 +31,24 @@ let base;
 before(async () => {
   const app = express();
   app.use(express.json());
-  app.use(createAuditTrail({ registry: REGISTRY, logFn: async (e) => { logged.push(e); } }));
+  app.use(createAuditTrail({
+    registry: REGISTRY,
+    readOnly: new Set(['POST /api/receiver/receiver-assigned-list']),
+    loggedElsewhere: new Set(['POST /api/event/create-event']),
+    logFn: async (e) => { logged.push(e); },
+  }));
 
   const receiver = express.Router();
   receiver.post('/receiver-assignation', (req, res) => res.status(201).json({ ok: true }));
   receiver.post('/receiver-assigned-list', (req, res) => res.json({ ok: true })); // consulta: no auditada
   app.use('/api/receiver', receiver);
+
+  // Una escritura que nadie clasificó: tiene que registrarse igual.
+  const mailer = express.Router();
+  mailer.post('/brand-new-notification', (req, res) => res.status(202).json({ ok: true }));
+  app.use('/api/nodemailer', mailer);
+
+  app.post('/api/event/create-event', (req, res) => res.status(201).json({ ok: true }));
 
   const item = express.Router();
   item.post('/new_item', (req, res) => res.status(201).json({ ok: true, insertId: 4567 }));
@@ -92,8 +104,52 @@ test('asignar un dispositivo a un consumidor: autor del x-token, evento, seriale
   assert.equal(e.source, 'server');
 });
 
+test('el payload real del dashboard al asignar (DeviceAssigned.render): serial anidado, evento y consumidor', async () => {
+  await call('POST', '/api/receiver/receiver-assignation', {
+    headers: { 'x-token': token },
+    body: {
+      paymentIntent: 'pi_123',
+      device: { serialNumber: 'RX-0042', deviceType: 'Receiver', status: true },
+      user: 'ana@x.com',
+      active: true,
+      eventSelected: 'Feria 2026',
+      provider: 'Acme',
+      company: 'Acme',
+      event_id: 701,
+    },
+  });
+  const ctx = logged[0].context;
+  assert.deepEqual(ctx.serial_numbers, ['RX-0042']);
+  assert.equal(ctx.event_id, '701');
+  assert.equal(ctx.event_name, 'Feria 2026');
+  assert.equal(ctx.consumer, 'ana@x.com');
+});
+
 test('una consulta por POST que no está en la lista no se registra', async () => {
   await call('POST', '/api/receiver/receiver-assigned-list', { headers: { 'x-token': token }, body: {} });
+  assert.equal(logged.length, 0);
+});
+
+test('una escritura que no está en ninguna lista se registra igual, con verbo inferido y destinatarios', async () => {
+  await call('POST', '/api/nodemailer/brand-new-notification', {
+    headers: { 'x-token': token },
+    body: { consumer: { email: 'Ana@X.com', name: 'Ana' }, to: ['b@y.com'], subject: 'Hola' },
+  });
+  assert.equal(logged.length, 1);
+  const e = logged[0];
+  assert.equal(e.action, 'SEND');
+  assert.equal(e.details.inferred, true);
+  assert.deepEqual(e.context.recipients.sort(), ['ana@x.com', 'b@y.com']);
+});
+
+test('lo que ya registra su controlador no se duplica', async () => {
+  await call('POST', '/api/event/create-event', { headers: { 'x-token': token }, body: {} });
+  assert.equal(logged.length, 0);
+});
+
+test('una ruta que no existe (404) no se registra', async () => {
+  const status = await call('POST', '/api/nope/never', { headers: { 'x-token': token }, body: {} });
+  assert.equal(status, 404);
   assert.equal(logged.length, 0);
 });
 

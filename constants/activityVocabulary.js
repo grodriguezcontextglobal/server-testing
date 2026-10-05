@@ -44,6 +44,10 @@ const ACTIVITY_ACTIONS = [
   'SIGN',
   'UPLOAD',
   'ERASE',
+  'CLOSE',
+  'RECONCILE',
+  'ACCEPT',
+  'CLEAR',
 ];
 
 const ACTIVITY_TARGET_MODELS = [
@@ -76,6 +80,17 @@ const ACTIVITY_TARGET_MODELS = [
   'Folder',
   'Signature',
   'Provider',
+  'Email',
+  'Invitation',
+  'Terms',
+  'Identifier',
+  'StripeLink',
+  'Image',
+  'Post',
+  'Article',
+  'Feedback',
+  'Task',
+  'Cache',
 ];
 
 module.exports = { ACTIVITY_ACTIONS, ACTIVITY_TARGET_MODELS };

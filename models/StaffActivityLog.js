@@ -59,6 +59,8 @@ const StaffActivityLogSchema = new Schema({
     consumer: { type: String },
     serial_numbers: { type: [String], default: undefined },
     item_ids: { type: [String], default: undefined },
+    // Destinatarios de un correo (acciones SEND Email).
+    recipients: { type: [String], default: undefined },
     count: { type: Number },
   },
   // 'server' = middlewares/auditTrail.js; 'client' = POST /api/admin/activity-logs;

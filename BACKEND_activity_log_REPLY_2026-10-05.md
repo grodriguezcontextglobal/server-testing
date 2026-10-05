@@ -6,17 +6,27 @@
 
 ## 1. Qué hemos hecho
 
-Lo que proponíais: un middleware de auditoría con una lista explícita de las
-rutas que cambian datos.
+Un middleware de auditoría, como proponíais, pero con la lista al revés: **se
+registra toda acción que cambia algo**, y la lista es la de lo que **no** se
+registra.
 
 - **Un único punto:** `middlewares/auditTrail.js`, montado una vez en `index.js`,
   antes de los routers. Decide al terminar cada respuesta, cuando Express ya sabe
   qué ruta casó y con qué status.
-- **Lista explícita:** `constants/auditedRoutes.js`, con **~200 rutas** y su verbo
-  y modelo (`ASSIGN Device`, `CHECK_OUT Inventory`, `REFUND Transaction`…). Las
-  consultas por POST (`consulting-*`, `retrieve-*`, `*-query`, listados) quedan
-  fuera, como pedíais. Un test comprueba que cada ruta de la lista existe de
-  verdad, para que un renombrado no deje de registrar en silencio.
+- **Se registra toda escritura** (POST/PUT/PATCH/DELETE) que termine bien, salvo:
+  - las consultas que van por POST (`consulting-*`, `retrieve-*`, `*-query`,
+    listados, búsquedas);
+  - lo que su controlador ya registraba (no se duplica);
+  - lo que es en sí un registro (logs de error, de notificaciones…).
+- **Verbos:** `constants/auditedRoutes.js` pone nombre a ~260 acciones
+  (`ASSIGN Device`, `CHECK_OUT Inventory`, `IMPORT Inventory`, `SEND Email`,
+  `REFUND Transaction`…). Una ruta nueva que nadie haya clasificado **se registra
+  igual**, con un verbo deducido de su nombre y `details.inferred: true`.
+- **Cobertura comprobada:** un test exige que las **413** rutas de escritura que
+  hay hoy estén clasificadas. Ninguna ruta nueva llega a producción sin que
+  alguien decida cómo se registra.
+- **Correos:** cada envío desde `/api/nodemailer/*` es `SEND Email`, con los
+  destinatarios en `context.recipients`.
 - **Solo lo que terminó bien** (status < 400).
 - **El autor sale del JWT, nunca del cliente.** Hay rutas de escritura sin
   `validateJWT` (por ejemplo `receiver-assignation`). En esas, el middleware
@@ -33,6 +43,11 @@ rutas que cambian datos.
 | Asignar inventario al evento | `event_device`, `event_device_directly`, `allocate-device-event`, `inserting-items-in-event-from-container` | `ASSIGN Inventory` |
 | Reservar / liberar para el evento | `reserve-items-for-event`, `lock-items-for-event` / `remove-reserved-items-for-event` | `RESERVE` / `RELEASE Inventory` |
 | Salida del almacén | `POST /api/db_item/item-out-warehouse` | `CHECK_OUT Inventory` |
+| Cambiar la información de items | `edit-item`, `update-items-based-on-serial-number`, `update-group-items`, `update-all-items-in-inventory`, `update-large-data`… | `UPDATE Inventory` |
+| Importar items desde Excel | `POST /api/db_item/bulk-item-from-spreadsheet` | `IMPORT Inventory` |
+| Exportar el inventario | `POST /api/db_item/inventory-export` | `EXPORT Inventory` |
+| Borrar un item (`/db_item/${id}`) | `POST /api/db_item/:id(\d+)` | `DELETE Inventory` |
+| Enviar un correo | cualquier `POST /api/nodemailer/*` | `SEND Email` |
 | Asignar un dispositivo a un consumidor | `POST /api/receiver/receiver-assignation` | `ASSIGN Device` |
 | Devoluciones | `returning-item*`, `return-event-devices`, `confirm-item-return`, `transaction-all-items-returned-at-once`… | `RETURN` |
 
@@ -54,13 +69,15 @@ rutas que cambian datos.
     "member_id": "9",
     "serial_numbers": ["SN-1", "SN-2"],
     "item_ids": ["4567"],
+    "recipients": ["ana@x.com"],
     "count": 2
   },
   "details": {
     "route": "POST /api/receiver/receiver-assignation",
     "status": 201,
     "request": { "…": "el body de la petición, sin secretos" },
-    "company_inferred": true
+    "company_inferred": true,
+    "inferred": true
   },
   "source": "server",
   "timestamp": "…"
@@ -80,6 +97,9 @@ rutas que cambian datos.
   `POST /activity-logs`) o vacío (los registros que ya hacían los controladores).
 - **`details.company_inferred: true`**: la compañía no vino en la petición y se
   dedujo porque el autor pertenece a una sola. Ver §4.
+- **`details.inferred: true`**: la ruta no tenía verbo asignado y se dedujo de su
+  nombre. Pintadla con `details.route` si el verbo no os sirve.
+- **`context.recipients`**: solo en correos (`SEND Email`).
 
 ## 3. Respuestas a vuestras preguntas
 
@@ -93,9 +113,11 @@ rutas que cambian datos.
    `activity-logs`. Las transacciones (crear, cobrar, capturar, cancelar,
    reembolsar) ahora las registra el servidor aquí. Os recomendamos dejar de
    escribir en `transaction-audit-log`.
-3. **Correos (`/api/nodemailer`)**: no se registran. Son efecto de una acción
-   que ya queda registrada. Lo que sí entra son los envíos que son una acción
-   explícita de la persona: `consent/request` y `consent/resend` (`SEND Consent`).
+3. **Correos (`/api/nodemailer`)**: sí, todos. Cada envío es `SEND Email`, con
+   los destinatarios en `context.recipients` y el tipo de correo en
+   `details.route`. La única excepción es `branding-preview`, que solo
+   previsualiza y no envía. Los consentimientos (`consent/request`, `resend`)
+   son `SEND Consent`.
 4. **Filtros nuevos en `GET /api/admin/activity-logs`** (query string):
    - por evento: `event_id`;
    - por dispositivo: `serial_number` o `item_id`;
