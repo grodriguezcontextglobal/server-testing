@@ -9,6 +9,8 @@ const {
 } = require('../constants/auditedRoutes');
 const { resolveRoute } = require('./requestMetrics');
 const { logStaffActivity } = require('../controller/staffActivityLog');
+const { resolveCompanyContext } = require('../helpers/companyContext');
+const { actorCompanyContext } = require('../helpers/actorCompanyContext');
 const logger = require('../helpers/logger');
 
 /**
@@ -223,18 +225,32 @@ function specFor(routeKey, { registry, readOnly, loggedElsewhere }) {
   return registry[routeKey] || inferSpec(routeKey);
 }
 
+/**
+ * Recuerda la compañía de esta petición para el autor, SOLO si
+ * authorizeMongoPermission ya verificó que es miembro de ella: ese middleware
+ * deja `req.isSuperUser` (true/false) únicamente al dejar pasar, y la compañía
+ * que comprobó es la de resolveCompanyContext, la misma que se lee aquí.
+ */
+function rememberVerifiedCompany(req, rememberFn) {
+  if (req.isSuperUser === undefined || !req.uid) return;
+  const companyId = resolveCompanyContext(req);
+  if (companyId) Promise.resolve(rememberFn(req.uid, companyId)).catch(() => {});
+}
+
 const createAuditTrail = ({
   registry = AUDITED_ROUTES,
   readOnly = READ_ONLY_ROUTES,
   loggedElsewhere = LOGGED_ELSEWHERE,
   logFn = logStaffActivity,
   verifyToken = defaultVerify,
+  rememberCompany = actorCompanyContext.remember,
+  recallCompany = actorCompanyContext.recall,
 } = {}) => (req, res, next) => {
-  if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') return next();
+  const isWrite = !(req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS');
 
   // La respuesta trae a veces el único id del objeto creado (insertId).
   const json = res.json;
-  if (typeof json === 'function') {
+  if (isWrite && typeof json === 'function') {
     res.json = function auditJson(body) {
       if (res.locals) res.locals.auditResponseBody = body;
       return json.call(this, body);
@@ -244,17 +260,39 @@ const createAuditTrail = ({
   res.on('finish', () => {
     try {
       if (res.statusCode >= 400) return;
+      // También en lecturas: abrir el reporte o la lista de staff es la señal
+      // más fiable de con qué compañía está trabajando el usuario.
+      rememberVerifiedCompany(req, rememberCompany);
+      if (!isWrite) return;
       const spec = specFor(`${req.method} ${resolveRoute(req)}`, { registry, readOnly, loggedElsewhere });
       if (!spec) return;
-      Promise.resolve(logFn(buildEntry(req, res, spec, { verifyToken }))).catch((err) =>
-        logger.error('audit trail: could not enqueue entry', { err: err?.message }),
-      );
+      const entry = buildEntry(req, res, spec, { verifyToken });
+      withRecalledCompany(entry, recallCompany)
+        .then((e) => logFn(e))
+        .catch((err) => logger.error('audit trail: could not enqueue entry', { err: err?.message }));
     } catch (err) {
       logger.error('audit trail: could not build entry', { err: err?.message });
     }
   });
   next();
 };
+
+/**
+ * Sin ninguna cabecera de compañía (rutas /api/receiver, /api/event…), la
+ * compañía es la última que el autor usó con membresía verificada. Se resuelve
+ * aquí, al momento de la acción, y no después en el worker: es el contexto en el
+ * que la hizo.
+ */
+async function withRecalledCompany(entry, recallFn) {
+  if (entry.company_id || entry.company_sql_id || !entry.staff_member_id) return entry;
+  const companyId = await recallFn(entry.staff_member_id);
+  if (!companyId) return entry;
+  return {
+    ...entry,
+    company_id: companyId,
+    details: { ...entry.details, company_source: 'last_seen' },
+  };
+}
 
 const auditTrail = createAuditTrail();
 
