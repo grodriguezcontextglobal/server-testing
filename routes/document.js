@@ -23,6 +23,7 @@ const {
   getCompanyDocumentByID,
   getDocumentDownloadUrl,
   deleteDocument,
+  updateDocument,
   generateTemporaryDownloadUrl,
   createNewFolder,
   getFolders,
@@ -117,6 +118,10 @@ router.get("/triggers", canManage, getTriggerActions);
 router.get("/:id", getCompanyDocumentByID);
 router.get("/download/:documentId/:userId", getDocumentDownloadUrl);
 router.post("/download/documentUrl", generateTemporaryDownloadUrl);
+// Editar y borrar exigen que el documento sea de la compañía del contexto
+// (x-company-id) y que quien llama pertenezca a ella — ver
+// loadCompanyDocument en controller/document.js.
+router.patch("/:id", canManage, updateDocument);
 router.delete("/:id", canManage, deleteDocument);
 // Error handling middleware for multer errors
 router.use((error, req, res, next) => {

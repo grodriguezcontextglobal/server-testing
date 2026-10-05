@@ -18,6 +18,9 @@ const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const { logStaffActivity } = require("./staffActivityLog");
 const { resolveCompanyContext } = require("../helpers/companyContext");
+const { findCompanyMembership } = require("../helpers/companyMembership");
+const { hasPermission } = require("../constants/rolePermissions");
+const { isValidObjectId } = require("mongoose");
 
 const createAdminUser = async (request, response = express.response) => {
   const { email, password } = request.body;
@@ -426,26 +429,104 @@ const manuallyLogoutUser = async (request, response) => {
   }
 };
 
+// Lo que cada usuario puede cambiar de SU PROPIO perfil sin ningún rol.
+const PROFILE_SELF_FIELDS = new Set([
+  "name",
+  "lastName",
+  "phone",
+  "imageProfile",
+  "emailNotifications",
+  "online",
+  "agreedPlatformConditions",
+]);
+// Lo que esta ruta no cambia NUNCA, ni siquiera un super_user: identidad
+// (email, que es también la clave de Company.employees), credenciales, MFA, la
+// versión del token y los flags de plataforma. Antes el body entero iba a
+// findByIdAndUpdate y cualquier autenticado podía ponerle super_user a otro.
+const PROFILE_PROTECTED_FIELDS = new Set([
+  "_id",
+  "id",
+  "__v",
+  "email",
+  "password",
+  "super_user",
+  "platform_observer",
+  "tokenVersion",
+  "mfaEnabled",
+  "mfaSecret",
+]);
+
+// PATCH /api/admin/profile/:id
+//  - El propio usuario: solo PROFILE_SELF_FIELDS.
+//  - Otro usuario (o campos que no son personales): super_user de plataforma, o
+//    super_user dentro de la compañía del contexto (x-company-id) y el editado
+//    debe pertenecer a esa misma compañía.
+// Los campos que no se pueden tocar se descartan y se devuelven en
+// `ignored_fields`; si no queda nada que aplicar, 403.
 const editAdminUser = async (request, response = response) => {
   const adminUserId = request.params.id;
   try {
-    const adminUser = await AdminUser.findById(adminUserId);
+    const adminUser = isValidObjectId(adminUserId)
+      ? await AdminUser.findById(adminUserId)
+      : null;
     if (!adminUser) {
       return response.status(404).json({
         ok: false,
         msg: "Admin user/id do not match",
       });
     }
-    const adminUserEdited = {
-      ...request.body,
-    };
-    //generate JWT
-    // const token = await generateJWT(adminUserId, adminUser.name);
+
+    const isSelf = String(adminUser.id) === String(request.uid);
+    const caller = isSelf
+      ? adminUser
+      : await AdminUser.findById(request.uid).select("super_user active email");
+    if (!caller || caller.active === false) {
+      return response.status(403).json({ ok: false, msg: "Forbidden" });
+    }
+
+    let canManage = Boolean(caller.super_user);
+    if (!canManage) {
+      const companyId = resolveCompanyContext(request);
+      const callerEmp = await findCompanyMembership(companyId, caller);
+      if (callerEmp?.super_user) {
+        canManage = isSelf || Boolean(await findCompanyMembership(companyId, adminUser));
+      }
+    }
+
+    if (!isSelf && !canManage) {
+      return response.status(403).json({
+        ok: false,
+        msg: "Forbidden: editing another user's profile requires super_user in this company.",
+      });
+    }
+
+    const body = request.body || {};
+    const update = {};
+    const ignored_fields = [];
+    for (const key of Object.keys(body)) {
+      const allowed =
+        !PROFILE_PROTECTED_FIELDS.has(key) &&
+        (canManage || PROFILE_SELF_FIELDS.has(key));
+      if (allowed) update[key] = body[key];
+      else ignored_fields.push(key);
+    }
+
+    if (Object.keys(update).length === 0) {
+      return response.status(ignored_fields.length ? 403 : 400).json({
+        ok: false,
+        msg: ignored_fields.length
+          ? "None of the provided fields can be changed by this user."
+          : "No fields to update.",
+        ignored_fields,
+      });
+    }
+
     const adminUserUpdated = await AdminUser.findByIdAndUpdate(
       adminUserId,
-      adminUserEdited,
+      update,
       {
         new: true,
+        runValidators: true,
       }
     );
 
@@ -455,7 +536,7 @@ const editAdminUser = async (request, response = response) => {
       action: "UPDATE",
       target_model: "AdminUser",
       target_id: adminUserUpdated.id,
-      details: { updates: request.body, self_update: true },
+      details: { updates: update, self_update: isSelf, ignored_fields },
       ip_address: request.ip,
       device_info: request.headers["user-agent"],
     });
@@ -470,7 +551,7 @@ const editAdminUser = async (request, response = response) => {
       email: adminUserUpdated.email,
       phone: adminUserUpdated.phone,
       role: adminUserUpdated.role,
-      // token,
+      ignored_fields,
     });
   } catch (error) {
     return response.status(500).json({
@@ -830,10 +911,18 @@ const disableMfa = async (req, res) => {
   }
 };
 
+// POST /api/staff/force-logout — exige token (antes era anónima: con saber el
+// email de alguien se le cerraba la sesión). El usuario bloqueado por una
+// sesión abierta en otro sitio no necesita esta ruta: el login ya acepta
+// `forceLogin: true` después de verificar la contraseña.
+//  - Cerrar la propia sesión: siempre.
+//  - Cerrar la de otro: super_user de plataforma, o en la compañía del
+//    contexto (x-company-id) ser super_user o tener staff:update, y que el
+//    otro sea miembro de esa misma compañía.
 const forceEndSession = async (request, response) => {
-  const { email } = request.body; //, password 
+  const { email } = request.body || {};
   try {
-    if (!email /*|| !password*/) {
+    if (!email) {
       return response
         .status(400)
         .json({ ok: false, msg: "Email is required." });
@@ -844,10 +933,26 @@ const forceEndSession = async (request, response) => {
       return response.status(404).json({ ok: false, msg: "User not found." });
     }
 
-    // const validPassword = await bcrypt.compare(password, adminUser.password);
-    // if (!validPassword) {
-    //   return response.status(401).json({ ok: false, msg: "Invalid credentials." });
-    // }
+    const isSelf = String(adminUser.id) === String(request.uid);
+    if (!isSelf) {
+      const caller = await AdminUser.findById(request.uid).select("super_user active email");
+      if (!caller || caller.active === false) {
+        return response.status(403).json({ ok: false, msg: "Forbidden" });
+      }
+      if (!caller.super_user) {
+        const companyId = resolveCompanyContext(request);
+        const callerEmp = await findCompanyMembership(companyId, caller);
+        const callerCan =
+          callerEmp &&
+          (callerEmp.super_user || hasPermission(callerEmp.roleType, "staff", "update"));
+        if (!callerCan || !(await findCompanyMembership(companyId, adminUser))) {
+          return response.status(403).json({
+            ok: false,
+            msg: "Forbidden: ending another user's session requires staff management rights in a company they belong to.",
+          });
+        }
+      }
+    }
 
     const redis = await clientRedis();
     const sessionKey = `staff_session:${adminUser.id}`;
@@ -859,26 +964,36 @@ const forceEndSession = async (request, response) => {
     // `target_model` es obligatorio en StaffActivityLog y faltaba acá: los 6
     // jobs FORCE_LOGOUT que había en dead-letter fallaban todos por eso.
     await logStaffActivity({
-      staff_member_id: adminUser.id,
+      staff_member_id: request.uid,
       company_id: resolveCompanyContext(request),
       action: "FORCE_LOGOUT",
       target_model: "AdminUser",
       target_id: adminUser.id,
-      details: { reason: "User-initiated remote session termination." },
+      details: {
+        reason: isSelf
+          ? "User-initiated remote session termination."
+          : "Session terminated by another staff member.",
+        self: isSelf,
+      },
       ip_address: request.ip,
     });
 
-    response.cookie("token", "", {
-      httpOnly: true,
-      expires: new Date(0),
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-    });
+    // La cookie es la de quien llama: borrarla solo si cerró su propia sesión.
+    // Un admin que echa a otro no debe perder la suya.
+    if (isSelf) {
+      response.cookie("token", "", {
+        httpOnly: true,
+        expires: new Date(0),
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+      });
+    }
 
     return response.status(200).json({
       ok: true,
-      message:
-        "Active session has been terminated. You can now start a new session.",
+      message: isSelf
+        ? "Active session has been terminated. You can now start a new session."
+        : "The user's active session has been terminated.",
     });
   } catch (error) {
     logger.error("Force session end error", { email, error: error.message });
