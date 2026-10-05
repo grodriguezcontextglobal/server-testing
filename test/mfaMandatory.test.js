@@ -185,6 +185,25 @@ test('validateMfaEnrollment acepta el token de enrolamiento y marca la petición
   assert.equal(q.mfaSetup, true);
 });
 
+test('validateMfaEnrollment acepta el token de enrolamiento también en x-token (lo que manda el modal del dashboard)', async () => {
+  const r = res();
+  await loginUser(req({ email: 'off@x.com', password: 'ok' }), r);
+  const q = req({}, { 'x-token': r.body.mfaSetupToken });
+  let nextCalled = false;
+  validateMfaEnrollment(q, res(), () => { nextCalled = true; });
+  assert.equal(nextCalled, true);
+  assert.equal(q.uid, U_OFF);
+  assert.equal(q.mfaSetup, true);
+});
+
+test('validateMfaEnrollment: un x-token que no es ni de enrolamiento ni de sesión da 401', () => {
+  const out = res();
+  let nextCalled = false;
+  validateMfaEnrollment(req({}, { 'x-token': 'basura' }), out, () => { nextCalled = true; });
+  assert.equal(nextCalled, false);
+  assert.equal(out.code, 401);
+});
+
 test('validateMfaEnrollment rechaza un token de sesión puesto como token de enrolamiento', () => {
   const sessionToken = jwt.sign({ uid: U_OFF, tokenVersion: 0 }, process.env.SECRET_JWT_SEED);
   const out = res();
