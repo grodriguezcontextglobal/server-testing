@@ -31,6 +31,19 @@ const ACTIVITY_ACTIONS = [
   'WAIVE',
   'IMPORT',
   'EXPORT',
+  // Audit trail del servidor (constants/auditedRoutes.js), 2026-10-05.
+  'RESERVE',
+  'RELEASE',
+  'CHECK_OUT',
+  'MOVE',
+  'CAPTURE',
+  'CANCEL',
+  'SETTLE',
+  'SEND',
+  'RESPOND',
+  'SIGN',
+  'UPLOAD',
+  'ERASE',
 ];
 
 const ACTIVITY_TARGET_MODELS = [
@@ -46,6 +59,23 @@ const ACTIVITY_TARGET_MODELS = [
   'Fee',
   'Verification',
   'Company',
+  // Audit trail del servidor (constants/auditedRoutes.js), 2026-10-05.
+  'Device',
+  'Staff',
+  'Consumer',
+  'Item',
+  'Container',
+  'Category',
+  'Group',
+  'Location',
+  'SubLocation',
+  'Shipment',
+  'Subscription',
+  'CashReport',
+  'Document',
+  'Folder',
+  'Signature',
+  'Provider',
 ];
 
 module.exports = { ACTIVITY_ACTIONS, ACTIVITY_TARGET_MODELS };

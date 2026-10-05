@@ -18,6 +18,7 @@ const {
   securityLogger,
 } = require("./middlewares/requestLogger");
 const { requestMetrics } = require("./middlewares/requestMetrics");
+const { auditTrail } = require("./middlewares/auditTrail");
 const metrics = require("./helpers/metrics");
 const logger = require("./helpers/logger");
 
@@ -140,6 +141,11 @@ const configureMiddleware = (app) => {
   // app.use(sqlInjectionDetector);
 
   app.use(express.static("public"));
+
+  // Audit trail del servidor: registra cada acción de la lista de
+  // constants/auditedRoutes.js con su autor. Va después del parseo del body
+  // (necesita req.body) y antes de los routers; decide en `finish`.
+  app.use(auditTrail);
 };
 
 // Route configuration
