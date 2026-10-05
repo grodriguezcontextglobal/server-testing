@@ -6,6 +6,7 @@ const AdminUser = require("../models/AdminUser");
 const Company = require("../models/Company");
 const getConnection = require("../mysql/database/config");
 const { generateJWT } = require("../helpers/jwt");
+const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
 const logger = require("../helpers/logger");
 
 const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
@@ -249,18 +250,16 @@ const registerNewUserAndCompany = async (request, response) => {
       }
     }
 
-    // --- Generar JWT ---
-    const token = await generateJWT(
-      adminUser.id,
-      adminUser.name,
-      adminUser.tokenVersion,
-      false,
-      sqlStaffId
-    );
+    // --- Sesión o enrolamiento de MFA ---
+    // La cuenta es nueva, así que no tiene MFA, y MFA es obligatoria: recibe
+    // el token de enrolamiento en vez de sesión (ver admin.js § loginUser).
+    const auth = isMfaRequired()
+      ? { mfaSetupRequired: true, mfaSetupToken: await generateMfaSetupToken(adminUser.id) }
+      : { token: await generateJWT(adminUser.id, adminUser.name, adminUser.tokenVersion, false, sqlStaffId) };
 
     return response.status(201).json({
       ok: true,
-      token,
+      ...auth,
       user: {
         uid: adminUser.id,
         name: adminUser.name,

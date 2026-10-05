@@ -220,7 +220,7 @@ test('registerNewUserAndCompany: 400 si faltan campos requeridos de company', as
   assert.equal(res.body.ok, false);
 });
 
-test('registerNewUserAndCompany: 201 — flujo exitoso — retorna token + user + company', async () => {
+test('registerNewUserAndCompany: 201 — flujo exitoso — retorna enrolamiento de MFA (no sesión) + user + company', async () => {
   resetState();
 
   const req = { body: { user: baseUserPayload(), company: baseCompanyPayload() } };
@@ -229,7 +229,10 @@ test('registerNewUserAndCompany: 201 — flujo exitoso — retorna token + user 
 
   assert.equal(res.statusCode, 201);
   assert.equal(res.body.ok, true);
-  assert.ok(res.body.token,   'debe retornar token');
+  // MFA obligatoria: la cuenta nueva no tiene MFA, así que no recibe sesión.
+  assert.equal(res.body.token, undefined, 'no debe retornar token de sesión');
+  assert.equal(res.body.mfaSetupRequired, true);
+  assert.ok(res.body.mfaSetupToken, 'debe retornar el token de enrolamiento');
   assert.ok(res.body.user,    'debe retornar user');
   assert.ok(res.body.company, 'debe retornar company');
   assert.equal(res.body.user.email,         'ana@test.com');
@@ -301,15 +304,19 @@ test('registerNewUserAndCompany: flujo exitoso — sincroniza company_staff con 
   assert.equal(companyIdInserted, 42);
 });
 
-test('registerNewUserAndCompany: flujo exitoso — el token incluye sqlStaffId', async () => {
+test('registerNewUserAndCompany: con MFA_REQUIRED=false, el token incluye sqlStaffId', async () => {
   resetState();
+  process.env.MFA_REQUIRED = 'false';
+  try {
+    const req = { body: { user: baseUserPayload(), company: baseCompanyPayload() } };
+    const res = mockRes();
+    await registerNewUserAndCompany(req, res);
 
-  const req = { body: { user: baseUserPayload(), company: baseCompanyPayload() } };
-  const res = mockRes();
-  await registerNewUserAndCompany(req, res);
-
-  // El stub retorna `token::uid::sqlStaffId`
-  assert.ok(res.body.token.includes('99'), 'el token debe embeber el sqlStaffId del staff_member insertado');
+    // El stub retorna `token::uid::sqlStaffId`
+    assert.ok(res.body.token.includes('99'), 'el token debe embeber el sqlStaffId del staff_member insertado');
+  } finally {
+    delete process.env.MFA_REQUIRED;
+  }
 });
 
 test('registerNewUserAndCompany: NO inserta company_staff si company_info falla en SQL', async () => {
