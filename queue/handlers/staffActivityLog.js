@@ -1,6 +1,7 @@
 'use strict';
 
 const { describeEntry } = require('../../helpers/auditDescribe');
+const { buildDisplay } = require('../../helpers/auditDisplay');
 
 const OBJECT_ID = /^[0-9a-fA-F]{24}$/;
 
@@ -33,6 +34,7 @@ function createStaffActivityLogHandler(
     findActor,
     findReceiver,
     findPoolEntry,
+    findCompanyName,
   } = {}
 ) {
   // Cache por proceso. La clave es el nombre: si la compañía se renombra
@@ -102,10 +104,33 @@ function createStaffActivityLogHandler(
     }
   };
 
+  // Nombre de la compañía para el desglose ("where"), cacheado por proceso.
+  const nameById = new Map();
+  const companyNameOf = async (id) => {
+    if (!id || !OBJECT_ID.test(String(id)) || !findCompanyName) return undefined;
+    if (nameById.has(String(id))) return nameById.get(String(id));
+    try {
+      const name = (await findCompanyName(String(id))) || undefined;
+      nameById.set(String(id), name);
+      return name;
+    } catch {
+      return undefined;
+    }
+  };
+
   const handler = async function staffActivityLogHandler(payload) {
-    let company_id = await normalize(payload?.company_id);
-    if (!company_id && payload?.company_sql_id) {
-      company_id = await companyFromSqlId(payload.company_sql_id);
+    // El log de acceso a datos de alumnos (auditPiiAccess) manda en company_id
+    // el id SQL ("137"), no el de Mongo. Sin esto se trataba como un NOMBRE, no
+    // resolvía, y el registro quedaba fuera del reporte de su compañía.
+    let rawCompany = payload?.company_id;
+    let sqlCompany = payload?.company_sql_id;
+    if (rawCompany && /^\d+$/.test(String(rawCompany))) {
+      sqlCompany = sqlCompany || String(rawCompany);
+      rawCompany = null;
+    }
+    let company_id = await normalize(rawCompany);
+    if (!company_id && sqlCompany) {
+      company_id = await companyFromSqlId(sqlCompany);
     }
     let details = payload?.details;
     if (!company_id && payload?.source === 'server' && payload?.staff_member_id) {
@@ -131,18 +156,27 @@ function createStaffActivityLogHandler(
       details,
       context,
       company_id: company_id ?? null,
+      ...(sqlCompany ? { company_sql_id: String(sqlCompany) } : {}),
       ...(targetLabel ? { target_label: targetLabel } : {}),
     };
-    const { summary, target_label, action, target_model } = describeEntry(entry);
+    const described = describeEntry(entry);
 
-    const doc = await createFn({
+    const final = {
       ...entry,
-      ...(action ? { action } : {}),
-      ...(target_model ? { target_model } : {}),
+      ...(described.action ? { action: described.action } : {}),
+      ...(described.target_model ? { target_model: described.target_model } : {}),
       ...(actor ? { actor } : {}),
-      summary: payload?.summary || summary,
-      target_label: entry.target_label || target_label,
+      summary: payload?.summary || described.summary,
+      target_label: entry.target_label || described.target_label,
+      timestamp: payload?.timestamp || new Date(),
+    };
+    final.display = buildDisplay(final, {
+      companyName: await companyNameOf(final.company_id),
+      verb: described.verb,
+      object: described.object,
     });
+
+    const doc = await createFn(final);
     return { id: doc.id };
   };
   return handler;

@@ -17,8 +17,10 @@ require('dotenv').config();
 const mongoose = require('mongoose');
 const { describeEntry } = require('../helpers/auditDescribe');
 const { enrichContext } = require('../queue/handlers/staffActivityLog');
+const { buildDisplay } = require('../helpers/auditDisplay');
 
 const APPLY = process.argv.includes('--apply');
+const VERBOSE = process.argv.includes('--verbose'); // imprime el desglose (display) de cada registro
 
 // Mismas listas que cuenta middlewares/auditTrail.js (COUNT_KEYS). El body
 // guardado recorta las listas a 20 y añade "[+N more]".
@@ -56,7 +58,39 @@ if (SINCE && Number.isNaN(SINCE.getTime())) {
     findPoolEntry: (id) => ReceiversPool.findById(id).select('eventSelected device').lean(),
   };
 
-  const filter = { summary: { $exists: false }, ...(SINCE ? { timestamp: { $gte: SINCE } } : {}) };
+  const Company = require('../models/Company');
+  const getConnection = require('../mysql/database/config');
+  const names = new Map();
+  const companyNameOf = async (id) => {
+    if (!id || !/^[0-9a-fA-F]{24}$/.test(String(id))) return undefined;
+    if (!names.has(String(id))) {
+      const c = await Company.findById(id).select('company_name').lean().catch(() => null);
+      names.set(String(id), c?.company_name);
+    }
+    return names.get(String(id));
+  };
+  const sqlToMongo = new Map();
+  const companyFromSqlId = async (sqlId) => {
+    if (sqlToMongo.has(sqlId)) return sqlToMongo.get(sqlId);
+    let id = null;
+    try {
+      const [[row]] = await getConnection().execute(
+        'SELECT company_name FROM company_info WHERE company_id = ? LIMIT 1', [sqlId]);
+      if (row?.company_name) {
+        const matches = await Company.find({ company_name: row.company_name }, { _id: 1 }).limit(2).lean();
+        if (matches.length === 1) id = String(matches[0]._id);
+      }
+    } catch { /* se queda como estaba */ }
+    sqlToMongo.set(sqlId, id);
+    return id;
+  };
+
+  // Sin frase o sin desglose: correrlo otra vez tras una versión nueva completa
+  // lo que falte.
+  const filter = {
+    $or: [{ summary: { $exists: false } }, { display: { $exists: false } }],
+    ...(SINCE ? { timestamp: { $gte: SINCE } } : {}),
+  };
   const cursor = StaffActivityLog.find(filter).sort({ timestamp: 1 }).lean().cursor();
   let seen = 0;
   let written = 0;
@@ -78,7 +112,7 @@ if (SINCE && Number.isNaN(SINCE.getTime())) {
       targetLabel = t?.email;
     }
     const entry = { ...doc, context, ...(targetLabel ? { target_label: targetLabel } : {}) };
-    const { summary, target_label, action, target_model } = describeEntry(entry);
+    const { summary, target_label, action, target_model, verb, object } = describeEntry(entry);
 
     let actor = doc.actor;
     if (!actor && doc.staff_member_id) {
@@ -91,15 +125,33 @@ if (SINCE && Number.isNaN(SINCE.getTime())) {
     if (action && action !== doc.action) $set.action = action;
     if (target_model && target_model !== doc.target_model) $set.target_model = target_model;
 
+    // company_id numérico = id SQL (log de acceso a datos de alumnos): se
+    // traduce para que el registro entre en el reporte de su compañía.
+    let companyId = doc.company_id;
+    if (companyId && /^\d+$/.test(String(companyId))) {
+      const resolved = await companyFromSqlId(String(companyId));
+      if (resolved) {
+        $set.company_sql_id = String(companyId);
+        $set.company_id = resolved;
+        companyId = resolved;
+      }
+    }
+
+    const final = { ...entry, ...$set, actor, timestamp: doc.timestamp };
+    $set.display = buildDisplay(final, { companyName: await companyNameOf(companyId), verb, object });
+
     console.log(`${doc.timestamp?.toISOString?.() || ''}  ${doc.action} ${doc.target_model} → ${summary}`);
+    if (VERBOSE) console.log(JSON.stringify($set.display, null, 2));
     if (APPLY) {
-      await StaffActivityLog.updateOne({ _id: doc._id, summary: { $exists: false } }, { $set });
+      await StaffActivityLog.updateOne({ _id: doc._id }, { $set });
       written++;
     }
   }
 
   console.log(`\n${seen} registros sin frase; ${APPLY ? `${written} actualizados` : 'nada escrito (usa --apply)'}`);
   await mongoose.disconnect();
+  // El pool de MySQL mantiene vivo el proceso si no se cierra.
+  await getConnection().end().catch(() => {});
 })().catch(async (err) => {
   console.error('FAILED', err.message);
   await mongoose.disconnect().catch(() => {});

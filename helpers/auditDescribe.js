@@ -44,6 +44,8 @@ const VERB = {
   ACCEPT: 'Accepted',
   CLEAR: 'Cleared',
   OPEN: 'Opened',
+  READ: 'Viewed',
+  DISCLOSURE: 'Disclosed',
   LOGIN: 'Logged in',
   LOGOUT: 'Logged out',
   FORCE_LOGOUT: 'Ended the active session of',
@@ -90,6 +92,7 @@ const MODEL = {
   Feedback: 'feedback',
   Task: 'task',
   Cache: 'cached data',
+  SchoolPII: 'student records',
 };
 
 const SHOW_SERIALS = 3;
@@ -110,7 +113,12 @@ const EMAIL_KIND = {
   'lost-device-fee-notification': 'lost device fee',
 };
 
-const routePath = (entry) => String(entry?.details?.route || '').split(' ')[1] || '';
+// La ruta viene como "MÉTODO /path" del audit trail, o solo "/path" del log de
+// acceso a datos de alumnos (middlewares/auditPiiAccess.js).
+const routePath = (entry) => {
+  const r = String(entry?.details?.route || '');
+  return r.includes(' ') ? r.split(' ')[1] : r;
+};
 const lastSegment = (entry) => routePath(entry).split('/').filter(Boolean).pop() || '';
 const humanize = (slug) => slug.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
 
@@ -173,6 +181,29 @@ function eventPhrase(entry, action) {
 /** Rutas cuyo significado real depende del contenido, no del nombre. */
 const SPECIAL = [
   {
+    // Log de acceso a datos de alumnos (FERPA): quién VIO qué. Lo escribe
+    // auditPiiAccess con la ruta sin método; la pantalla sale de la ruta.
+    test: (e) => e.target_model === 'SchoolPII' && e.action === 'READ',
+    describe: (e) => {
+      const screen = humanize(routePath(e).replace(/^\/api\/school\/?/, '').replace(/\//g, ' ')) || 'school data';
+      const who = e.target_id ? ` of member #${e.target_id}` : '';
+      return {
+        summary: `Viewed student records${who} (${screen})`,
+        verb: 'Viewed',
+        object: `student records${who} (${screen})`,
+      };
+    },
+  },
+  {
+    test: (e) => e.target_model === 'SchoolPII' && e.action === 'DISCLOSURE',
+    describe: (e) => {
+      const what = e.details?.type === 'student_export' ? 'Exported' : 'Disclosed';
+      const purpose = e.details?.purpose ? ` (${e.details.purpose})` : '';
+      const object = `the student record of member #${e.target_id || '?'}${purpose}`;
+      return { summary: `${what} ${object}`, verb: what, object };
+    },
+  },
+  {
     // Asignar y devolver usan la misma ruta; `device.status` decide.
     test: (e) => /\/api\/(receiver|admin)\/receiver-update\/:id$/.test(routePath(e)),
     describe: (e) => {
@@ -188,7 +219,12 @@ const SPECIAL = [
       const activity = e.details?.request?.activity;
       if (activity === undefined) return {};
       const state = activity ? 'in use' : 'available';
-      return { summary: `Marked ${objectPhrase(e, 'device')} as ${state} in the pool${eventPhrase(e, e.action)}` };
+      const object = `${objectPhrase(e, 'device')} as ${state} in the pool`;
+      return {
+        summary: `Marked ${object}${eventPhrase(e, e.action)}`,
+        verb: 'Marked',
+        object,
+      };
     },
   },
   {
@@ -198,7 +234,8 @@ const SPECIAL = [
       const kind = EMAIL_KIND[slug] || humanize(slug.replace(/[-_]?(email[-_]?)?notification$/, ''));
       const to = (e.context?.recipients || []).slice(0, 3).join(', ');
       const more = (e.context?.recipients || []).length > 3 ? ' and others' : '';
-      return { summary: `Sent ${kind ? `"${kind}" ` : ''}email${to ? ` to ${to}${more}` : ''}` };
+      const object = `${kind ? `"${kind}" ` : ''}email`;
+      return { summary: `Sent ${object}${to ? ` to ${to}${more}` : ''}`, verb: 'Sent', object };
     },
   },
   {
@@ -209,6 +246,8 @@ const SPECIAL = [
       action: 'OPEN',
       target_model: 'StripeAccount',
       summary: `Opened the Stripe payments dashboard${e.target_id ? ` (account ${e.target_id})` : ''}`,
+      verb: 'Opened',
+      object: `the Stripe payments dashboard${e.target_id ? ` (account ${e.target_id})` : ''}`,
     }),
   },
   {
@@ -219,7 +258,7 @@ const SPECIAL = [
       e.target_id &&
       e.staff_member_id &&
       String(e.target_id) === String(e.staff_member_id),
-    describe: () => ({ summary: 'Updated their own profile' }),
+    describe: () => ({ summary: 'Updated their own profile', verb: 'Updated', object: 'their own profile' }),
   },
   {
     // Cerrar la propia sesión abierta en otro sitio (pantalla de login).
@@ -228,13 +267,21 @@ const SPECIAL = [
       e.target_id &&
       e.staff_member_id &&
       String(e.target_id) === String(e.staff_member_id),
-    describe: () => ({ summary: 'Ended their own active session elsewhere' }),
+    describe: () => ({
+      summary: 'Ended their own active session elsewhere',
+      verb: 'Ended',
+      object: 'their own active session elsewhere',
+    }),
   },
   {
     // La llama el dashboard sola después de cada acción: se registra, pero se
     // dice que es automática para que no parezca una acción de la persona.
     test: (e) => /\/api\/cache_update\/remove-cache$/.test(routePath(e)),
-    describe: () => ({ summary: 'Refreshed cached data (automatic, after an action)' }),
+    describe: () => ({
+      summary: 'Refreshed cached data (automatic, after an action)',
+      verb: 'Refreshed',
+      object: 'cached data (automatic, after an action)',
+    }),
   },
 ];
 
@@ -283,23 +330,38 @@ function describeEntry(entry) {
     ...(override.action ? { action } : {}),
     ...(override.target_model ? { target_model: override.target_model } : {}),
   };
-  if (override.summary) return { summary: override.summary, target_label, ...corrections };
+  // `verb` y `object` por separado alimentan el desglose (display.what): la
+  // frase completa lleva además a quién y dónde, que en el desglose van en
+  // `whom` y `where` y no deben repetirse.
+  if (override.summary) {
+    return {
+      summary: override.summary,
+      verb: override.verb,
+      object: override.object,
+      target_label,
+      ...corrections,
+    };
+  }
 
   const verb = VERB[action] || humanize(String(action || 'Acted on')).toLowerCase();
   const noun = MODEL[entry.target_model] || humanize(String(entry.target_model || 'record')).toLowerCase();
 
   let summary;
+  let object;
   if (action === 'LOGIN' || action === 'LOGOUT') {
     summary = verb;
+    object = undefined;
   } else if (action === 'FORCE_LOGOUT') {
-    summary = `${verb} ${entry.target_label || entry.context?.consumer || `staff #${entry.target_id || '?'}`}`;
+    object = entry.target_label || entry.context?.consumer || `staff #${entry.target_id || '?'}`;
+    summary = `${verb} ${object}`;
   } else {
     const fromWarehouse = action === 'CHECK_OUT' ? ' from the warehouse' : '';
-    summary = `${verb} ${objectPhrase(entry, noun)}${fromWarehouse}${personPhrase(entry, action)}${eventPhrase(entry, action)}`;
+    object = `${objectPhrase(entry, noun)}${fromWarehouse}`;
+    summary = `${verb} ${object}${personPhrase(entry, action)}${eventPhrase(entry, action)}`;
   }
   if (entry.details?.inferred) summary += ' (unclassified action)';
 
-  return { summary, target_label, ...corrections };
+  return { summary, verb, object, target_label, ...corrections };
 }
 
 module.exports = { describeEntry, VERB, MODEL };

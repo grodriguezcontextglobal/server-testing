@@ -31,6 +31,11 @@ const StaffActivityLogSchema = new Schema({
   target_label: {
     type: String,
   },
+  // Desglose para pintar sin interpretar: who / what / how (con los campos del
+  // payload) / whom / where / when. Ver helpers/auditDisplay.js.
+  display: {
+    type: Object,
+  },
   // Opcional a propósito: hay eventos que legítimamente no tienen compañía.
   // El LOGIN ocurre ANTES de que el usuario elija con qué compañía trabajar
   // (ver helpers/companyContext.js), y un audit trail no puede descartar un

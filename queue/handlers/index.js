@@ -95,6 +95,9 @@ register(
         .lean(),
     findPoolEntry: (id) =>
       require("../../models/ReceiversPool").findById(id).select("eventSelected device").lean(),
+    // "where" del desglose: la compañía por su nombre, no por su ObjectId.
+    findCompanyName: async (id) =>
+      (await Company.findById(id).select("company_name").lean())?.company_name,
   })
 );
 // payload incluye el _id pre-generado en controller/errorLog.js (para que el

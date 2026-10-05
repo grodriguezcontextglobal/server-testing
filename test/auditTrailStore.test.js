@@ -13,6 +13,43 @@ const { createGetStaffActivityLogs } = require('../controller/staffActivityLog')
 
 const CO = 'aaaaaaaaaaaaaaaaaaaaaaaa';
 
+test('worker: guarda el desglose (display) con la compañía por su nombre', async () => {
+  let saved;
+  const handler = createStaffActivityLogHandler(async (doc) => { saved = doc; return { id: 'L1' }; }, {
+    findActor: async () => ({ name: 'Ana', email: 'ana@x.com' }),
+    findCompanyName: async (id) => (id === CO ? 'Acme' : undefined),
+  });
+  await handler({
+    source: 'server',
+    staff_member_id: 'u1',
+    company_id: CO,
+    action: 'CHECK_OUT',
+    target_model: 'Inventory',
+    details: { route: 'POST /api/db_item/item-out-warehouse', request: { serials: ['A1', 'A2'], event_id: 7 } },
+    context: { serial_numbers: ['A1', 'A2'], event_id: '7' },
+  });
+  assert.equal(saved.display.who.name, 'Ana');
+  assert.equal(saved.display.what.verb, 'Checked out');
+  assert.equal(saved.display.what.object, '2 items (A1, A2) from the warehouse');
+  assert.deepEqual(saved.display.where, { event: '#7', company: 'Acme' });
+  assert.ok(saved.display.when);
+});
+
+test('worker: el log de acceso a datos de alumnos manda el id SQL en company_id; se traduce', async () => {
+  let saved;
+  const handler = createStaffActivityLogHandler(async (doc) => { saved = doc; return { id: 'L1' }; }, {
+    findCompanyNameBySqlId: async (id) => (id === '137' ? 'Acme' : null),
+    findCompaniesByName: async (name) => (name === 'Acme' ? [{ _id: CO }] : []),
+  });
+  await handler({
+    staff_member_id: 'u1', company_id: '137', action: 'READ', target_model: 'SchoolPII',
+    details: { route: '/api/school/roster', status: 200 },
+  });
+  assert.equal(saved.company_id, CO);
+  assert.equal(saved.company_sql_id, '137');
+  assert.equal(saved.summary, 'Viewed student records (roster)');
+});
+
 test('worker: la devolución desde el consumidor del evento queda como una frase completa', async () => {
   // El request real de producción solo trae { id, device }; consumidor y
   // evento salen del documento Receivers.
