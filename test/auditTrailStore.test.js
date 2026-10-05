@@ -77,6 +77,45 @@ function fakeModel() {
   };
 }
 
+test('GET activity-logs: un usuario normal ve lo de su compañía Y lo propio sin compañía', async () => {
+  const model = fakeModel();
+  const handler = createGetStaffActivityLogs({
+    findAdminUserFn: async () => ({ id: 'u1', email: 'u1@x.com', super_user: false }),
+    findMembershipsFn: async () => [{ _id: CO, company_name: 'Acme' }],
+    StaffActivityLogModel: model,
+  });
+  const res = { json: () => {}, status: () => res };
+  await handler({
+    uid: 'u1',
+    headers: { 'x-company-id': CO },
+    header: (n) => (n === 'x-company-id' ? CO : undefined),
+    query: {},
+  }, res);
+  const q = model.seen.query;
+  assert.equal(q.company_id, undefined, 'el scope de compañía va dentro del $or');
+  assert.deepEqual(q.$or, [
+    { company_id: { $in: [CO, 'Acme'] } },
+    { company_id: null, staff_member_id: 'u1' },
+  ]);
+});
+
+test('GET activity-logs: filtrar por otro staff no expone lo propio sin compañía', async () => {
+  const model = fakeModel();
+  const handler = createGetStaffActivityLogs({
+    findAdminUserFn: async () => ({ id: 'u1', super_user: false }),
+    findMembershipsFn: async () => [{ _id: CO, company_name: 'Acme' }],
+    StaffActivityLogModel: model,
+  });
+  const res = { json: () => {}, status: () => res };
+  await handler({
+    uid: 'u1', headers: {}, header: () => undefined, query: { staff_member_id: 'u2' },
+  }, res);
+  // staff_member_id = u2 Y ($or: compañía | (null y u1)) → la rama de null exige
+  // u1 y u2 a la vez, así que solo quedan los registros de u2 en la compañía.
+  assert.equal(model.seen.query.staff_member_id, 'u2');
+  assert.ok(Array.isArray(model.seen.query.$or));
+});
+
 test('GET activity-logs: filtros por evento, serial, item, member, consumidor y origen', async () => {
   const model = fakeModel();
   const handler = createGetStaffActivityLogs({

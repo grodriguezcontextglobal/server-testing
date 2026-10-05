@@ -159,6 +159,19 @@ const createGetStaffActivityLogs = ({
       } else {
         query.company_id = { $in: memberships.flatMap(keysOf) };
       }
+
+      // Lo propio sin compañía también se ve. Hay acciones que llegan sin
+      // ninguna cabecera de compañía (/api/receiver, /api/event…) y no siempre
+      // se pueden atribuir; filtrarlas por compañía las escondía hasta de quien
+      // las hizo. Solo al autor: sin compañía no hay a quién más mostrárselas.
+      const requesterId = requester.id ?? requester._id;
+      if (requesterId) {
+        query.$or = [
+          { company_id: query.company_id },
+          { company_id: null, staff_member_id: requesterId },
+        ];
+        delete query.company_id;
+      }
     }
 
     // Apply Filters

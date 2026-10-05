@@ -27,6 +27,8 @@ const REGISTRY = {
 let logged;
 let server;
 let base;
+// Memoria de compañía en memoria (en producción, Redis).
+let remembered;
 
 before(async () => {
   const app = express();
@@ -36,7 +38,22 @@ before(async () => {
     readOnly: new Set(['POST /api/receiver/receiver-assigned-list']),
     loggedElsewhere: new Set(['POST /api/event/create-event']),
     logFn: async (e) => { logged.push(e); },
+    rememberCompany: async (uid, companyId) => { remembered.set(String(uid), companyId); },
+    recallCompany: async (uid) => remembered.get(String(uid)) ?? null,
   }));
+
+  // Simula una ruta protegida por authorizeMongoPermission: deja req.uid y
+  // req.isSuperUser, que es la marca de "membresía verificada".
+  app.get('/api/admin/activity-logs', (req, res) => {
+    req.uid = STAFF;
+    req.isSuperUser = false;
+    res.json({ ok: true });
+  });
+  // Misma cabecera, pero sin pasar por la verificación de membresía.
+  app.get('/api/unverified', (req, res) => {
+    req.uid = STAFF;
+    res.json({ ok: true });
+  });
 
   const receiver = express.Router();
   receiver.post('/receiver-assignation', (req, res) => res.status(201).json({ ok: true }));
@@ -65,7 +82,7 @@ before(async () => {
   base = `http://127.0.0.1:${server.address().port}`;
 });
 after(() => new Promise((resolve) => server.close(resolve)));
-beforeEach(() => { logged = []; });
+beforeEach(() => { logged = []; remembered = new Map(); });
 
 const call = async (method, path, { body, headers = {} } = {}) => {
   const res = await fetch(`${base}${path}`, {
@@ -123,6 +140,45 @@ test('el payload real del dashboard al asignar (DeviceAssigned.render): serial a
   assert.equal(ctx.event_id, '701');
   assert.equal(ctx.event_name, 'Feria 2026');
   assert.equal(ctx.consumer, 'ana@x.com');
+});
+
+// ── El caso reportado: devolver un dispositivo desde el consumidor del evento ──
+// Las rutas /api/receiver no llevan cabecera de compañía. Antes, un usuario de
+// varias compañías dejaba la acción con company_id null y el reporte (filtrado
+// por compañía) no la mostraba.
+
+test('una acción sin cabecera de compañía toma la última compañía VERIFICADA del autor', async () => {
+  const CO = 'aaaaaaaaaaaaaaaaaaaaaaaa';
+  // 1) El usuario abre algo protegido por authorizeMongoPermission con su compañía.
+  await call('GET', '/api/admin/activity-logs', { headers: { 'x-token': token, 'x-company-id': CO } });
+  // 2) Devuelve un dispositivo: la ruta no manda compañía.
+  await call('POST', '/api/receiver/receiver-assignation', {
+    headers: { 'x-token': token },
+    body: { device: { serialNumber: 'RX-1' }, event_id: 701 },
+  });
+  const e = logged.at(-1);
+  assert.equal(e.company_id, CO);
+  assert.equal(e.details.company_source, 'last_seen');
+});
+
+test('una cabecera de compañía sin membresía verificada NO se recuerda', async () => {
+  await call('GET', '/api/unverified', {
+    headers: { 'x-token': token, 'x-company-id': 'bbbbbbbbbbbbbbbbbbbbbbbb' },
+  });
+  assert.equal(remembered.size, 0);
+  await call('POST', '/api/receiver/receiver-assignation', { headers: { 'x-token': token }, body: {} });
+  assert.equal(logged.at(-1).company_id, null);
+});
+
+test('la cabecera explícita de la petición gana a la compañía recordada', async () => {
+  remembered.set(STAFF, 'aaaaaaaaaaaaaaaaaaaaaaaa');
+  await call('POST', '/api/receiver/receiver-assignation', {
+    headers: { 'x-token': token, 'x-company-id': 'cccccccccccccccccccccccc' },
+    body: {},
+  });
+  const e = logged.at(-1);
+  assert.equal(e.company_id, 'cccccccccccccccccccccccc');
+  assert.equal(e.details.company_source, undefined);
 });
 
 test('una consulta por POST que no está en la lista no se registra', async () => {
@@ -210,7 +266,12 @@ test('sanitize recorta listas largas y textos largos', () => {
 test('si escribir el log falla, la respuesta al cliente no se entera', async () => {
   const app = express();
   app.use(express.json());
-  app.use(createAuditTrail({ registry: REGISTRY, logFn: async () => { throw new Error('queue down'); } }));
+  app.use(createAuditTrail({
+    registry: REGISTRY,
+    logFn: async () => { throw new Error('queue down'); },
+    rememberCompany: async () => {},
+    recallCompany: async () => null,
+  }));
   app.post('/api/db_shipment', (req, res) => res.status(201).json({ ok: true }));
   const srv = await new Promise((resolve) => { const s = app.listen(0, () => resolve(s)); });
   const res = await fetch(`http://127.0.0.1:${srv.address().port}/api/db_shipment`, { method: 'POST' });
