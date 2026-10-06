@@ -1,6 +1,7 @@
 const { response, request } = require("express");
 const { createConnection } = require("mysql2");
 const getConnection = require("../database/config");
+const { readCompanyId } = require("../../middlewares/authorizePermission");
 require("dotenv").config();
 const connection = getConnection();
 
@@ -236,25 +237,57 @@ const consultingEventsPerCompany = async (request, response) => {
   }
 };
 
+// DELETE /api/db_event/:id
+//
+// Leía el id de `request.body.email`. El dashboard (useDraftEventActions.jsx)
+// manda el id en la URL y en el body el EMAIL del usuario, así que la consulta
+// era `WHERE event_id = '<email>'` y no borraba nada: los borradores no se
+// borraban nunca y la respuesta decía ok. Ahora el id sale de la URL.
+//
+// Y solo borra eventos de la compañía en la que authorizePermission comprobó el
+// permiso (la misma que lee `readCompanyId`: params, body, query o la cabecera
+// `s-company-lq`). Sin esto, con `event:delete` en una compañía se podía borrar
+// el evento de otra conociendo su id.
 const deleteEvent = async (request, response) => {
   try {
-    const query = "delete from event_info where event_id=?";
-    const values = [request.body.email];
-    const [result] = await connection.execute(query, values);
-    // , function (err, result, fields) {
-    //   if (err)
-    //     return response.status(500).json({
-    //       ok: false,
-    //       msg: `${err.message}`,
-    //     });
+    const eventId = request.params.id;
+    const companyId = readCompanyId(request);
+    if (!eventId || !/^\d+$/.test(String(eventId))) {
+      return response.status(400).json({ ok: false, msg: "A numeric event id is required in the URL." });
+    }
+    if (!companyId) {
+      return response.status(400).json({ ok: false, msg: "Company context is required." });
+    }
 
-      return response?.status(201)?.json({
-        ok: true,
-        consumer_deleted: result,
-      });
-    // });
+    const query =
+      "DELETE FROM event_info WHERE event_id = ? AND company_assigned_event_id = ?";
+    const [result] = await connection.execute(query, [String(eventId), String(companyId)]);
+
+    if (!result.affectedRows) {
+      // Ni de esta compañía ni existente: no se distingue a propósito.
+      return response.status(404).json({ ok: false, msg: "Event not found." });
+    }
+
+    return response.status(200).json({
+      ok: true,
+      event_id: Number(eventId),
+      deleted: result.affectedRows,
+    });
   } catch (error) {
     console.error("Error:", error.message);
+    // Un evento con inventario, staff o registros todavía asociados no se puede
+    // borrar: se dice qué pasa en vez de un 500 genérico.
+    if (error.code === "ER_ROW_IS_REFERENCED_2" || error.code === "ER_ROW_IS_REFERENCED") {
+      return response.status(409).json({
+        ok: false,
+        msg: "The event still has inventory, staff or records attached. Remove them first.",
+      });
+    }
+    // Sin respuesta aquí, el middleware de timeout contesta 408 y tapa el error real
+    response.status(500).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
   }
 };
 
@@ -284,6 +317,12 @@ const insertingStaffInEvent = async (request, response) => {
     // });
   } catch (error) {
     console.error("Error:", error.message);
+    // Sin respuesta aquí, el middleware de timeout contesta 408 y tapa el error real
+    const status = error.code === "ER_DUP_ENTRY" ? 409 : 500;
+    response.status(status).json({
+      ok: false,
+      msg: `${error.message}`,
+    });
   }
 };
 
