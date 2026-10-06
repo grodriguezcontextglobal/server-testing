@@ -17,6 +17,26 @@ const {
   validateRefundPayload,
 } = require("../middlewares/validateStripeRoutePayload");
 const { idempotencyMutationCache } = require("../middlewares/idempotencyMutationCache");
+
+// Mover dinero ya cobrado (reembolsar, capturar o liberar un depósito) exige
+// sesión. Estas cuatro rutas eran públicas por "compatibilidad", y mientras el
+// validador de refund estaba roto (marzo → 2026-10-06) eso no se notaba; con el
+// arreglo desplegado, cualquiera con un pi_ —que viaja en los correos a
+// consumidores— podía reembolsarlo.
+//
+// `transaction:update` y no `billing:update` (lo que piden las /internal/): el
+// event_manager cobra y devuelve depósitos en los eventos y tiene
+// `transaction:*`, pero no `billing:*`. El dashboard ya manda token y
+// x-company-id a /api/stripe, así que no cambia nada para él.
+//
+// Falta (PLAN_stripe_2026-10-06.md, Fase 0.1): comprobar que el pago es de la
+// compañía de quien lo mueve. Con una sola cuenta de Stripe, el permiso solo
+// dice que puede mover dinero, no de quién.
+const canMoveCollectedMoney = [
+  validateJWT,
+  checkTokenVersion,
+  authorizeMongoPermission("transaction", "update"),
+];
 const {
   stripePaymentIntent,
   listAllCustomers,
@@ -193,6 +213,7 @@ router.post("/stripe-transaction-admin", validateJWT, checkTokenVersion, authori
 //capture payment intent amount
 router.post(
   "/payment-intents/:id/capture",
+  canMoveCollectedMoney,
   validatePaymentIntentIdParam,
   captureStripePaymentIntent
 );
@@ -200,6 +221,7 @@ router.post(
 //cancel payment intent amount
 router.post(
   "/payment-intents/:id/cancel",
+  canMoveCollectedMoney,
   validatePaymentIntentIdParam,
   cancelStripePaymentIntent
 );
@@ -228,6 +250,7 @@ router.post(
 //create a refund
 router.post(
   "/refund",
+  canMoveCollectedMoney,
   validateRefundPayload,
   refundStripePaymentIntent
 );
@@ -235,6 +258,7 @@ router.post(
 //create a partial refund
 router.post(
   "/partial-refund",
+  canMoveCollectedMoney,
   validateRefundPayload,
   partialRefundStripePaymentIntent
 );
