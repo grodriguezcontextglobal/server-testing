@@ -21,12 +21,27 @@
 const Company = require("../models/Company");
 const logger = require("../helpers/logger");
 
+/**
+ * Devitrak's own mark for mail, served by this API from public/assets
+ * (express.static). PNG, not the SVGs beside them: Gmail and desktop Outlook
+ * do not render SVG in mail. They are the SVGs (devitrak_login.svg,
+ * devitrak_name.svg, white for dark backgrounds) recoloured for the white card
+ * — icon #155eef + #8A9DAD, wordmark #101828 — and rasterised at 3x.
+ */
+const EMAIL_ASSETS_BASE_URL = (
+  process.env.EMAIL_ASSETS_BASE_URL || "https://db.devitrak.net"
+).replace(/\/+$/, "");
+const DEVITRAK_EMAIL_ICON_URL = `${EMAIL_ASSETS_BASE_URL}/assets/devitrak_email_icon.png`;
+const DEVITRAK_EMAIL_NAME_URL = `${EMAIL_ASSETS_BASE_URL}/assets/devitrak_email_name.png`;
+
 /** The look every email had before this feature, and the fallback for all of them. */
 const DEVITRAK_BRANDING = Object.freeze({
   companyId: null,
   displayName: "Devitrak Notifications",
-  logoUrl:
-    "https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png",
+  logoUrl: DEVITRAK_EMAIL_NAME_URL,
+  // The mark left of the wordmark. Only Devitrak's own mail shows it, and
+  // emailLayout's renderHeader takes it from here, never from client branding.
+  iconUrl: DEVITRAK_EMAIL_ICON_URL,
   brandColor: "#155eef",
   replyTo: "",
   websiteUrl: "https://devitrak.net",
@@ -280,6 +295,8 @@ const applyBrandedEnvelope = (message, branding = DEVITRAK_BRANDING) => {
 
 module.exports = {
   DEVITRAK_BRANDING,
+  DEVITRAK_EMAIL_ICON_URL,
+  DEVITRAK_EMAIL_NAME_URL,
   SENDER_ADDRESS,
   resolveBranding,
   normalizeBranding,

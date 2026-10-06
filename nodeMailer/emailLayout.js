@@ -271,14 +271,48 @@ const divider = () => `
  * ------------------------------------------------------------------ */
 
 /**
+ * Devitrak's own header: the icon and the wordmark side by side, as the
+ * pre-chassis templates showed them. A two-cell table rather than two inline
+ * images so Outlook cannot wrap or stack them.
+ *
+ * Drawn at the SVGs' own 47x22 and 105x22; the PNGs behind them are 3x.
+ */
+const renderDevitrakMark = (name, site) => {
+  // The link goes inside each cell: an <a> wrapping a <table> is dropped or
+  // mangled by several clients.
+  const img = (src, alt, width) => {
+    const tag = `<img src="${safeUrl(src)}" alt="${alt}" width="${width}" height="22" style="display: block; width: ${width}px; height: 22px; border: 0; outline: none; text-decoration: none;" />`;
+    return site ? `<a href="${site}" target="_blank" style="text-decoration: none;">${tag}</a>` : tag;
+  };
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding: 0 8px 0 0;">${img(
+    DEVITRAK_BRANDING.iconUrl,
+    "",
+    47
+  )}</td><td>${img(DEVITRAK_BRANDING.logoUrl, name, 105)}</td></tr></table>`;
+};
+
+/**
  * Header: the client's logo, or their name set as a wordmark when they have
  * not uploaded one. Devitrak's own mark moves to the footer for branded mail —
  * the sender the family recognises is their school, not our platform.
+ *
+ * Unbranded mail (no email_branding, or not enabled) gets Devitrak's icon plus
+ * wordmark. The test is the logo itself, not `isDefault`: a branded object
+ * passed without that flag still inherits isDefault: true from the spread in
+ * renderBrandedEmail, and must not grow a Devitrak icon next to a school logo.
  */
 const renderHeader = (branding) => {
   const logo = safeUrl(branding.logoUrl);
   const name = escapeHtml(branding.displayName || DEVITRAK_BRANDING.displayName);
   const site = safeUrl(branding.websiteUrl);
+  const isDevitrakMark = String(branding.logoUrl ?? "").trim() === DEVITRAK_BRANDING.logoUrl;
+
+  if (isDevitrakMark) {
+    return `
+        <tr>
+          <td style="padding: 0 0 28px 0;">${renderDevitrakMark(name, site)}</td>
+        </tr>`;
+  }
 
   const mark = logo
     ? `<img src="${logo}" alt="${name}" height="40" style="display: block; max-height: 40px; max-width: 220px; width: auto; border: 0; outline: none; text-decoration: none;" />`

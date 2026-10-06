@@ -11,6 +11,7 @@ const {
   escapeHtml,
   safeUrl,
 } = require("./emailLayout");
+const { DEVITRAK_EMAIL_ICON_URL, DEVITRAK_EMAIL_NAME_URL } = require("./branding");
 
 /**
  * Receipts are dated in en-US explicitly rather than by server locale: these
@@ -1259,7 +1260,7 @@ const customizeMessageHtml = (props) => {
             "
           >
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+              src="${DEVITRAK_EMAIL_ICON_URL}"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1270,7 +1271,7 @@ const customizeMessageHtml = (props) => {
               "
             />
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              src="${DEVITRAK_EMAIL_NAME_URL}"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -1369,12 +1370,12 @@ const devitrakEmailHeader = `
             </p>
             <div style="margin-top: 2.5px">
               <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+                src="${DEVITRAK_EMAIL_ICON_URL}"
                 alt="devitrak-logo"
                 style="object-fit: contain; object-position: 50% 50%"
               />
               <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                src="${DEVITRAK_EMAIL_NAME_URL}"
                 alt="devitrak-name"
                 style="object-fit: contain; object-position: 50% 50%"
               />
