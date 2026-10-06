@@ -15,6 +15,9 @@ const {
   consumerDocumentSigningCompletionNotification,
 } = require("../nodeMailer/notifications");
 const AdminUser = require("../models/AdminUser");
+const { isValidObjectId } = require("mongoose");
+const { resolveCompanyContext } = require("../helpers/companyContext");
+const { findCompanyMembership } = require("../helpers/companyMembership");
 const logger = require("../helpers/logger");
 const { enqueue, extractJobContext } = require("../helpers/queue");
 const VerificationConsumersLeaseContracts = require("../models/VerificationConsumersLeaseContracts");
@@ -269,17 +272,129 @@ const getDocumentDownloadUrl = async (req, res) => {
   }
 };
 
+// Carga un documento SOLO si quien llama es miembro activo de la compañía DUEÑA
+// del documento (o super_user de plataforma). Antes PATCH no existía y DELETE
+// buscaba por id a secas: cualquier usuario con token borraba documentos de
+// otra compañía.
+//
+// La compañía se toma del propio documento, no de la cabecera: el dashboard NO
+// manda `x-company-id` a /api/document (sessionHeaders.js solo lo pone en
+// staff|admin|company|stripe|nodemailer), y exigirla rompía el editar y el
+// borrar que ya usa. Si la petición SÍ trae contexto y no coincide con el dueño,
+// tampoco pasa: alguien trabajando en la compañía A no toca documentos de B
+// aunque también sea miembro de B.
+//
+// Todo lo que no pasa responde 404, no 403, para no confirmar que ese id existe.
+// Si responde, devuelve null y el llamador debe cortar.
+async function loadCompanyDocument(req, res) {
+  const notFound = () => {
+    res.status(404).json({ ok: false, msg: "Document not found" });
+    return null;
+  };
+
+  const { id } = req.params;
+  const document = isValidObjectId(id) ? await Document.findById(id) : null;
+  if (!document) return notFound();
+
+  const owner = String(document.company_id);
+  const context = resolveCompanyContext(req);
+  if (context && String(context) !== owner) return notFound();
+
+  const caller = await AdminUser.findById(req.uid).select("super_user active email");
+  if (!caller || caller.active === false) return notFound();
+  if (!caller.super_user && !(await findCompanyMembership(owner, caller))) return notFound();
+
+  return document;
+}
+
+// Lo que el dashboard puede corregir de un documento ya subido. Fuera a
+// propósito: company_id (no se cambia de dueño), document_url (el binario se
+// reemplaza subiendo otro), version/replaced_at (los lleva el versionado),
+// created_*, contadores de uso y document_config (reglas de la compañía).
+const DOCUMENT_EDITABLE_FIELDS = new Set([
+  "title",
+  "description",
+  "language",
+  "requires_signature",
+  "expiration_date",
+  "document_type",
+  "trigger_action",
+  "at_",
+  "status",
+  "applicable_locations",
+  "applicable_items",
+  "applicable_events",
+  "tags",
+  "metadata",
+]);
+// "replaced" lo pone el versionado (markAsReplaced), no el usuario.
+const DOCUMENT_EDITABLE_STATUS = new Set(["active", "archived"]);
+
+// Campos que el dashboard manda al editar pero que el modelo NO tiene. Se
+// aceptan sin error (para no romper el formulario) y se devuelven en
+// `ignored_fields`, para que nadie crea que se guardaron. `public_document` lo
+// manda EditDocument.jsx; el servidor no lo guarda ni lo aplica: hoy
+// GET /api/document/:id es público para cualquier documento.
+const DOCUMENT_IGNORED_FIELDS = new Set(["public_document"]);
+
+// PATCH y PUT /api/document/:id — los dos con semántica de cambio parcial: lo
+// que no viene, no se toca. PUT existe porque es lo que llama el dashboard
+// (EditDocument.jsx); no hay un reemplazo total del documento.
+const updateDocument = async (req, res) => {
+  try {
+    // company_id puede venir en el body como selector de contexto
+    // (resolveCompanyContext lo acepta); no es un campo a editar.
+    const { company_id, ...body } = req.body || {};
+    const ignored_fields = Object.keys(body).filter((k) => DOCUMENT_IGNORED_FIELDS.has(k));
+    const updates = Object.fromEntries(
+      Object.entries(body).filter(([k]) => !DOCUMENT_IGNORED_FIELDS.has(k))
+    );
+    const keys = Object.keys(updates);
+    if (keys.length === 0) {
+      return res.status(400).json({ ok: false, msg: "No fields to update." });
+    }
+    const invalid = keys.filter((k) => !DOCUMENT_EDITABLE_FIELDS.has(k));
+    if (invalid.length > 0) {
+      return res.status(400).json({
+        ok: false,
+        msg: `Field(s) not editable: ${invalid.join(", ")}`,
+        invalid_fields: invalid,
+      });
+    }
+    if ("status" in updates && !DOCUMENT_EDITABLE_STATUS.has(updates.status)) {
+      return res.status(400).json({
+        ok: false,
+        msg: "status must be 'active' or 'archived'.",
+      });
+    }
+
+    const document = await loadCompanyDocument(req, res);
+    if (!document) return;
+
+    document.set(updates);
+    document.updated_by = String(req.uid);
+    // save() y no findByIdAndUpdate: así corre el pre('save') del modelo, que
+    // valida document_type/trigger_action contra lo permitido a la compañía.
+    await document.save();
+
+    return res.json({ ok: true, document, ignored_fields });
+  } catch (error) {
+    const isValidation =
+      error.name === "ValidationError" ||
+      error.name === "CastError" ||
+      /^Invalid (document type|trigger action)/.test(error.message);
+    return res.status(isValidation ? 400 : 500).json({
+      ok: false,
+      msg: error.message,
+    });
+  }
+};
+
 const deleteDocument = async (req, res) => {
   try {
     const { id } = req.params;
-    const document = await Document.findById(id);
-
-    if (!document) {
-      return res.status(404).json({
-        ok: false,
-        msg: "Document not found",
-      });
-    }
+    const document = await loadCompanyDocument(req, res);
+    if (!document) return;
 
     // Delete the document from S3
     const deleteResult = await deleteDocumentFromS3(document.document_url);
@@ -1693,6 +1808,7 @@ module.exports = {
   createStaffMemberVerification,
   createMemberVerification,
   deleteDocument,
+  updateDocument,
   deleteFolder,
   generateTemporaryDownloadUrl,
   getCompanyDocumentByID,

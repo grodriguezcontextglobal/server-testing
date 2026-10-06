@@ -23,6 +23,7 @@ const {
   getCompanyDocumentByID,
   getDocumentDownloadUrl,
   deleteDocument,
+  updateDocument,
   generateTemporaryDownloadUrl,
   createNewFolder,
   getFolders,
@@ -117,6 +118,11 @@ router.get("/triggers", canManage, getTriggerActions);
 router.get("/:id", getCompanyDocumentByID);
 router.get("/download/:documentId/:userId", getDocumentDownloadUrl);
 router.post("/download/documentUrl", generateTemporaryDownloadUrl);
+// Editar y borrar exigen que quien llama pertenezca a la compañía DUEÑA del
+// documento — ver loadCompanyDocument en controller/document.js. PUT y PATCH
+// hacen lo mismo (cambio parcial): PUT es lo que llama el dashboard.
+router.patch("/:id", canManage, updateDocument);
+router.put("/:id", canManage, updateDocument);
 router.delete("/:id", canManage, deleteDocument);
 // Error handling middleware for multer errors
 router.use((error, req, res, next) => {
