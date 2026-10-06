@@ -1,8 +1,41 @@
 # MFA obligatoria para staff — 2026-10-05
 
-Rama `feat/mfa-mandatory` (y `feat/mfa-mandatory-release` para producción).
+Rama `feat/mfa-mandatory`, ya mergeada en `release/observabilidad`.
 **Cambio de contrato en el login, el alta y la renovación.** Una cuenta sin MFA
 ya **no recibe token de sesión**: tiene que enrolarse primero.
+
+## ⚠️ El dashboard actual NO es compatible: hay que cambiar tres cosas
+
+El dashboard (`main`, desde el 2026-09-21) ya obliga a enrolarse, pero lo hace
+**después** de que el servidor emitiera la sesión: guarda el `token` del login y
+lo usa para `/mfa/generate` y `/mfa/verify`. Ese token ya no llega. Con el
+dashboard tal como está, **una cuenta sin MFA no puede entrar**:
+`handleLoginFailure` no reconoce `mfaSetupRequired`, muestra el mensaje y vuelve
+al email.
+
+Lo que **no** hay que tocar: `MfaEnrollmentModal.jsx` ni `mfaRequestConfig`. El
+servidor acepta el token de enrolamiento también en `x-token`, que es lo que
+manda el modal. Basta con pasarle `mfaSetupToken` donde hoy recibe el `token`.
+
+1. **`src/pages/authentication/Login.jsx` — abrir el modal desde el 403.**
+   En `handleLoginFailure`, antes del resto, si
+   `error.response?.status === 403 && responseData?.mfaSetupRequired`: guardar
+   `responseData.mfaSetupToken` en un estado y abrir `MfaEnrollmentModal` con
+   `authToken={ese token}`, en vez de `pendingLogin.current?.loginResponse?.data?.token`.
+   La rama de `needsMfaEnrollment(loginResponse.data)` en el login con éxito deja
+   de dispararse: una cuenta sin MFA ya no llega a un 200.
+2. **`Login.jsx` — `handleMfaEnrolled`: volver a loguearse con el código.**
+   Ya no hay respuesta de login guardada que continuar (`continueAfterAuthentication`
+   con `markEnrolled`). Al terminar el enrolamiento la cuenta ya tiene MFA, así
+   que basta con `goToStep(LOGIN_STEPS.MFA)`: el paso de código que ya existe
+   reenvía el login con `mfaCode` y recibe la sesión normal. `markEnrolled` deja
+   de hacer falta, porque esa respuesta ya trae `mfaEnabled: true`.
+3. **`src/pages/authentication/RegisterCompany.jsx` — línea ~285.**
+   `setEnrollmentToken(apiResponse.token)` → `setEnrollmentToken(apiResponse.mfaSetupToken ?? apiResponse.token)`.
+   El registro ya no devuelve `token`; sin este cambio el modal no se abre.
+
+El botón de cancelar del modal sigue funcionando igual: el servidor no abrió
+ninguna sesión, así que cancelar no deja nada abierto.
 
 ## El flujo nuevo
 
