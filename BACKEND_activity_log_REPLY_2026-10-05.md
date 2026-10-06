@@ -53,9 +53,95 @@ registra.
 
 ## 2. Lo que trae cada registro (campos nuevos)
 
+### Para pintar: `display` — quién, qué, cómo, a quién, dónde, cuándo
+
+**Esto es lo que tiene que usar la pantalla.** Cada registro trae `display`, el
+desglose ya hecho. El cliente no interpreta nada: pinta cada sección tal cual.
+
+```json
+"display": {
+  "who":   { "name": "Gustavo Santeliz", "email": "gars…@gmail.com", "kind": "staff" },
+  "what":  { "action": "RETURN", "verb": "Returned", "object": "device SN-100007", "model": "Device" },
+  "how":   {
+    "method": "PATCH",
+    "endpoint": "/api/receiver/receiver-update/:id",
+    "operation": "Receiver update",
+    "fields": [
+      { "label": "Device › Serial number", "value": "SN-100007" },
+      { "label": "Device › Device type",   "value": "Laptop" },
+      { "label": "Device › Status",        "value": "Returned" }
+    ]
+  },
+  "whom":  { "kind": "consumer", "label": "lucia.martinez@student.test" },
+  "where": { "event": "TEST _ 2", "company": "Test Company 8/13/2023" },
+  "when":  "2026-10-05T18:07:55.880Z"
+}
+```
+
+| Sección | Qué pintar | Notas |
+|---|---|---|
+| `who` | `name` y debajo `email` | `kind: "anonymous"` si la acción llegó sin sesión |
+| `what` | `verb` en negrita + `object` | `object` NO incluye a quién ni dónde, que van en sus secciones |
+| `whom` | `label`, con un icono según `kind` (`consumer`, `member`, `staff`, `recipients`) | `null` si la acción no recae sobre una persona |
+| `where` | `event` · `company` | cualquiera de los dos puede faltar; `null` si no hay ninguno |
+| `when` | fecha y hora local | ISO-8601 en UTC |
+| `how.fields` | detalle **desplegable**: lista `label: value` | sale del **payload** de la petición, con nombres legibles; sin ids técnicos ni credenciales; máx. 15 |
+| `how.operation` / `method` / `endpoint` | texto secundario, para soporte | `method` falta en el log de acceso a datos de alumnos |
+
+**Cambio necesario en el dashboard:** hoy
+`staff_activity/utils/staffActivityLogUtils.js` › `mapLogToListItem` arma la
+fila con `[log.action, log.target_model]`, y así sale "RETURN Device". Con
+`display` disponible, la fila debería ser:
+
+> **Gustavo Santeliz** · gars…@gmail.com
+> **Returned** device SN-100007 → lucia.martinez@student.test · TEST _ 2 · Test Company
+> 5 Oct 2026, 14:07 ▸ *(desplegable con `how.fields`)*
+
+Los registros anteriores a `display` lo reciben con
+`scripts/backfill-audit-summaries.js --apply`. Si alguno no lo tiene, usad
+`summary`, y si tampoco, `action` + `target_model`.
+
+### Frase completa: `actor` + `summary` (añadido 2026-10-05, tarde)
+
+Cada registro trae ya la frase hecha. **Pintad `actor.name` (`actor.email`)
+seguido de `summary`, y `target_label` como etiqueta**. No hace falta componer
+nada a partir de `action` + `target_model`:
+
+> **Gustavo Santeliz** (gars…@gmail.com) — Returned device SN-100006 from
+> ana@x.com at event TEST _ 2 · `SN-100006` · 5 Oct, 15:05
+
+```json
+{
+  "actor": { "name": "Gustavo Santeliz", "email": "gars…@gmail.com" },
+  "summary": "Returned device SN-100006 from ana@x.com at event TEST _ 2",
+  "target_label": "SN-100006",
+  "action": "RETURN",
+  "target_model": "Device"
+}
+```
+
+- **`actor`** es quién era el autor en ese momento. Usadlo antes que el
+  `staff_member_id` populado, que se queda vacío si la cuenta se borra.
+- **`summary`** sale en inglés, como el resto del dashboard. No incluye al
+  autor.
+- **`action`** puede no coincidir con el nombre de la ruta.
+  `PATCH /receiver/receiver-update/:id` con `device.status: false` se registra
+  como **`RETURN`**, y con `true` como **`ASSIGN`**: es lo que pasó, no lo que
+  dice la URL. El filtro por acción lo respeta.
+- **Acciones automáticas**: la limpieza de caché que hace el dashboard después
+  de cada acción se registra con `summary` "Refreshed cached data (automatic,
+  after an action)". Si molesta en la lista, ocultad `target_model: "Cache"`.
+- **`ACTIVITY_LOG_ACTIONS`** del dashboard (el desplegable de acciones) se ha
+  quedado corto. La lista completa la da `GET /api/admin/activity-logs/vocabulary`.
+
+### Todos los campos
+
 ```json
 {
   "staff_member_id": { "name": "…", "email": "…" },
+  "actor": { "name": "…", "email": "…" },
+  "summary": "…",
+  "target_label": "…",
   "actor_type": "staff",
   "company_id": "665f0abc…",
   "company_sql_id": "137",

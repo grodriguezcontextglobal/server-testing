@@ -91,9 +91,21 @@ function collectIds(body) {
 function countOf(body) {
   if (Array.isArray(body)) return body.length;
   let max = 0;
-  for (const v of Object.values(body || {})) if (Array.isArray(v)) max = Math.max(max, v.length);
+  // Solo las listas que SON el objeto de la acción (items, devices, rows…). Un
+  // array cualquiera del body (la lista de empleados de una compañía, sus
+  // locaciones) no dice cuántas cosas se tocaron: contarlo daba "Updated 2
+  // companies" al editar una sola.
+  for (const k of COUNT_KEYS) {
+    const v = body?.[k];
+    if (Array.isArray(v)) max = Math.max(max, v.length);
+  }
   return max || undefined;
 }
+
+const COUNT_KEYS = [
+  'items', 'devices', 'deviceList', 'serials', 'serial_numbers', 'serialNumbers',
+  'receivers', 'rows', 'list', 'data', 'members', 'item_ids', 'itemIds', 'ids', 'units',
+];
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const RECIPIENT_KEYS = ['to', 'email', 'emails', 'recipient', 'recipients', 'consumer', 'member', 'staff', 'user'];
@@ -163,7 +175,13 @@ function boundedRequest(body) {
   return clean;
 }
 
-/** id del objeto afectado: el de la URL, o el que devolvió la respuesta. */
+// Claves del body que nombran el objeto de la acción (`connectedAccountId`,
+// `receiverId`, `document_id`…). Las de compañía y staff no: dicen en nombre
+// de quién, no sobre qué.
+const ID_KEY = /^(id|_id)$|(_id|Id)$/;
+const NOT_TARGET_KEY = /^(company|staff|admin|user|event)(_id|Id)$|^s(ql)?StaffId$/i;
+
+/** id del objeto afectado: el de la URL, el que devolvió la respuesta o el del body. */
 function targetIdOf(req, resBody) {
   const p = req.params || {};
   const fromParams = Object.values(p).find(isPrimitive);
@@ -171,7 +189,29 @@ function targetIdOf(req, resBody) {
   const r = resBody && typeof resBody === 'object' ? resBody : {};
   const fromRes =
     r.insertId ?? r.id ?? r._id ?? r.memberId ?? r.result?.insertId ?? r.data?.insertId ?? r.data?.id;
-  return isPrimitive(fromRes) ? String(fromRes) : undefined;
+  if (isPrimitive(fromRes)) return String(fromRes);
+  const body = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const key = Object.keys(body).find((k) => ID_KEY.test(k) && !NOT_TARGET_KEY.test(k) && isPrimitive(body[k]));
+  return key ? String(body[key]) : undefined;
+}
+
+/**
+ * IP del cliente. Detrás del proxy, `req.ip` es la del proxy interno (lo que
+ * se veía: "172.16.40.2:44106"). La del cliente es el primer salto de
+ * x-forwarded-for; se le quita el puerto si viene con él.
+ */
+function clientIp(req) {
+  const fwd = header(req, 'x-forwarded-for');
+  const raw = (fwd ? String(fwd).split(',')[0] : req.ip || '').trim();
+  // IPv4 con puerto ("1.2.3.4:5678") → sin puerto. IPv6 se deja como viene.
+  return /^\d{1,3}(\.\d{1,3}){3}:\d+$/.test(raw) ? raw.replace(/:\d+$/, '') : raw;
+}
+
+/** Consumidor sobre el que se actuó, si la respuesta lo dice (receiver-update devuelve `user`). */
+function consumerFromResponse(resBody) {
+  const r = resBody && typeof resBody === 'object' ? resBody : {};
+  const v = r.user ?? r.consumer ?? r.email;
+  return typeof v === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim()) ? v.trim() : undefined;
 }
 
 const defaultVerify = (token) => jwt.verify(token, process.env.SECRET_JWT_SEED);
@@ -192,10 +232,36 @@ function resolveActor(req, verifyToken) {
 const header = (req, name) =>
   (typeof req.header === 'function' ? req.header(name) : req.headers?.[name]) || null;
 
+// Cuando la acción es SOBRE una persona (staff, member, consumidor), su id y su
+// email en el body son el objetivo, no "en nombre de quién". targetIdOf los
+// descarta en general; aquí se recuperan solo para estos modelos.
+const PERSON_MODELS = new Set(['Staff', 'AdminUser', 'Member', 'Consumer', 'User', 'Guardian']);
+const PERSON_ID_KEYS = ['staff_id', 'staffId', 'member_id', 'memberId', 'consumer_id', 'consumerId', 'user_id', 'userId'];
+const PERSON_EMAIL_KEYS = ['email', 'staff_email', 'staffEmail', 'member_email', 'user'];
+
+function personTarget(req, spec) {
+  if (!PERSON_MODELS.has(spec.target_model)) return {};
+  const b = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
+  const idKey = PERSON_ID_KEYS.find((k) => isPrimitive(b[k]));
+  const emailKey = PERSON_EMAIL_KEYS.find((k) => typeof b[k] === 'string' && EMAIL.test(b[k].trim()));
+  return {
+    id: idKey ? String(b[idKey]) : undefined,
+    label: emailKey ? b[emailKey].trim() : undefined,
+  };
+}
+
 function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
   const actor = resolveActor(req, verifyToken);
   const resBody = res.locals?.auditResponseBody;
+  const context = extractContext(req);
+  if (!context.consumer) {
+    const consumer = consumerFromResponse(resBody);
+    if (consumer) context.consumer = consumer;
+  }
+  const person = personTarget(req, spec);
+  const hasParamId = Object.values(req.params || {}).some(isPrimitive);
   return {
+    ...(person.label ? { target_label: person.label } : {}),
     staff_member_id: actor,
     actor_type: actor ? 'staff' : 'anonymous',
     // Mongo id de la compañía si viene; si no, el id SQL que manda el dashboard
@@ -204,8 +270,8 @@ function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
     company_sql_id: header(req, 's-company-lq'),
     action: spec.action,
     target_model: spec.target_model,
-    target_id: targetIdOf(req, resBody),
-    context: extractContext(req),
+    target_id: (!hasParamId && person.id) || targetIdOf(req, resBody),
+    context,
     details: {
       route: `${req.method} ${resolveRoute(req)}`,
       status: res.statusCode,
@@ -213,7 +279,7 @@ function buildEntry(req, res, spec, { verifyToken = defaultVerify } = {}) {
       ...(spec.inferred ? { inferred: true } : {}),
     },
     source: 'server',
-    ip_address: req.ip,
+    ip_address: clientIp(req),
     device_info: header(req, 'user-agent') || '',
   };
 }

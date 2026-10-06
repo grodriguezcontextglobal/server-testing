@@ -84,6 +84,20 @@ register(
       const companies = await findMemberships({ id: uid, email: user.email });
       return companies.map((c) => String(c._id));
     },
+    // Para la frase legible: quién era el autor, y sobre quién / dónde actuaron
+    // las rutas del pool de dispositivos, que no lo dicen en el request.
+    findActor: (uid) =>
+      require("../../models/AdminUser").findById(uid).select("name lastName email").lean(),
+    findReceiver: (id) =>
+      require("../../models/Receivers")
+        .findById(id)
+        .select("user eventSelected event_id device")
+        .lean(),
+    findPoolEntry: (id) =>
+      require("../../models/ReceiversPool").findById(id).select("eventSelected device").lean(),
+    // "where" del desglose: la compañía por su nombre, no por su ObjectId.
+    findCompanyName: async (id) =>
+      (await Company.findById(id).select("company_name").lean())?.company_name,
   })
 );
 // payload incluye el _id pre-generado en controller/errorLog.js (para que el

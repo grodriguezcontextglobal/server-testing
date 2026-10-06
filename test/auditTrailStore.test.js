@@ -13,6 +13,117 @@ const { createGetStaffActivityLogs } = require('../controller/staffActivityLog')
 
 const CO = 'aaaaaaaaaaaaaaaaaaaaaaaa';
 
+test('worker: guarda el desglose (display) con la compañía por su nombre', async () => {
+  let saved;
+  const handler = createStaffActivityLogHandler(async (doc) => { saved = doc; return { id: 'L1' }; }, {
+    findActor: async () => ({ name: 'Ana', email: 'ana@x.com' }),
+    findCompanyName: async (id) => (id === CO ? 'Acme' : undefined),
+  });
+  await handler({
+    source: 'server',
+    staff_member_id: 'u1',
+    company_id: CO,
+    action: 'CHECK_OUT',
+    target_model: 'Inventory',
+    details: { route: 'POST /api/db_item/item-out-warehouse', request: { serials: ['A1', 'A2'], event_id: 7 } },
+    context: { serial_numbers: ['A1', 'A2'], event_id: '7' },
+  });
+  assert.equal(saved.display.who.name, 'Ana');
+  assert.equal(saved.display.what.verb, 'Checked out');
+  assert.equal(saved.display.what.object, '2 items (A1, A2) from the warehouse');
+  assert.deepEqual(saved.display.where, { event: '#7', company: 'Acme' });
+  assert.ok(saved.display.when);
+});
+
+test('worker: el log de acceso a datos de alumnos manda el id SQL en company_id; se traduce', async () => {
+  let saved;
+  const handler = createStaffActivityLogHandler(async (doc) => { saved = doc; return { id: 'L1' }; }, {
+    findCompanyNameBySqlId: async (id) => (id === '137' ? 'Acme' : null),
+    findCompaniesByName: async (name) => (name === 'Acme' ? [{ _id: CO }] : []),
+  });
+  await handler({
+    staff_member_id: 'u1', company_id: '137', action: 'READ', target_model: 'SchoolPII',
+    details: { route: '/api/school/roster', status: 200 },
+  });
+  assert.equal(saved.company_id, CO);
+  assert.equal(saved.company_sql_id, '137');
+  assert.equal(saved.summary, 'Viewed student records (roster)');
+});
+
+test('worker: la devolución desde el consumidor del evento queda como una frase completa', async () => {
+  // El request real de producción solo trae { id, device }; consumidor y
+  // evento salen del documento Receivers.
+  let saved;
+  const handler = createStaffActivityLogHandler(async (doc) => { saved = doc; return { id: 'L1' }; }, {
+    findActor: async () => ({ name: 'Gustavo', lastName: 'Santeliz', email: 'g@x.com' }),
+    findReceiver: async (id) => (id === 'R1'
+      ? { user: 'ana@x.com', eventSelected: ['TEST _ 2'], event_id: 55, device: { serialNumber: 'SN-100006' } }
+      : null),
+  });
+  await handler({
+    source: 'server',
+    staff_member_id: 'u1',
+    company_id: CO,
+    action: 'UPDATE',
+    target_model: 'Device',
+    target_id: 'R1',
+    details: {
+      route: 'PATCH /api/receiver/receiver-update/:id',
+      request: { id: 'R1', device: { serialNumber: 'SN-100006', status: false } },
+    },
+    context: { serial_numbers: ['SN-100006'] },
+  });
+  assert.equal(saved.action, 'RETURN');
+  assert.equal(saved.summary, 'Returned device SN-100006 from ana@x.com at event TEST _ 2');
+  assert.equal(saved.target_label, 'SN-100006');
+  assert.deepEqual(saved.actor, { name: 'Gustavo Santeliz', email: 'g@x.com' });
+  assert.equal(saved.context.event_id, '55');
+});
+
+test('worker: la vuelta al pool lee evento y serial del documento del pool', async () => {
+  let saved;
+  const handler = createStaffActivityLogHandler(async (doc) => { saved = doc; return { id: 'L1' }; }, {
+    findPoolEntry: async () => ({ eventSelected: 'TEST _ 2', device: 'SN-100006' }),
+  });
+  await handler({
+    source: 'server',
+    company_id: CO,
+    action: 'UPDATE',
+    target_model: 'Device',
+    target_id: 'P1',
+    details: { route: 'PATCH /api/receiver/receivers-pool-update/:id', request: { id: 'P1', activity: false } },
+  });
+  assert.equal(saved.summary, 'Marked device SN-100006 as available in the pool at event TEST _ 2');
+});
+
+test('worker: si la consulta de enriquecimiento falla, el registro se guarda igual', async () => {
+  let saved;
+  const handler = createStaffActivityLogHandler(async (doc) => { saved = doc; return { id: 'L1' }; }, {
+    findReceiver: async () => { throw new Error('mongo down'); },
+    findActor: async () => { throw new Error('mongo down'); },
+  });
+  await handler({
+    company_id: CO,
+    action: 'UPDATE',
+    target_model: 'Device',
+    target_id: 'R1',
+    details: { route: 'PATCH /api/receiver/receiver-update/:id', request: { device: { status: false } } },
+  });
+  assert.equal(saved.action, 'RETURN');
+  assert.match(saved.summary, /^Returned device/);
+  assert.equal(saved.actor, undefined);
+});
+
+test('worker: los registros de los controladores (login) también reciben frase y autor', async () => {
+  let saved;
+  const handler = createStaffActivityLogHandler(async (doc) => { saved = doc; return { id: 'L1' }; }, {
+    findActor: async () => ({ name: 'Ana', email: 'ana@x.com' }),
+  });
+  await handler({ staff_member_id: 'u1', action: 'LOGIN', target_model: 'AdminUser', target_id: 'u1' });
+  assert.equal(saved.summary, 'Logged in');
+  assert.deepEqual(saved.actor, { name: 'Ana', email: 'ana@x.com' });
+});
+
 test('worker: company_sql_id se traduce a company_id por el nombre de la compañía', async () => {
   let saved;
   const handler = createStaffActivityLogHandler(async (doc) => { saved = doc; return { id: 'L1' }; }, {
@@ -114,6 +225,32 @@ test('GET activity-logs: filtrar por otro staff no expone lo propio sin compañ�
   // u1 y u2 a la vez, así que solo quedan los registros de u2 en la compañía.
   assert.equal(model.seen.query.staff_member_id, 'u2');
   assert.ok(Array.isArray(model.seen.query.$or));
+});
+
+// Pregunta 5 del dashboard: los borrados de caché descuadraban la paginación.
+const runReport = async (query) => {
+  const model = fakeModel();
+  const handler = createGetStaffActivityLogs({
+    findAdminUserFn: async () => ({ id: 'u', super_user: true }),
+    StaffActivityLogModel: model,
+  });
+  const res = { json: () => {}, status: () => res };
+  await handler({ uid: 'u', headers: {}, header: () => undefined, query }, res);
+  return model.seen.query;
+};
+
+test('GET activity-logs: por defecto NO devuelve los borrados de caché (los automáticos)', async () => {
+  const q = await runReport({});
+  assert.deepEqual(q.target_model, { $ne: 'Cache' });
+});
+
+test('GET activity-logs: include_automatic=true los trae, y target_model=Cache también', async () => {
+  assert.equal((await runReport({ include_automatic: 'true' })).target_model, undefined);
+  assert.equal((await runReport({ target_model: 'Cache' })).target_model, 'Cache');
+});
+
+test('GET activity-logs: filtrar por otro modelo no se pisa con la exclusión', async () => {
+  assert.equal((await runReport({ target_model: 'Device' })).target_model, 'Device');
 });
 
 test('GET activity-logs: filtros por evento, serial, item, member, consumidor y origen', async () => {

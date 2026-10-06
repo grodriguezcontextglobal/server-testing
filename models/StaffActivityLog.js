@@ -15,6 +15,27 @@ const StaffActivityLogSchema = new Schema({
     enum: ["staff", "anonymous"],
     default: "staff",
   },
+  // Quién era el autor EN ESE MOMENTO. staff_member_id se popula al leer, pero
+  // si la cuenta se borra o cambia de nombre, el registro tiene que seguir
+  // diciendo quién lo hizo.
+  actor: {
+    name: { type: String },
+    email: { type: String },
+  },
+  // La acción en una frase legible, sin el autor ("Returned device SN-100006
+  // from ana@x.com at event TEST _ 2"). Ver helpers/auditDescribe.js.
+  summary: {
+    type: String,
+  },
+  // Sobre qué o quién, en una palabra: el serial, el consumidor, la cuenta…
+  target_label: {
+    type: String,
+  },
+  // Desglose para pintar sin interpretar: who / what / how (con los campos del
+  // payload) / whom / where / when. Ver helpers/auditDisplay.js.
+  display: {
+    type: Object,
+  },
   // Opcional a propósito: hay eventos que legítimamente no tienen compañía.
   // El LOGIN ocurre ANTES de que el usuario elija con qué compañía trabajar
   // (ver helpers/companyContext.js), y un audit trail no puede descartar un
