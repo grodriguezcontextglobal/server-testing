@@ -159,8 +159,8 @@ test('createInsertBulkMembers: si el job termina antes del timeout, responde 201
   const res = mockRes();
   await controller({
     body: { rows: [
-      { first_name: 'A', last_name: 'One', company_id: 137 },
-      { first_name: 'B', last_name: 'Two', company_id: 137 },
+      { first_name: 'A', last_name: 'One', company_id: 137, email: 'x@y.com', phone_number: '555' },
+      { first_name: 'B', last_name: 'Two', company_id: 137, email: 'x@y.com', phone_number: '555' },
     ] },
   }, res);
 
@@ -184,7 +184,7 @@ test('createInsertBulkMembers: reporta skipped para filas sin first_name/last_na
   const res = mockRes();
   await controller({
     body: { rows: [
-      { first_name: 'A', last_name: 'One', company_id: 137 },
+      { first_name: 'A', last_name: 'One', company_id: 137, email: 'x@y.com', phone_number: '555' },
       { email: 'no-name@x.com' },
     ] },
   }, res);
@@ -202,7 +202,7 @@ test('createInsertBulkMembers: si el job falla dentro de la espera, responde 500
   });
 
   const res = mockRes();
-  await controller({ body: { rows: [{ first_name: 'A', last_name: 'One' }] } }, res);
+  await controller({ body: { rows: [{ first_name: 'A', last_name: 'One', email: 'x@y.com', phone_number: '555' }] } }, res);
 
   assert.equal(res.statusCode, 500);
   assert.match(res.payload.msg, /constraint violation/);
@@ -216,7 +216,7 @@ test('createInsertBulkMembers: si se agota el timeout, cae a 202+jobId', async (
   });
 
   const res = mockRes();
-  await controller({ body: { rows: [{ first_name: 'A', last_name: 'One' }] } }, res);
+  await controller({ body: { rows: [{ first_name: 'A', last_name: 'One', email: 'x@y.com', phone_number: '555' }] } }, res);
 
   assert.equal(res.statusCode, 202);
   assert.equal(res.payload.jobId, 'JOB-BIG');

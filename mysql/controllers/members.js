@@ -3,6 +3,7 @@ require("dotenv").config();
 const getConnection = require("../database/config");
 const { minorsMissingConsent, isConsentStale } = require("../helpers/consentGate");
 const { isUnder13 } = require("../helpers/ageCalc");
+const { memberContactProblem, filled } = require("../helpers/memberContact");
 const { chunkArray } = require("../../helpers/chunkArray");
 const { enqueue, extractJobContext } = require("../../helpers/queue");
 const { waitForJobOutcome } = require("../../helpers/queuedController");
@@ -158,6 +159,15 @@ const insertNewMember = async (request, response) => {
         .json({ message: "No valid fields provided to insert." });
     }
 
+    const contactProblem = memberContactProblem(allowed);
+    if (contactProblem) {
+      return response.status(400).json({
+        ok: false,
+        message: contactProblem.msg,
+        missing: contactProblem.missing,
+      });
+    }
+
     const placeholders = columns.map(() => "?").join(", ");
     const values = columns.map((k) => allowed[k]);
     const query = `INSERT INTO members_info (${columns.join(
@@ -298,12 +308,11 @@ function createInsertBulkMembers({
         address = composed || undefined;
       }
 
-      const email = r.email ? String(r.email).trim() : undefined;
+      const email = filled(r.email) ? String(r.email).trim() : undefined;
       const phone_number_raw = r.phone_number ?? r.phone ?? r.phoneNumber;
-      const phone_number =
-        phone_number_raw !== undefined && phone_number_raw !== null
-          ? String(phone_number_raw).trim()
-          : undefined;
+      const phone_number = filled(phone_number_raw)
+        ? String(phone_number_raw).trim()
+        : undefined;
       let company_id_raw = r.company_id ?? r.companyId;
       if (Array.isArray(company_id_raw)) {
         // Use first non-empty element if array provided
@@ -361,14 +370,34 @@ function createInsertBulkMembers({
     };
 
     const normalized = input.map(normalize);
-    const valid = normalized.filter((r) => r.first_name && r.last_name);
+    const named = normalized.filter((r) => r.first_name && r.last_name);
+    if (!named.length) {
+      return response.status(400).json({
+        ok: false,
+        msg: "No valid rows with first_name and last_name.",
+        skipped: normalized.length,
+      });
+    }
+
+    // Misma regla que el alta individual: la fila que no la cumple se salta
+    // (como las que no traen nombre) y el resto entra. `row` es el índice en
+    // el array que mandó el cliente.
+    const contact_skipped = [];
+    const valid = [];
+    normalized.forEach((r, row) => {
+      if (!(r.first_name && r.last_name)) return;
+      const problem = memberContactProblem(r);
+      if (problem) contact_skipped.push({ row, missing: problem.missing, msg: problem.msg });
+      else valid.push(r);
+    });
     const skipped = normalized.length - valid.length;
 
     if (!valid.length) {
       return response.status(400).json({
         ok: false,
-        msg: "No valid rows with first_name and last_name.",
+        msg: "No rows meet the member contact requirements.",
         skipped,
+        contact_skipped,
       });
     }
 
@@ -431,6 +460,7 @@ function createInsertBulkMembers({
         requested: input.length,
         inserted: valid.length,
         skipped,
+        contact_skipped,
         columns,
         ...outcome.result,
       });
@@ -444,6 +474,8 @@ function createInsertBulkMembers({
     return response.status(202).json({
       ok: true,
       jobId: job.id,
+      skipped,
+      contact_skipped,
       msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
     });
   } catch (error) {
@@ -618,6 +650,26 @@ const updateMemberInfo = async (request, response) => {
       return response
         .status(400)
         .json({ message: "No updatable fields provided." });
+    }
+
+    // La regla se mira sobre cómo QUEDA la fila: vaciar el email de un adulto o
+    // pasar un menor sin contacto a adulto también tiene que fallar.
+    const CONTACT_FIELDS = ["email", "phone_number", "minor", "parent_guardian_email"];
+    if (columnsToUpdate.some((c) => CONTACT_FIELDS.includes(c))) {
+      const [rows] = await connection.query(
+        `SELECT ${CONTACT_FIELDS.join(", ")} FROM members_info WHERE member_id = ?`,
+        [String(member_id).trim()]
+      );
+      if (rows && rows[0]) {
+        const contactProblem = memberContactProblem({ ...rows[0], ...updateData });
+        if (contactProblem) {
+          return response.status(400).json({
+            ok: false,
+            message: contactProblem.msg,
+            missing: contactProblem.missing,
+          });
+        }
+      }
     }
 
     const setClause = columnsToUpdate.map((c) => `\`${c}\` = ?`).join(", ");
