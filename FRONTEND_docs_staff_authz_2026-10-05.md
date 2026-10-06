@@ -1,23 +1,37 @@
 # Documentos, force-logout y perfil: autorización por compañía — 2026-10-05
 
-Rama `feat/docs-staff-authz`. **Cuatro cambios de contrato.** Lo común a todos:
-la compañía se toma del header **`x-company-id`**. También se aceptan
-`company_id` en params/body/query, pero el header es lo recomendado.
+Rama `feat/docs-staff-authz`. **Cuatro cambios de contrato.**
+
+> **Actualizado 2026-10-06:**
+> - **Documentos ya NO exigen `x-company-id`.** El dashboard no lo manda a
+>   `/api/document`. La compañía sale del propio documento: tienes que ser
+>   miembro de la compañía DUEÑA.
+> - **`PUT /api/document/:id` existe**, que es lo que llama `EditDocument.jsx`.
+>
+> Para force-logout y perfil, la compañía sigue tomándose de `x-company-id`
+> (también se acepta `company_id` en params/body/query).
 
 ---
 
-## 1 · `PATCH /api/document/:id` — NUEVO
+## 1 · `PUT` / `PATCH /api/document/:id` — NUEVO
 
-Edita los metadatos de un documento ya subido. El PDF no se edita: para cambiar
-el binario se sigue subiendo uno nuevo (`POST /api/document/upload`) y se borra el
-viejo.
+Edita los metadatos de un documento ya subido. **PUT y PATCH hacen lo mismo**: un
+cambio parcial, donde lo que no viene no se toca. El PDF no se edita: para
+cambiar el binario se sigue subiendo uno nuevo (`POST /api/document/upload`) y se
+borra el viejo.
 
-- **Auth:** token, `x-company-id`, y el documento tiene que ser de esa compañía.
-  Vale cualquier miembro activo de la compañía, igual que para subir.
+- **Auth:** token, y ser miembro activo de la compañía **dueña del documento**
+  (vale cualquier miembro, igual que para subir), o super_user de plataforma.
+  **No hace falta `x-company-id`.** Si se manda y no es la dueña, 404.
 - **Campos editables:** `title`, `description`, `language`, `requires_signature`,
   `expiration_date`, `document_type`, `trigger_action`, `at_`, `status` (solo
   `active` | `archived`), `applicable_locations`, `applicable_items`,
   `applicable_events`, `tags`, `metadata`.
+- **Reactivar un vencido:** cambiar `expiration_date` a una fecha futura, o
+  mandarla `null` para quitarla.
+- **`public_document`:** se acepta sin error y se devuelve en `ignored_fields`.
+  **No se guarda ni se aplica**: el modelo no tiene ese campo, y hoy
+  `GET /api/document/:id` es público para cualquier documento.
 - **No editables** (dan 400): `company_id` como campo (sí se acepta como
   selector de contexto), `document_url`, `version`, `replaced_at`, `created_*`,
   contadores de uso y `document_config`.
@@ -26,19 +40,16 @@ viejo.
 
 | Respuesta | Cuándo |
 |---|---|
-| `200 { ok, document }` | actualizado |
+| `200 { ok, document, ignored_fields }` | actualizado |
 | `400 { ok:false, msg, invalid_fields }` | campo no editable |
-| `400` | body vacío, `status` inválido, `document_type`/`trigger_action` fuera de lo permitido a la compañía, o falta `x-company-id` |
-| `403` | no eres miembro de la compañía del contexto |
-| `404` | no existe, o es de **otra** compañía (no se distingue a propósito) |
+| `400` | body vacío, `status` inválido, o `document_type`/`trigger_action` fuera de lo permitido a la compañía |
+| `404` | no existe, es de otra compañía o no eres miembro de la dueña (no se distingue a propósito) |
 
 ## 2 · `DELETE /api/document/:id` — ahora con scope de compañía
 
 Antes borraba cualquier documento por id, también los de otras compañías. Ahora
-exige `x-company-id` y aplica las mismas reglas que el PATCH: `400` sin contexto,
-`403` si no eres miembro, `404` si el documento es de otra compañía.
-
-**Qué revisar:** que la llamada mande `x-company-id`. Sin él, ahora da 400.
+aplica las mismas reglas que el PUT/PATCH: miembro de la compañía dueña, o 404.
+**El dashboard no tiene que cambiar nada**: `ViewDocument.jsx` ya funciona tal cual.
 
 ## 3 · `POST /api/staff/force-logout` — exige token
 
