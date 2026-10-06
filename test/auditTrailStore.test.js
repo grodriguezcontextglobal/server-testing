@@ -227,6 +227,32 @@ test('GET activity-logs: filtrar por otro staff no expone lo propio sin compañ�
   assert.ok(Array.isArray(model.seen.query.$or));
 });
 
+// Pregunta 5 del dashboard: los borrados de caché descuadraban la paginación.
+const runReport = async (query) => {
+  const model = fakeModel();
+  const handler = createGetStaffActivityLogs({
+    findAdminUserFn: async () => ({ id: 'u', super_user: true }),
+    StaffActivityLogModel: model,
+  });
+  const res = { json: () => {}, status: () => res };
+  await handler({ uid: 'u', headers: {}, header: () => undefined, query }, res);
+  return model.seen.query;
+};
+
+test('GET activity-logs: por defecto NO devuelve los borrados de caché (los automáticos)', async () => {
+  const q = await runReport({});
+  assert.deepEqual(q.target_model, { $ne: 'Cache' });
+});
+
+test('GET activity-logs: include_automatic=true los trae, y target_model=Cache también', async () => {
+  assert.equal((await runReport({ include_automatic: 'true' })).target_model, undefined);
+  assert.equal((await runReport({ target_model: 'Cache' })).target_model, 'Cache');
+});
+
+test('GET activity-logs: filtrar por otro modelo no se pisa con la exclusión', async () => {
+  assert.equal((await runReport({ target_model: 'Device' })).target_model, 'Device');
+});
+
 test('GET activity-logs: filtros por evento, serial, item, member, consumidor y origen', async () => {
   const model = fakeModel();
   const handler = createGetStaffActivityLogs({

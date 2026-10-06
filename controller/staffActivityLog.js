@@ -98,6 +98,7 @@ const createGetStaffActivityLogs = ({
       source,
       start_date,
       end_date,
+      include_automatic,
       limit = 50,
       page = 1,
     } = req.query;
@@ -177,7 +178,14 @@ const createGetStaffActivityLogs = ({
     // Apply Filters
     if (staff_member_id) query.staff_member_id = staff_member_id;
     if (action) query.action = action;
+    // Los borrados de caché los dispara el dashboard solo, después de cada
+    // acción (8 de cada 45 filas el 2026-10-05). Se siguen REGISTRANDO, como
+    // todo, pero el reporte no los devuelve salvo que se pidan: filtrarlos en el
+    // cliente dejaba páginas de 50 con menos filas y el total descuadrado.
+    // Pedir target_model=Cache explícitamente también los trae.
+    const wantsAutomatic = String(include_automatic).toLowerCase() === 'true';
     if (target_model) query.target_model = target_model;
+    else if (!wantsAutomatic) query.target_model = { $ne: 'Cache' };
     if (target_id) query.target_id = String(target_id);
     if (actor_type) query.actor_type = String(actor_type);
     if (source) query.source = String(source);
