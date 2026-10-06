@@ -16,6 +16,7 @@ function handlers(router, method, routePath) {
 
 const cases = [
   ['../routes/document', 'patch', '/:id'],
+  ['../routes/document', 'put', '/:id'], // lo que llama EditDocument.jsx
   ['../routes/document', 'delete', '/:id'],
   ['../routes/staff', 'post', '/force-logout'],
   ['../routes/admin', 'patch', '/profile/:id'],

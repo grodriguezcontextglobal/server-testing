@@ -158,17 +158,54 @@ test('updateDocument: el documento de otra compañía da 404 y no se toca', asyn
   assert.equal(docs[DOC_B].saved, false);
 });
 
-test('updateDocument: quien no es miembro de la compañía del contexto recibe 403', async () => {
+test('updateDocument: quien no es miembro de la compañía dueña recibe 404 (no confirma que exista)', async () => {
   const r = res();
   await updateDocument(req({ uid: U_MEMBER_B, company: CO_A, params: { id: DOC_A }, body: { title: 'X' } }), r);
-  assert.equal(r.code, 403);
+  assert.equal(r.code, 404);
   assert.equal(docs[DOC_A].saved, false);
 });
 
-test('updateDocument: sin contexto de compañía responde 400', async () => {
+// El dashboard NO manda x-company-id a /api/document: la compañía sale del
+// propio documento.
+test('updateDocument: sin cabecera de compañía, un miembro de la dueña edita', async () => {
   const r = res();
-  await updateDocument(req({ uid: U_ADMIN_A, params: { id: DOC_A }, body: { title: 'X' } }), r);
-  assert.equal(r.code, 400);
+  await updateDocument(req({ uid: U_ADMIN_A, params: { id: DOC_A }, body: { title: 'Sin cabecera' } }), r);
+  assert.equal(r.code, 200);
+  assert.equal(docs[DOC_A].title, 'Sin cabecera');
+});
+
+test('updateDocument: sin cabecera, alguien de otra compañía recibe 404', async () => {
+  const r = res();
+  await updateDocument(req({ uid: U_MEMBER_B, params: { id: DOC_A }, body: { title: 'X' } }), r);
+  assert.equal(r.code, 404);
+  assert.equal(docs[DOC_A].saved, false);
+});
+
+test('updateDocument: el payload real de EditDocument.jsx (public_document se acepta y se ignora)', async () => {
+  const r = res();
+  await updateDocument(req({
+    uid: U_ADMIN_A,
+    params: { id: DOC_A },
+    body: {
+      title: 'Contrato 2027',
+      document_type: 'document',
+      trigger_action: 'lease',
+      public_document: false,
+      expiration_date: '2027-12-31T23:59:59.999Z',
+    },
+  }), r);
+  assert.equal(r.code, 200);
+  assert.deepEqual(r.body.ignored_fields, ['public_document']);
+  assert.equal(docs[DOC_A].expiration_date, '2027-12-31T23:59:59.999Z');
+  assert.equal('public_document' in docs[DOC_A], false);
+});
+
+test('updateDocument: expiration_date null borra la fecha (reactiva un vencido sin fecha)', async () => {
+  docs[DOC_A].expiration_date = '2020-01-01T00:00:00.000Z';
+  const r = res();
+  await updateDocument(req({ uid: U_ADMIN_A, params: { id: DOC_A }, body: { expiration_date: null } }), r);
+  assert.equal(r.code, 200);
+  assert.equal(docs[DOC_A].expiration_date, null);
 });
 
 test('updateDocument: campos no editables dan 400; company_id en el body es solo el selector', async () => {
@@ -204,6 +241,13 @@ test('deleteDocument: el documento de otra compañía da 404 y no borra nada, ni
   assert.equal(r.code, 404);
   assert.deepEqual(calls.docDeletes, []);
   assert.deepEqual(calls.s3Deletes, []);
+});
+
+test('deleteDocument: sin cabecera de compañía (como lo llama ViewDocument.jsx) borra si es de la suya', async () => {
+  const r = res();
+  await deleteDocument(req({ uid: U_ADMIN_A, params: { id: DOC_A } }), r);
+  assert.equal(r.code, 200);
+  assert.deepEqual(calls.docDeletes, [DOC_A]);
 });
 
 test('deleteDocument: el super_user de plataforma borra con el contexto de la compañía dueña', async () => {

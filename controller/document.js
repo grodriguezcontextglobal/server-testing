@@ -272,38 +272,38 @@ const getDocumentDownloadUrl = async (req, res) => {
   }
 };
 
-// Carga un documento SOLO si pertenece a la compañía del contexto del request
-// (header x-company-id) y quien llama es miembro activo de esa compañía, o
-// super_user de plataforma. Antes PATCH no existía y DELETE buscaba por id a
-// secas: cualquier usuario con token borraba documentos de otra compañía.
-// Un documento de otra compañía responde 404, no 403, para no confirmar que
-// ese id existe. Si responde, devuelve null y el llamador debe cortar.
+// Carga un documento SOLO si quien llama es miembro activo de la compañía DUEÑA
+// del documento (o super_user de plataforma). Antes PATCH no existía y DELETE
+// buscaba por id a secas: cualquier usuario con token borraba documentos de
+// otra compañía.
+//
+// La compañía se toma del propio documento, no de la cabecera: el dashboard NO
+// manda `x-company-id` a /api/document (sessionHeaders.js solo lo pone en
+// staff|admin|company|stripe|nodemailer), y exigirla rompía el editar y el
+// borrar que ya usa. Si la petición SÍ trae contexto y no coincide con el dueño,
+// tampoco pasa: alguien trabajando en la compañía A no toca documentos de B
+// aunque también sea miembro de B.
+//
+// Todo lo que no pasa responde 404, no 403, para no confirmar que ese id existe.
+// Si responde, devuelve null y el llamador debe cortar.
 async function loadCompanyDocument(req, res) {
-  const companyId = resolveCompanyContext(req);
-  if (!companyId) {
-    res.status(400).json({
-      ok: false,
-      msg: "Company context required (send the x-company-id header).",
-    });
+  const notFound = () => {
+    res.status(404).json({ ok: false, msg: "Document not found" });
     return null;
-  }
-
-  const caller = await AdminUser.findById(req.uid).select("super_user active email");
-  if (!caller || caller.active === false) {
-    res.status(403).json({ ok: false, msg: "Forbidden" });
-    return null;
-  }
-  if (!caller.super_user && !(await findCompanyMembership(companyId, caller))) {
-    res.status(403).json({ ok: false, msg: "Forbidden: not a member of this company" });
-    return null;
-  }
+  };
 
   const { id } = req.params;
   const document = isValidObjectId(id) ? await Document.findById(id) : null;
-  if (!document || String(document.company_id) !== String(companyId)) {
-    res.status(404).json({ ok: false, msg: "Document not found" });
-    return null;
-  }
+  if (!document) return notFound();
+
+  const owner = String(document.company_id);
+  const context = resolveCompanyContext(req);
+  if (context && String(context) !== owner) return notFound();
+
+  const caller = await AdminUser.findById(req.uid).select("super_user active email");
+  if (!caller || caller.active === false) return notFound();
+  if (!caller.super_user && !(await findCompanyMembership(owner, caller))) return notFound();
+
   return document;
 }
 
@@ -330,11 +330,25 @@ const DOCUMENT_EDITABLE_FIELDS = new Set([
 // "replaced" lo pone el versionado (markAsReplaced), no el usuario.
 const DOCUMENT_EDITABLE_STATUS = new Set(["active", "archived"]);
 
+// Campos que el dashboard manda al editar pero que el modelo NO tiene. Se
+// aceptan sin error (para no romper el formulario) y se devuelven en
+// `ignored_fields`, para que nadie crea que se guardaron. `public_document` lo
+// manda EditDocument.jsx; el servidor no lo guarda ni lo aplica: hoy
+// GET /api/document/:id es público para cualquier documento.
+const DOCUMENT_IGNORED_FIELDS = new Set(["public_document"]);
+
+// PATCH y PUT /api/document/:id — los dos con semántica de cambio parcial: lo
+// que no viene, no se toca. PUT existe porque es lo que llama el dashboard
+// (EditDocument.jsx); no hay un reemplazo total del documento.
 const updateDocument = async (req, res) => {
   try {
     // company_id puede venir en el body como selector de contexto
     // (resolveCompanyContext lo acepta); no es un campo a editar.
-    const { company_id, ...updates } = req.body || {};
+    const { company_id, ...body } = req.body || {};
+    const ignored_fields = Object.keys(body).filter((k) => DOCUMENT_IGNORED_FIELDS.has(k));
+    const updates = Object.fromEntries(
+      Object.entries(body).filter(([k]) => !DOCUMENT_IGNORED_FIELDS.has(k))
+    );
     const keys = Object.keys(updates);
     if (keys.length === 0) {
       return res.status(400).json({ ok: false, msg: "No fields to update." });
@@ -363,7 +377,7 @@ const updateDocument = async (req, res) => {
     // valida document_type/trigger_action contra lo permitido a la compañía.
     await document.save();
 
-    return res.json({ ok: true, document });
+    return res.json({ ok: true, document, ignored_fields });
   } catch (error) {
     const isValidation =
       error.name === "ValidationError" ||
