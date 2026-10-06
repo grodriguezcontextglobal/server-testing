@@ -212,6 +212,10 @@ const AUDITED_ROUTES = {
   'POST /api/document/upload': R('UPLOAD', 'Document'),
   'POST /api/document/upload/xlsx': R('UPLOAD', 'Document'),
   'DELETE /api/document/:id': R('DELETE', 'Document'),
+  // Editar un documento (feat/docs-staff-authz): PUT es lo que llama el
+  // dashboard; PATCH hace lo mismo.
+  'PATCH /api/document/:id': R('UPDATE', 'Document'),
+  'PUT /api/document/:id': R('UPDATE', 'Document'),
   'POST /api/document/new_folder': R('CREATE', 'Folder'),
   'PUT /api/document/folder/:id': R('UPDATE', 'Folder'),
   'DELETE /api/document/folder/:id': R('DELETE', 'Folder'),
