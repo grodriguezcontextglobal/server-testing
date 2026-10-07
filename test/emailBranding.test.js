@@ -706,7 +706,7 @@ test('the default mark is Cloudinary PNG, 3x, recoloured for the white card', ()
     assert.match(url, /\/h_66,/);
   }
   // The source SVGs are white: without the recolour they vanish on white.
-  assert.match(DEVITRAK_BRANDING.logoUrl, /e_colorize:100,co_rgb:101828/);
+  assert.match(DEVITRAK_BRANDING.logoUrl, /e_colorize:100,co_rgb:155eef/);
   assert.match(DEVITRAK_BRANDING.iconUrl, /e_replace_color:155eef:15:ffffff/);
 });
 

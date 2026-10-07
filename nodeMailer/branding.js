@@ -28,12 +28,12 @@ const logger = require("../helpers/logger");
  * raw: Gmail and desktop Outlook do not render SVG in mail, and white on the
  * white card is invisible. Cloudinary hands them over as PNG (.png extension),
  * rasterised at h_66 = 3x the 22 px they are drawn at (no upscaling blur) and
- * recoloured for the white card: wordmark #101828, icon white -> #155eef (its
+ * recoloured for the white card in the brand blue: wordmark #155eef, icon white -> #155eef (its
  * #8A9DAD stays). Changing the colour or size is a change to these URLs.
  */
 const CLOUDINARY_EMAIL_BASE = "https://res.cloudinary.com/dpdzkhh07/image/upload";
 const DEVITRAK_EMAIL_ICON_URL = `${CLOUDINARY_EMAIL_BASE}/h_66,e_replace_color:155eef:15:ffffff/v1791386367/devitrak_login_jeki3x.png`;
-const DEVITRAK_EMAIL_NAME_URL = `${CLOUDINARY_EMAIL_BASE}/h_66,e_colorize:100,co_rgb:101828/v1791386367/devitrak_name_wls6qd.png`;
+const DEVITRAK_EMAIL_NAME_URL = `${CLOUDINARY_EMAIL_BASE}/h_66,e_colorize:100,co_rgb:155eef/v1791386367/devitrak_name_wls6qd.png`;
 
 /** The look every email had before this feature, and the fallback for all of them. */
 const DEVITRAK_BRANDING = Object.freeze({
