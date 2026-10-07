@@ -154,6 +154,8 @@ const AUDITED_ROUTES = {
   'POST /api/school/settings/consent-enforcement': R('UPDATE', 'Company'),
   'POST /api/school/student/export': R('EXPORT', 'Member'),
   'POST /api/school/student/erase': R('ERASE', 'Member'),
+  'POST /api/school/reminders/stop': R('UPDATE', 'Lease'),
+  'POST /api/school/reminders/resume': R('UPDATE', 'Lease'),
 
   // ── Consumidores ──────────────────────────────────────────────────────────
   'POST /api/db_consumer/new_consumer': R('CREATE', 'Consumer'),

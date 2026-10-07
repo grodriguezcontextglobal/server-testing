@@ -12,6 +12,10 @@
  *
  * Dedup: one reminder per lease per calendar day via idempotencyKey, so a re-run
  * (retry, multiple cluster instances) never double-sends.
+ *
+ * Cadencia (isReminderDay): diario las 2 primeras semanas de atraso, luego se
+ * espacia (+3, +5, +7 dias) y queda semanal hasta que el lease se devuelve o el
+ * staff los detiene desde el dashboard (reminders_stopped_at).
  */
 const getConnection = require("../mysql/database/config");
 const { enqueue } = require("../helpers/queue");
@@ -36,6 +40,7 @@ const OVERDUE_QUERY = `
   JOIN members_info mi ON mi.member_id = madl.member_id AND mi.company_id = madl.company_id
   LEFT JOIN item_inv ii ON ii.item_id = madl.device_id
   WHERE madl.returned = 0
+    AND madl.reminders_stopped_at IS NULL
     AND madl.expected_return_date IS NOT NULL AND madl.expected_return_date <> ''
     AND CAST(madl.expected_return_date AS DATETIME) < NOW()
   ORDER BY madl.company_id, madl.expected_return_date ASC`;
@@ -50,6 +55,25 @@ const pickRecipient = (row) => {
   return null;
 };
 
+// Dias de atraso (DATEDIFF de calendario; el dia del vencimiento es 0) en los
+// que toca recordatorio: diario hasta el 14, luego 17 (+3), 22 (+5), 29 (+7) y
+// de ahi cada 7. Es funcion del atraso y no del ultimo envio, asi que no hace
+// falta guardar estado; el costo es que si el cron no corre un dia que tocaba
+// (servidor caido), ese recordatorio se pierde y sale el siguiente de la serie.
+const DAILY_UNTIL_DAY = 14;
+const SPACED_DAYS = [17, 22, 29];
+const WEEKLY_FROM_DAY = 29;
+
+const isReminderDay = (daysOverdue) => {
+  // Number(null) y Number("") son 0: sin este corte un atraso nulo pasaria por dia 0.
+  if (daysOverdue === null || daysOverdue === undefined || daysOverdue === "") return false;
+  const d = Number(daysOverdue);
+  if (!Number.isInteger(d) || d < 0) return false;
+  if (d <= DAILY_UNTIL_DAY) return true;
+  if (SPACED_DAYS.includes(d)) return true;
+  return d > WEEKLY_FROM_DAY && (d - WEEKLY_FROM_DAY) % 7 === 0;
+};
+
 // YYYY-MM-DD (UTC) — stable per calendar day for idempotency.
 const dayStamp = (now) => new Date(now).toISOString().slice(0, 10);
 
@@ -62,6 +86,7 @@ const buildReminderJobs = (rows = [], { now = Date.now() } = {}) => {
   const jobs = [];
   const skipped = [];
   for (const row of rows) {
+    if (!isReminderDay(row.days_overdue)) continue;
     const recipient = pickRecipient(row);
     if (!recipient) {
       skipped.push({
@@ -99,6 +124,7 @@ const runOverdueReminders = async ({
   const cn = getConn();
   const [rows] = await cn.query(OVERDUE_QUERY);
   const { jobs, skipped } = buildReminderJobs(rows, { now });
+  const resting = rows.length - jobs.length - skipped.length;
   let queued = 0;
   for (const job of jobs) {
     try {
@@ -113,9 +139,9 @@ const runOverdueReminders = async ({
     }
   }
   logger.info(
-    `overdue reminders: ${rows.length} overdue → ${queued} queued, ${skipped.length} skipped (no email)`
+    `overdue reminders: ${rows.length} overdue → ${queued} queued, ${skipped.length} skipped (no email), ${resting} not due today`
   );
-  return { overdue: rows.length, queued, skipped: skipped.length };
+  return { overdue: rows.length, queued, skipped: skipped.length, resting };
 };
 
-module.exports = { buildReminderJobs, runOverdueReminders, pickRecipient, OVERDUE_QUERY, FROM };
+module.exports = { buildReminderJobs, runOverdueReminders, pickRecipient, isReminderDay, OVERDUE_QUERY, FROM };

@@ -88,3 +88,49 @@ test('empty input => no jobs, no skips', () => {
   assert.equal(jobs.length, 0);
   assert.equal(skipped.length, 0);
 });
+
+// --- Cadencia: diario 2 semanas, luego +3, +5, +7 y semanal ---------------
+const { isReminderDay, runOverdueReminders, OVERDUE_QUERY } = require(
+  path.resolve(__dirname, '../scheduler/overdueReminders.js')
+);
+
+test('cadence: sends every day of the first two weeks (days 0..14)', () => {
+  for (let d = 0; d <= 14; d++) assert.equal(isReminderDay(d), true, `day ${d}`);
+});
+
+test('cadence: after day 14 the series is 17, 22, 29, then every 7 days', () => {
+  const sent = [];
+  for (let d = 15; d <= 60; d++) if (isReminderDay(d)) sent.push(d);
+  assert.deepEqual(sent, [17, 22, 29, 36, 43, 50, 57]);
+});
+
+test('cadence: invalid or negative days never send', () => {
+  for (const d of [-1, null, undefined, '', 'x', 1.5]) assert.equal(isReminderDay(d), false, String(d));
+  assert.equal(isReminderDay('17'), true); // mysql2 puede devolver el DATEDIFF como string
+});
+
+test('buildReminderJobs: a lease on a rest day produces neither a job nor a skip', () => {
+  const { jobs, skipped } = buildReminderJobs([{ ...baseRow, days_overdue: 18 }], { now: NOW });
+  assert.equal(jobs.length, 0);
+  assert.equal(skipped.length, 0);
+});
+
+test('OVERDUE_QUERY excludes leases whose reminders were stopped from the dashboard', () => {
+  assert.match(OVERDUE_QUERY, /reminders_stopped_at IS NULL/);
+});
+
+test('runOverdueReminders reports resting leases separately from skipped ones', async () => {
+  const rows = [
+    { ...baseRow, days_overdue: 3 },
+    { ...baseRow, member_id: 5002, days_overdue: 20 },
+    { ...baseRow, member_id: 5003, days_overdue: 36, minor: 0, email: '', parent_guardian_email: '' },
+  ];
+  const enqueued = [];
+  const result = await runOverdueReminders({
+    getConnection: () => ({ query: async () => [rows] }),
+    enqueue: async (type, payload, opts) => enqueued.push(opts.idempotencyKey),
+    now: NOW,
+  });
+  assert.deepEqual(result, { overdue: 3, queued: 1, skipped: 1, resting: 1 });
+  assert.deepEqual(enqueued, ['overdue-reminder:61:5001:9001:2026-07-22']);
+});

@@ -25,6 +25,8 @@ const {
   studentExport,
   studentErase,
   studentAccessLog,
+  stopLeaseReminders,
+  resumeLeaseReminders,
 } = require("../controllers/school");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
@@ -92,5 +94,9 @@ router.post("/settings/consent-enforcement", canUpdate, setConsentEnforcement);
 router.post("/student/export", canRead, studentExport);
 router.post("/student/erase", canUpdate, studentErase);
 router.post("/student/access-log", canRead, studentAccessLog);
+
+// Recordatorios automaticos de vencido: el staff los finaliza (o reanuda) por lease.
+router.post("/reminders/stop", canUpdate, stopLeaseReminders);
+router.post("/reminders/resume", canUpdate, resumeLeaseReminders);
 
 module.exports = router;

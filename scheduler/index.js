@@ -45,9 +45,10 @@ const runWithHeartbeat = async (name, label, run) => {
 const initScheduledJobs = () => {
   const jobs = [];
 
-  // Daily overdue-device reminder (school track) — 08:00 server time.
+  // Overdue-device reminder (school track) — 08:00 hora del Este (EST/EDT),
+  // no la del servidor. Corre a diario; isReminderDay decide a quien le toca.
   jobs.push(
-    schedule.scheduleJob("0 8 * * *", () =>
+    schedule.scheduleJob({ rule: "0 8 * * *", tz: "America/New_York" }, () =>
       runWithHeartbeat("scheduler_overdue", "overdue-reminders", runOverdueReminders)
     )
   );
@@ -59,7 +60,7 @@ const initScheduledJobs = () => {
     )
   );
 
-  logger.info("[scheduler] initialized: overdue-reminders (daily 08:00), consent-expiry (daily 00:05)");
+  logger.info("[scheduler] initialized: overdue-reminders (daily 08:00 America/New_York), consent-expiry (daily 00:05)");
   return jobs;
 };
 

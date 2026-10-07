@@ -1898,6 +1898,7 @@ const retrieveOverdueLeases = async (request, response) => {
       SELECT
         madl.member_id, madl.device_id, madl.company_id,
         madl.assigned_date, madl.expected_return_date, madl.location,
+        madl.reminders_stopped_at,
         DATEDIFF(NOW(), CAST(madl.expected_return_date AS DATETIME)) AS days_overdue,
         mi.first_name, mi.last_name, mi.email, mi.grade, mi.homeroom,
         mi.minor, mi.parent_guardian_first_name, mi.parent_guardian_email,
