@@ -1,5 +1,7 @@
 'use strict';
 
+const { DEVITRAK_EMAIL_ICON_URL, DEVITRAK_EMAIL_NAME_URL } = require("./branding");
+
 /**
  * Overdue-device reminder email (school track). Guardian- or student-facing.
  * PURE: returns an HTML string from a plain props object (a row from the overdue
@@ -64,8 +66,8 @@ const overdueReminderMessageHtml = (props = {}) => {
     <div class="container">
       <p style="font-size:9px; color:#475467; margin:0 0 4px;">Powered by</p>
       <div style="display:flex; align-items:center; margin-bottom:24px;">
-        <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png" alt="devitrak-logo" style="object-fit:contain;" />
-        <img src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png" alt="devitrak-name" style="object-fit:contain;" />
+        <img src="${DEVITRAK_EMAIL_ICON_URL}" width="26" height="12" alt="devitrak-logo" style="display:block; width:26px; height:12px; border:0; margin-right:4px;" />
+        <img src="${DEVITRAK_EMAIL_NAME_URL}" width="57" height="12" alt="devitrak-name" style="display:block; width:57px; height:12px; border:0;" />
       </div>
 
       <h1>Overdue device reminder</h1>
