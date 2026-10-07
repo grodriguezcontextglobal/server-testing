@@ -42,6 +42,9 @@ const BRIDGES = {
  * normalizeBranding
  * ---------------------------------------------------------------- */
 
+// Nombre del asset del wordmark de Devitrak en Cloudinary (ver nodeMailer/branding.js).
+const DEVITRAK_NAME_ID = 'devitrak_name_wls6qd';
+
 test('normalizeBranding: a company that never opted in keeps Devitrak branding', () => {
   assert.equal(normalizeBranding({ company_name: 'Acme', company_logo: 'x' }), DEVITRAK_BRANDING);
   assert.equal(normalizeBranding({ email_branding: { enabled: false } }), DEVITRAK_BRANDING);
@@ -272,7 +275,7 @@ test('renderBrandedEmail: a client logo replaces the Devitrak mark in the header
   const branding = normalizeBranding(BRIDGES);
   const html = renderBrandedEmail({ branding, title: 'Hello' });
   assert.ok(html.includes('https://res.cloudinary.com/x/bridges.png'));
-  assert.ok(!html.includes('devitrak_email_name'), 'Devitrak logo must not appear in branded mail');
+  assert.ok(!html.includes(DEVITRAK_NAME_ID), 'Devitrak logo must not appear in branded mail');
   assert.ok(html.includes('Powered by'), 'attribution stays unless the client turns it off');
 });
 
@@ -326,7 +329,7 @@ test('returnConfirmationLeaseMemberMessageHtml: unbranded output still reads as 
 test('returnConfirmationLeaseMemberMessageHtml: branded output is the client, end to end', () => {
   const html = returnConfirmationLeaseMemberMessageHtml(MEMBER_RETURN_PROPS, normalizeBranding(BRIDGES));
   assert.ok(html.includes('Bridges Public Charter School') || html.includes('bridges.png'));
-  assert.ok(!html.includes('devitrak_email_name'));
+  assert.ok(!html.includes(DEVITRAK_NAME_ID));
   // The content Fredrik's forward showed must all survive the restyle.
   assert.ok(html.includes('Carl-Filip Starmark'));
   assert.ok(html.includes('Laptops'));
@@ -501,12 +504,12 @@ for (const [name, render, props] of STAFF_CASES) {
   test(`${name}: wears the client's brand, not Devitrak's`, () => {
     const html = render(props, BRANDING);
     assert.ok(html.includes('bridges.png') || html.includes('Bridges Public Charter School'));
-    assert.ok(!html.includes('devitrak_email_name'), 'Devitrak logo must be gone');
+    assert.ok(!html.includes(DEVITRAK_NAME_ID), 'Devitrak logo must be gone');
   });
 
   test(`${name}: unbranded output keeps the Devitrak identity it has today`, () => {
     const html = render(props);
-    assert.ok(html.includes('devitrak_email_name'));
+    assert.ok(html.includes(DEVITRAK_NAME_ID));
   });
 }
 
@@ -525,7 +528,7 @@ const PLATFORM_CASES = [
 for (const [name, render] of PLATFORM_CASES) {
   test(`${name}: is Devitrak's own mail and stays Devitrak-branded`, () => {
     const html = render();
-    assert.ok(html.includes('devitrak_email_name'), 'platform mail keeps the Devitrak mark');
+    assert.ok(html.includes(DEVITRAK_NAME_ID), 'platform mail keeps the Devitrak mark');
     assert.ok(html.startsWith('<!DOCTYPE html>'), 'but it is on the shared chassis');
     assert.ok(!/display:\s*flex/.test(html));
   });
@@ -651,8 +654,8 @@ test('the two empty stubs are still stubs — no content was invented for them',
 // Unbranded mail carries Devitrak's icon AND wordmark; branded mail neither.
 // ---------------------------------------------------------------------------
 
-const DEVITRAK_ICON = 'devitrak_email_icon';
-const DEVITRAK_NAME = 'devitrak_email_name';
+const DEVITRAK_ICON = 'devitrak_login_jeki3x';
+const DEVITRAK_NAME = 'devitrak_name_wls6qd';
 
 test('unbranded email shows the Devitrak icon next to the wordmark', () => {
   const html = renderBrandedEmail({ title: 'Hello' });
@@ -695,15 +698,16 @@ test('branded company without a logo gets its name as text, no Devitrak icon', (
   assert.ok(!html.includes(DEVITRAK_NAME));
 });
 
-test('the default mark points at PNGs this API serves from public/assets', () => {
-  const fs = require('node:fs');
-  const path = require('node:path');
+test('the default mark is Cloudinary PNG, 3x, recoloured for the white card', () => {
   for (const url of [DEVITRAK_BRANDING.logoUrl, DEVITRAK_BRANDING.iconUrl]) {
     // PNG, never SVG: Gmail and desktop Outlook do not render SVG in mail.
-    assert.match(url, /^https:\/\/.+\/assets\/devitrak_email_(icon|name)\.png$/);
-    const file = path.join(__dirname, '..', 'public', 'assets', path.basename(url));
-    assert.ok(fs.existsSync(file), `${file} must ship with the server`);
+    assert.match(url, /^https:\/\/res\.cloudinary\.com\/dpdzkhh07\/image\/upload\/.+\.png$/);
+    // Raster at 3x the 22 px it is drawn at, or it blurs.
+    assert.match(url, /\/h_66,/);
   }
+  // The source SVGs are white: without the recolour they vanish on white.
+  assert.match(DEVITRAK_BRANDING.logoUrl, /e_colorize:100,co_rgb:101828/);
+  assert.match(DEVITRAK_BRANDING.iconUrl, /e_replace_color:155eef:15:ffffff/);
 });
 
 test('legacy hand-written templates use the same Devitrak mark', () => {
@@ -712,7 +716,9 @@ test('legacy hand-written templates use the same Devitrak mark', () => {
   for (const html of [overdueReminderMessageHtml({}), customizeMessageHtml({})]) {
     assert.ok(html.includes(DEVITRAK_BRANDING.iconUrl));
     assert.ok(html.includes(DEVITRAK_BRANDING.logoUrl));
-    assert.ok(!html.includes('res.cloudinary.com/dpdzkhh07'));
+    // Ni el wordmark viejo (60x12 estirado) ni un SVG crudo.
+    assert.ok(!/devitrak_(name|logo)_layer_1/.test(html));
+    assert.ok(!/devitrak_(login|name)_[a-z0-9]+\.svg/.test(html));
   }
 });
 
