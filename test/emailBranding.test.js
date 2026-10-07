@@ -715,3 +715,19 @@ test('legacy hand-written templates use the same Devitrak mark', () => {
     assert.ok(!html.includes('res.cloudinary.com/dpdzkhh07'));
   }
 });
+
+// Los PNG de Devitrak estan a 3x (141x66, 315x66). Un <img> sin tamano fijo los
+// pinta a ese tamano real en el correo: el triple de grande.
+test('toda plantilla que usa el icono o el nombre de Devitrak fija width y height', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const dir = path.resolve(__dirname, '../nodeMailer');
+  const offenders = [];
+  for (const file of fs.readdirSync(dir).filter((f) => f.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(dir, file), 'utf8');
+    for (const m of src.matchAll(/<img\b[^>]*DEVITRAK_EMAIL_(ICON|NAME)_URL[^>]*>/g)) {
+      if (!/\bwidth="\d+"/.test(m[0]) || !/\bheight="\d+"/.test(m[0])) offenders.push(`${file}: ${m[0].replace(/\s+/g, ' ').slice(0, 80)}`);
+    }
+  }
+  assert.deepEqual(offenders, []);
+});

@@ -1260,7 +1260,7 @@ const customizeMessageHtml = (props) => {
             "
           >
             <img
-              src="${DEVITRAK_EMAIL_ICON_URL}"
+              src="${DEVITRAK_EMAIL_ICON_URL}" width="26" height="12"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1271,7 +1271,7 @@ const customizeMessageHtml = (props) => {
               "
             />
             <img
-              src="${DEVITRAK_EMAIL_NAME_URL}"
+              src="${DEVITRAK_EMAIL_NAME_URL}" width="57" height="12"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -1370,12 +1370,12 @@ const devitrakEmailHeader = `
             </p>
             <div style="margin-top: 2.5px">
               <img
-                src="${DEVITRAK_EMAIL_ICON_URL}"
+                src="${DEVITRAK_EMAIL_ICON_URL}" width="26" height="12"
                 alt="devitrak-logo"
                 style="object-fit: contain; object-position: 50% 50%"
               />
               <img
-                src="${DEVITRAK_EMAIL_NAME_URL}"
+                src="${DEVITRAK_EMAIL_NAME_URL}" width="57" height="12"
                 alt="devitrak-name"
                 style="object-fit: contain; object-position: 50% 50%"
               />
