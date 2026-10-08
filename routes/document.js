@@ -4,6 +4,7 @@ const path = require("path");
 const fs = require("fs");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const { optionalJWT } = require("../middlewares/optionalJWT");
 
 // tmp/uploads está gitignoreado (tmp/uploads/), así que puede no existir en un
 // checkout limpio o si el OS/limpiador de temporales lo borra. Multer
@@ -105,6 +106,13 @@ const router = Router();
 // Dashboard-only: managing a company's document catalog is a staff action.
 const canManage = [validateJWT, checkTokenVersion];
 
+// Lo que ve y firma alguien sin sesión: el consumidor o tutor que abre el
+// documento antes de firmarlo, y el staff que firma desde la app. optionalJWT
+// nunca rechaza: sin token o con uno inválido sigue como público. Si hay un
+// token válido, deja req.uid y req.authContext para saber quién fue. Ninguno
+// de estos controllers lee req.uid hoy, así que la respuesta no cambia.
+const publicViewer = [optionalJWT];
+
 // Routes
 router.post("/upload", canManage, upload.single("document"), uploadDocument);
 router.post("/upload/xlsx", canManage, uploadXLSX.single("document"), uploadExcelToS3);
@@ -115,9 +123,9 @@ router.get("/triggers", canManage, getTriggerActions);
 // (e.g. a consumer/guardian viewing or downloading the exact document they're
 // about to sign, before they have any staff session). Do not add validateJWT
 // here without confirming with the frontend which public flows depend on them.
-router.get("/:id", getCompanyDocumentByID);
-router.get("/download/:documentId/:userId", getDocumentDownloadUrl);
-router.post("/download/documentUrl", generateTemporaryDownloadUrl);
+router.get("/:id", publicViewer, getCompanyDocumentByID);
+router.get("/download/:documentId/:userId", publicViewer, getDocumentDownloadUrl);
+router.post("/download/documentUrl", publicViewer, generateTemporaryDownloadUrl);
 // Editar y borrar exigen que quien llama pertenezca a la compañía DUEÑA del
 // documento — ver loadCompanyDocument en controller/document.js. PUT y PATCH
 // hacen lo mismo (cambio parcial): PUT es lo que llama el dashboard.
@@ -147,40 +155,48 @@ router.put("/folder/:id", updateFolder);
 router.delete("/folder/:id", deleteFolder);
 router.post(
   "/verification/staff_member/signed_document",
+  publicViewer,
   createStaffMemberVerification
 );
 router.post(
   "/verification/staff_member/check_signed_document",
+  publicViewer,
   staffMemberVerificationSignedDocumentForAssignmentDevices
 );
 router.patch(
   "/verification/staff_member/signing_document",
+  publicViewer,
   addSignatureToDocument
 );
 
 //verification consumer contract
 router.post(
   "/verification/consumer_member/signed_document",
+  publicViewer,
   createConsumerVerification
 );
 router.post(
   "/verification/consumer_member/check_signed_document",
+  publicViewer,
   consumerMemberVerificationSignedDocumentForAssignmentDevices
 );
 router.patch(
   "/verification/consumer_member/signing_document",
+  publicViewer,
   addSignatureToConsumerDocument
 );
 
-router.post("/verification/member/signed_document", createMemberVerification);
+router.post("/verification/member/signed_document", publicViewer, createMemberVerification);
 
 router.post(
   "/verification/member/check_signed_document",
+  publicViewer,
   memberVerificationSignedDocumentForAssignmentDevices
 );
 
 router.patch(
   "/verification/member/signing_document",
+  publicViewer,
   addSignatureToMemberDocument
 );
 
