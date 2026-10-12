@@ -10,6 +10,8 @@
  *   DevitrakEmailWorker  : QUEUE_GROUP=email
  *   DevitrakBulkWorker   : QUEUE_GROUP=bulk    QUEUE_POLL_MS=300
  *   DevitrakDeleteWorker : QUEUE_GROUP=delete  QUEUE_POLL_MS=300
+ *   DevitrakHeavyWorker  : QUEUE_GROUP=heavy   (poll normal: nadie espera)
+ * Los tres ultimos los instala scripts/install-queue-workers.ps1.
  *   DevitrakServer (main): QUEUE_EXCLUDE_GROUPS=dedicated
  * The older explicit form (QUEUE_TYPES / QUEUE_EXCLUDE_TYPES) still works and
  * takes precedence.

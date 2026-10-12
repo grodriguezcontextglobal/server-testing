@@ -104,6 +104,7 @@ nssm get DevitrakServer AppEnvironmentExtra
 nssm get DevitrakEmailWorker AppEnvironmentExtra
 nssm get DevitrakBulkWorker AppEnvironmentExtra
 nssm get DevitrakDeleteWorker AppEnvironmentExtra
+nssm get DevitrakHeavyWorker AppEnvironmentExtra
 ```
 
 Assuming the services are on the group form documented above, that gives:
@@ -113,14 +114,19 @@ nssm set DevitrakServer AppEnvironmentExtra PM2_HOME=C:\Users\CGAdmin\Documents\
 nssm set DevitrakEmailWorker AppEnvironmentExtra QUEUE_GROUP=email NODE_ENV=production
 nssm set DevitrakBulkWorker AppEnvironmentExtra QUEUE_GROUP=bulk QUEUE_POLL_MS=300 NODE_ENV=production
 nssm set DevitrakDeleteWorker AppEnvironmentExtra QUEUE_GROUP=delete QUEUE_POLL_MS=300 NODE_ENV=production
+nssm set DevitrakHeavyWorker AppEnvironmentExtra QUEUE_GROUP=heavy NODE_ENV=production
 
 nssm restart DevitrakServer
 nssm restart DevitrakEmailWorker
 nssm restart DevitrakBulkWorker
 nssm restart DevitrakDeleteWorker
+nssm restart DevitrakHeavyWorker
 ```
 
-**All four Node services**, not just the API: `queue\standalone.js` requires
+(`scripts\install-queue-workers.ps1` already sets `NODE_ENV=production` on the Bulk, Delete
+and Heavy workers.)
+
+**All the Node services**, not just the API: `queue\standalone.js` requires
 `helpers/logger.js` at line 22, so the console-transport branch applies to each worker
 independently. `DevitrakGoWorker` is Go and ignores `NODE_ENV` entirely.
 
@@ -183,6 +189,7 @@ nssm stop DevitrakServer
 nssm stop DevitrakEmailWorker
 nssm stop DevitrakBulkWorker
 nssm stop DevitrakDeleteWorker
+nssm stop DevitrakHeavyWorker
 
 # Stopping the services is NOT enough: the pm2 daemon is a separate process that
 # survives `nssm stop` and keeps handles inside node_modules. Leave it alive and
@@ -197,6 +204,7 @@ nssm start DevitrakServer
 nssm start DevitrakEmailWorker
 nssm start DevitrakBulkWorker
 nssm start DevitrakDeleteWorker
+nssm start DevitrakHeavyWorker
 nssm status DevitrakServer                # SERVICE_RUNNING
 (Invoke-WebRequest -Uri "http://localhost:34001/health" -UseBasicParsing).Content
 ```
@@ -567,7 +575,7 @@ does **not** survive a reboot; prefer the service above.
 
 ---
 
-## Split services (native nssm) — Node · Go worker · email · bulk · delete
+## Split services (native nssm) — Node · Go worker · email · bulk · delete · heavy
 
 Production runs as **separate native nssm services** (no containers; Windows Server
 2019). They share the external MySQL (PlanetScale) + Mongo and talk over localhost.
@@ -577,8 +585,30 @@ Production runs as **separate native nssm services** (no containers; Windows Ser
 | `DevitrakServer` | Node (`index.js`, pm2-runtime) | HTTP API + in-process queue worker for **every job type that has no dedicated worker** (`QUEUE_EXCLUDE_GROUPS=dedicated`) |
 | `DevitrakGoWorker` | `go-worker\worker.exe` | inventory Go operations (see the Go worker section) |
 | `DevitrakEmailWorker` | `node queue\standalone.js` | **email** jobs only |
-| `DevitrakBulkWorker` | `node queue\standalone.js` | **bulk-write** jobs (see below) — fast poll. Sirve también el grupo `heavy` mientras no exista `DevitrakHeavyWorker` |
+| `DevitrakBulkWorker` | `node queue\standalone.js` | **bulk-write** jobs (see below) — fast poll |
 | `DevitrakDeleteWorker` | `node queue\standalone.js` | **delete** jobs only (see below) — fast poll |
+| `DevitrakHeavyWorker` | `node queue\standalone.js` | **heavy** jobs: exports, spreadsheet imports, alphanumeric ranges — default poll (desde 2026-10-12) |
+
+**Bulk, Delete y Heavy se instalan (o se recrean) con un solo script**, idempotente,
+en una consola de administrador:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-queue-workers.ps1
+# o solo uno:
+powershell -ExecutionPolicy Bypass -File scripts\install-queue-workers.ps1 -Only DevitrakHeavyWorker
+```
+
+Fija el `AppEnvironmentExtra` entero de cada worker, los arranca, espera a
+`SERVICE_RUNNING`, muestra el alcance que cada uno registró en `logs\combined.log`
+y comprueba que `DevitrakServer` tenga `QUEUE_EXCLUDE_GROUPS=dedicated` (solo avisa:
+**no** toca la línea del server, por la trampa de `GO_WORKER_PORT` de más abajo).
+Los bloques manuales de `nssm install` más abajo quedan como referencia histórica.
+
+> **Si falta uno de estos servicios, sus jobs no fallan: se quedan `pending`** sin
+> error visible, porque el server excluye todo `dedicated`. No se pierde nada — al
+> volver el servicio, los drena. Para comprobar que existen: `nssm status <nombre>`
+> o `Get-Service Devitrak*` (un typo en el subcomando de nssm da un error que se
+> confunde con «el servicio no existe»).
 
 The split is driven entirely by env — the code is identical across services. The type
 lists live in **`constants/queueTypeGroups.js`** (groups `email`, `bulk`, `delete`), so a
@@ -594,6 +624,7 @@ server's exclusion and this document:
 - **`DevitrakBulkWorker`**: `QUEUE_GROUP=bulk` and `QUEUE_POLL_MS=300` (see below — this
   one's poll interval matters).
 - **`DevitrakDeleteWorker`**: `QUEUE_GROUP=delete` and `QUEUE_POLL_MS=300`.
+- **`DevitrakHeavyWorker`**: `QUEUE_GROUP=heavy`, default poll.
 - **Grupo `heavy`** (`inventory:bulk-insert-alphanumeric`,
   `inventory:bulk-update-alphanumeric`, `event:bulk-update-item-shipping`,
   `inventory:export`, `inventory:bulk-insert-from-spreadsheet`): trabajo pesado
@@ -620,7 +651,26 @@ server's exclusion and this document:
   > S3: las URLs prefirmadas se firman con la región, y una firmada para Ohio
   > contra un bucket de Virginia no valida.
 
-### Estado real de producción — verificado en la VM el 2026-09-22
+### Estado objetivo desde 2026-10-12
+
+`scripts\install-queue-workers.ps1` reconfigura Bulk y Delete (ya instalados) y
+crea `DevitrakHeavyWorker`: el
+grupo `heavy` deja de compartir worker con `bulk` (un export de minutos hacía caer
+a `202 + jobId` los bulk que esperan 4 s). `DevitrakServer` no cambia.
+
+```
+DevitrakServer        PM2_HOME=…\.pm2  GO_WORKER_EXTERNAL=true  GO_WORKER_PORT=7453
+                      QUEUE_EXCLUDE_GROUPS=dedicated   (+ NODE_ENV=production si ya está)
+DevitrakBulkWorker    QUEUE_GROUP=bulk     QUEUE_POLL_MS=300  NODE_ENV=production
+DevitrakDeleteWorker  QUEUE_GROUP=delete   QUEUE_POLL_MS=300  NODE_ENV=production
+DevitrakHeavyWorker   QUEUE_GROUP=heavy                       NODE_ENV=production
+DevitrakEmailWorker   QUEUE_GROUP=email
+```
+
+Latido del nuevo worker: `HEARTBEAT_URL_QUEUE_HEAVY` en el `.env` (el nombre
+`queue_heavy` sale solo de `QUEUE_GROUP`). Sin la variable no late, y nada falla.
+
+### Estado real de producción — verificado en la VM el 2026-09-22 (histórico)
 
 Los bloques de instalación de más abajo son los pasos históricos, **no el estado
 actual**. Esto es lo que devuelve `nssm get <servicio> AppEnvironmentExtra` hoy,

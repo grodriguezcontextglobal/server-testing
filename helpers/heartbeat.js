@@ -22,8 +22,9 @@
  * UNA VARIABLE POR SERVICIO, con el nombre derivado del servicio:
  *
  *   HEARTBEAT_URL_QUEUE_EMAIL    → DevitrakEmailWorker   (QUEUE_GROUP=email)
- *   HEARTBEAT_URL_QUEUE_BULK     → DevitrakBulkWorker    (QUEUE_GROUP=bulk,heavy)
+ *   HEARTBEAT_URL_QUEUE_BULK     → DevitrakBulkWorker    (QUEUE_GROUP=bulk)
  *   HEARTBEAT_URL_QUEUE_DELETE   → DevitrakDeleteWorker  (QUEUE_GROUP=delete)
+ *   HEARTBEAT_URL_QUEUE_HEAVY    → DevitrakHeavyWorker   (QUEUE_GROUP=heavy)
  *   HEARTBEAT_URL_QUEUE_API      → el worker en proceso de DevitrakServer
  *   HEARTBEAT_URL_SCHEDULER_OVERDUE  → recordatorios diarios
  *   HEARTBEAT_URL_SCHEDULER_CONSENT  → barrido diario de consentimientos

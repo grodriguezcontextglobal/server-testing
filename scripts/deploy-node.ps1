@@ -10,7 +10,7 @@
   the correct order stops depending on anyone remembering it:
 
   1. `npm ci` deletes node_modules, and a running Node service holds files open
-     in there, so the install dies with EBUSY/EPERM halfway. All four Node
+     in there, so the install dies with EBUSY/EPERM halfway. All the Node
      services are stopped first. The Go worker is NOT touched: it is a compiled
      binary that does not use node_modules.
 
@@ -80,7 +80,8 @@ $services     = @(
     'DevitrakServer',
     'DevitrakEmailWorker',
     'DevitrakBulkWorker',
-    'DevitrakDeleteWorker'
+    'DevitrakDeleteWorker',
+    'DevitrakHeavyWorker'
 )
 
 function Write-DeployLog([string]$Message) {
