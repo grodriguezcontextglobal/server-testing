@@ -4,19 +4,23 @@
  * Overdue-device reminder producer (school track).
  *
  * Finds outstanding member device leases past their expected return date and
- * enqueues a `send-email` job per lease (SendGrid msg built here, the network
- * call is deferred to the queue worker — see queue/handlers/email.js).
+ * enqueues one `send-email` job per (company, recipient) that has at least one
+ * lease due today, listing all of that recipient's overdue devices (SendGrid msg
+ * built here, the network call is deferred to the queue worker — see
+ * queue/handlers/email.js).
  *
  * buildReminderJobs is PURE and exported for unit tests; runOverdueReminders
  * wires it to the DB + queue with injectable deps.
  *
- * Dedup: one reminder per lease per calendar day via idempotencyKey, so a re-run
- * (retry, multiple cluster instances) never double-sends.
+ * Dedup: one reminder per (company, recipient) per calendar day via
+ * idempotencyKey, so a re-run (retry, multiple cluster instances) never
+ * double-sends.
  *
  * Cadencia (isReminderDay): diario las 2 primeras semanas de atraso, luego se
  * espacia (+3, +5, +7 dias) y queda semanal hasta que el lease se devuelve o el
  * staff los detiene desde el dashboard (reminders_stopped_at).
  */
+const crypto = require("crypto");
 const getConnection = require("../mysql/database/config");
 const { enqueue } = require("../helpers/queue");
 const logger = require("../helpers/logger");
@@ -77,36 +81,78 @@ const isReminderDay = (daysOverdue) => {
 // YYYY-MM-DD (UTC) — stable per calendar day for idempotency.
 const dayStamp = (now) => new Date(now).toISOString().slice(0, 10);
 
+// El correo identifica al grupo en la clave de idempotencia sin dejarlo en
+// claro en Mongo (la clave se indexa y se ve en cualquier listado de jobs).
+const recipientTag = (email) =>
+  crypto.createHash("sha256").update(String(email).trim().toLowerCase()).digest("hex").slice(0, 16);
+
+const studentNameOf = (row) => `${row.first_name || ""} ${row.last_name || ""}`.trim();
+
 /**
  * PURE: overdue rows -> { jobs, skipped }. Deterministic given `now`.
- * Each job is { type, payload:{to,from,subject,html}, idempotencyKey }.
+ *
+ * UN correo por (compañía, destinatario) y día. La cadencia sigue siendo POR
+ * PRÉSTAMO (isReminderDay): si a cualquiera de los préstamos del destinatario le
+ * toca hoy, sale un correo que lista TODOS sus dispositivos vencidos de esa
+ * compañía. Así un tutor con dos hijos en el mismo colegio no recibe dos
+ * correos el mismo día, y ningún dispositivo pierde un aviso que antes tenía.
+ *
+ * Nunca se agrupa ENTRE compañías: cada colegio es una institución distinta con
+ * su propia configuración y consentimiento, y un correo no debe mezclar datos de
+ * dos.
+ *
+ * Each job is { type, payload:{to,from,subject,html}, idempotencyKey, context,
+ * leases:[{company_id,member_id,device_id}] } — `leases` es solo para el
+ * recuento y los tests; el enqueue no lo usa.
  */
 const buildReminderJobs = (rows = [], { now = Date.now() } = {}) => {
   const stamp = dayStamp(now);
   const jobs = [];
   const skipped = [];
+  const groups = new Map();
+
   for (const row of rows) {
-    if (!isReminderDay(row.days_overdue)) continue;
     const recipient = pickRecipient(row);
     if (!recipient) {
-      skipped.push({
-        company_id: row.company_id,
-        member_id: row.member_id,
-        device_id: row.device_id,
-        reason: "no-email",
-      });
+      // Solo cuenta como "skipped" si hoy le tocaba: en descanso no se pierde nada.
+      if (isReminderDay(row.days_overdue)) {
+        skipped.push({
+          company_id: row.company_id,
+          member_id: row.member_id,
+          device_id: row.device_id,
+          reason: "no-email",
+        });
+      }
       continue;
     }
-    const studentName = `${row.first_name || ""} ${row.last_name || ""}`.trim();
+    const key = `${row.company_id}|${recipient.email.toLowerCase()}`;
+    if (!groups.has(key)) groups.set(key, { recipient, rows: [], due: false });
+    const group = groups.get(key);
+    group.rows.push(row);
+    if (isReminderDay(row.days_overdue)) group.due = true;
+  }
+
+  for (const { recipient, rows: groupRows, due } of groups.values()) {
+    if (!due) continue;
+    // El más atrasado primero: es el que más urge devolver.
+    const devices = [...groupRows].sort((a, b) => Number(b.days_overdue) - Number(a.days_overdue));
+    const first = devices[0];
+    const names = [...new Set(devices.map(studentNameOf).filter(Boolean))];
+    const subject =
+      devices.length === 1
+        ? `Overdue device reminder${names.length ? ` — ${names[0]}` : ""}`
+        : `Overdue device reminder — ${devices.length} devices${names.length ? `: ${names.join(", ")}` : ""}`;
     jobs.push({
       type: "send-email",
       payload: {
         to: recipient.email,
         from: FROM,
-        subject: `Overdue device reminder${studentName ? ` — ${studentName}` : ""}`,
-        html: overdueReminderMessageHtml({ ...row, toGuardian: recipient.toGuardian }),
+        subject,
+        html: overdueReminderMessageHtml({ ...first, toGuardian: recipient.toGuardian, devices }),
       },
-      idempotencyKey: `overdue-reminder:${row.company_id}:${row.member_id}:${row.device_id}:${stamp}`,
+      idempotencyKey: `overdue-reminder:${first.company_id}:to-${recipientTag(recipient.email)}:${stamp}`,
+      context: { companyId: String(first.company_id) },
+      leases: devices.map((r) => ({ company_id: r.company_id, member_id: r.member_id, device_id: r.device_id })),
     });
   }
   return { jobs, skipped };
@@ -124,11 +170,13 @@ const runOverdueReminders = async ({
   const cn = getConn();
   const [rows] = await cn.query(OVERDUE_QUERY);
   const { jobs, skipped } = buildReminderJobs(rows, { now });
-  const resting = rows.length - jobs.length - skipped.length;
+  const devices = jobs.reduce((n, job) => n + job.leases.length, 0);
+  // En descanso = ni van en ningún correo de hoy ni se saltaron por falta de email.
+  const resting = rows.length - devices - skipped.length;
   let queued = 0;
   for (const job of jobs) {
     try {
-      await enq(job.type, job.payload, { idempotencyKey: job.idempotencyKey });
+      await enq(job.type, job.payload, { idempotencyKey: job.idempotencyKey, context: job.context });
       // FERPA disclosure audit follow-up: reminder emails disclose education-record
       // data externally, but StaffActivityLog.staff_member_id currently requires a
       // valid AdminUser ObjectId. Add a system actor or schema-supported nullable
@@ -139,9 +187,9 @@ const runOverdueReminders = async ({
     }
   }
   logger.info(
-    `overdue reminders: ${rows.length} overdue → ${queued} queued, ${skipped.length} skipped (no email), ${resting} not due today`
+    `overdue reminders: ${rows.length} overdue → ${queued} emails queued covering ${devices} devices, ${skipped.length} skipped (no email), ${resting} not due today`
   );
-  return { overdue: rows.length, queued, skipped: skipped.length, resting };
+  return { overdue: rows.length, queued, devices, skipped: skipped.length, resting };
 };
 
 module.exports = { buildReminderJobs, runOverdueReminders, pickRecipient, isReminderDay, OVERDUE_QUERY, FROM };

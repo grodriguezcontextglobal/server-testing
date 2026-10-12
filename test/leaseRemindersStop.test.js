@@ -71,7 +71,9 @@ test('stop: solo el dispositivo indicado deja de recibir recordatorios; el otro 
   // Lo que veria el scheduler (OVERDUE_QUERY filtra reminders_stopped_at IS NULL).
   const pending = table.rows.filter((r) => r.reminders_stopped_at === null);
   const { jobs } = buildReminderJobs(pending, { now: Date.parse('2026-10-07T12:00:00Z') });
-  assert.deepEqual(jobs.map((j) => j.idempotencyKey), ['overdue-reminder:61:5001:9002:2026-10-07']);
+  // Un solo correo, y el dispositivo detenido no va en él.
+  assert.equal(jobs.length, 1);
+  assert.deepEqual(jobs[0].leases.map((l) => l.device_id), [9002]);
 });
 
 test('resume: reactiva solo ese dispositivo', async () => {

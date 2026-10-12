@@ -79,10 +79,12 @@ const nextReminderDays = (from, count = 3) => {
     console.log(`  ${h}  ${n}${flag}`);
   }
 
-  console.log("\nPor prestamo (dias con job):");
+  // Claves: hasta 2026-10-12 una por prestamo (overdue-reminder:cia:miembro:equipo:dia);
+  // desde entonces una por destinatario (overdue-reminder:cia:to-<hash>:dia).
+  console.log("\nPor clave (prestamo, o cia:to-<destinatario> desde el agrupado):");
   const byLease = {};
   for (const j of jobs) {
-    const k = j.idempotencyKey.split(":").slice(1, 4).join(":");
+    const k = j.idempotencyKey.split(":").slice(1, -1).join(":");
     (byLease[k] = byLease[k] || []).push(
       `${j.createdAt.toISOString().slice(5, 10)}(${j.status}${j.lastError ? "!" : ""})`
     );
