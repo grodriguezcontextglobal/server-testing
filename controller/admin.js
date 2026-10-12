@@ -1089,4 +1089,5 @@ module.exports = {
   disableMfa,
   forceEndSession,
   invalidateAllSessions,
+  PROFILE_SELF_FIELDS,
 };

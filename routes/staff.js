@@ -6,7 +6,7 @@
  const { Router } = require("express");
  const router = Router();
  const {
-   displayAllAdminUser, editOtherAdminUser, forceEndSession,
+   displayAllAdminUser, editOtherAdminUser, forceEndSession, PROFILE_SELF_FIELDS,
  } = require("../controller/admin");
 const { searchCustomerByParameters } = require("../controller/stripe");
 const { optionalJWT } = require("../middlewares/optionalJWT");
@@ -20,7 +20,24 @@ router.get("/admin-users", validateJWT, checkTokenVersion, authorizeMongoPermiss
 //display all admin by queries
 router.post("/admin-users", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), displayAllAdminUser);
 
- router.patch("/edit-admin/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "update"), editOtherAdminUser);
+// Editar a OTRO exige staff:update. El dashboard también usa esta ruta para el
+// propio perfil (p. ej. `{ online: false }` al cerrar sesión), y ahí un rol sin
+// staff:update (inventory_manager, assistant...) recibía 403. Si el id es el del
+// que llama y el body solo trae campos personales (PROFILE_SELF_FIELDS, los
+// mismos que deja PATCH /api/admin/profile/:id), no hace falta el permiso.
+// Cualquier otro campo (super_user, email, rol...) sigue pasando por staff:update.
+const canUpdateStaff = authorizeMongoPermission("staff", "update");
+const isSelfProfileEdit = (req) => {
+  const keys = Object.keys(req.body || {});
+  return (
+    String(req.params.id) === String(req.uid) &&
+    keys.length > 0 &&
+    keys.every((k) => PROFILE_SELF_FIELDS.has(k))
+  );
+};
+const selfOrStaffUpdate = (req, res, next) =>
+  isSelfProfileEdit(req) ? next() : canUpdateStaff(req, res, next);
+ router.patch("/edit-admin/:id", validateJWT, checkTokenVersion, selfOrStaffUpdate, editOtherAdminUser);
  
  //search stripe customer by parameters
  router.get('/consumers/search',searchCustomerByParameters)

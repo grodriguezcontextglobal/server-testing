@@ -180,8 +180,12 @@ test('routes/staff.js: PATCH /edit-admin/:id tiene authorizeMongoPermission', ()
   const router = loadRouter('../routes/staff');
   const handlers = getRouteHandlers(router, 'PATCH', '/edit-admin/:id');
   assert.ok(handlers !== null, 'La ruta PATCH /edit-admin/:id debe existir');
+  // Desde 2026-10-12 el permiso va dentro de `selfOrStaffUpdate`: el propio
+  // perfil con campos personales no lo necesita, todo lo demás sí. El
+  // comportamiento lo prueban docsStaffAuthzRoutes.test.js (edit-admin: ...).
   assert.ok(
-    hasAuthzMongoPermission(handlers),
+    hasAuthzMongoPermission(handlers) ||
+      handlers.some((h) => h.name === 'selfOrStaffUpdate' && h.toString().includes('canUpdateStaff')),
     'authorizeMongoPermission debe estar en PATCH /edit-admin/:id',
   );
 });
