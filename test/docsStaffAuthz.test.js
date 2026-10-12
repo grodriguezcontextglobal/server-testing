@@ -297,6 +297,24 @@ test('forceEndSession: el super_user de plataforma puede echar a cualquiera', as
   assert.equal(r.code, 200);
 });
 
+// Sin token (desde la pantalla de login): borra la sesión del email sin pedir
+// contraseña — volver a entrar sigue exigiendo contraseña + MFA.
+test('forceEndSession sin token: solo con el email cierra la sesión y lo atribuye al dueño', async () => {
+  const r = res();
+  await forceEndSession(req({ body: { email: 'plain@a.com' } }), r);
+  assert.equal(r.code, 200);
+  assert.deepEqual(calls.redisDel, [`staff_session:${U_PLAIN_A}`, `staff_session:${U_PLAIN_A}:owner`]);
+  assert.equal(calls.logs[0].staff_member_id, U_PLAIN_A);
+  assert.equal(calls.logs[0].details.anonymous, true);
+});
+
+test('forceEndSession sin token: email desconocido da 404 y no borra nada', async () => {
+  const r = res();
+  await forceEndSession(req({ body: { email: 'nadie@x.com' } }), r);
+  assert.equal(r.code, 404);
+  assert.deepEqual(calls.redisDel, []);
+});
+
 // ═══ PATCH /api/admin/profile/:id ═══════════════════════════════════════════
 
 test('editAdminUser: el propio usuario cambia sus campos personales', async () => {

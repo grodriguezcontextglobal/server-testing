@@ -956,14 +956,18 @@ const disableMfa = async (req, res) => {
   }
 };
 
-// POST /api/staff/force-logout — exige token (antes era anónima: con saber el
-// email de alguien se le cerraba la sesión). El usuario bloqueado por una
-// sesión abierta en otro sitio no necesita esta ruta: el login ya acepta
-// `forceLogin: true` después de verificar la contraseña.
-//  - Cerrar la propia sesión: siempre.
-//  - Cerrar la de otro: super_user de plataforma, o en la compañía del
-//    contexto (x-company-id) ser super_user o tener staff:update, y que el
-//    otro sea miembro de esa misma compañía.
+// POST /api/staff/force-logout. Dos formas de llamarla:
+//  - Sin token (pantalla de login, el usuario bloqueado por una sesión abierta
+//    en otro sitio): borra la sesión activa del `email`, sin pedir nada más.
+//    Es seguro porque borrar la sesión no da acceso: volver a entrar exige el
+//    login completo (contraseña + MFA obligatoria). Lo que queda es que alguien
+//    con el email puede cerrarle la sesión a otro (molestia, no acceso);
+//    decisión del 2026-10-12.
+//  - Con token:
+//    - Cerrar la propia sesión: siempre.
+//    - Cerrar la de otro: super_user de plataforma, o en la compañía del
+//      contexto (x-company-id) ser super_user o tener staff:update, y que el
+//      otro sea miembro de esa misma compañía.
 const forceEndSession = async (request, response) => {
   const { email } = request.body || {};
   try {
@@ -977,6 +981,10 @@ const forceEndSession = async (request, response) => {
     if (!adminUser) {
       return response.status(404).json({ ok: false, msg: "User not found." });
     }
+
+    // Sin token se trata como la propia sesión (el log la atribuye al dueño).
+    const anonymous = !request.uid;
+    if (anonymous) request.uid = adminUser.id;
 
     const isSelf = String(adminUser.id) === String(request.uid);
     if (!isSelf) {
@@ -1015,10 +1023,13 @@ const forceEndSession = async (request, response) => {
       target_model: "AdminUser",
       target_id: adminUser.id,
       details: {
-        reason: isSelf
+        reason: anonymous
+          ? "Session terminated from the login screen (no token)."
+          : isSelf
           ? "User-initiated remote session termination."
           : "Session terminated by another staff member.",
         self: isSelf,
+        anonymous,
       },
       ip_address: request.ip,
     });

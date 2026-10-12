@@ -18,7 +18,7 @@ const cases = [
   ['../routes/document', 'patch', '/:id'],
   ['../routes/document', 'put', '/:id'], // lo que llama EditDocument.jsx
   ['../routes/document', 'delete', '/:id'],
-  ['../routes/staff', 'post', '/force-logout'],
+  // force-logout ya no: desde 2026-10-12 es anónima desde el login (token opcional).
   ['../routes/admin', 'patch', '/profile/:id'],
 ];
 

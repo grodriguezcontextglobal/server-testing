@@ -32,8 +32,14 @@ router.post("/admin-users", validateJWT, checkTokenVersion, authorizeMongoPermis
  router.get('/__staff-search',displayAllAdminUser)
 
  // Route to handle user logout
-// Exige token: antes era anónima y con el email de alguien se le cerraba la
-// sesión. Quién puede cerrar la de otro se decide en forceEndSession.
-router.post("/force-logout", validateJWT, checkTokenVersion, forceEndSession);
+// Token opcional: desde el login no hay token y se borra la sesión del email
+// (volver a entrar sigue exigiendo contraseña + MFA). Si llega token, se valida
+// entero (firma + tokenVersion): uno inválido es 401, no "sin token"; con token
+// se puede cerrar la sesión de otro según los permisos de forceEndSession.
+const tokenIfPresent = (req, res, next) =>
+  req.header("x-token")
+    ? validateJWT(req, res, () => checkTokenVersion(req, res, next))
+    : next();
+router.post("/force-logout", tokenIfPresent, forceEndSession);
 
  module.exports = router;
