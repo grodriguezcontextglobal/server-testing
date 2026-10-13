@@ -7,6 +7,7 @@
  const router = Router();
  const {
    displayAllAdminUser, editOtherAdminUser, forceEndSession, PROFILE_SELF_FIELDS,
+   searchStaffByEmail,
  } = require("../controller/admin");
 const { searchCustomerByParameters } = require("../controller/stripe");
 const { optionalJWT } = require("../middlewares/optionalJWT");
@@ -43,10 +44,12 @@ const selfOrStaffUpdate = (req, res, next) =>
  router.get('/consumers/search',searchCustomerByParameters)
 
  //search staff info from not token side
- router.post('/__staff-search',displayAllAdminUser)
+ // Anónima a propósito (alta, invitación, olvidé mi contraseña): exige un email
+ // exacto y devuelve solo campos públicos. Ver searchStaffByEmail.
+ router.post('/__staff-search', searchStaffByEmail)
 
  //router to search all staff information
- router.get('/__staff-search',displayAllAdminUser)
+ router.get('/__staff-search', searchStaffByEmail)
 
  // Route to handle user logout
 // Token opcional: desde el login no hay token y se borra la sesión del email

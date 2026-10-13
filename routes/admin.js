@@ -14,6 +14,7 @@ const {
   editAdminUser,
   deleteAdminUser,
   updatePassword,
+  verifyPassword,
   editOtherAdminUser,
   checkStatus,
   logoutUser,
@@ -113,8 +114,13 @@ router.patch("/admin-user/:id", validateJWT, checkTokenVersion, authorizeMongoPe
 //delete admin suer
 router.delete("/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "delete"), deleteAdminUser);
 
-//update password
+//update password — sin token a propósito (reset sin sesión); exige el código
+// MFA de la cuenta. Ver updatePassword.
 router.patch("/update-password", updatePassword);
+
+// Comprueba la contraseña del propio usuario en el servidor (antes el dashboard
+// comparaba contra el hash en el navegador).
+router.post("/verify-password", validateJWT, checkTokenVersion, verifyPassword);
 
 //post receivers per user per transaction
 router.post("/receiver-assignation", addReceiverToTransaction);

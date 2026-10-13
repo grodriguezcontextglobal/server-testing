@@ -55,7 +55,11 @@ function AdminUserStub(data) {
   this.tokenVersion = 0;
   this.save = async () => { created.push(this); };
 }
-AdminUserStub.findOne = async ({ email }) => Object.values(users).find((u) => u.email === email) ?? null;
+// El login pide `.select("+password")` (password está oculto en el modelo).
+AdminUserStub.findOne = ({ email }) => {
+  const u = Object.values(users).find((x) => x.email === email) ?? null;
+  return { select: async () => u, then: (resolve, reject) => Promise.resolve(u).then(resolve, reject) };
+};
 AdminUserStub.findById = (id) => query(users[id] ?? null);
 
 const root = path.resolve(__dirname, '..');

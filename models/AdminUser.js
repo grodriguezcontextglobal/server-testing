@@ -19,10 +19,14 @@ const AdminUserSchema = new Schema({
     required: false,
     unique: false,
   },
+  // Oculta por defecto: el hash salía en toda respuesta que devolviera un
+  // AdminUser, incluida GET /api/staff/__staff-search, que es anónima. Quien lo
+  // necesite (login, verify-password) lo pide con `.select("+password")`.
   password: {
     type: String,
     required: true,
     unique: true,
+    select: false,
   },
   // `question` / `answer` (pregunta secreta) se eliminaron: ningún flujo las
   // leía — no hay recuperación de contraseña por pregunta secreta — y eran
@@ -150,7 +154,9 @@ const AdminUserSchema = new Schema({
 });
 
 AdminUserSchema.method("toJSON", function () {
-  const { _id, __v, ...object } = this.toObject();
+  // password/mfaSecret nunca se serializan, aunque se hayan cargado con
+  // `.select("+...")` (el login lo hace y responde `entire: adminUser`).
+  const { _id, __v, password, mfaSecret, ...object } = this.toObject();
 
   object.id = _id;
   return object;

@@ -451,6 +451,7 @@ const READ_ONLY_ROUTES = new Set([
   'POST /api/school/settings',
   'POST /api/school/student/access-log',
   'POST /api/staff/__staff-search',
+  'POST /api/admin/verify-password', // solo compara, no escribe
   'POST /api/staff/admin-users',
   'POST /api/stripe/company-account-stripe/',
   'POST /api/stripe/customers',

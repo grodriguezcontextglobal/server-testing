@@ -96,7 +96,7 @@ const createAdminUser = async (request, response = express.response) => {
 const loginUser = async (request, response) => {
   const { email, password, rememberMe, forceLogin, mfaCode } = request.body;
   try {
-    let adminUser = await AdminUser.findOne({ email });
+    let adminUser = await AdminUser.findOne({ email }).select("+password");
     if (!adminUser) {
       return response.status(400).json({
         ok: false,
@@ -700,35 +700,76 @@ const renewToken = async (request, response = express.response) => {
   });
 };
 
+// PATCH /api/admin/update-password — sin token a propósito: se llama desde el
+// reset de contraseña, sin sesión. Antes bastaba el email para cambiarle la
+// contraseña a cualquiera; ahora la prueba de identidad es el código MFA de la
+// cuenta (`mfaCode`), verificado aquí y no en el cliente. La cuenta se indica
+// con `email` o con `uid` (el del enlace del reset).
+//  - Cuenta sin MFA configurada: 403 `mfaSetupRequired`. No hay otra prueba de
+//    identidad, así que no se puede resetear sin ayuda de un administrador.
+//  - Email desconocido y código inválido dan la MISMA respuesta: la ruta no
+//    sirve para averiguar qué emails tienen cuenta.
+//  - Al cambiarla se sube `tokenVersion` (los tokens emitidos dejan de valer) y
+//    se borra la sesión activa, para que el login nuevo no choque con un 409.
 const updatePassword = async (request, response) => {
-  const { email, password } = request.body;
+  const { email, uid, password, mfaCode } = request.body || {};
 
   try {
-    let adminUser = await AdminUser.findOne({ email });
-
-    if (!adminUser) {
+    // `uid` es lo que trae el enlace del reset (?uid=...); `email`, el resto.
+    // Solo strings: un objeto aquí sería un filtro de Mongo ({ $ne: null }).
+    const byUid = typeof uid === "string" && isValidObjectId(uid);
+    const byEmail = typeof email === "string" && email.length > 0;
+    if ((!byUid && !byEmail) || typeof password !== "string" || password.length < 6) {
       return response.status(400).json({
         ok: false,
-        msg: "Email/User was not found",
+        msg: "Email (or uid) and a password of at least 6 characters are required.",
+      });
+    }
+    if (!mfaCode) {
+      return response.status(403).json({
+        ok: false,
+        msg: "MFA code required",
+        mfaRequired: true,
       });
     }
 
-    const id = adminUser.id;
-    ///encrypt password
+    const adminUser = await AdminUser.findOne(byUid ? { _id: uid } : { email }).select("+mfaSecret");
+    const secret = adminUser?.mfaEnabled ? adminUser.mfaSecret?.base32 : null;
+
+    if (adminUser && !secret) {
+      return response.status(403).json({
+        ok: false,
+        msg: "This account has no MFA set up, so its password cannot be reset here. Contact an administrator.",
+        mfaSetupRequired: true,
+      });
+    }
+
+    const verified =
+      Boolean(secret) &&
+      speakeasy.totp.verify({ secret, encoding: "base32", token: String(mfaCode) });
+    if (!verified) {
+      return response.status(400).json({
+        ok: false,
+        msg: "Invalid email or MFA code",
+      });
+    }
+
     const salt = await bcrypt.genSalt();
-    adminUser.password = await bcrypt.hash(password, salt);
+    const hashed = await bcrypt.hash(password, salt);
 
-    //generate JWT
-    // const token = await generateJWT(id, adminUser.name);
-
-    //update password in adminUser object
     const updateAdminUserPassword = await AdminUser.findByIdAndUpdate(
-      id,
-      adminUser,
-      {
-        new: true,
-      }
+      adminUser.id,
+      { $set: { password: hashed }, $inc: { tokenVersion: 1 } },
+      { new: true }
     );
+
+    try {
+      const redis = await clientRedis();
+      await redis.del(`staff_session:${adminUser.id}`);
+      await redis.del(`staff_session:${adminUser.id}:owner`);
+    } catch (redisErr) {
+      logger.warn("update-password: no se pudo borrar la sesión activa", { err: redisErr.message });
+    }
     return response.status(201).json({
       ok: true,
       message: "register",
@@ -781,6 +822,49 @@ const showStaffs = async (request, response) => {
       ok: false,
       msg: error,
     });
+  }
+};
+
+// GET|POST /api/staff/__staff-search — anónima: la usan pantallas sin sesión
+// (alta, invitación, olvidé mi contraseña) para saber si un email tiene cuenta.
+// Antes era `AdminUser.find(request.body)`: sin body devolvía TODOS los
+// usuarios, con el hash de la contraseña. Ahora exige un email exacto (string,
+// no un filtro de Mongo) y devuelve solo campos públicos. Misma forma de
+// respuesta (`adminUsers: []`) para no cambiar el contrato.
+const STAFF_SEARCH_PUBLIC_FIELDS = "name lastName email imageProfile active companiesAssigned";
+const searchStaffByEmail = async (request, response) => {
+  const raw = request.body?.email ?? request.query?.email;
+  const email = typeof raw === "string" ? raw.trim() : "";
+  if (!email) {
+    return response.status(400).json({
+      ok: false,
+      msg: "email is required.",
+    });
+  }
+  try {
+    const adminUsers = await AdminUser.find({ email }).select(STAFF_SEARCH_PUBLIC_FIELDS);
+    return response.status(201).json({ ok: true, adminUsers });
+  } catch (error) {
+    logger.error("staff search error", { error: error.message });
+    return response.status(500).json({ ok: false, msg: "Contact Administrator" });
+  }
+};
+
+// POST /api/admin/verify-password — con token. Comprueba la contraseña del
+// propio usuario en el servidor; antes el dashboard bajaba el hash y comparaba
+// en el navegador ("Mi contraseña", verificación de firma de documentos).
+const verifyPassword = async (request, response) => {
+  const { password } = request.body || {};
+  if (typeof password !== "string" || !password) {
+    return response.status(400).json({ ok: false, msg: "password is required." });
+  }
+  try {
+    const adminUser = await AdminUser.findById(request.uid).select("+password");
+    const valid = Boolean(adminUser?.password) && (await bcrypt.compare(password, adminUser.password));
+    return response.status(200).json({ ok: true, valid });
+  } catch (error) {
+    logger.error("verify-password error", { error: error.message });
+    return response.status(500).json({ ok: false, msg: "Contact Administrator" });
   }
 };
 
@@ -1090,4 +1174,6 @@ module.exports = {
   forceEndSession,
   invalidateAllSessions,
   PROFILE_SELF_FIELDS,
+  searchStaffByEmail,
+  verifyPassword,
 };
