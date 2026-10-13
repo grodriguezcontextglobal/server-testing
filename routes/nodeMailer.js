@@ -49,6 +49,7 @@ const {
 } = require("../middlewares/notificationAuth");
 const { previewBranding, listPreviewTemplates } = require("../nodeMailer/brandingPreview");
 const { attachPasswordResetLink } = require("../controller/admin");
+const { attachInvitationLink } = require("../controller/registration");
 const router = Router();
 
 // Applies to every route below. See middlewares/notificationAuth.js: the first
@@ -113,7 +114,9 @@ router.post("/customized-notification", customizedEmailNotification);
 router.post("/single-email-notification", singleEmailNotification);
 
 //*invitation for new user in company
-router.post("/new_invitation", newUserInvitationNotification);
+// El enlace de la invitación lo firma el servidor; el `link` del cliente se
+// descarta (ver attachInvitationLink).
+router.post("/new_invitation", attachInvitationLink, newUserInvitationNotification);
 
 //*internal notification
 router.post("/internal-single-email-notification", internalNotification);

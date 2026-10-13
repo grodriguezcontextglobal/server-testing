@@ -40,14 +40,8 @@ router.post(
 
 // POST /api/registration/accept-invitation
 // Acepta una invitación. Crea o reutiliza el usuario e inserta en company_staff.
-router.post(
-  "/accept-invitation",
-  [
-    check("user.email", "user.email debe ser un email válido").isEmail(),
-    check("company.company_name", "company.company_name es requerido").not().isEmpty(),
-    validateFields,
-  ],
-  acceptInvitation
-);
+// Sin sesión: la prueba es `invitationToken`, el token firmado del enlace del
+// correo. Email y compañía salen de él (ver acceptInvitation).
+router.post("/accept-invitation", acceptInvitation);
 
 module.exports = router;

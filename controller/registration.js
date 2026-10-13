@@ -7,6 +7,7 @@ const Company = require("../models/Company");
 const getConnection = require("../mysql/database/config");
 const { generateJWT } = require("../helpers/jwt");
 const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
+const { generateInvitationToken, readInvitationToken } = require("../helpers/invitationToken");
 const logger = require("../helpers/logger");
 
 const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
@@ -429,10 +430,84 @@ const registerExistingUserNewCompany = async (request, response) => {
   }
 };
 
+// Añade la compañía a `companiesAssigned` si no estaba. updateOne con la
+// condición `$ne` para que dos aceptaciones simultáneas no la dupliquen.
+// `multipleCompanies` pasa a true cuando ya tenía otra.
+async function addCompanyAssignment(adminUser, companyDoc, { roleType, role }) {
+  const name = companyDoc.company_name;
+  const current = adminUser.companiesAssigned ?? [];
+  if (current.some((a) => a?.company === name)) return;
+  await AdminUser.updateOne(
+    { _id: adminUser._id, "companiesAssigned.company": { $ne: name } },
+    {
+      $push: {
+        companiesAssigned: {
+          company: name,
+          active: true,
+          super_user: false,
+          role_type: roleType,
+          ...(role !== undefined && role !== null && role !== "" ? { role: String(role) } : {}),
+        },
+      },
+      ...(current.length > 0 ? { $set: { multipleCompanies: true } } : {}),
+    }
+  );
+}
+
+// ----- Middleware de POST /api/nodemailer/new_invitation -----
+// El enlace del correo lo arma y firma el SERVIDOR (helpers/invitationToken.js);
+// el `link` que mande el cliente se descarta. Exige la sesión de quien invita
+// y su compañía verificada (`x-company-id`, ver middlewares/notificationAuth.js),
+// y que el invitado (`consumer`) tenga una invitación pendiente ahí.
+const attachInvitationLink = async (request, response, next) => {
+  const companyId = request.verifiedCompanyId;
+  if (!request.notificationSession || !companyId) {
+    return response.status(401).json({
+      ok: false,
+      msg: "A session and a verified x-company-id are required to send an invitation.",
+    });
+  }
+  const email = typeof request.body?.consumer === "string" ? request.body.consumer.trim() : "";
+  if (!email) {
+    return response.status(400).json({ ok: false, msg: "consumer (the invited email) is required." });
+  }
+  try {
+    const companyDoc = await Company.findOne({ _id: companyId });
+    const employee = companyDoc?.employees?.find((e) => e.user === email);
+    if (!employee || employee.status === "Confirmed") {
+      return response.status(404).json({
+        ok: false,
+        msg: `There is no pending invitation for ${email} in this company.`,
+      });
+    }
+    const params = new URLSearchParams({
+      first: employee.firstName ?? "",
+      last: employee.lastName ?? "",
+      email,
+      company: String(companyDoc._id),
+      company_name: companyDoc.company_name,
+      token: await generateInvitationToken({ email, companyId: companyDoc._id }),
+    });
+    const origin = process.env.FRONTEND_URL || "https://admin.devitrak.net";
+    request.body = { ...request.body, consumer: email, link: `${origin}/invitation?${params.toString()}` };
+    return next();
+  } catch (error) {
+    logger.error("new_invitation: no se pudo armar el enlace", { error: error.message });
+    return response.status(500).json({ ok: false, msg: "Contact Administrator" });
+  }
+};
+
 // ----- POST /api/registration/accept-invitation -----
 // Acepta una invitación de empresa. Crea el usuario en MongoDB+SQL si es nuevo,
 // o reutiliza el existente. Inserta en company_staff con el rol de la invitación.
-// Body: { user: { name, lastName, email, password? }, company: { company_name } }
+// Body: { invitationToken, user: { name, lastName, password? } }
+//
+// Sin sesión, pero exige `invitationToken`: el token del enlace del correo,
+// firmado por el servidor (helpers/invitationToken.js). Antes bastaba con
+// saber el email invitado y el nombre de la compañía para aceptar en nombre de
+// otro, y si la cuenta no existía, elegirle la contraseña. El email y la
+// compañía salen del token; `user.email` y `company.company_name` del body se
+// ignoran.
 //
 // El ROL NO se acepta del body: lo definió quien invitó y ya está guardado en
 // `Company.employees[].roleType`. Aceptarlo del request permitía que el propio
@@ -440,22 +515,25 @@ const registerExistingUserNewCompany = async (request, response) => {
 // `company_staff`, que es la fuente de verdad del lado SQL (ver
 // mysql/helpers/staffAccess.js).
 const acceptInvitation = async (request, response) => {
-  const { user, company } = request.body;
+  const { user = {}, invitationToken } = request.body || {};
+  const invitation = readInvitationToken(invitationToken);
 
-  if (!user?.email || !company?.company_name) {
+  if (!invitation) {
     return response.status(400).json({
       ok: false,
-      msg: "user.email y company.company_name son requeridos.",
+      msg: "This invitation link is invalid or has expired. Ask your administrator for a new one.",
+      invitationLinkInvalid: true,
     });
   }
+  const { email } = invitation;
 
   try {
     // ── Buscar empresa en MongoDB ──────────────────────────────────────────────
-    const companyDoc = await Company.findOne({ company_name: company.company_name });
+    const companyDoc = await Company.findOne({ _id: invitation.companyId });
     if (!companyDoc) {
       return response.status(404).json({
         ok: false,
-        msg: `La empresa "${company.company_name}" no existe.`,
+        msg: "La empresa de la invitación no existe.",
       });
     }
 
@@ -463,11 +541,19 @@ const acceptInvitation = async (request, response) => {
     // Antes, si el email no estaba en `employees` solo se saltaba el update de
     // Mongo pero IGUAL se insertaba en company_staff: con saber el nombre de una
     // empresa alcanzaba para darse acceso.
-    const empIndex = companyDoc.employees.findIndex((e) => e.user === user.email);
+    const empIndex = companyDoc.employees.findIndex((e) => e.user === email);
     if (empIndex < 0) {
       return response.status(404).json({
         ok: false,
-        msg: `No hay una invitación pendiente para ${user.email} en "${company.company_name}".`,
+        msg: `No hay una invitación pendiente para ${email} en "${companyDoc.company_name}".`,
+      });
+    }
+    // Un solo uso: aceptada una vez, el enlace ya no sirve.
+    if (companyDoc.employees[empIndex].status === "Confirmed") {
+      return response.status(409).json({
+        ok: false,
+        msg: "This invitation was already accepted. Sign in to continue.",
+        invitationAlreadyAccepted: true,
       });
     }
 
@@ -480,7 +566,7 @@ const acceptInvitation = async (request, response) => {
     const sqlConn = getConnection();
 
     // ── Usuario: nuevo o existente ─────────────────────────────────────────────
-    let adminUser = await AdminUser.findOne({ email: user.email });
+    let adminUser = await AdminUser.findOne({ email });
     const isNewUser = !adminUser;
 
     if (isNewUser) {
@@ -495,7 +581,7 @@ const acceptInvitation = async (request, response) => {
       adminUser = new AdminUser({
         name: user.name || "",
         lastName: user.lastName || "",
-        email: user.email,
+        email,
         password: hashedPassword,
         phone: user.phone || "",
         imageProfile: "",
@@ -510,6 +596,21 @@ const acceptInvitation = async (request, response) => {
     if (isNewUser) companyDoc.employees[empIndex].userId = adminUser._id;
     await companyDoc.save();
 
+    // ── companiesAssigned (lista de compañías del selector de login) ──────────
+    // Lo hacía el dashboard con PATCH /staff/edit-admin, que exige sesión, y en
+    // esta página no la hay. El rol es el de la invitación, no el del body.
+    try {
+      await addCompanyAssignment(adminUser, companyDoc, {
+        roleType: validRoleType,
+        role: companyDoc.employees[empIndex].role,
+      });
+    } catch (mongoErr) {
+      logger.warn("companiesAssigned no se pudo actualizar al aceptar invitación", {
+        email,
+        err: mongoErr.message,
+      });
+    }
+
     // ── SQL: crear o encontrar staff_member ───────────────────────────────────
     let sqlStaffId = null;
     try {
@@ -521,7 +622,7 @@ const acceptInvitation = async (request, response) => {
       });
     } catch (sqlErr) {
       logger.warn("staff_member insert/lookup falló para invitación", {
-        email: user.email,
+        email,
         err: sqlErr.message,
       });
     }
@@ -531,12 +632,12 @@ const acceptInvitation = async (request, response) => {
     try {
       const [[companyRow]] = await sqlConn.execute(
         "SELECT company_id FROM company_info WHERE company_name = ? LIMIT 1",
-        [company.company_name]
+        [companyDoc.company_name]
       );
       sqlCompanyId = companyRow?.company_id ?? null;
     } catch (sqlErr) {
       logger.warn("company_info lookup falló para invitación", {
-        company_name: company.company_name,
+        company_name: companyDoc.company_name,
         err: sqlErr.message,
       });
     }
@@ -545,7 +646,7 @@ const acceptInvitation = async (request, response) => {
     if (sqlCompanyId && sqlStaffId) {
       try {
         await syncCompanyStaffSQL(sqlConn, {
-          email: user.email,
+          email,
           sqlCompanyId,
           roleType: validRoleType,
           staffId: sqlStaffId,
@@ -589,4 +690,5 @@ module.exports = {
   registerNewUserAndCompany,
   registerExistingUserNewCompany,
   acceptInvitation,
+  attachInvitationLink,
 };

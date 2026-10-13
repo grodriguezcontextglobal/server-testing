@@ -22,6 +22,9 @@ const corsOptions = {
         "Content-Type",
         "Authorization",
         "x-token",
+        // Token de enrolamiento de MFA (login sin MFA, reset de contraseña).
+        // Ver middlewares/validateMfaEnrollment.js.
+        "x-mfa-setup-token",
         "token",
         "s-token-lq",
         "sqlStaffId",
