@@ -11,13 +11,14 @@ const path = require('node:path');
 const speakeasy = require('speakeasy');
 
 const U = '333333333333333333333333';
+const N = '444444444444444444444444';
 const SECRET = speakeasy.generateSecret().base32;
 let users, calls;
 
 function reset() {
   users = {
-    'mfa@a.com': { id: U, email: 'mfa@a.com', mfaEnabled: true, mfaSecret: { base32: SECRET } },
-    'nomfa@a.com': { id: 'x', email: 'nomfa@a.com', mfaEnabled: false },
+    'mfa@a.com': { id: U, email: 'mfa@a.com', password: 'hash-mfa', mfaEnabled: true, mfaSecret: { base32: SECRET } },
+    'nomfa@a.com': { id: N, email: 'nomfa@a.com', password: 'hash-nomfa', mfaEnabled: false },
   };
   calls = { updates: [], redisDel: [], finds: [], selects: [] };
 }
@@ -59,7 +60,8 @@ stub('database/cacheMemoryConfig.js', {
 });
 stub('controller/staffActivityLog.js', { logStaffActivity: async () => {} });
 
-const { updatePassword, searchStaffByEmail, verifyPassword } = require('../controller/admin');
+const { updatePassword, searchStaffByEmail, verifyPassword, attachPasswordResetLink } = require('../controller/admin');
+const { generatePasswordResetToken } = require('../helpers/passwordResetToken');
 
 const res = () => {
   const r = {};
@@ -102,11 +104,22 @@ test('update-password: email desconocido responde igual que un código incorrect
   assert.equal(calls.updates.length, 0);
 });
 
-test('update-password: cuenta sin MFA configurada da 403 mfaSetupRequired', async () => {
-  const r = await call({ email: 'nomfa@a.com', password: 'nueva123', mfaCode: '123456' });
-  assert.equal(r.code, 403);
-  assert.equal(r.body.mfaSetupRequired, true);
+test('update-password: cuenta sin MFA da 403 mfaSetupRequired (activarla y reenviar), con o sin código', async () => {
+  for (const mfaCode of [undefined, '123456']) {
+    const r = await call({ email: 'nomfa@a.com', password: 'nueva123', mfaCode });
+    assert.equal(r.code, 403);
+    assert.equal(r.body.mfaSetupRequired, true);
+    assert.equal(r.body.mfaRequired, undefined);
+    assert.match(r.body.msg, /Enable MFA.*send this request again/);
+    assert.equal(r.body.mfaSetupToken, undefined, 'sin enlace firmado no hay token de enrolamiento');
+  }
   assert.equal(calls.updates.length, 0);
+});
+
+test('update-password: email desconocido sin código pide el código, igual que una cuenta con MFA', async () => {
+  const r = await call({ email: 'nadie@a.com', password: 'nueva123' });
+  assert.equal(r.code, 403);
+  assert.equal(r.body.mfaRequired, true);
 });
 
 test('update-password: contraseña ausente o corta da 400', async () => {
@@ -129,6 +142,71 @@ test('update-password: un objeto como email o uid (filtro de Mongo) se rechaza c
     assert.equal(r.code, 400);
   }
   assert.equal(calls.updates.length, 0);
+});
+
+// ── enlace firmado del correo (resetToken) ─────────────────────────────────
+process.env.SECRET_JWT_SEED = process.env.SECRET_JWT_SEED || 'test-seed';
+const { verifyMfaSetupToken } = require('../helpers/mfaSetupToken');
+
+test('update-password: cuenta sin MFA CON enlace firmado recibe mfaSetupToken de esa cuenta', async () => {
+  const resetToken = await generatePasswordResetToken(users['nomfa@a.com']);
+  const r = await call({ resetToken, password: 'nueva123' });
+  assert.equal(r.code, 403);
+  assert.equal(r.body.mfaSetupRequired, true);
+  assert.equal(verifyMfaSetupToken(r.body.mfaSetupToken), N);
+  assert.equal(calls.updates.length, 0);
+});
+
+test('update-password: con enlace firmado y código MFA cambia la contraseña (la cuenta sale del token)', async () => {
+  const resetToken = await generatePasswordResetToken(users['mfa@a.com']);
+  const r = await call({ resetToken, email: 'nomfa@a.com', password: 'nueva123', mfaCode: code() });
+  assert.equal(r.code, 201);
+  assert.equal(calls.updates[0].id, U);
+});
+
+test('update-password: enlace falso, ajeno o ya usado da 400 resetLinkInvalid y no emite nada', async () => {
+  const used = await generatePasswordResetToken(users['nomfa@a.com']);
+  users['nomfa@a.com'].password = 'hash-nuevo'; // la contraseña ya cambió con ese enlace
+  for (const resetToken of ['basura', { $ne: null }, used]) {
+    const r = await call({ resetToken, password: 'nueva123' });
+    assert.equal(r.code, 400, String(resetToken));
+    assert.equal(r.body.resetLinkInvalid, true);
+    assert.equal(r.body.mfaSetupToken, undefined);
+  }
+  assert.equal(calls.updates.length, 0);
+});
+
+// ── POST /nodemailer/reset-admin-password ──────────────────────────────────
+const attach = async (body) => {
+  const r = res();
+  const req = { body };
+  let nexted = false;
+  await attachPasswordResetLink(req, r, () => { nexted = true; });
+  return { r, req, nexted };
+};
+
+test('reset-admin-password: el servidor arma el enlace con un token firmado y descarta el del cliente', async () => {
+  const { req, nexted } = await attach({
+    contactInfo: { email: 'nomfa@a.com' },
+    linkToResetPassword: 'https://evil.example/phish',
+    link: 'https://evil.example/phish',
+  });
+  assert.equal(nexted, true);
+  const url = new URL(req.body.linkToResetPassword);
+  assert.equal(url.pathname, '/reset-password');
+  assert.equal(url.searchParams.get('uid'), N);
+  assert.equal(req.body.link, undefined);
+  const r = await call({ resetToken: url.searchParams.get('token'), password: 'nueva123' });
+  assert.ok(r.body.mfaSetupToken, 'el token del correo abre el enrolamiento');
+});
+
+test('reset-admin-password: email sin cuenta responde igual pero no envía nada', async () => {
+  const { r, nexted } = await attach({ contactInfo: { email: 'nadie@a.com' } });
+  assert.equal(r.code, 202);
+  assert.equal(nexted, false);
+  const bad = await attach({ contactInfo: { email: { $ne: null } } });
+  assert.equal(bad.r.code, 400);
+  assert.equal(bad.nexted, false);
 });
 
 // ── __staff-search ──────────────────────────────────────────────────────────

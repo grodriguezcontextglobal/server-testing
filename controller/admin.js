@@ -17,6 +17,11 @@ const crypto = require("crypto");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
+const {
+  generatePasswordResetToken,
+  readPasswordResetUid,
+  isValidPasswordResetToken,
+} = require("../helpers/passwordResetToken");
 const { logStaffActivity } = require("./staffActivityLog");
 const { resolveCompanyContext } = require("../helpers/companyContext");
 const { findCompanyMembership } = require("../helpers/companyMembership");
@@ -705,24 +710,58 @@ const renewToken = async (request, response = express.response) => {
 // contraseña a cualquiera; ahora la prueba de identidad es el código MFA de la
 // cuenta (`mfaCode`), verificado aquí y no en el cliente. La cuenta se indica
 // con `email` o con `uid` (el del enlace del reset).
-//  - Cuenta sin MFA configurada: 403 `mfaSetupRequired`. No hay otra prueba de
-//    identidad, así que no se puede resetear sin ayuda de un administrador.
+//  - `resetToken` (el del enlace del correo, ver helpers/passwordResetToken.js)
+//    prueba que quien pide controla el buzón. Si llega, la cuenta sale de él y
+//    `uid`/`email` se ignoran; si no vale o caducó, 400.
+//  - Cuenta sin MFA configurada: 403 `mfaSetupRequired` (con o sin `mfaCode`).
+//    El cliente le pide activar MFA y reenviar la solicitud. Solo con un
+//    `resetToken` válido la respuesta trae `mfaSetupToken` para activarla sin
+//    sesión: sin él, conocer un email bastaría para registrar una app propia en
+//    una cuenta ajena.
 //  - Email desconocido y código inválido dan la MISMA respuesta: la ruta no
 //    sirve para averiguar qué emails tienen cuenta.
 //  - Al cambiarla se sube `tokenVersion` (los tokens emitidos dejan de valer) y
 //    se borra la sesión activa, para que el login nuevo no choque con un 409.
+//    El `resetToken` también deja de valer: su firma depende del hash anterior.
 const updatePassword = async (request, response) => {
-  const { email, uid, password, mfaCode } = request.body || {};
+  const { email, uid, password, mfaCode, resetToken } = request.body || {};
 
   try {
     // `uid` es lo que trae el enlace del reset (?uid=...); `email`, el resto.
     // Solo strings: un objeto aquí sería un filtro de Mongo ({ $ne: null }).
+    const withLink = resetToken !== undefined;
+    const resetUid = withLink ? readPasswordResetUid(resetToken) : null;
     const byUid = typeof uid === "string" && isValidObjectId(uid);
     const byEmail = typeof email === "string" && email.length > 0;
-    if ((!byUid && !byEmail) || typeof password !== "string" || password.length < 6) {
+    if ((!withLink && !byUid && !byEmail) || typeof password !== "string" || password.length < 6) {
       return response.status(400).json({
         ok: false,
         msg: "Email (or uid) and a password of at least 6 characters are required.",
+      });
+    }
+    const filter = withLink ? { _id: resetUid } : byUid ? { _id: uid } : { email };
+    const adminUser = withLink && !isValidObjectId(resetUid)
+      ? null
+      : await AdminUser.findOne(filter).select("+mfaSecret +password");
+
+    if (withLink && !isValidPasswordResetToken(resetToken, adminUser)) {
+      return response.status(400).json({
+        ok: false,
+        msg: "This reset link is invalid or has expired. Request a new one.",
+        resetLinkInvalid: true,
+      });
+    }
+    const secret = adminUser?.mfaEnabled ? adminUser.mfaSecret?.base32 : null;
+
+    // Se comprueba antes de pedir el código: a una cuenta sin MFA no tiene
+    // sentido pedirle uno. El cliente debe indicarle que la active y que
+    // vuelva a enviar la solicitud.
+    if (adminUser && !secret) {
+      return response.status(403).json({
+        ok: false,
+        msg: "MFA is not enabled on this account. Enable MFA and then send this request again.",
+        mfaSetupRequired: true,
+        ...(withLink && { mfaSetupToken: await generateMfaSetupToken(adminUser.id) }),
       });
     }
     if (!mfaCode) {
@@ -730,17 +769,6 @@ const updatePassword = async (request, response) => {
         ok: false,
         msg: "MFA code required",
         mfaRequired: true,
-      });
-    }
-
-    const adminUser = await AdminUser.findOne(byUid ? { _id: uid } : { email }).select("+mfaSecret");
-    const secret = adminUser?.mfaEnabled ? adminUser.mfaSecret?.base32 : null;
-
-    if (adminUser && !secret) {
-      return response.status(403).json({
-        ok: false,
-        msg: "This account has no MFA set up, so its password cannot be reset here. Contact an administrator.",
-        mfaSetupRequired: true,
       });
     }
 
@@ -864,6 +892,42 @@ const verifyPassword = async (request, response) => {
     return response.status(200).json({ ok: true, valid });
   } catch (error) {
     logger.error("verify-password error", { error: error.message });
+    return response.status(500).json({ ok: false, msg: "Contact Administrator" });
+  }
+};
+
+// Middleware de POST /api/nodemailer/reset-admin-password (sin token). El
+// enlace del correo lo arma el SERVIDOR con un token firmado (ver
+// helpers/passwordResetToken.js); el `linkToResetPassword` que mande el
+// cliente se descarta. Antes la ruta enviaba cualquier enlace a cualquier
+// email, y el enlace no probaba nada.
+// Email sin cuenta: misma respuesta que con cuenta, pero no se envía nada.
+const attachPasswordResetLink = async (request, response, next) => {
+  const email = request.body?.contactInfo?.email;
+  if (typeof email !== "string" || !email.trim()) {
+    return response.status(400).json({ ok: false, msg: "contactInfo.email is required." });
+  }
+  try {
+    const adminUser = await AdminUser.findOne({ email: email.trim() }).select("+password");
+    if (!adminUser) {
+      return response.status(202).json({ ok: true, notification: "Email queued" });
+    }
+    const params = new URLSearchParams({
+      token: await generatePasswordResetToken(adminUser),
+      uid: String(adminUser.id),
+      email: adminUser.email,
+      "stamp-time": new Date().toISOString(),
+    });
+    const origin = process.env.FRONTEND_URL || "https://admin.devitrak.net";
+    request.body = {
+      ...request.body,
+      contactInfo: { ...request.body.contactInfo, email: adminUser.email },
+      linkToResetPassword: `${origin}/reset-password?${params.toString()}`,
+      link: undefined,
+    };
+    return next();
+  } catch (error) {
+    logger.error("reset-admin-password: no se pudo armar el enlace", { error: error.message });
     return response.status(500).json({ ok: false, msg: "Contact Administrator" });
   }
 };
@@ -1176,4 +1240,5 @@ module.exports = {
   PROFILE_SELF_FIELDS,
   searchStaffByEmail,
   verifyPassword,
+  attachPasswordResetLink,
 };

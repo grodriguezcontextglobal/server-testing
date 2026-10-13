@@ -48,6 +48,7 @@ const {
   publicRouteRateLimit,
 } = require("../middlewares/notificationAuth");
 const { previewBranding, listPreviewTemplates } = require("../nodeMailer/brandingPreview");
+const { attachPasswordResetLink } = require("../controller/admin");
 const router = Router();
 
 // Applies to every route below. See middlewares/notificationAuth.js: the first
@@ -98,8 +99,9 @@ router.post("/confirmation-account", confirmationLinkNewConsumerNotification);
 //*email notification to login to existing consumer
 router.post("/login-existing-consumer", loginLinkExistingConsumerNotification);
 
-//*email to reset admin password
-router.post("/reset-admin-password", linkToResetPassword);
+//*email to reset admin password — el enlace lo firma el servidor; el que mande
+// el cliente se descarta (ver attachPasswordResetLink).
+router.post("/reset-admin-password", attachPasswordResetLink, linkToResetPassword);
 
 //*notify admin when staff edit device
 router.post("/edit-device-admin", editingDeviceAdminNotification);
