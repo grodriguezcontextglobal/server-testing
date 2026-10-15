@@ -1,5 +1,5 @@
 const { response, json } = require("express");
-const { default: mongoose } = require("mongoose");
+const { default: mongoose, isValidObjectId } = require("mongoose");
 const Transaction = require("../models/Transaction");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 require("dotenv").config();
@@ -7,16 +7,59 @@ const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const logger = require("../helpers/logger");
 const runGoWorker = require("../helpers/goWorker");
+const { isStaffOrigin, isStaffSession } = require("../helpers/consumerUserFilter");
+const {
+  buildPublicTransactionList,
+  buildPublicTransactionDoc,
+  TransactionLaneError,
+} = require("../helpers/publicTransactionLane");
+
+// saveTransaction, getListOfAllSavedTransaction y removeDuplicateEntry los
+// llama la app del consumidor sin sesión (también por /api/stripe). Staff con
+// sesión válida: comportamiento de siempre. Dashboard sin sesión: 401. Resto:
+// carril acotado de helpers/publicTransactionLane.js.
+const resolveLane = async (request) => {
+  if (await isStaffSession(request)) return "staff";
+  if (isStaffOrigin(request)) {
+    throw new TransactionLaneError(401, "Staff session required");
+  }
+  return "public";
+};
+
+const sendLaneError = (response, error) =>
+  response.status(error.status).json({ ok: false, msg: error.message });
 
 const saveTransaction = async (request, response) => {
   try {
+    const lane = await resolveLane(request);
+    let doc = request.body;
+    if (lane === "public") {
+      doc = buildPublicTransactionDoc(request.body);
+      // La app deduplicaba en el cliente, borrando sin sesión. Si ya existe,
+      // se devuelve la que hay en vez de crear otra.
+      const existing = await Transaction.findOne(
+        {
+          paymentIntent: doc.paymentIntent,
+          event_id: doc.event_id,
+          "consumerInfo.email": doc.consumerInfo.email,
+        },
+        "-clientSecret"
+      );
+      if (existing) {
+        return response.status(200).json({
+          ok: true,
+          msg: "Transaction already saved",
+          transaction: existing,
+        });
+      }
+    }
     const cache_connection = await clientRedis();
-    const { event_id, company, consumerInfo } = request.body;
+    const { event_id, company, consumerInfo } = doc;
     cache_connection.del(
       `event_id=${event_id}&company=${company}&consumerInfo.id=${consumerInfo.id}`
     );
 
-    const transaction = new Transaction(request.body);
+    const transaction = new Transaction(doc);
     const transactionSaved = await transaction.save();
     return response.status(201).json({
       ok: true,
@@ -24,6 +67,7 @@ const saveTransaction = async (request, response) => {
       transaction: transactionSaved,
     });
   } catch (error) {
+    if (error instanceof TransactionLaneError) return sendLaneError(response, error);
     logger.error(error);
     return response.status(500).json({
       ok: false,
@@ -114,12 +158,20 @@ const updateTransaction = async (request, response) => {
 
 const getListOfAllSavedTransaction = async (request, response) => {
   try {
-    const listOfTransactionsSaved = await Transaction.find(request.body);
+    const lane = await resolveLane(request);
+    let listOfTransactionsSaved;
+    if (lane === "staff") {
+      listOfTransactionsSaved = await Transaction.find(request.body);
+    } else {
+      const { filter, projection } = buildPublicTransactionList(request.body);
+      listOfTransactionsSaved = await Transaction.find(filter, projection);
+    }
     return response.status(201).json({
       ok: true,
       list: listOfTransactionsSaved,
     });
   } catch (error) {
+    if (error instanceof TransactionLaneError) return sendLaneError(response, error);
     logger.error(error);
     return response.status(500).json({
       ok: false,
@@ -184,32 +236,41 @@ const updateMultipleDocuments = async (request, response) => {
 
 const removeDuplicateEntry = async (request, response) => {
   try {
-    const cache_connection = await clientRedis();
-    const documentClearUpCache = await Transaction.findById(request.params.id);
-    if (documentClearUpCache) {
-      cache_connection.del(
-        `event_id=${documentClearUpCache.event_id}&company=${documentClearUpCache.company}&consumerInfo.id=${documentClearUpCache.consumerInfo.id}`
+    const lane = await resolveLane(request);
+    const { id } = request.params;
+    // Antes, con un id inexistente no se respondía nada (408 por timeout).
+    const document = isValidObjectId(id) ? await Transaction.findById(id) : null;
+    if (!document) {
+      return response.status(404).json({ ok: false, msg: "Transaction not found" });
+    }
+    // Sin sesión solo se borra un duplicado de verdad: tiene que existir otra
+    // transacción más antigua con el mismo paymentIntent en el mismo evento. Es
+    // lo que hace el dedupe de la app (se queda con la primera); antes se podía
+    // borrar cualquier transacción sabiendo su id.
+    if (lane === "public") {
+      const olderTwin = await Transaction.findOne(
+        {
+          _id: { $lt: document._id },
+          paymentIntent: document.paymentIntent,
+          event_id: document.event_id,
+        },
+        "_id"
       );
-      const duplicateEntry = await Transaction.findByIdAndDelete(
-        request.params.id
-      );
-      if (duplicateEntry) {
-        return response.status(201).json({
-          ok: true,
-          msg: `Duplicate entry ID ${request.params.id} removed from transaction document`,
-        });
+      if (!olderTwin) {
+        return response.status(409).json({ ok: false, msg: "Transaction is not a duplicate" });
       }
     }
-    const duplicateEntry = await Transaction.findByIdAndDelete(
-      request.params.id
+    const cache_connection = await clientRedis();
+    cache_connection.del(
+      `event_id=${document.event_id}&company=${document.company}&consumerInfo.id=${document.consumerInfo?.id}`
     );
-    if (duplicateEntry) {
-      return response.status(201).json({
-        ok: true,
-        msg: `Duplicate entry ID ${request.params.id} removed from transaction document`,
-      });
-    }
+    await Transaction.findByIdAndDelete(id);
+    return response.status(201).json({
+      ok: true,
+      msg: `Duplicate entry ID ${id} removed from transaction document`,
+    });
   } catch (error) {
+    if (error instanceof TransactionLaneError) return sendLaneError(response, error);
     logger.error(error);
     return response.status(500).json({
       ok: false,

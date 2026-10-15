@@ -7,6 +7,7 @@ const { Router } = require("express");
 const router = Router();
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const { optionalJWT } = require("../middlewares/optionalJWT");
 const {
   saveTransaction,
   saveTransactionAdmin,
@@ -24,13 +25,15 @@ const { retrieveSubscriptionID } = require("../controller/stripe");
 // calls none of these, and the dashboard only calls update-transaction and
 // update-multiple-documents, always with a session. Not here on purpose:
 // - POST /transaction, POST /save-transaction, DELETE /remove-duplicate-transaction/:id
-//   are called by the consumer app without a session (two-lane work, Fase 3.2).
+//   are called by the consumer app without a session: optionalJWT + two lanes
+//   in the controller (staff session = full; no session = helpers/publicTransactionLane.js;
+//   dashboard origin without session = 401).
 // - GET /transaction backs the dashboard's public /receipt page (QR scan, no
 //   session); it needs a signed receipt token before it can be closed.
 const staffOnly = [validateJWT, checkTokenVersion];
 
 //*saving new transaction
-router.post("/save-transaction", saveTransaction);
+router.post("/save-transaction", optionalJWT, saveTransaction);
 
 //*saving new transaction
 router.post("/save-transaction-admin-dashboard", staffOnly, saveTransactionAdmin);
@@ -43,7 +46,7 @@ router.post(
 );
 
 //*saving new transaction
-router.post("/transaction", getListOfAllSavedTransaction);
+router.post("/transaction", optionalJWT, getListOfAllSavedTransaction);
 
 //getting list of all saved transaction
 router.get("/transaction", gettingListOfSavedTransaction);
@@ -52,7 +55,7 @@ router.get("/transaction", gettingListOfSavedTransaction);
 router.patch("/update-transaction/:id", staffOnly, updateTransaction);
 
 //*remove duplicate entry in transaction document
-router.delete("/remove-duplicate-transaction/:id", removeDuplicateEntry);
+router.delete("/remove-duplicate-transaction/:id", optionalJWT, removeDuplicateEntry);
 
 //retrieve subscription thru payment intent id
 router.get("/subscriptions/:id", staffOnly, retrieveSubscriptionID);
