@@ -577,6 +577,48 @@ for (const [method, routePath] of LOCATION_ROUTES) {
   });
 }
 
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE — routes/transaction.js (2026-10-15)
+// El router entero iba sin un solo middleware. Se cierran las seis rutas que no
+// llama la app del consumidor (app.devitrak.net, sin sesión). Las otras cuatro
+// siguen sin token a propósito: tres las usa la app y GET /transaction la usa la
+// página pública /receipt del dashboard. Si una de esas cuatro gana validateJWT,
+// se rompe un flujo real: el test lo fija en los dos sentidos.
+// ════════════════════════════════════════════════════════════════════════════
+
+const TRANSACTION_STAFF_ONLY = [
+  ['POST',  '/save-transaction-admin-dashboard'],
+  ['POST',  '/save-transaction-template-no-regular-user'],
+  ['PATCH', '/update-transaction/:id'],
+  ['GET',   '/subscriptions/:id'],
+  ['POST',  '/update-multiple-documents'],
+  ['POST',  '/check-and-release-deposit-transactions'],
+];
+
+for (const [method, routePath] of TRANSACTION_STAFF_ONLY) {
+  test(`routes/transaction.js: ${method} ${routePath} lleva validateJWT y checkTokenVersion`, () => {
+    const handlers = getRouteHandlers(loadRouter('../routes/transaction'), method, routePath);
+    assert.ok(handlers !== null, `La ruta ${method} ${routePath} debe existir`);
+    assert.ok(handlers.includes(validateJWT), `validateJWT debe estar en ${method} ${routePath}`);
+    assert.ok(handlers.includes(checkTokenVersion), `checkTokenVersion debe estar en ${method} ${routePath}`);
+  });
+}
+
+const TRANSACTION_CONSUMER_APP = [
+  ['POST',   '/transaction'],
+  ['POST',   '/save-transaction'],
+  ['DELETE', '/remove-duplicate-transaction/:id'],
+  ['GET',    '/transaction'],
+];
+
+for (const [method, routePath] of TRANSACTION_CONSUMER_APP) {
+  test(`routes/transaction.js: ${method} ${routePath} NO exige sesión (app del consumidor / recibo público)`, () => {
+    const handlers = getRouteHandlers(loadRouter('../routes/transaction'), method, routePath);
+    assert.ok(handlers !== null, `La ruta ${method} ${routePath} debe existir`);
+    assert.ok(!handlers.includes(validateJWT), `${method} ${routePath} no puede exigir validateJWT`);
+  });
+}
+
 // Red de seguridad: que no vuelva a aparecer una ruta anónima en este fichero.
 // Las dos lecturas /companies/:id/locations llevan validateJWT y comprueban el
 // scope dentro del controlador (getStaffCompanyAccess), así que se exige token
