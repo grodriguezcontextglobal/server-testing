@@ -16,8 +16,13 @@ const UserSchema = Schema({
     required: true,
     unique: false,
   },
+  // String, not Number: clients send formatted phones ("555-1017", "+1 (415)
+  // ...") and the default below is itself a string. As Number, every new User
+  // failed validation in applyDefaults (cast of "000-000-0000"), with or
+  // without a phone in the body. Older documents stored as numbers read back
+  // as strings.
   phoneNumber: {
-    type: Number,
+    type: String,
     required: false,
     unique: false,
     default:"000-000-0000"
