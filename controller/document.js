@@ -295,17 +295,38 @@ async function loadCompanyDocument(req, res) {
   const { id } = req.params;
   const document = isValidObjectId(id) ? await Document.findById(id) : null;
   if (!document) return notFound();
-
-  const owner = String(document.company_id);
-  const context = resolveCompanyContext(req);
-  if (context && String(context) !== owner) return notFound();
-
-  const caller = await AdminUser.findById(req.uid).select("super_user active email");
-  if (!caller || caller.active === false) return notFound();
-  if (!caller.super_user && !(await findCompanyMembership(owner, caller))) return notFound();
+  if (!(await callerManagesCompany(req, document.company_id))) return notFound();
 
   return document;
 }
+
+// ¿Puede el staff de la sesión (req.uid) gestionar lo que pertenece a esta
+// compañía? Super user, o empleado activo de ella. Si la petición trae otra
+// compañía como contexto (cabecera, params, body), no.
+async function callerManagesCompany(req, companyId) {
+  const owner = String(companyId ?? "");
+  const context = resolveCompanyContext(req);
+  if (context && String(context) !== owner) return false;
+
+  const caller = await AdminUser.findById(req.uid).select("super_user active email");
+  if (!caller || caller.active === false) return false;
+  return Boolean(caller.super_user || (await findCompanyMembership(owner, caller)));
+}
+
+// Igual que loadCompanyDocument, para carpetas: 404 si no existe o es de otra
+// compañía.
+async function loadCompanyFolder(req, res) {
+  const { id } = req.params;
+  const folder = isValidObjectId(id) ? await Folder.findById(id) : null;
+  if (!folder || !(await callerManagesCompany(req, folder.company_id))) {
+    res.status(404).json({ ok: false, msg: "Folder not found" });
+    return null;
+  }
+  return folder;
+}
+
+const notCompanyMember = (res) =>
+  res.status(403).json({ ok: false, msg: "You do not belong to this company" });
 
 // Lo que el dashboard puede corregir de un documento ya subido. Fuera a
 // propósito: company_id (no se cambia de dueño), document_url (el binario se
@@ -509,6 +530,18 @@ const collectingSignatures = async (req, res) => {
   }
 };
 
+async function consumerContractAlreadySigned(verificationId, contractUrl) {
+  if (!isValidObjectId(verificationId)) return false;
+  const verification = await VerificationConsumersLeaseContracts.findById(verificationId)
+    .select("contract_list")
+    .lean();
+  return Boolean(
+    verification?.contract_list?.some(
+      (doc) => doc.document_url === contractUrl && doc.signature === true
+    )
+  );
+}
+
 const collectingSignaturesForConsumerMember = async (req, res) => {
   try {
     const {
@@ -520,7 +553,11 @@ const collectingSignaturesForConsumerMember = async (req, res) => {
       item_ids = [],
       verification_id,
     } = req.body;
-    req.body;
+    // Con el enlace del correo (sin sesión) solo se firma una vez. Es el respaldo
+    // del token de un solo uso cuando Redis no responde.
+    if (req.contractLink && (await consumerContractAlreadySigned(verification_id, contract_url))) {
+      return res.status(409).json({ ok: false, msg: "This contract is already signed." });
+    }
     const loginInfo = {
       timestamp: new Date().toLocaleString("en-US", {
         timeZone: req.headers["x-timezone"] || req.headers["timezone"] || "UTC",
@@ -750,6 +787,7 @@ const createNewFolder = async (req, res) => {
         msg: "Missing required fields",
       });
     }
+    if (!(await callerManagesCompany(req, company_id))) return notCompanyMember(res);
 
     const folder = new Folder({
       folder_name,
@@ -774,6 +812,7 @@ const createNewFolder = async (req, res) => {
 const getFolders = async (req, res) => {
   try {
     const { company_id } = req.body;
+    if (!(await callerManagesCompany(req, company_id))) return notCompanyMember(res);
     const folders = await Folder.find({ company_id });
     if (folders.length === 0) {
       return res.status(404).json({
@@ -816,8 +855,8 @@ const getFolders = async (req, res) => {
 
 const getFolderByID = async (req, res) => {
   try {
-    const { id } = req.params;
-    const folder = await Folder.findById(id); //.populate("documents");
+    const folder = await loadCompanyFolder(req, res);
+    if (!folder) return;
     res.json({
       ok: true,
       folder,
@@ -832,7 +871,6 @@ const getFolderByID = async (req, res) => {
 
 const updateFolder = async (req, res) => {
   try {
-    const { id } = req.params;
     const { folder_name, folder_description, documents, trigger_action } =
       req.body;
     if (!folder_name || !folder_description || !documents || !trigger_action) {
@@ -842,13 +880,8 @@ const updateFolder = async (req, res) => {
       });
     }
 
-    const folder = await Folder.findById(id);
-    if (!folder) {
-      return res.status(404).json({
-        ok: false,
-        msg: "Folder not found",
-      });
-    }
+    const folder = await loadCompanyFolder(req, res);
+    if (!folder) return;
 
     folder.folder_name = folder_name;
     folder.folder_description = folder_description;
@@ -870,15 +903,9 @@ const updateFolder = async (req, res) => {
 
 const deleteFolder = async (req, res) => {
   try {
-    const { id } = req.params;
-    const folder = await Folder.findById(id);
-    if (!folder) {
-      return res.status(404).json({
-        ok: false,
-        msg: "Folder not found",
-      });
-    }
-    await Folder.findByIdAndDelete(id);
+    const folder = await loadCompanyFolder(req, res);
+    if (!folder) return;
+    await Folder.findByIdAndDelete(folder._id);
     res.status(200).json({
       ok: true,
       msg: "Folder deleted successfully",
@@ -1560,6 +1587,9 @@ const addSignatureToConsumerDocument = async (req, res) => {
     }
 
     let signature = contractList[document];
+    if (req.contractLink && signature.signature === true) {
+      return res.status(409).json({ ok: false, msg: "This contract is already signed." });
+    }
     signature.signature = true;
     signature.date = new Date().toLocaleString();
     contractList[document] = signature;

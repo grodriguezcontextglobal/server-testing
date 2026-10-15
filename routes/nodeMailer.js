@@ -47,6 +47,7 @@ const {
   notificationRateLimit,
   publicRouteRateLimit,
 } = require("../middlewares/notificationAuth");
+const { attachContractLinkTokens } = require("../middlewares/contractLinkAuth");
 const { previewBranding, listPreviewTemplates } = require("../nodeMailer/brandingPreview");
 const { attachPasswordResetLink } = require("../controller/admin");
 const { attachInvitationLink } = require("../controller/registration");
@@ -158,8 +159,10 @@ router.post(
 );
 
 //send liability contract email notification to consumers
+// El enlace del correo lleva un token firmado por contrato (Fase 4.1).
 router.post(
   "/liability-contract-consumer-email-notification",
+  attachContractLinkTokens,
   liabilityContractConsumerNotification
 );
 

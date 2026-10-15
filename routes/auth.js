@@ -12,6 +12,7 @@ const {
   checkUser,
   editUser,
   showAllUsers,
+  lookupUsers,
   getListOfUsers,
   getAllConsumersBasedOnAllEventsPerCompany,
 } = require("../controller/auth");
@@ -19,18 +20,24 @@ const validateFields = require("../middlewares/validate-field");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { optionalJWT } = require("../middlewares/optionalJWT");
+const { contractLinkGate } = require("../middlewares/contractLinkAuth");
+const { requireSessionFromDashboard } = require("../middlewares/attendanceLinkAuth");
 
+// Estas cuatro también las llama gente sin sesión (app.devitrak.net):
+// optionalJWT nunca rechaza. Sin sesión de staff el controller solo permite
+// buscar por email exacto. Desde el dashboard (admin.devitrak.net) exigen
+// sesión, salvo POST /user-query (página pública /attendance-confirmation).
 //render all users
-router.get("/users", showAllUsers)
+router.get("/users", optionalJWT, showAllUsers)
 
 //render user information by queries
-router.post("/user-query", showAllUsers)
+router.post("/user-query", optionalJWT, requireSessionFromDashboard, lookupUsers)
 
 //render user information by queries
-router.post("/users", showAllUsers)
+router.post("/users", optionalJWT, showAllUsers)
 
 //get list of user based on params and also cached result
-router.get('/user-query', getListOfUsers)
+router.get('/user-query', optionalJWT, getListOfUsers)
 
 //create new user
 router.post(
@@ -43,14 +50,27 @@ router.post(
     // check("phoneNumber", "Phone number is mandatory").not().isEmpty(),
     validateFields,
   ],
+  // App del consumidor: sin token. Dashboard: con sesión (ver attendanceLinkAuth).
+  optionalJWT,
+  requireSessionFromDashboard,
   newUser
 );
 
 //edit user
-router.patch("/:id", editUser);
+router.patch("/:id", optionalJWT, requireSessionFromDashboard, editUser);
 
 //retrieve consumer information
-router.get("/:id", optionalJWT, getUser);
+// También la llama la app del consumidor sin token. Desde el dashboard sin
+// sesión es /display-contracts: ahí se exige el token del enlace del correo.
+router.get(
+  "/:id",
+  optionalJWT,
+  contractLinkGate({
+    subject: (req) => ({ consumer_member_id: req.params.id }),
+    sharedWithConsumerApp: true,
+  }),
+  getUser
+);
 
 //check existing user
 router.post("/",check("email", "Email is mandatory").isEmail(), checkUser);

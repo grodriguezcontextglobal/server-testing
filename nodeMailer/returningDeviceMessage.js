@@ -524,6 +524,7 @@ const renderLiabilityContractEmail = ({
   recipient,
   recipientHeading,
   contractLinkParams,
+  linkTokens = {},
 }) => {
   const itemList = asArray(items);
 
@@ -542,6 +543,7 @@ const renderLiabilityContractEmail = ({
       ...contractLinkParams,
       contract_url: contract.view_url,
       item_ids: itemIdsParam,
+      token: linkTokens?.[contract.view_url],
     })
       .filter(([, value]) => value !== undefined && value !== null && value !== "")
       .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
@@ -661,6 +663,8 @@ const liabilityContractConsumerNotificationMessageHtml = (props, branding) => {
       verification_id,
       consumer_member_id: consumer.consumer_member_id,
     },
+    // Uno por contrato, firmados en middlewares/contractLinkAuth.js.
+    linkTokens: props.contract_link_tokens,
   });
 };
 

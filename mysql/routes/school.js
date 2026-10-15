@@ -33,6 +33,12 @@ const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
 const { requireIndustry } = require("../../middlewares/requireIndustry");
 const { auditPiiAccess } = require("../../middlewares/auditPiiAccess");
 const { authorizePermission } = require("../../middlewares/authorizePermission");
+const { publicInvitationRateLimit } = require("../../middlewares/attendanceLinkAuth");
+const {
+  sendEventInvitations,
+  confirmEventInvitation,
+  recordEventInvitationResponse,
+} = require("../../controller/eventInvitation");
 
 const router = Router();
 
@@ -81,6 +87,20 @@ router.post("/consent/request", canCreate, requestConsent);
 router.post("/consent/resend", canCreate, resendConsent);
 router.post("/consent/public/retrieve", publicRetrieveConsent);
 router.post("/consent/public/respond", publicRespondConsent);
+
+// Invitación a un evento con confirmación de asistencia (controller/eventInvitation.js).
+// Sin requireIndustry: el módulo de miembros no es solo de colegios. El envío
+// es de staff; confirm y response responden sin sesión (página pública
+// /attendance-confirmation), con el token del enlace del correo.
+router.post(
+  "/event-invitations/send",
+  validateJWT,
+  checkTokenVersion,
+  authorizePermission("member", "create"),
+  sendEventInvitations
+);
+router.post("/event-invitations/confirm", publicInvitationRateLimit, confirmEventInvitation);
+router.post("/event-invitations/response", publicInvitationRateLimit, recordEventInvitationResponse);
 router.post("/consent", canRead, listMemberConsents);
 // Company-wide, cualquier estado, con filtro por status y paginación.
 router.post("/consent/list", canRead, listCompanyConsents);

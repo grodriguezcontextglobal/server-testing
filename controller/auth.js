@@ -7,15 +7,38 @@ const runGoWorker = require("../helpers/goWorker");
 const { groupBy } = require("lodash");
 const mongoose = require("mongoose");
 const logger = require("../helpers/logger");
+const {
+  buildUserFilter,
+  isStaffOrigin,
+  parseQueryString,
+  isStaffSession,
+  UserFilterError,
+  PUBLIC_PROJECTION,
+} = require("../helpers/consumerUserFilter");
 
-const showAllUsers = async (request, response) => {
+const sendFilterError = (response, error) =>
+  response.status(error.status).json({ ok: false, msg: error.message });
+
+// Con sesión de staff filtra por cualquier campo del modelo; sin sesión solo
+// busca por email exacto (ver helpers/consumerUserFilter.js). `publicFromDashboard`
+// deja ese carril público abierto también para el dashboard (solo POST
+// /user-query, por /attendance-confirmation).
+const findUsers = async (request, response, { publicFromDashboard }) => {
   try {
-    const users = await User.find(request.body);
+    const authenticated = await isStaffSession(request);
+    const filter = buildUserFilter(request.body, {
+      authenticated,
+      sessionRequired: !publicFromDashboard && isStaffOrigin(request),
+    });
+    const users = filter
+      ? await User.find(filter, authenticated ? null : PUBLIC_PROJECTION)
+      : [];
     return response.status(200).json({
       ok: true,
       users,
     });
   } catch (error) {
+    if (error instanceof UserFilterError) return sendFilterError(response, error);
     logger.error(error);
     return response.status(500).json({
       ok: false,
@@ -24,12 +47,33 @@ const showAllUsers = async (request, response) => {
   }
 };
 
+// GET/POST /users
+const showAllUsers = (request, response) =>
+  findUsers(request, response, { publicFromDashboard: false });
+
+// POST /user-query
+const lookupUsers = (request, response) =>
+  findUsers(request, response, { publicFromDashboard: true });
+
 const getListOfUsers = async (request, response = response) => {
   try {
+    const authenticated = await isStaffSession(request);
+    const check = buildUserFilter(parseQueryString(request._parsedUrl.query), {
+      authenticated,
+      sessionRequired: isStaffOrigin(request),
+    });
+    // La caché es la lista por evento+compañía que pide el dashboard. Cualquier
+    // otra consulta (p. ej. por email) iba a parar a "event=null&company=null"
+    // y devolvía lo que hubiera guardado otra consulta distinta.
+    if (!check) return response.status(200).json({ ok: true, users: [] });
+    if (!check.event_providers || !check.company_providers) {
+      const users = await User.find(check, authenticated ? null : PUBLIC_PROJECTION);
+      return response.status(200).json({ ok: true, users });
+    }
+
     const cache_connection = await clientRedis();
-    const params = request._parsedUrl.query;
-    const eventID = new URLSearchParams(params).get("event_providers");
-    const companyID = new URLSearchParams(params).get("company_providers");
+    const eventID = check.event_providers;
+    const companyID = check.company_providers;
 
     const cachedList = await cache_connection.get(
       `event=${eventID}&company=${companyID}`
@@ -41,11 +85,6 @@ const getListOfUsers = async (request, response = response) => {
         users: JSON.parse(cachedList),
       });
     } else {
-      const formatting = [...params.split("&")];
-      const check = formatting.reduce(
-        (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
-        {}
-      );
       const users = await User.find(check);
       cache_connection.set(
         `event=${eventID}&company=${companyID}`,
@@ -58,6 +97,7 @@ const getListOfUsers = async (request, response = response) => {
       });
     }
   } catch (error) {
+    if (error instanceof UserFilterError) return sendFilterError(response, error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -218,15 +258,12 @@ const editUser = async (request, response = response) => {
 
 const getListOfUsersAndTransactionsPerEvent = async (request, response) => {
   try {
-    const params = request._parsedUrl.query;
-    const eventID = new URLSearchParams(params).get("event_providers");
-    const companyID = new URLSearchParams(params).get("company_providers");
-
-    const formatting = [...params.split("&")];
-    const check = formatting.reduce(
-      (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
-      {}
-    );
+    // La ruta exige sesión de staff (routes/event.js).
+    const check = buildUserFilter(parseQueryString(request._parsedUrl.query), {
+      authenticated: true,
+    });
+    const eventID = check.event_providers;
+    const companyID = check.company_providers;
     const eventInfo = await Event.findOne({ _id: eventID });
     const users = await User.find(check);
     // Una sola query por TODAS las transacciones del evento, en vez de un
@@ -280,6 +317,7 @@ const getListOfUsersAndTransactionsPerEvent = async (request, response) => {
       data: JSON.stringify(result),
     });
   } catch (error) {
+    if (error instanceof UserFilterError) return sendFilterError(response, error);
     logger.error(error);
     return response.status(500).json({
       ok: false,
@@ -328,6 +366,7 @@ const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
 };
 
 module.exports = {
+  lookupUsers,
   showAllUsers,
   newUser,
   editUser,

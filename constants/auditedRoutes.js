@@ -151,6 +151,7 @@ const AUDITED_ROUTES = {
   'POST /api/school/consent/request': R('SEND', 'Consent'),
   'POST /api/school/consent/resend': R('SEND', 'Consent'),
   'POST /api/school/consent/public/respond': R('RESPOND', 'Consent'),
+  'POST /api/school/event-invitations/send': R('SEND', 'EventInvitation'),
   'POST /api/school/settings/consent-enforcement': R('UPDATE', 'Company'),
   'POST /api/school/student/export': R('EXPORT', 'Member'),
   'POST /api/school/student/erase': R('ERASE', 'Member'),
@@ -465,6 +466,9 @@ const READ_ONLY_ROUTES = new Set([
 
 /** Ya registradas por su controlador, o que son en sí un registro. */
 const LOGGED_ELSEWHERE = new Set([
+  // controller/eventInvitation.js escribe su propia fila (actor anónimo, verified)
+  'POST /api/school/event-invitations/confirm',
+  'POST /api/school/event-invitations/response',
   // logStaffActivity explícito en el controlador
   'POST /api/admin/login',
   'PATCH /api/admin/profile/:id',

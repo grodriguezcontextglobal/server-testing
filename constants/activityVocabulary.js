@@ -83,6 +83,8 @@ const ACTIVITY_TARGET_MODELS = [
   'Provider',
   'Email',
   'Invitation',
+  // Invitación de un miembro a un evento (controller/eventInvitation.js).
+  'EventInvitation',
   'Terms',
   'Identifier',
   'StripeLink',

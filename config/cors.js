@@ -25,6 +25,9 @@ const corsOptions = {
         // Token de enrolamiento de MFA (login sin MFA, reset de contraseña).
         // Ver middlewares/validateMfaEnrollment.js.
         "x-mfa-setup-token",
+        // Token del enlace firmado de los correos (/display-contracts).
+        // Ver middlewares/contractLinkAuth.js.
+        "x-link-token",
         "token",
         "s-token-lq",
         "sqlStaffId",

@@ -52,7 +52,8 @@ function reset() {
     [DOC_A]: makeDoc(DOC_A, CO_A),
     [DOC_B]: makeDoc(DOC_B, CO_B),
   };
-  calls = { updates: [], s3Deletes: [], docDeletes: [], redisDel: [], logs: [] };
+  calls = { updates: [], s3Deletes: [], docDeletes: [], redisDel: [], logs: [], folderCreates: [], folderDeletes: [] };
+  folders = { [FOLDER_A]: makeFolder(FOLDER_A, CO_A), [FOLDER_B]: makeFolder(FOLDER_B, CO_B) };
 }
 
 function makeDoc(id, company_id) {
@@ -80,8 +81,25 @@ const CompanyStub = {
   findOne: ({ _id }) => ({ lean: async () => companies[_id] ?? null }),
   findById: async (id) => companies[id] ?? null,
 };
+let folders;
+const FOLDER_A = 'fffffffffffffffffffffff1';
+const FOLDER_B = 'fffffffffffffffffffffff2';
+function makeFolder(id, company_id) {
+  const f = { _id: id, company_id, folder_name: 'F', folder_description: 'd', documents: [], trigger_action: 't', saved: false };
+  f.save = async () => { f.saved = true; return f; };
+  return f;
+}
+function FolderStub(data) {
+  Object.assign(this, data);
+  this.save = async () => { calls.folderCreates.push(data); return this; };
+}
+FolderStub.findById = async (id) => folders[id] ?? null;
+FolderStub.find = async ({ company_id }) => Object.values(folders).filter((f) => f.company_id === company_id);
+FolderStub.findByIdAndDelete = async (id) => { calls.folderDeletes.push(id); };
+
 const DocumentStub = {
   findById: async (id) => docs[id] ?? null,
+  find: async () => [],
   findByIdAndDelete: async (id) => { calls.docDeletes.push(id); },
 };
 
@@ -96,8 +114,27 @@ const noop = () => {};
 stub('models/AdminUser.js', AdminUserStub);
 stub('models/Company.js', CompanyStub);
 stub('models/Document.js', DocumentStub);
-for (const m of ['Signatures', 'Folder', 'EventSignature', 'Verification',
-  'VerificationConsumersLeaseContracts', 'SignatureConsumer', 'User',
+stub('models/Folder.js', FolderStub);
+// Verificación de contratos de consumidor para el 409 de "ya firmado".
+const VER_SIGNED = 'eeeeeeeeeeeeeeeeeeeeeee1';
+const signedVerification = () => ({
+  _id: VER_SIGNED,
+  contract_list: [{ document_url: 'https://s3/a.pdf', signature: true }],
+});
+const verificationQuery = (id) => {
+  const value = id === VER_SIGNED ? signedVerification() : null;
+  const p = Promise.resolve(value);
+  p.select = () => ({ lean: async () => value });
+  return p;
+};
+stub('models/VerificationConsumersLeaseContracts.js', {
+  findById: verificationQuery,
+  findByIdAndUpdate: async () => { calls.verificationUpdates = (calls.verificationUpdates ?? 0) + 1; return signedVerification(); },
+});
+function SignatureConsumerStub(data) { this.data = data; }
+SignatureConsumerStub.prototype.save = async function save() { calls.signatureSaves = (calls.signatureSaves ?? 0) + 1; };
+stub('models/SignatureConsumer.js', SignatureConsumerStub);
+for (const m of ['Signatures', 'EventSignature', 'Verification', 'User',
   'VerificationMemberLeaseContracts', 'StripeTransaction']) {
   stub(`models/${m}.js`, {});
 }
@@ -120,7 +157,17 @@ stub('controller/staffActivityLog.js', {
   logStaffActivity: async (entry) => { calls.logs.push(entry); },
 });
 
-const { updateDocument, deleteDocument } = require('../controller/document');
+const {
+  updateDocument,
+  deleteDocument,
+  createNewFolder,
+  getFolders,
+  getFolderByID,
+  updateFolder,
+  deleteFolder,
+  collectingSignaturesForConsumerMember,
+  addSignatureToConsumerDocument,
+} = require('../controller/document');
 const { forceEndSession, editAdminUser } = require('../controller/admin');
 
 beforeEach(reset);
@@ -385,4 +432,105 @@ test('editAdminUser: un id mal formado da 404, no 500', async () => {
   const r = res();
   await editAdminUser(req({ uid: U_PLATFORM, params: { id: 'nope' }, body: { name: 'X' } }), r);
   assert.equal(r.code, 404);
+});
+
+// ═══ Carpetas de documentos (/api/document/new_folder, folders, folder/:id) ═
+// Eran anónimas: cualquiera listaba, editaba o borraba carpetas de cualquier
+// compañía. Ahora solo el staff de la compañía dueña.
+
+const folderBody = { folder_name: 'N', folder_description: 'd', documents: [], trigger_action: 't' };
+
+test('createNewFolder: un miembro crea en su compañía', async () => {
+  const r = res();
+  await createNewFolder(req({ uid: U_PLAIN_A, body: { ...folderBody, company_id: CO_A } }), r);
+  assert.equal(r.code, 201);
+  assert.equal(calls.folderCreates.length, 1);
+});
+
+test('createNewFolder: en una compañía ajena da 403 y no crea nada', async () => {
+  const r = res();
+  await createNewFolder(req({ uid: U_MEMBER_B, body: { ...folderBody, company_id: CO_A } }), r);
+  assert.equal(r.code, 403);
+  assert.equal(calls.folderCreates.length, 0);
+});
+
+test('getFolders: un miembro lista las de su compañía', async () => {
+  const r = res();
+  await getFolders(req({ uid: U_ADMIN_A, body: { company_id: CO_A } }), r);
+  assert.equal(r.code, 200);
+  assert.equal(r.body.folders.length, 1);
+});
+
+test('getFolders: las de otra compañía dan 403', async () => {
+  const r = res();
+  await getFolders(req({ uid: U_ADMIN_A, body: { company_id: CO_B } }), r);
+  assert.equal(r.code, 403);
+});
+
+test('getFolders: la cabecera de compañía no puede contradecir al body', async () => {
+  const r = res();
+  await getFolders(req({ uid: U_ADMIN_A, company: CO_A, body: { company_id: CO_B } }), r);
+  assert.equal(r.code, 403);
+});
+
+test('getFolderByID: la carpeta de otra compañía da 404', async () => {
+  const r = res();
+  await getFolderByID(req({ uid: U_ADMIN_A, params: { id: FOLDER_B } }), r);
+  assert.equal(r.code, 404);
+});
+
+test('getFolderByID: un miembro de la dueña la ve', async () => {
+  const r = res();
+  await getFolderByID(req({ uid: U_ADMIN_A, params: { id: FOLDER_A } }), r);
+  assert.equal(r.code, 200);
+  assert.equal(r.body.folder._id, FOLDER_A);
+});
+
+test('updateFolder: la carpeta de otra compañía da 404 y no se toca', async () => {
+  const r = res();
+  await updateFolder(req({ uid: U_ADMIN_A, params: { id: FOLDER_B }, body: folderBody }), r);
+  assert.equal(r.code, 404);
+  assert.equal(folders[FOLDER_B].saved, false);
+});
+
+test('updateFolder: un miembro edita la suya', async () => {
+  const r = res();
+  await updateFolder(req({ uid: U_PLAIN_A, params: { id: FOLDER_A }, body: { ...folderBody, folder_name: 'Nueva' } }), r);
+  assert.equal(r.code, 200);
+  assert.equal(folders[FOLDER_A].folder_name, 'Nueva');
+});
+
+test('deleteFolder: la carpeta de otra compañía da 404 y no se borra', async () => {
+  const r = res();
+  await deleteFolder(req({ uid: U_ADMIN_A, params: { id: FOLDER_B } }), r);
+  assert.equal(r.code, 404);
+  assert.deepEqual(calls.folderDeletes, []);
+});
+
+test('deleteFolder: el super_user de plataforma borra aunque no sea miembro', async () => {
+  const r = res();
+  await deleteFolder(req({ uid: U_PLATFORM, params: { id: FOLDER_B } }), r);
+  assert.equal(r.code, 200);
+  assert.deepEqual(calls.folderDeletes, [FOLDER_B]);
+});
+
+test('deleteFolder: un id mal formado da 404, no 500', async () => {
+  const r = res();
+  await deleteFolder(req({ uid: U_ADMIN_A, params: { id: 'nope' } }), r);
+  assert.equal(r.code, 404);
+});
+
+// ═══ Firma por enlace del correo: una sola vez (respaldo del token) ═════════
+
+test('firma por enlace: un contrato ya firmado no se vuelve a firmar (409, nada se guarda)', async () => {
+  const body = { verification_id: VER_SIGNED, contract_url: 'https://s3/a.pdf', signature: 'Ana' };
+  const r1 = res();
+  await collectingSignaturesForConsumerMember({ ...req({ body }), contractLink: { jti: 'x' } }, r1);
+  assert.equal(r1.code, 409);
+  assert.equal(calls.signatureSaves, undefined);
+
+  const r2 = res();
+  await addSignatureToConsumerDocument({ ...req({ body }), contractLink: { jti: 'x' } }, r2);
+  assert.equal(r2.code, 409);
+  assert.equal(calls.verificationUpdates, undefined);
 });

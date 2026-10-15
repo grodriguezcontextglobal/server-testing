@@ -57,10 +57,14 @@ const PUBLIC_ROUTES = new Map([
   ["/forcing-revoking-active-session", "the user cannot sign in — that is the point"],
   ["/confirmation-account", "new consumer has no account yet"],
   ["/login-existing-consumer", "passwordless login link for consumers"],
+  // app.devitrak.net nunca manda token: el consumidor firma los términos del
+  // evento (devitrak/src/pages/documents/MainDocument.jsx) y este correo es el
+  // comprobante. En enforce respondía 401 y el correo no salía, sin error visible.
+  ["/terms-and-conditions-acceptance", "consumer app (app.devitrak.net) never sends a token"],
 ]);
 
 /**
- * The two public routes an ATTENDEE hits, as opposed to a staff member at a
+ * The public routes an ATTENDEE hits, as opposed to a staff member at a
  * keyboard. They cannot be limited per IP: at a venue every attendee is behind
  * the same wifi, so one public address covers the whole room, and a 10-per-15-
  * minutes budget locks out the eleventh person to walk in. The room is the
@@ -76,6 +80,7 @@ const PUBLIC_ROUTES = new Map([
 const CONSUMER_PUBLIC_ROUTES = new Set([
   "/confirmation-account",
   "/login-existing-consumer",
+  "/terms-and-conditions-acceptance",
 ]);
 
 const OBJECT_ID = /^[0-9a-f]{24}$/i;

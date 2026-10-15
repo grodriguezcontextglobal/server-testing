@@ -9,6 +9,8 @@ const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
 const { requireCompanyAuth } = require("../middlewares/companyAuth");
+const { optionalJWT } = require("../middlewares/optionalJWT");
+const { contractLinkGate } = require("../middlewares/contractLinkAuth");
 const path = require("path");
 const {
   createCompany,
@@ -109,15 +111,37 @@ router.get("/provider-companies", getProviderCompanies);
 router.post("/signatures", collectingSignatures);
 
 //collecting signatures for consumer member
+// /display-contracts del consumidor: sesión de staff o token del enlace del
+// correo (middlewares/contractLinkAuth.js). optionalJWT, para reconocer al staff.
 router.post(
   "/signatures-for-consumer-member",
+  optionalJWT,
+  contractLinkGate({
+    subject: (req) => ({
+      company_id: req.body?.company_id,
+      consumer_member_id: req.body?.consumer_member_id,
+      verification_id: req.body?.verification_id,
+      contract_url: req.body?.contract_url,
+    }),
+  }),
   collectingSignaturesForConsumerMember
 );
 //consulting staff signatures
 router.post("/consulting-signatures", consultingSignaturesStaffMember);
 
 //get consumer signatures
-router.post("/consumer-signatures", getConsumerSignatures);
+router.post(
+  "/consumer-signatures",
+  optionalJWT,
+  contractLinkGate({
+    subject: (req) => ({
+      company_id: req.body?.company_id,
+      consumer_member_id: req.body?.consumer_member_id,
+      contract_url: req.body?.contract_url,
+    }),
+  }),
+  getConsumerSignatures
+);
 
 //event consumer signatures
 router.post("/event-consumer-signatures", stampEventConsumerSignatures);

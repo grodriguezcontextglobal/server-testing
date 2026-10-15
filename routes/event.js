@@ -46,8 +46,10 @@ router.get("/event-list-per-company", gettingEventListPerCompany);
 router.post("/staff-all-events", searchStaffAllEvents);
 
 //all consumers and transactions per event
+// Solo dashboard: lista consumidores y transacciones de un evento.
 router.get(
   "/all-users-and-transactions-per-event",
+  validateJWT,
   getListOfUsersAndTransactionsPerEvent
 );
 

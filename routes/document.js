@@ -5,6 +5,7 @@ const fs = require("fs");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { optionalJWT } = require("../middlewares/optionalJWT");
+const { contractLinkGate } = require("../middlewares/contractLinkAuth");
 
 // tmp/uploads está gitignoreado (tmp/uploads/), así que puede no existir en un
 // checkout limpio o si el OS/limpiador de temporales lo borra. Multer
@@ -125,7 +126,17 @@ router.get("/triggers", canManage, getTriggerActions);
 // here without confirming with the frontend which public flows depend on them.
 router.get("/:id", publicViewer, getCompanyDocumentByID);
 router.get("/download/:documentId/:userId", publicViewer, getDocumentDownloadUrl);
-router.post("/download/documentUrl", publicViewer, generateTemporaryDownloadUrl);
+router.post(
+  "/download/documentUrl",
+  publicViewer,
+  // La app del consumidor también la llama sin token: solo se exige el enlace
+  // a lo que viene del dashboard sin sesión (/display-contracts).
+  contractLinkGate({
+    subject: (req) => ({ contract_url: req.body?.documentUrl }),
+    sharedWithConsumerApp: true,
+  }),
+  generateTemporaryDownloadUrl
+);
 // Editar y borrar exigen que quien llama pertenezca a la compañía DUEÑA del
 // documento — ver loadCompanyDocument en controller/document.js. PUT y PATCH
 // hacen lo mismo (cambio parcial): PUT es lo que llama el dashboard.
@@ -148,11 +159,12 @@ router.use((error, req, res, next) => {
   }
   next(error);
 });
-router.post("/new_folder", createNewFolder);
-router.post("/folders", getFolders);
-router.get("/folder/:id", getFolderByID);
-router.put("/folder/:id", updateFolder);
-router.delete("/folder/:id", deleteFolder);
+// Carpetas: solo staff de la compañía dueña (lo comprueba el controller).
+router.post("/new_folder", canManage, createNewFolder);
+router.post("/folders", canManage, getFolders);
+router.get("/folder/:id", canManage, getFolderByID);
+router.put("/folder/:id", canManage, updateFolder);
+router.delete("/folder/:id", canManage, deleteFolder);
 router.post(
   "/verification/staff_member/signed_document",
   publicViewer,
@@ -175,14 +187,31 @@ router.post(
   publicViewer,
   createConsumerVerification
 );
+// /display-contracts del consumidor: sesión de staff o token del enlace del
+// correo (middlewares/contractLinkAuth.js). Firmar es la acción final y gasta
+// el token.
 router.post(
   "/verification/consumer_member/check_signed_document",
   publicViewer,
+  contractLinkGate({
+    subject: (req) => ({
+      company_id: req.body?.company_id,
+      consumer_member_id: req.body?.consumer_member_id,
+      contract_url: req.body?.contract_url,
+    }),
+  }),
   consumerMemberVerificationSignedDocumentForAssignmentDevices
 );
 router.patch(
   "/verification/consumer_member/signing_document",
   publicViewer,
+  contractLinkGate({
+    subject: (req) => ({
+      verification_id: req.body?.verification_id,
+      contract_url: req.body?.contract_url,
+    }),
+    consume: true,
+  }),
   addSignatureToConsumerDocument
 );
 

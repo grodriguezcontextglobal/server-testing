@@ -167,6 +167,22 @@ test('enforce: las rutas exentas pasan sin token, incluida la que lleva :id', ()
   assert.strictEqual(literal.nexted, true);
 });
 
+// app.devitrak.net nunca manda token (devitrak/src/devitrakApi.jsx no tiene
+// interceptor). Estas son TODAS las rutas de /api/company que llama: si una
+// falta en PUBLIC_ROUTES, enforce rompe la app del consumidor.
+test('enforce: todas las rutas de /api/company que llama la app del consumidor pasan sin token', () => {
+  const { requireCompanyAuth } = loadWithMode('enforce');
+  for (const [method, path] of [
+    ['POST', '/search-company'],
+    ['PATCH', '/update-signatures'],
+    ['POST', '/event-consumer-signatures'],
+  ]) {
+    const { nexted, response } = run(requireCompanyAuth, makeRequest({ path, method }));
+    assert.strictEqual(nexted, true, `${method} ${path} debe responder sin token`);
+    assert.strictEqual(response.statusCode, null);
+  }
+});
+
 test('enforce: la exencion con :id no se desborda a rutas vecinas', () => {
   // El riesgo de exentar por patron es dejar abierto de mas. `/update-company/:id`
   // es la UNICA ruta del fichero que ya estaba autenticada, asi que si el regex

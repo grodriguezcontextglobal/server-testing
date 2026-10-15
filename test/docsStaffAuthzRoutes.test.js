@@ -18,6 +18,12 @@ const cases = [
   ['../routes/document', 'patch', '/:id'],
   ['../routes/document', 'put', '/:id'], // lo que llama EditDocument.jsx
   ['../routes/document', 'delete', '/:id'],
+  ['../routes/document', 'post', '/new_folder'],
+  ['../routes/document', 'post', '/folders'],
+  ['../routes/document', 'get', '/folder/:id'],
+  ['../routes/document', 'put', '/folder/:id'],
+  ['../routes/document', 'delete', '/folder/:id'],
+  ['../routes/event', 'get', '/all-users-and-transactions-per-event'],
   // force-logout ya no: desde 2026-10-12 es anónima desde el login (token opcional).
   ['../routes/admin', 'patch', '/profile/:id'],
 ];
