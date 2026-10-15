@@ -37,17 +37,27 @@ function hasAuthzPermission(handlers) {
 
 // ════════════════════════════════════════════════════════════════════════════
 // BLOQUE A — routes/auth.js
-// RED: las rutas GET /:id y GET /all-consumers-… no tienen validateJWT todavía.
 // ════════════════════════════════════════════════════════════════════════════
 
-test('routes/auth.js: GET /:id tiene validateJWT en su cadena', () => {
+// GET /:id NO puede llevar validateJWT (2026-10-15, regla del usuario): la app
+// del consumidor (app.devitrak.net) la llama sin sesión. Desde el dashboard sí
+// se exige sesión de staff o el token del enlace del correo (/display-contracts),
+// y eso lo hace contractLinkGate. Este test antes exigía validateJWT y era el
+// único fallo de la suite desde julio. El comportamiento de los dos carriles lo
+// prueba contractLinkAuth.test.js ("ruta compartida — la app del consumidor
+// pasa sin token, el dashboard sin sesión no").
+test('routes/auth.js: GET /:id va por dos carriles (optionalJWT + contractLinkGate, sin validateJWT)', () => {
+  const { optionalJWT } = require('../middlewares/optionalJWT');
   const router = loadRouter('../routes/auth');
   const handlers = getRouteHandlers(router, 'GET', '/:id');
   assert.ok(handlers !== null, 'La ruta GET /:id debe existir');
+  assert.ok(!handlers.includes(validateJWT), 'validateJWT rompería la app del consumidor');
+  assert.equal(handlers[0], optionalJWT, 'optionalJWT primero: sin él no se reconoce la sesión de staff');
   assert.ok(
-    handlers.includes(validateJWT),
-    'validateJWT debe estar en la cadena de GET /:id',
+    handlers.slice(1, -1).some((h) => h.toString().includes('contract link')),
+    'contractLinkGate debe estar entre optionalJWT y el controlador',
   );
+  assert.equal(handlers.at(-1).name, 'getUser');
 });
 
 test('routes/auth.js: GET /all-consumers-based-on-all-events-per-company/:companyID tiene validateJWT', () => {
