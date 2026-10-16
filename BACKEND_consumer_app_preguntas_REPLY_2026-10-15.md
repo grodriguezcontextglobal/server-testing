@@ -47,8 +47,13 @@ ocultarlos al mostrar es lo correcto.
 
 ## 2. Stripe
 
-**Q4a. 🔶 Respuesta recortada de `GET /stripe/payment_intents/:id`.**
-Propuesta: **forma plana**, sin el objeto de Stripe:
+**Q4a. ✅ Implementado (2026-10-16, sin desplegar).** Sin sesión, la respuesta
+de `GET /stripe/payment_intents/:id` ya no es el objeto de Stripe: va la **forma
+plana** y, de forma **transitoria**, los dos campos con la forma vieja que lee la
+versión actual de la app (`amount_capturable` y `charges.data[0]` con `card` y
+`receipt_url`). Ya no lleva `client_secret`, `customer` ni `metadata`. Migrad a la
+forma plana y avisad: entonces quitamos los dos campos viejos. El staff con sesión
+sigue recibiendo el objeto entero. Forma plana:
 
 ```json
 {
@@ -65,21 +70,22 @@ Propuesta: **forma plana**, sin el objeto de Stripe:
 }
 ```
 
-Sale con la Fase 3.3. Hasta entonces, la respuesta actual no cambia.
+`card` y `receiptUrl` son `null` mientras no haya cargo (por ejemplo, un depósito
+todavía no autorizado). Un id inexistente en Stripe responde **404**.
 
-**Q4b. ✅ Confirmado: hoy la app no muestra la tarjeta ni el recibo.**
+**Q4b. ✅ Confirmado y arreglado (2026-10-16, sin desplegar): la app no mostraba la tarjeta ni el recibo.**
 El servidor no fija `apiVersion` (`helpers/stripeClient.js:16`), así que usa la que
 fija la versión instalada del SDK de Stripe: **`2025-02-24.acacia`**. Desde
 `2022-11-15`, el PaymentIntent **no trae `charges`**. Por eso
 `charges.data[0].payment_method_details.card` y `receipt_url` vienen vacíos: la app
 muestra "XXXX" y no enseña el recibo. `retrievePaymentIntent` no expande `latest_charge`.
-**Arreglo en el servidor:** expandir `latest_charge` y devolver `card` y `receiptUrl`
-con la forma de Q4a. Así que **Q4a también arregla esto**, y conviene adelantarlo a la
-Fase 3.3. La app solo tendrá que leer la forma nueva.
+**Arreglo:** el servidor expande `latest_charge` y rellena `charges.data[0]` con ese
+cargo, así que **la versión actual de la app vuelve a mostrar la tarjeta y el recibo
+en cuanto se despliegue, sin cambiar nada**. Lo mismo pasa en el dashboard, que leía
+el mismo campo (`FooterExpandedRow.jsx:135`).
 
-**Q4c. ✅ Sí.** Con un id de 15 caracteres o menos responderá **400**
-(`"Invalid payment intent id"`), en vez de no responder. Va con el próximo cambio de
-Stripe.
+**Q4c. ✅ Hecho (2026-10-16, sin desplegar).** Con un id de 15 caracteres o menos
+responde **400** (`"Invalid payment intent id"`) sin llamar a Stripe.
 
 **Q5. 🔶 Contrato nuevo de `POST /stripe/create-payment-intent` (Fase 3.3).**
 Aceptamos vuestra propuesta:

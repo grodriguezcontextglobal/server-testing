@@ -19,6 +19,8 @@ const { stripe, runStripeMutation } = require("../helpers/stripeClient");
 // tenga es un cambio de dato y no de código.
 const Company = require("../models/Company");
 const { resolveCompanyContext } = require("../helpers/companyContext");
+const { isStaffOrigin, isStaffSession } = require("../helpers/consumerUserFilter");
+const { staffView, publicView, isRetrievableId } = require("../helpers/paymentIntentView");
 const {
   persistConnectedAccountId,
   resolveConnectedAccountId,
@@ -960,21 +962,31 @@ const removeDuplicateEntries = async (request, response) => {
   }
 };
 
+// La llaman la app del consumidor sin sesión y el dashboard con sesión. La forma
+// de la respuesta, y por qué, en helpers/paymentIntentView.js.
 const retrievePaymentIntent = async (request, response) => {
+  const { id } = request.params;
+  if (!isRetrievableId(id)) {
+    return response.status(400).json({ ok: false, msg: "Invalid payment intent id" });
+  }
   try {
-    if (request.params.id.length > 15) {
-      const paymentIntent = await stripe.paymentIntents.retrieve(
-        `${request.params.id}`
-      );
-      return response.status(201).json({
-        ok: true,
-        paymentIntent,
-      });
+    const staff = await isStaffSession(request);
+    if (!staff && isStaffOrigin(request)) {
+      return response.status(401).json({ ok: false, msg: "Staff session required" });
     }
-  } catch (error) {
-    return response.status(500).json({
-      error,
+    const paymentIntent = await stripe.paymentIntents.retrieve(id, {
+      expand: ["latest_charge"],
     });
+    return response.status(201).json({
+      ok: true,
+      paymentIntent: staff ? staffView(paymentIntent) : publicView(paymentIntent),
+    });
+  } catch (error) {
+    if (error?.code === "resource_missing" || error?.statusCode === 404) {
+      return response.status(404).json({ ok: false, msg: "Payment intent not found" });
+    }
+    logger.error("retrievePaymentIntent error:", error?.message);
+    return response.status(500).json({ ok: false, msg: "Could not retrieve the payment intent" });
   }
 };
 
