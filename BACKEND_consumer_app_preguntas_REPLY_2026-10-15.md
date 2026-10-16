@@ -14,9 +14,10 @@
 
 ## 1. Despliegue
 
-**Q1. 🔶 Orden y fecha.**
-De acuerdo: **primero el servidor, después la app.** La fecha del despliegue de
-`release/observabilidad` está pendiente; os avisamos en cuanto esté en prod. Con el
+**Q1. ✅ El servidor ya está desplegado: podéis publicar la app.**
+Producción corre `f808e9d` desde el **2026-10-16 a las 22:26 UTC** (verificado en la
+VM). Esto incluye la deduplicación de `save-transaction`, el arreglo del registro y la
+tarjeta y el recibo de `payment_intents` (Q4a/Q4b). Con el
 servidor nuevo, `save-transaction` ya no crea duplicados: si existe una transacción con
 el mismo `paymentIntent` + `event_id` + email, devuelve la existente con **200**.
 

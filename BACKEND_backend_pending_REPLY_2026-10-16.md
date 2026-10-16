@@ -12,12 +12,17 @@ trabajo por número, y lo que salió en release después de vuestra revisión.
 
 ---
 
-## W1. Despliegue 🔶
+## W1. Despliegue ✅
 
-- **Qué commit corre prod y fecha del próximo despliegue:** pendiente; lo confirma
-  Gustavo desde la VM. Lo actualizamos aquí en cuanto lo tengamos.
-- Todo lo de esta lista y de vuestro §2 posterior al 2026-10-13 está **solo en
-  release**. Además, desde vuestra revisión (`3f5192e`) entró esto, que os afecta:
+- **Producción corre `f808e9d`** (la cabeza de `release/observabilidad`), desplegado el
+  **2026-10-16 a las 22:26 UTC**. Verificado en la VM: `/health` 200;
+  `GET /api/stripe/payment_intents/pi_abc` → 400 y `POST /api/school/event-invitations/confirm`
+  sin token → 401 (las dos son conducta del código nuevo).
+- **Ya podéis publicar la versión de IIS.** Todo vuestro §2 y esta lista están en prod.
+- `CONTRACT_LINK_MODE` y `ATTENDANCE_LINK_MODE` siguen en `warn`. Pasan a `enforce`
+  **no antes del 2026-10-21**, 5 días después de que vuestra versión con `/send` esté
+  publicada. Decidnos el día en que sale.
+- Desde vuestra revisión (`3f5192e`) entró además esto, que os afecta:
 
 | Commit | Qué | Qué cambia para el dashboard |
 |---|---|---|
@@ -151,7 +156,7 @@ Gustavo, y os pasamos el recuento.
 
 | # | Estado | Commit |
 |---|---|---|
-| W1 | 🔶 Esperando el commit de prod y la fecha | — |
+| W1 | ✅ Prod en `f808e9d` desde el 2026-10-16 22:26 UTC | — |
 | W2 | ✅ Hecho, sin desplegar | el siguiente a `a1b7cd4` |
 | W3 | ✅ Hecho | este documento |
 | W4 | ✅ Respondido | — |
