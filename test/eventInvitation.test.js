@@ -41,6 +41,9 @@ const reset = () => {
     updates: [],
     created: [],
     redisKeys: new Set(),
+    redisValues: new Map(),
+    redisDown: false,
+    failEnqueue: false,
     failCreate: false,
   };
 };
@@ -97,20 +100,29 @@ stub('mysql/database/config.js', () => ({
   execute: async (sql, params) => { state.sql.push({ sql, params }); return [{}]; },
 }));
 stub('helpers/queue.js', {
-  enqueue: async (type, payload) => { state.enqueued.push({ type, payload }); return { id: 'J' }; },
+  enqueue: async (type, payload) => {
+    if (state.failEnqueue) throw new Error('queue down');
+    state.enqueued.push({ type, payload });
+    return { id: 'J' };
+  },
   extractJobContext: () => ({}),
 });
 stub('controller/staffActivityLog.js', { logStaffActivity: async (entry) => { state.logs.push(entry); } });
 stub('helpers/logger.js', { warn: () => {}, error: () => {}, info: () => {} });
 stub('database/cacheMemoryConfig.js', {
-  clientRedis: async () => ({
-    set: async (k, _v, opts) => {
-      if (opts?.NX && state.redisKeys.has(k)) return null;
-      state.redisKeys.add(k);
-      return 'OK';
-    },
-    del: async (k) => state.redisKeys.delete(k),
-  }),
+  clientRedis: async () => {
+    if (state.redisDown) throw new Error('redis down');
+    return {
+      set: async (k, v, opts) => {
+        if (opts?.NX && state.redisKeys.has(k)) return null;
+        state.redisKeys.add(k);
+        state.redisValues.set(k, v);
+        return 'OK';
+      },
+      get: async (k) => state.redisValues.get(k) ?? null,
+      del: async (k) => { state.redisValues.delete(k); return state.redisKeys.delete(k); },
+    };
+  },
 });
 
 const {
@@ -218,6 +230,83 @@ test('send: menor sin email propio → member_email es el del tutor etiquetado (
   assert.equal(payload.to, 'jdow3@invoxia.cc', 'el correo le llega al tutor');
   const c = readEmailLinkToken(EVENT_ATTENDANCE_PURPOSE, tokenOf(payload));
   assert.equal(c.member_email, 'jdow3+m787@invoxia.cc');
+});
+
+// W2 (2026-10-16): un lote que corta a medias y se reintenta no puede escribir
+// dos veces a la misma persona.
+const sendTo = (memberIds, extra = {}) =>
+  call(sendEventInvitations, req({ uid: STAFF, body: { company_id: '7', event_id: EVENT, member_ids: memberIds, ...extra } }));
+const liveKeyOf = (memberId) => `eventinv:live:${EVENT}:${memberId}`;
+
+test('send repetido: quien ya tiene invitación viva no recibe otro correo', async () => {
+  reset();
+  const first = await sendTo([10, 11]);
+  assert.equal(first.body.sent, 2);
+  assert.equal(state.enqueued.length, 2);
+
+  const again = await sendTo([10, 11]);
+  assert.equal(again.code, 200);
+  assert.equal(state.enqueued.length, 2, 'ningún correo nuevo');
+  assert.deepEqual(
+    { sent: again.body.sent, skipped: again.body.skipped, failed: again.body.failed },
+    { sent: 0, skipped: 2, failed: 0 },
+  );
+  assert.deepEqual(again.body.results.map((r) => r.skipped), ['already_invited', 'already_invited']);
+  assert.ok(again.body.results.every((r) => r.ok), 'saltado cuenta como ok: no es un fallo para el cliente');
+});
+
+test('send repetido con uno nuevo en el lote: solo se envía al nuevo', async () => {
+  reset();
+  await sendTo([10]);
+  const r = await sendTo([10, 11]);
+  assert.equal(r.body.sent, 1);
+  assert.equal(r.body.skipped, 1);
+  assert.equal(state.enqueued.at(-1).payload.to, 'mom@home.com');
+});
+
+test('send: la invitación viva guarda el jti del enlace hasta que caduca', async () => {
+  reset();
+  await sendTo([10]);
+  const stored = JSON.parse(state.redisValues.get(liveKeyOf('10')));
+  const c = readEmailLinkToken(EVENT_ATTENDANCE_PURPOSE, tokenOf(state.enqueued[0].payload));
+  assert.deepEqual(stored, { jti: c.jti, exp: c.exp });
+});
+
+test('resend: true → enlace nuevo y el anterior deja de valer', async () => {
+  reset();
+  await sendTo([10]);
+  const oldToken = tokenOf(state.enqueued[0].payload);
+
+  const r = await sendTo([10], { resend: true });
+  assert.equal(r.body.sent, 1);
+  assert.equal(state.enqueued.length, 2);
+  const newToken = tokenOf(state.enqueued[1].payload);
+  assert.notEqual(newToken, oldToken);
+
+  const viejo = await call(confirmEventInvitation, req({ token: oldToken }));
+  assert.equal(viejo.code, 410, 'el enlace anterior ya no confirma');
+  const nuevo = await call(confirmEventInvitation, req({ token: newToken }));
+  assert.equal(nuevo.body.outcome, 'confirmed');
+});
+
+test('send: si no se pudo encolar, no queda como invitación viva (el reintento sí envía)', async () => {
+  reset();
+  state.failEnqueue = true;
+  const r1 = await sendTo([10]);
+  assert.equal(r1.body.failed, 1);
+  assert.equal(state.redisKeys.has(liveKeyOf('10')), false);
+
+  state.failEnqueue = false;
+  const r2 = await sendTo([10]);
+  assert.equal(r2.body.sent, 1);
+});
+
+test('send: sin Redis se envía igual (y se repite: preferimos eso a no enviar)', async () => {
+  reset();
+  state.redisDown = true;
+  await sendTo([10]);
+  await sendTo([10]);
+  assert.equal(state.enqueued.length, 2);
 });
 
 // ═══ confirm ════════════════════════════════════════════════════════════════

@@ -152,9 +152,82 @@ const buildInvitationEmail = ({ claims, event, link, branding }) => {
   };
 };
 
+/* ── invitación viva (W2, 2026-10-16) ──────────────────────────────────────
+ * Un lote de 500 que corta por timeout a medias se marcaba fallido en el
+ * cliente, y el reintento volvía a escribir a quien ya había recibido el correo.
+ * Ahora el servidor recuerda la invitación viva de cada (evento, miembro)
+ * mientras su enlace no caduque: un /send repetido la salta, y `resend: true`
+ * manda un enlace nuevo y anula el anterior. La reserva es SET NX, así que dos
+ * /send a la vez tampoco duplican. Sin Redis se envía como antes: preferimos un
+ * correo repetido a no mandar ninguno.
+ */
+const LIVE_PREFIX = 'eventinv:live:';
+const RESERVE_TTL_S = 120;
+const liveKey = (eventId, memberId) => `${LIVE_PREFIX}${eventId}:${memberId}`;
+
+async function redisOrNull() {
+  try {
+    return await clientRedis();
+  } catch (error) {
+    logger.warn('event invitation: Redis no disponible, se envía sin control de repetición', { error: error.message });
+    return null;
+  }
+}
+
+/**
+ * @returns {Promise<'reserved'|'live'|'unavailable'>}
+ *   'live' = ya tiene una invitación viva y no se pidió reenviar.
+ */
+async function reserveInvitation(redis, key, resend) {
+  if (!redis) return 'unavailable';
+  try {
+    if (!resend) {
+      const set = await redis.set(key, 'pending', { NX: true, EX: RESERVE_TTL_S });
+      return set ? 'reserved' : 'live';
+    }
+    // Reenvío: el enlace anterior deja de valer (se marca usado, como hace /confirm).
+    const previous = await redis.get(key);
+    if (previous && previous !== 'pending') {
+      try {
+        const { jti, exp } = JSON.parse(previous);
+        if (jti) await consumeEmailLinkToken({ jti, exp });
+      } catch {
+        // Valor ilegible: no hay enlace que anular.
+      }
+    }
+    await redis.set(key, 'pending', { EX: RESERVE_TTL_S });
+    return 'reserved';
+  } catch (error) {
+    logger.warn('event invitation: fallo de Redis al reservar, se envía igual', { error: error.message });
+    return 'unavailable';
+  }
+}
+
+async function markInvitationLive(redis, key, token) {
+  if (!redis) return;
+  const claims = readEmailLinkToken(PURPOSE, token);
+  const ttl = Math.max(1, (claims?.exp ?? 0) - Math.floor(Date.now() / 1000));
+  try {
+    await redis.set(key, JSON.stringify({ jti: claims?.jti, exp: claims?.exp }), { EX: ttl });
+  } catch (error) {
+    logger.warn('event invitation: no se pudo guardar la invitación viva', { error: error.message });
+  }
+}
+
+async function releaseInvitation(redis, key) {
+  if (!redis) return;
+  try {
+    await redis.del(key);
+  } catch {
+    // Caduca sola en RESERVE_TTL_S.
+  }
+}
+
 /**
  * POST /api/school/event-invitations/send — staff con member:create.
- * Body: { company_id (SQL), event_id (Mongo), member_ids: [...] }.
+ * Body: { company_id (SQL), event_id (Mongo), member_ids: [...], resend?: true }.
+ * Respuesta: { ok, sent, skipped, failed, results: [{ member_id, ok, skipped?, error? }] };
+ * `skipped: 'already_invited'` = tenía una invitación viva y no se reenvió.
  *
  * Del cliente solo se toman ids. El destinatario (el miembro, o su tutor si es
  * menor) sale de members_info; el evento y su compañía, de Mongo. Quien envía
@@ -190,6 +263,8 @@ const sendEventInvitations = async (req, res) => {
     );
     const byId = new Map(members.map((m) => [String(m.member_id), m]));
     const branding = await resolveBranding({}, { request: { verifiedCompanyId: companyId } });
+    const resend = req.body?.resend === true;
+    const redis = await redisOrNull();
 
     const results = [];
     for (const memberId of ids) {
@@ -237,22 +312,36 @@ const sendEventInvitations = async (req, res) => {
         minor: guardian ? 'true' : 'false',
         guardianEmail: guardian ? recipient : '',
         memberId,
-        token: signEmailLinkToken(PURPOSE, claims),
+        token: '',
       });
+
+      const key = liveKey(eventId, memberId);
+      const reservation = await reserveInvitation(redis, key, resend);
+      if (reservation === 'live') {
+        results.push({ member_id: memberId, ok: true, skipped: 'already_invited' });
+        continue;
+      }
+
+      const token = signEmailLinkToken(PURPOSE, claims);
+      params.set('token', token);
       const link = `${frontendUrl()}/attendance-confirmation?${params.toString()}`;
 
       try {
         const message = applyBrandedEnvelope(buildInvitationEmail({ claims, event, link, branding }), branding);
         await enqueue('send-email', message);
+        if (reservation === 'reserved') await markInvitationLive(redis, key, token);
         results.push({ member_id: memberId, ok: true });
       } catch (error) {
+        if (reservation === 'reserved') await releaseInvitation(redis, key);
         logger.error('event invitation: could not enqueue the email', { member_id: memberId, error: error.message });
         results.push({ member_id: memberId, ok: false, error: 'The email could not be queued.' });
       }
     }
 
-    const sent = results.filter((r) => r.ok).length;
-    return res.status(200).json({ ok: true, sent, failed: results.length - sent, results });
+    const skipped = results.filter((r) => r.skipped).length;
+    const sent = results.filter((r) => r.ok).length - skipped;
+    const failed = results.filter((r) => !r.ok).length;
+    return res.status(200).json({ ok: true, sent, skipped, failed, results });
   } catch (error) {
     logger.error('event invitation: send failed', { error: error.message });
     return res.status(500).json({ ok: false, msg: 'Could not send the invitations.' });

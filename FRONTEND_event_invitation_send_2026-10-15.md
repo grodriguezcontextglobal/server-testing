@@ -58,7 +58,7 @@ los saca de `members_info`: al miembro adulto le escribe a su `email`, y al meno
 
 | Código | Cuerpo | Qué significa |
 |---|---|---|
-| `200` | `{ ok: true, sent, failed, results: [{ member_id, ok, error? }] }` | Resultado **por miembro**. `ok: true` = el correo quedó en cola |
+| `200` | `{ ok: true, sent, skipped, failed, results: [{ member_id, ok, skipped?, error? }] }` | Resultado **por miembro**. `ok: true` = el correo quedó en cola, **o** se saltó porque ya tenía una invitación viva (`skipped: "already_invited"`, añadido el 2026-10-16). `sent` cuenta solo los enviados de verdad. Para reenviar a propósito: `resend: true` en el body (el enlace anterior deja de valer) |
 | `400` | `{ ok: false, msg }` | Falta `event_id` o `member_ids` está vacío o pasa de 500 |
 | `401` | | Sin sesión o sesión caducada. **También si falta `company_id` en el body**: el control de permisos no sabe contra qué compañía comprobar |
 | `403` | | Sin permiso `member:create` en esa compañía |

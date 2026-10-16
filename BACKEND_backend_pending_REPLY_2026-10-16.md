@@ -25,22 +25,32 @@ trabajo por número, y lo que salió en release después de vuestra revisión.
 | `89429ea` | `phoneNumber` del consumidor pasa a texto | **Arreglo:** crear un consumidor desde el dashboard con teléfono con formato (`"555-1017"`) o sin teléfono daba **500** desde julio |
 | `d4fbe2d`, `5a0c25c` | Transacciones: sesión obligatoria en 6 rutas y dos carriles en 3 | Ya lo tenéis en §2. Desde el dashboard sin sesión: 401 |
 
-## W2. `/send` que se pueda repetir 🔶
+## W2. `/send` que se pueda repetir ✅ (sin desplegar)
 
-**Todavía no está hecho.** Propuesta, para que digáis si os sirve antes de
-implementarla:
+Hecho, por miembro y no con `Idempotency-Key`. El riesgo es por persona, no por
+petición: con una clave por petición, un lote reintentado con otra selección
+volvería a escribir a quien ya tenía invitación.
 
-- El servidor recuerda cada invitación **viva** (evento + miembro) mientras su enlace
-  no caduque.
-- Un `/send` repetido para un miembro con invitación viva **no reenvía**. Su fila en
-  `results` sale `{ member_id, ok: true, skipped: "already_invited" }`. Así, un
-  reintento tras un timeout parcial es seguro y la cuenta `sent` solo incluye los
-  correos que salieron de verdad.
-- Para reenviar a propósito (el tutor perdió el correo), `resend: true` en el body:
-  envía un enlace nuevo y el anterior deja de valer.
-- Elegimos esto en vez de `Idempotency-Key` porque el riesgo es por miembro, no por
-  petición: con una clave por petición, un lote reintentado con otra selección
-  volvería a escribir a quien ya tenía invitación.
+- El servidor recuerda la invitación **viva** de cada (evento, miembro) mientras su
+  enlace no caduca (5 días).
+- Un `/send` repetido para quien tiene invitación viva **no reenvía**. Su fila sale
+  `{ member_id, ok: true, skipped: "already_invited" }`. Reintentar un lote que cortó
+  a medias es seguro: solo se escribe a quien no lo recibió.
+- La respuesta gana `skipped`: `{ ok, sent, skipped, failed, results }`. **`sent`
+  cuenta solo los correos que salieron de verdad**; los saltados van en `skipped` y
+  son `ok: true` (no son un fallo).
+- **Reenviar a propósito** (el tutor perdió el correo): `resend: true` en el body.
+  Manda un enlace nuevo y **el anterior deja de valer**: si alguien lo usa, `/confirm`
+  responde 410, o `already` si la persona ya estaba confirmada.
+- Dos `/send` a la vez para el mismo miembro tampoco duplican (reserva atómica).
+- Si el correo no se pudo encolar, no queda como invitación viva: el reintento sí
+  envía.
+- Si Redis no responde, se envía como antes, sin este control: preferimos un correo
+  repetido a no enviar ninguno.
+
+En el dashboard: tratad `skipped` como éxito en la notificación (por ejemplo,
+*"2 sent · 3 already had an invitation"*) y ofreced "Resend" con `resend: true` para
+los saltados.
 
 ## W3. Contrato regenerado ✅
 
@@ -142,7 +152,7 @@ Gustavo, y os pasamos el recuento.
 | # | Estado | Commit |
 |---|---|---|
 | W1 | 🔶 Esperando el commit de prod y la fecha | — |
-| W2 | 🔶 Propuesta; sin código | — |
+| W2 | ✅ Hecho, sin desplegar | el siguiente a `a1b7cd4` |
 | W3 | ✅ Hecho | este documento |
 | W4 | ✅ Respondido | — |
 | W5 | 🔶 Plan; sin script | — |
