@@ -86,6 +86,7 @@ const MEMBERS = [
   { member_id: 10, first_name: 'Ana', last_name: 'Diaz', email: 'ana@school.org', minor: 0, parent_guardian_email: null },
   { member_id: 11, first_name: 'Leo', last_name: 'Ruiz', email: 'leo@school.org', minor: 1, parent_guardian_email: 'mom@home.com' },
   { member_id: 12, first_name: 'Sam', last_name: 'Kim', email: 'sam@school.org', minor: 1, parent_guardian_email: '' },
+  { member_id: 787, first_name: 'Sara', last_name: 'Mendoza', email: null, minor: 1, parent_guardian_email: 'jdow3@invoxia.cc' },
 ];
 stub('mysql/database/config.js', () => ({
   query: async (sql, params) => {
@@ -207,7 +208,45 @@ test('send: el enlace conserva los parámetros que la página muestra', async ()
   assert.equal(url.searchParams.get('companyId'), CO);
 });
 
+// 2026-10-16: un menor sin email propio. El token salía con member_email "" y
+// /confirm respondía 500 ("email is required"). La regla es la del dashboard
+// (minorConsumerEmail.js): el email del tutor etiquetado con el id del miembro.
+test('send: menor sin email propio → member_email es el del tutor etiquetado (+m<id>)', async () => {
+  reset();
+  await call(sendEventInvitations, req({ uid: STAFF, body: { company_id: '7', event_id: EVENT, member_ids: [787] } }));
+  const payload = state.enqueued[0].payload;
+  assert.equal(payload.to, 'jdow3@invoxia.cc', 'el correo le llega al tutor');
+  const c = readEmailLinkToken(EVENT_ATTENDANCE_PURPOSE, tokenOf(payload));
+  assert.equal(c.member_email, 'jdow3+m787@invoxia.cc');
+});
+
 // ═══ confirm ════════════════════════════════════════════════════════════════
+
+test('confirm: enlace viejo con member_email vacío (menor) → crea el consumidor con el email del tutor etiquetado', async () => {
+  reset();
+  state.users.push({ _id: 'u-empty', email: '', event_providers: [] }); // otro consumidor sin email: no se puede tocar
+  const token = tokenFor({
+    member_id: '787', member_email: '', member_first_name: 'Sara', member_last_name: 'Mendoza',
+    responder_email: 'jdow3@invoxia.cc', responder_role: 'guardian',
+  });
+  const r = await call(confirmEventInvitation, req({ token }));
+  assert.equal(r.code, 200);
+  assert.equal(r.body.outcome, 'confirmed');
+  assert.equal(state.created[0].email, 'jdow3+m787@invoxia.cc');
+  assert.deepEqual(state.users[0].event_providers, [], 'el consumidor con email vacío no se toca');
+  const insert = state.sql.find((q) => /INSERT INTO consumer_info/.test(q.sql));
+  assert.equal(insert.params[2], 'jdow3+m787@invoxia.cc');
+});
+
+test('confirm: sin email ni tutor del que deducirlo → 422, no escribe ni gasta el token', async () => {
+  reset();
+  const token = tokenFor({ member_email: '', responder_role: 'member' });
+  const r = await call(confirmEventInvitation, req({ token }));
+  assert.equal(r.code, 422);
+  assert.equal(state.created.length + state.updates.length, 0);
+  assert.equal(state.redisKeys.size, 0, 'el token sigue sin usar');
+  assert.equal(state.logs.at(-1).details.response, 'failed');
+});
 
 test('confirm: sin token o con uno inválido → 401, no escribe', async () => {
   reset();

@@ -56,6 +56,21 @@ const linkTokenOf = (req) =>
 const text = (value, max = 254) => String(value ?? '').trim().slice(0, max);
 const isMinor = (member) => member?.minor === true || Number(member?.minor) === 1;
 
+// Email del consumidor de un menor sin email propio: el del tutor etiquetado
+// con el id del miembro (jdow3@x.cc → jdow3+m787@x.cc). Es la misma regla que
+// el dashboard (src/pages/conditionalPage/utils/minorConsumerEmail.js), así que
+// "Add directly" y la confirmación por enlace llegan al mismo consumidor, y dos
+// hermanos con el mismo tutor no se pisan. null si no hay de dónde sacarlo.
+const consumerEmailFor = ({ ownEmail, guardianEmail, memberId }) => {
+  const own = text(ownEmail);
+  if (own) return own;
+  const guardian = text(guardianEmail);
+  const id = text(memberId);
+  const at = guardian.lastIndexOf('@');
+  if (at < 1 || at === guardian.length - 1 || !/^[A-Za-z0-9]+$/.test(id)) return null;
+  return `${guardian.slice(0, at)}+m${id}${guardian.slice(at)}`;
+};
+
 const frontendUrl = () => String(process.env.FRONTEND_URL || 'https://admin.devitrak.net').replace(/\/$/, '');
 
 /* ───────────────────────────────────────────────────────────── registro ── */
@@ -200,7 +215,10 @@ const sendEventInvitations = async (req, res) => {
         event_id: String(eventId),
         event_name: eventName,
         member_id: memberId,
-        member_email: text(member.email),
+        member_email:
+          (guardian
+            ? consumerEmailFor({ ownEmail: member.email, guardianEmail: recipient, memberId })
+            : null) ?? text(member.email),
         member_first_name: text(member.first_name, 100),
         member_last_name: text(member.last_name, 100),
         responder_email: recipient,
@@ -261,9 +279,26 @@ const confirmEventInvitation = async (req, res) => {
     return res.status(401).json({ ok: false, msg: 'This confirmation link is invalid or expired.' });
   }
 
+  // Los enlaces enviados antes del 2026-10-16 llevan member_email vacío para un
+  // menor sin email propio. Antes se buscaba y se creaba el consumidor con
+  // email "" (500 por validación, y el findOne podía dar con otro consumidor
+  // sin email). Se deduce del tutor, como en el envío.
+  const consumerEmail =
+    text(claims.member_email) ||
+    (claims.responder_role === 'guardian'
+      ? consumerEmailFor({ guardianEmail: claims.responder_email, memberId: claims.member_id })
+      : null);
+  if (!consumerEmail) {
+    recordResponse(req, claims, 'failed', { verified: true, reason: 'no consumer email' });
+    return res.status(422).json({
+      ok: false,
+      msg: 'This member has no email to register with. Ask the school to add one.',
+    });
+  }
+
   let consumed = null;
   try {
-    const existing = await User.findOne({ email: claims.member_email }).sort({ _id: -1 });
+    const existing = await User.findOne({ email: consumerEmail }).sort({ _id: -1 });
     if (existing && inEvent(existing, claims.event_id)) {
       recordResponse(req, claims, 'already_confirmed', { verified: true });
       return res.status(200).json({ ok: true, outcome: 'already' });
@@ -290,7 +325,7 @@ const confirmEventInvitation = async (req, res) => {
       await User.create({
         name: claims.member_first_name,
         lastName: claims.member_last_name,
-        email: claims.member_email,
+        email: consumerEmail,
         privacyPolicy: true,
         category: 'Regular',
         provider: [claims.company_name],
@@ -301,7 +336,7 @@ const confirmEventInvitation = async (req, res) => {
       });
       await getConnection().execute(
         'INSERT INTO consumer_info (first_name, last_name, email, phone_number) VALUES (?, ?, ?, ?)',
-        [claims.member_first_name, claims.member_last_name, claims.member_email, '000-000-0000'],
+        [claims.member_first_name, claims.member_last_name, consumerEmail, '000-000-0000'],
       );
     }
 
