@@ -125,12 +125,32 @@ Commit: el mismo que este documento. Tomad el `.json` de ahí para vuestro
 - `source`: `"server"` = audit trail automático, `"client"` = vuestro
   `POST /activity-logs`, sin valor = registro explícito de un controlador.
 
-## W5. Backfill del alcance por locación Mongo → SQL 🔶
+## W5. Backfill del alcance por locación Mongo → SQL ✅ (no hace falta crear filas)
 
-**No está hecho, y no hay script.** Plan: un script que por defecto solo cuenta y
-lista (dry-run) a quien tiene `preference.managerLocation` en Mongo y le faltan filas
-en SQL, y que con `--apply` las crea. Se corre en prod con el visto bueno de
-Gustavo, y os pasamos el recuento.
+Script nuevo: `mysql/scripts/backfill-location-scope.js` (dry-run por defecto,
+`--apply` para escribir, `--all-roles` para incluir roles que no son por locación).
+`migrate-roles.js` no servía: buscaba la locación por nombre en toda la base y
+apuntaba las filas a un `company_staff` inventado.
+
+**Dry-run contra producción (2026-10-16):** solo **5 empleados** tienen alcance por
+locación en Mongo, y **ninguno tiene un rol por locación** (6 o 7): son `admin`,
+`sale_manager`, `event_manager` y `assistant`, para los que el servidor ignora las
+filas de locación (`mysql/helpers/staffAccess.js`). **Filas a crear: 0.** Nadie se queda
+sin inventario por falta de backfill. Ya podéis encender el flag que esperaba a esto.
+
+| Compañía | Staff | Rol SQL | Locaciones en Mongo |
+|---|---|---|---|
+| Invoxia, Inc. (137) | tester1@garssoftwaresolutions.link | sale_manager | 2 (no existen en SQL) |
+| @J@$ (133) | cacaminero@contextglobal.com | admin | 2 |
+| ABC Interpreting (136) | fstarmark@gmail.com | event_manager | 1 |
+| Early Learning Center of Plantation (143) | jdow1@invoxia.cc | assistant | 1 |
+| Early Learning Center of Plantation (143) | jdow2@invoxia.cc | event_manager | 1 |
+
+**Hallazgo aparte (sin arreglar):** la tabla `locations` de producción tiene **255 filas
+para 128 locaciones**: 42 locaciones están repetidas 4 veces dentro de su compañía
+(p. ej. "Washington, DC" de la 133: ids 26, 122, 185 y 248). Si en el dashboard veis
+locaciones duplicadas en selectores o árboles, viene de ahí. Lo trataremos como tarea
+propia: fusionar ids afecta a ítems, sublocaciones y permisos.
 
 ## W6. Dos preguntas sobre invitaciones firmadas 🔶
 
@@ -160,6 +180,6 @@ Gustavo, y os pasamos el recuento.
 | W2 | ✅ Hecho, sin desplegar | el siguiente a `a1b7cd4` |
 | W3 | ✅ Hecho | este documento |
 | W4 | ✅ Respondido | — |
-| W5 | 🔶 Plan; sin script | — |
+| W5 | ✅ Script y dry-run en prod: 0 filas que crear | — |
 | W6 | 🔶 Respondido, pendiente de confirmar | — |
 | W7 | Pendiente, prioridad baja | — |
