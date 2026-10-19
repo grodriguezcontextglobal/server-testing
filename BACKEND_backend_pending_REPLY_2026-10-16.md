@@ -146,11 +146,15 @@ sin inventario por falta de backfill. Ya podéis encender el flag que esperaba a
 | Early Learning Center of Plantation (143) | jdow1@invoxia.cc | assistant | 1 |
 | Early Learning Center of Plantation (143) | jdow2@invoxia.cc | event_manager | 1 |
 
-**Hallazgo aparte (sin arreglar):** la tabla `locations` de producción tiene **255 filas
-para 128 locaciones**: 42 locaciones están repetidas 4 veces dentro de su compañía
-(p. ej. "Washington, DC" de la 133: ids 26, 122, 185 y 248). Si en el dashboard veis
-locaciones duplicadas en selectores o árboles, viene de ahí. Lo trataremos como tarea
-propia: fusionar ids afecta a ítems, sublocaciones y permisos.
+**Hallazgo aparte, ya arreglado (2026-10-19):** la tabla `locations` de producción tenía
+**255 filas para 128 locaciones** (42 repetidas 4 veces dentro de su compañía). Ningún
+ítem, sublocación ni ruta usaba las copias; solo 10 permisos de `staff_location_access`.
+Fusionado con `mysql/scripts/merge-duplicate-locations.js`: **127 copias borradas,
+7 permisos basura borrados (5 huérfanos y 2 de otra compañía) y 3 repuntados**.
+`locations` queda en 128 filas. **Si el dashboard cachea ids de locación, las copias
+borradas fueron siempre los ids altos** (101-148, 164-211, 227-274 y 253-258/264-268):
+ningún ítem los usaba, así que solo afectaría a un selector abierto en ese momento.
+Pendiente: índice único `(company_id, location_name)` para que no vuelva a pasar.
 
 ## W6. Dos preguntas sobre invitaciones firmadas 🔶
 
