@@ -491,7 +491,7 @@ const LOGGED_ELSEWHERE = new Set([
   'POST /api/error_log/error_log',
   'POST /api/event-log/feed-event-log',
   'POST /api/notificationlog/notification-feed-log',
-  'POST /api/transaction-audit-log/create-audit',
+  // POST /api/transaction-audit-log/create-audit: retirada el 2026-10-19 (FedRAMP S0.1).
 ]);
 
 // Verbo de reserva para una escritura que nadie clasificó: se registra igual.

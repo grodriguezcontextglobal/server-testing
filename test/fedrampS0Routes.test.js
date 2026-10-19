@@ -84,6 +84,17 @@ test('invalidate-all-sessions: además, solo super_user de plataforma', () => {
   assert.ok(handlersOf('../routes/admin', 'post', '/invalidate-all-sessions').includes(requireSuperUser));
 });
 
+test('transaction-audit-log: create-audit retirada (nadie puede escribir en el log desde fuera)', () => {
+  const router = require('../routes/transactionAuditLog');
+  const posts = router.stack.filter((l) => l.route?.methods.post).map((l) => l.route.path);
+  assert.deepEqual(posts, []);
+});
+
+test('transaction-audit-log: audit-log solo con sesión de super_user de plataforma', () => {
+  const handlers = handlersOf('../routes/transactionAuditLog', 'get', '/audit-log');
+  for (const mw of [validateJWT, checkTokenVersion, requireSuperUser]) assert.ok(handlers.includes(mw), mw.name);
+});
+
 test('invalidate-all-sessions ya no vuelca la petición entera en los logs', () => {
   const src = require('node:fs').readFileSync(path.join(root, 'controller/admin.js'), 'utf8');
   const fn = src.slice(src.indexOf('const invalidateAllSessions'), src.indexOf('module.exports'));
