@@ -13,11 +13,16 @@ const { requireSessionFromDashboard } = require("../../middlewares/attendanceLin
 
 const router = Router();
 
+// Anónimas hasta el 2026-10-19 (FedRAMP S0.1): consulting-consumer construía el
+// SQL con las claves del body, y consumers_information devolvía TODO
+// consumer_info. Solo las llama el dashboard con sesión (la app del consumidor no).
+const staffSession = [validateJWT, checkTokenVersion];
+
 //check consumer info
-router.post("/consulting-consumer", consultingConsumerInfo)
+router.post("/consulting-consumer", staffSession, consultingConsumerInfo)
 
 //check all table
-router.post('/consumers_information', consultingConsumerTable)
+router.post('/consumers_information', staffSession, consultingConsumerTable)
 
 //insert new consumer
 // La app del consumidor la llama sin token. Desde el dashboard sin sesión era la

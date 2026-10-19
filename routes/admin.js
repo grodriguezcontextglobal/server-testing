@@ -40,8 +40,12 @@ const { validateMfaEnrollment } = require("../middlewares/validateMfaEnrollment"
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { optionalJWT } = require("../middlewares/optionalJWT");
 const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
+const { requireSuperUser } = require("../middlewares/requireSuperUser");
 
-router.post("/invalidate-all-sessions", optionalJWT, invalidateAllSessions);
+// Cierra la sesión de TODO el staff de TODAS las compañías. Hasta el 2026-10-19
+// bastaba con llamarla (optionalJWT). Ningún frontend la llama: solo super_user
+// de plataforma (FedRAMP S0.1).
+router.post("/invalidate-all-sessions", validateJWT, checkTokenVersion, requireSuperUser, invalidateAllSessions);
 //protected route
 router.get("/protected", validateJWT, checkTokenVersion, (req, res) => {
   res.json({ message: "This is a protected route", user: req.user });
@@ -103,7 +107,9 @@ router.get("/receiver-assigned", validateJWT, checkingReceiversAssigned);
 router.get("/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), showAllUsers);
 
 //show all users in admin page
-router.post("/users", showAllUsers);
+// StripeTransaction.find(body): con un body vacío devolvía todos los pagos con su
+// usuario, sin sesión. Ningún frontend la llama (FedRAMP S0.1, 2026-10-19).
+router.post("/users", validateJWT, checkTokenVersion, showAllUsers);
 
 //edit admin user
 router.patch("/profile/:id", validateJWT, editAdminUser);

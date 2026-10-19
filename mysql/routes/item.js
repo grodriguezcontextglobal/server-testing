@@ -102,7 +102,9 @@ router.post("/bulk-item-from-spreadsheet", validateJWT, checkTokenVersion, postI
 router.post("/items_information", validateJWT, checkTokenVersion, consultingItemTable);
 
 //check inventory current state by query
-router.post("/current-inventory", consultingInventoryCurrentState);
+// Anónima y con SQL armado desde las claves del body hasta el 2026-10-19
+// (FedRAMP S1.11). Ningún frontend la llama.
+router.post("/current-inventory", validateJWT, checkTokenVersion, consultingInventoryCurrentState);
 
 //check inventory current state by query
 router.post("/inventory_event/:id", consultingInventoryInEvent);

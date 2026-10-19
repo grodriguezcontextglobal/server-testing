@@ -1207,7 +1207,8 @@ const forceEndSession = async (request, response) => {
 
 const invalidateAllSessions = async (req, res) => {
   try {
-    console.log(req)
+    // Antes se volcaba la petición entera a la consola: las cabeceras, con el token, acababan en los logs.
+    logger.warn("invalidate-all-sessions: sesiones de todo el staff invalidadas", { by: req.uid });
     await AdminUser.updateMany({}, { $inc: { tokenVersion: 1 } });
     res.status(200).json({ ok: true, msg: "All user sessions have been invalidated." });
   } catch (error) {

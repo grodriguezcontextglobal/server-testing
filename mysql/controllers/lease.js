@@ -176,15 +176,38 @@ const insertingNewLeaseConsumer = async (request, response) => {
   }
 };
 
+// Columnas reales (information_schema de prod, 2026-10-19). Los nombres de
+// columna de las dos consultas salían de las claves del body tal cual: con una
+// clave inventada se podía inyectar SQL. Ahora una clave que no sea columna da
+// 400 (ver whereFromBody).
+const LEASE_INFO_COLUMNS = new Set([
+  "staff_admin_id", "company_id", "subscription_initial_date", "subscription_expected_return_data",
+  "subscription_returned_date", "subscription_current_in_use", "location", "staff_member_id",
+  "device_id", "active", "date_assignment", "created_at", "updated_at", "verification_id",
+]);
+const LEASE_CUSTOMER_INFO_COLUMNS = new Set([
+  "staff_admin_id", "company_id", "subscription_initial_date", "subscription_expected_return_date",
+  "subscription_returned_date", "subscription_current_in_use", "location", "consumer_member_id",
+  "device_id", "active", "date_assignment", "created_at", "updated_at",
+  "subscription_expected_return_data", "verification_id",
+]);
+
+/** `{ where, values }` con las claves del body, o `{ error }` si alguna no es columna. */
+const whereFromBody = (body, columns) => {
+  const keys = Object.keys(body ?? {});
+  if (keys.length === 0) return { error: "At least one filter is required." };
+  const invalid = keys.filter((k) => !columns.has(k));
+  if (invalid.length > 0) return { error: `Invalid field(s): ${invalid.join(", ")}` };
+  return { where: keys.map((k) => `\`${k}\`=?`).join(" AND "), values: keys.map((k) => body[k]) };
+};
+
 const consultingLease = async (request, response) => {
   try {
     const connection = getConnection();
-    const keys = Object.keys(request.body)
-      .map((key) => `${key}=?`)
-      .join(" AND ");
-    const values = Object.values(request.body);
+    const { where, values, error } = whereFromBody(request.body, LEASE_INFO_COLUMNS);
+    if (error) return response.status(400).json({ ok: false, msg: error });
 
-    const query = `SELECT * FROM lease_info WHERE ${keys}`;
+    const query = `SELECT * FROM lease_info WHERE ${where}`;
     const [result] = await connection.execute(query, values);
 
     return response.status(200).json({ ok: true, lease: result });
@@ -197,12 +220,10 @@ const consultingLease = async (request, response) => {
 const consultingConsumerLease = async (request, response) => {
   try {
     const connection = getConnection();
-    const keys = Object.keys(request.body)
-      .map((key) => `${key}=?`)
-      .join(" AND ");
-    const values = Object.values(request.body);
+    const { where, values, error } = whereFromBody(request.body, LEASE_CUSTOMER_INFO_COLUMNS);
+    if (error) return response.status(400).json({ ok: false, msg: error });
 
-    const query = `SELECT * FROM lease_customer_info WHERE ${keys}`;
+    const query = `SELECT * FROM lease_customer_info WHERE ${where}`;
     const [result] = await connection.execute(query, values);
 
     return response.status(200).json({ ok: true, lease: result });

@@ -4205,6 +4205,7 @@ const retrieveCompanyInventoryBasedOnParams = async (request, response) => {
 }
 
 module.exports = {
+  ITEM_INV_COLUMNS,
   checkingIfCompanyHasInventory,
   checkingInventoryCurrentState,
   checkingItem,
