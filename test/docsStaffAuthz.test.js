@@ -168,7 +168,7 @@ const {
   collectingSignaturesForConsumerMember,
   addSignatureToConsumerDocument,
 } = require('../controller/document');
-const { forceEndSession, editAdminUser } = require('../controller/admin');
+const { forceEndSession, editAdminUser, editOtherAdminUser } = require('../controller/admin');
 
 beforeEach(reset);
 
@@ -533,4 +533,74 @@ test('firma por enlace: un contrato ya firmado no se vuelve a firmar (409, nada 
   await addSignatureToConsumerDocument({ ...req({ body }), contractLink: { jti: 'x' } }, r2);
   assert.equal(r2.code, 409);
   assert.equal(calls.verificationUpdates, undefined);
+});
+
+// ═══ PATCH /api/staff/edit-admin/:id · /api/admin/admin-user/:id (2026-10-19) ══
+// Hasta el 2026-10-19 el body entero iba a findByIdAndUpdate: con staff:update en
+// una compañía se le podía poner super_user a cualquier usuario de cualquier otra.
+
+test('editOtherAdminUser: los campos que manda el dashboard se aplican', async () => {
+  const r = res();
+  const body = {
+    name: 'Ana', lastName: 'Diaz', email: 'plain@a.com', phone: '555', imageProfile: 'data:x',
+    online: false, emailNotifications: { newsAndUpdates: true }, dailySummaries: true,
+    subscriptionRenewals: false, eventReminder: true,
+  };
+  await editOtherAdminUser(req({ uid: U_ADMIN_A, company: CO_A, params: { id: U_PLAIN_A }, body }), r);
+  assert.equal(r.code, 200);
+  assert.deepEqual(calls.updates[0].update, body);
+  assert.equal(r.body.ignored_fields, undefined);
+});
+
+test('editOtherAdminUser: super_user, platform_observer, tokenVersion, MFA y contraseña se descartan', async () => {
+  const r = res();
+  await editOtherAdminUser(req({
+    uid: U_ADMIN_A, company: CO_A, params: { id: U_PLAIN_A },
+    body: {
+      name: 'Ana', super_user: true, platform_observer: true, tokenVersion: 0,
+      mfaEnabled: false, mfaSecret: 'x', password: 'p', companiesAssigned: [CO_B], active: true,
+    },
+  }), r);
+  assert.equal(r.code, 200);
+  assert.deepEqual(calls.updates[0].update, { name: 'Ana' });
+  assert.deepEqual(r.body.ignored_fields.sort(), [
+    'active', 'companiesAssigned', 'mfaEnabled', 'mfaSecret', 'password', 'platform_observer', 'super_user', 'tokenVersion',
+  ]);
+});
+
+test('editOtherAdminUser: solo campos prohibidos → 400 y no escribe', async () => {
+  const r = res();
+  await editOtherAdminUser(req({ uid: U_ADMIN_A, company: CO_A, params: { id: U_PLAIN_A }, body: { super_user: true } }), r);
+  assert.equal(r.code, 400);
+  assert.equal(calls.updates.length, 0);
+});
+
+test('editOtherAdminUser: un usuario de OTRA compañía → 404 y no escribe', async () => {
+  const r = res();
+  await editOtherAdminUser(req({ uid: U_ADMIN_A, company: CO_A, params: { id: U_MEMBER_B }, body: { name: 'X' } }), r);
+  assert.equal(r.code, 404);
+  assert.equal(calls.updates.length, 0);
+});
+
+test('editOtherAdminUser: sin cabecera de compañía no se edita a otro (404)', async () => {
+  const r = res();
+  await editOtherAdminUser(req({ uid: U_ADMIN_A, params: { id: U_PLAIN_A }, body: { name: 'X' } }), r);
+  assert.equal(r.code, 404);
+});
+
+test('editOtherAdminUser: uno mismo y el super_user de plataforma no dependen de la compañía', async () => {
+  const self = res();
+  await editOtherAdminUser(req({ uid: U_MEMBER_B, params: { id: U_MEMBER_B }, body: { online: false } }), self);
+  assert.equal(self.code, 200);
+  const platform = res();
+  await editOtherAdminUser(req({ uid: U_PLATFORM, params: { id: U_MEMBER_B }, body: { name: 'Y' } }), platform);
+  assert.equal(platform.code, 200);
+});
+
+test('editOtherAdminUser: id inexistente o mal formado → 404', async () => {
+  for (const id of ['nope', '999999999999999999999999']) {
+    const r = res();
+    await editOtherAdminUser(req({ uid: U_ADMIN_A, company: CO_A, params: { id }, body: { name: 'X' } }), r);
+    assert.equal(r.code, 404, id);
+  }
 });

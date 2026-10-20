@@ -584,13 +584,59 @@ const editAdminUser = async (request, response = response) => {
   }
 };
 
+// PATCH /api/staff/edit-admin/:id y /api/admin/admin-user/:id (staff:update, o el
+// propio usuario con campos personales: routes/staff.js selfOrStaffUpdate).
+// Hasta el 2026-10-19 el body entero iba a findByIdAndUpdate: con staff:update en
+// UNA compañía se le podía poner super_user (bypass total de plataforma) a
+// cualquier usuario de CUALQUIER compañía. Ahora:
+//   - solo STAFF_EDITABLE_FIELDS (lo que manda el dashboard); el resto se
+//     descarta y vuelve en `ignored_fields`;
+//   - a otro usuario solo si pertenece a la compañía del contexto (x-company-id),
+//     salvo super_user de plataforma. Si no, 404.
+// El email se sigue aceptando: el dashboard lo edita desde la ficha del staff.
+const STAFF_EDITABLE_FIELDS = new Set([
+  ...PROFILE_SELF_FIELDS,
+  "email",
+  "dailySummaries",
+  "subscriptionRenewals",
+  "eventReminder",
+]);
+
 const editOtherAdminUser = async (request, response = response) => {
   const adminUserId = request.params.id;
 
   try {
-    const adminUserEdited = {
-      ...request.body,
-    };
+    const target = isValidObjectId(adminUserId)
+      ? await AdminUser.findById(adminUserId).select("email active")
+      : null;
+    if (!target) {
+      return response.status(404).json({ ok: false, msg: "Admin user/id do not match" });
+    }
+
+    const isSelf = String(target.id) === String(request.uid);
+    if (!isSelf) {
+      const caller = await AdminUser.findById(request.uid).select("super_user active email");
+      if (!caller || caller.active === false) {
+        return response.status(403).json({ ok: false, msg: "Forbidden" });
+      }
+      if (!caller.super_user) {
+        const companyId = resolveCompanyContext(request);
+        if (!companyId || !(await findCompanyMembership(companyId, target))) {
+          return response.status(404).json({ ok: false, msg: "Admin user/id do not match" });
+        }
+      }
+    }
+
+    const adminUserEdited = {};
+    const ignored_fields = [];
+    for (const [key, value] of Object.entries(request.body ?? {})) {
+      if (STAFF_EDITABLE_FIELDS.has(key)) adminUserEdited[key] = value;
+      else ignored_fields.push(key);
+    }
+    if (Object.keys(adminUserEdited).length === 0) {
+      return response.status(400).json({ ok: false, msg: "No editable fields in the request.", ignored_fields });
+    }
+
     const adminUserUpdated = await AdminUser.findByIdAndUpdate(
       adminUserId,
       adminUserEdited,
@@ -616,6 +662,7 @@ const editOtherAdminUser = async (request, response = response) => {
       msg: "admin user updated",
       ok: true,
       adminUpdated: adminUserUpdated,
+      ...(ignored_fields.length ? { ignored_fields } : {}),
     });
   } catch (error) {
     return response.status(500).json({
