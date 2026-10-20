@@ -100,6 +100,26 @@ function Step([string]$Message) {
     Write-DeployLog $Message
 }
 
+# nssm and cmd report their errors on stderr. In Windows PowerShell 5.1 with
+# ErrorActionPreference=Stop, a redirected stderr line from a native command is
+# a TERMINATING error, and without redirection the text never reaches the
+# script. Both bit on 2026-10-20: "rmdir ... The directory is not empty" killed
+# the deploy with the services already stopped (before the robocopy fallback
+# below could run), and "Can't open service" for a missing service was never
+# seen, so a missing service looked installed. Run them with a local Continue.
+function Get-NssmStatus([string]$Name) {
+    $ErrorActionPreference = 'Continue'
+    $out = & nssm status $Name 2>&1 | ForEach-Object { "$_" }
+    return (($out -join '') -replace "`0", '')
+}
+function Test-ServiceMissing([string]$Status) {
+    return ($Status -match 'does not exist|Can.t open service')
+}
+function Remove-Tree([string]$Path) {
+    $ErrorActionPreference = 'Continue'
+    & cmd /c "rmdir /s /q `"$Path`"" 2>&1 | Out-Null
+}
+
 # ---------------------------------------------------------------- preflight ---
 
 $isAdmin = ([Security.Principal.WindowsPrincipal] `
@@ -127,14 +147,27 @@ if (-not $SkipInstall -and $freeGB -lt $minFreeGB) {
 
 # ------------------------------------------------------------------- stop -----
 
+# Trap #6 (2026-10-20): VS Code open on this repo keeps nested node_modules
+# folders open through its file watcher, so they can be neither deleted nor
+# renamed ("Access is denied"). Checked BEFORE stopping anything: once the
+# services are down, a tree that cannot be deleted means the API stays down.
+if (-not $SkipInstall) {
+    $editors = @(Get-Process -Name 'Code', 'Code - Insiders' -ErrorAction SilentlyContinue)
+    if ($editors.Count -gt 0) {
+        Fail ("VS Code is running (pid " + (($editors | ForEach-Object { $_.Id }) -join ', ') +
+            "). Its file watcher holds node_modules open and the install would fail with the API down. " +
+            "Close it and run this script again. Services were NOT stopped.")
+    }
+}
+
 Step "Stopping Node services"
 foreach ($svc in $services) {
-    $status = (& nssm status $svc) -join ''
+    $status = Get-NssmStatus $svc
     if ($status -match 'SERVICE_STOPPED') {
         Write-Host "    $svc already stopped"
         continue
     }
-    if ($status -match 'does not exist') {
+    if (Test-ServiceMissing $status) {
         Write-Host "    $svc not installed, skipping" -ForegroundColor Yellow
         Write-DeployLog "$svc not installed, skipped"
         continue
@@ -168,15 +201,28 @@ if (-not $SkipInstall) {
     # Remove-Item -Recurse to get there.
     if (Test-Path $nodeModules) {
         Step "Deleting node_modules"
-        & cmd /c "rmdir /s /q `"$nodeModules`"" 2>$null
+        Remove-Tree $nodeModules
 
         if (Test-Path $nodeModules) {
             Write-Host "    survivors left, mirroring an empty folder over it" -ForegroundColor Yellow
             $empty = Join-Path $env:TEMP ("empty-" + [guid]::NewGuid().ToString('N'))
             New-Item -ItemType Directory -Force $empty | Out-Null
             & robocopy $empty $nodeModules /MIR /NFL /NDL /NJH /NJS /R:1 /W:1 | Out-Null
-            & cmd /c "rmdir /s /q `"$nodeModules`"" 2>$null
+            Remove-Tree $nodeModules
             Remove-Item -Recurse -Force $empty -ErrorAction SilentlyContinue
+        }
+
+        # Last resort: move the tree aside so npm ci gets a clean folder. Delete
+        # the leftover later (takeown + icacls + rmdir) once nothing holds it.
+        if (Test-Path $nodeModules) {
+            $aside = "$nodeModules" + "_old_" + (Get-Date -Format 'yyyyMMddHHmmss')
+            try {
+                Rename-Item -Path $nodeModules -NewName (Split-Path -Leaf $aside) -ErrorAction Stop
+                Write-Host "    could not delete it; moved aside to $aside (delete it later)" -ForegroundColor Yellow
+                Write-DeployLog "node_modules moved aside to $aside"
+            } catch {
+                Write-DeployLog "rename aside failed: $($_.Exception.Message)"
+            }
         }
 
         if (Test-Path $nodeModules) {
@@ -253,8 +299,8 @@ console.log('none');
 
 Step "Starting Node services"
 foreach ($svc in ($services[-1..-($services.Count)])) {
-    $status = (& nssm status $svc) -join ''
-    if ($status -match 'does not exist') { continue }
+    $status = Get-NssmStatus $svc
+    if (Test-ServiceMissing $status) { continue }
     & nssm start $svc | Out-Null
     Write-Host "    $svc start issued"
 }
@@ -275,7 +321,8 @@ foreach ($attempt in 1..10) {
 }
 
 $statuses = foreach ($svc in $services) {
-    $st = (& nssm status $svc) -join ''
+    $st = Get-NssmStatus $svc
+    if (Test-ServiceMissing $st) { continue }
     "$svc=$st"
 }
 

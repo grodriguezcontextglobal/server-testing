@@ -80,7 +80,17 @@ if ($Only) {
 
 function Step([string]$Message) { Write-Host "==> $Message" -ForegroundColor Cyan }
 
-function Get-NssmStatus([string]$Name) { ((& nssm status $Name) -join '') -replace "`0", '' }
+# nssm prints "Can't open service" for a missing service on STDERR. Read without
+# 2>&1, the status came back empty, did not match 'does not exist', and the
+# script went down the "already installed" branch for a service that was never
+# created (2026-10-20: DevitrakHeavyWorker stayed missing while Bulk had already
+# dropped the heavy group). A local Continue keeps PowerShell 5.1 from turning
+# that stderr line into a terminating error under ErrorActionPreference=Stop.
+function Get-NssmStatus([string]$Name) {
+    $ErrorActionPreference = 'Continue'
+    $out = & nssm status $Name 2>&1 | ForEach-Object { "$_" }
+    return (($out -join '') -replace "`0", '')
+}
 
 # ---------------------------------------------------------------- preflight ---
 
