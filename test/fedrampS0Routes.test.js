@@ -70,6 +70,11 @@ const SESSION_ROUTES = [
   ['../mysql/routes/item', 'post', '/current-inventory'],
   ['../routes/admin', 'post', '/users'],
   ['../routes/admin', 'post', '/invalidate-all-sessions'],
+  // 2026-10-20: las tres que seguían anónimas tras la fase 0
+  ['../mysql/routes/item', 'post', '/consulting-item'],
+  ['../mysql/routes/stripe', 'post', '/new_stripe'],
+  ['../routes/image', 'post', '/new_image'],
+  ['../routes/image', 'post', '/images'],
 ];
 
 for (const [file, method, routePath] of SESSION_ROUTES) {

@@ -67,7 +67,9 @@ router.post("/delete-bulk-items-criteria", validateJWT, checkTokenVersion, autho
 router.use(express.json());
 
 //check item info
-router.post("/consulting-item", consultingItem);
+// Anónima hasta el 2026-10-19: devolvía inventario de cualquier compañía. Solo la
+// llama el dashboard, desde páginas con sesión.
+router.post("/consulting-item", validateJWT, checkTokenVersion, consultingItem);
 
 //check item in warehouse
 router.post("/warehouse-items", validateJWT, consultingItemInWarehouseTable);

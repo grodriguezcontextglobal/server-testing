@@ -31,7 +31,8 @@ router.post("/consulting-stripe", validateJWT, checkTokenVersion, consultingStri
 // router.post('/tracking_item/:id', consultingInventoryTracking)
 
 //insert new stripe customer
-router.post('/new_stripe', insertingStripeCustomer)
+// Anónima hasta el 2026-10-19 (escribía en stripe_info). Sin llamadas vivas.
+router.post('/new_stripe', validateJWT, checkTokenVersion, insertingStripeCustomer)
 
 //insert new item
 // router.patch('/edit-item', updateItemInTable)
