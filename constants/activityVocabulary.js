@@ -49,6 +49,8 @@ const ACTIVITY_ACTIONS = [
   'ACCEPT',
   'CLEAR',
   'OPEN',
+  // 2026-10-20: emitir el enlace firmado del QR de un recibo (POST /api/transaction/receipt-link).
+  'SHARE',
 ];
 
 const ACTIVITY_TARGET_MODELS = [

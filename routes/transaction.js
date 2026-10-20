@@ -32,6 +32,28 @@ const { retrieveSubscriptionID } = require("../controller/stripe");
 //   session); it needs a signed receipt token before it can be closed.
 const staffOnly = [validateJWT, checkTokenVersion];
 
+const { issueReceiptLink, getPublicReceipt } = require("../controller/receiptLink");
+const { requirePaymentOwnership } = require("../middlewares/requirePaymentOwnership");
+const { isStaffSession } = require("../helpers/consumerUserFilter");
+const logger = require("../helpers/logger");
+const ownsBodyPaymentIntent = requirePaymentOwnership((req) => req.body?.paymentIntent);
+
+const anonymousTransactionRead = async (req, res, next) => {
+  try {
+    if (await isStaffSession(req)) return next();
+  } catch {
+    // sin poder comprobar la sesión, se trata como anónima
+  }
+  if ((process.env.RECEIPT_PUBLIC_READ_MODE || "warn") === "enforce") {
+    return res.status(401).json({ ok: false, msg: "Sign in to view this transaction." });
+  }
+  logger.warn("transaction: anonymous GET /transaction allowed (RECEIPT_PUBLIC_READ_MODE=warn)", {
+    origin: req.header?.("origin"),
+    query: Object.keys(req.query || {}).join(","),
+  });
+  return next();
+};
+
 //*saving new transaction
 router.post("/save-transaction", optionalJWT, saveTransaction);
 
@@ -49,7 +71,17 @@ router.post(
 router.post("/transaction", optionalJWT, getListOfAllSavedTransaction);
 
 //getting list of all saved transaction
-router.get("/transaction", gettingListOfSavedTransaction);
+// Sin sesión la usaba la página pública /receipt del dashboard: devolvía la
+// transacción entera (con nombre y email) a quien conociera el paymentIntent.
+// Desde 2026-10-20 el QR lleva un token y la página lee GET /receipt. Esta ruta
+// sin sesión pasa por RECEIPT_PUBLIC_READ_MODE: warn (por defecto, registra y
+// deja pasar, para los recibos ya impresos sin token) | enforce (401).
+router.get("/transaction", optionalJWT, anonymousTransactionRead, gettingListOfSavedTransaction);
+
+// Recibo con QR firmado (controller/receiptLinkHandlers.js). El enlace solo lo
+// emite el staff, para pagos de su compañía; caduca al fin del evento + 30 días.
+router.post("/receipt-link", staffOnly, ownsBodyPaymentIntent, issueReceiptLink);
+router.get("/receipt", getPublicReceipt);
 
 //*update transaction
 router.patch("/update-transaction/:id", staffOnly, updateTransaction);

@@ -204,6 +204,7 @@ const AUDITED_ROUTES = {
   'POST /api/transaction/update-multiple-documents': R('UPDATE', 'Transaction'),
   'POST /api/transaction/check-and-release-deposit-transactions': R('RELEASE', 'Transaction'),
   'DELETE /api/transaction/remove-duplicate-transaction/:id': R('DELETE', 'Transaction'),
+  'POST /api/transaction/receipt-link': R('SHARE', 'Transaction'),
   'POST /api/subscription/new_subscription': R('CREATE', 'Subscription'),
   'POST /api/subscription/new_subscription_no_trial': R('CREATE', 'Subscription'),
   'PATCH /api/subscription/update-subscription/:id': R('UPDATE', 'Subscription'),
