@@ -35,14 +35,26 @@ test('validatePublicPaymentPayload rejects invalid device', () => {
   assert.equal(res.body.ok, false);
 });
 
-test('attachServerIdempotencyKey respects provided key', () => {
-  const req = {
+// Stripe Fase 1.2 (2026-10-19): la clave del cliente se respeta (misma clave →
+// misma clave para Stripe, así un reintento no cobra dos veces), pero ya no se
+// pasa CRUDA: va acotada a compañía, usuario y ruta. Una sola cuenta de Stripe
+// para todas las compañías hacía que la misma clave devolviera el PaymentIntent
+// de otra.
+test('attachServerIdempotencyKey respects provided key, scoped (never raw)', () => {
+  const mk = (company, uid) => ({
+    method: 'POST', baseUrl: '/api/stripe', path: '/create-payment-intent', uid,
+    headers: company ? { 'x-company-id': company } : {},
     body: { customerEmail: 'a@b.com', customerId: 'c1', device: 10 },
     get: (header) => (header.toLowerCase() === 'idempotency-key' ? 'provided-key' : undefined),
     ip: '1.2.3.4',
-  };
-  attachServerIdempotencyKey(req, {}, () => {});
-  assert.equal(req.idempotencyKey, 'provided-key');
+  });
+  const a1 = mk('companyA', 'u1');
+  const a2 = mk('companyA', 'u1');
+  const b = mk('companyB', 'u2');
+  for (const r of [a1, a2, b]) attachServerIdempotencyKey(r, {}, () => {});
+  assert.notEqual(a1.idempotencyKey, 'provided-key');
+  assert.equal(a1.idempotencyKey, a2.idempotencyKey, 'mismo contexto y clave → misma clave (reintento)');
+  assert.notEqual(a1.idempotencyKey, b.idempotencyKey, 'otra compañía con la misma clave → otra clave');
 });
 
 test('attachServerIdempotencyKey generates deterministic key in same bucket', () => {
