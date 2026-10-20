@@ -37,6 +37,21 @@ const canMoveCollectedMoney = [
   checkTokenVersion,
   authorizeMongoPermission("transaction", "update"),
 ];
+
+// Fase 0.1 (2026-10-19): el pago tiene que ser de la compañía del contexto
+// (middlewares/requirePaymentOwnership.js). Se comprueba el MISMO campo que lee
+// cada controlador: capture/cancel usan body.id, refund/partial-refund
+// body.paymentIntent (ya normalizado por validateRefundPayload).
+const { requirePaymentOwnership } = require("../middlewares/requirePaymentOwnership");
+const ownsBodyId = requirePaymentOwnership((req) => req.body?.id);
+const ownsBodyPaymentIntent = requirePaymentOwnership((req) => req.body?.paymentIntent);
+// capture/cancel llevan el pi_ en la URL y en el body (el dashboard manda el
+// mismo en los dos) y el controlador usa el del body: si no coinciden, 422, para
+// que nunca se compruebe un pago y se mueva otro.
+const sameIdInUrlAndBody = (req, res, next) =>
+  req.body?.id === req.params.id
+    ? next()
+    : res.status(422).json({ ok: false, msg: "The payment intent in the URL and in the body must match" });
 const {
   stripePaymentIntent,
   listAllCustomers,
@@ -215,6 +230,8 @@ router.post(
   "/payment-intents/:id/capture",
   canMoveCollectedMoney,
   validatePaymentIntentIdParam,
+  sameIdInUrlAndBody,
+  ownsBodyId,
   captureStripePaymentIntent
 );
 
@@ -223,6 +240,8 @@ router.post(
   "/payment-intents/:id/cancel",
   canMoveCollectedMoney,
   validatePaymentIntentIdParam,
+  sameIdInUrlAndBody,
+  ownsBodyId,
   cancelStripePaymentIntent
 );
 
@@ -231,6 +250,8 @@ router.post(
   "/internal/payment-intents/:id/capture",
   validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"),
   validatePaymentIntentIdParam,
+  sameIdInUrlAndBody,
+  ownsBodyId,
   captureStripePaymentIntent
 );
 
@@ -238,6 +259,8 @@ router.post(
   "/internal/payment-intents/:id/cancel",
   validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"),
   validatePaymentIntentIdParam,
+  sameIdInUrlAndBody,
+  ownsBodyId,
   cancelStripePaymentIntent
 );
 
@@ -252,6 +275,7 @@ router.post(
   "/refund",
   canMoveCollectedMoney,
   validateRefundPayload,
+  ownsBodyPaymentIntent,
   refundStripePaymentIntent
 );
 
@@ -260,6 +284,7 @@ router.post(
   "/partial-refund",
   canMoveCollectedMoney,
   validateRefundPayload,
+  ownsBodyPaymentIntent,
   partialRefundStripePaymentIntent
 );
 
@@ -267,6 +292,7 @@ router.post(
   "/internal/refund",
   validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"),
   validateRefundPayload,
+  ownsBodyPaymentIntent,
   refundStripePaymentIntent
 );
 
@@ -274,6 +300,7 @@ router.post(
   "/internal/partial-refund",
   validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"),
   validateRefundPayload,
+  ownsBodyPaymentIntent,
   partialRefundStripePaymentIntent
 );
 //removing duplicate entries in database

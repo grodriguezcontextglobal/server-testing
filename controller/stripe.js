@@ -371,12 +371,17 @@ const stripePaymentIntentCustomized = async (request, response) => {
   const customerEmail = receipt_email;
   const totalToCharge = parseInt(total) * 100;
   try {
+    // Fase 0.1b (2026-10-19): sin metadata, el pago quedaba sin dueño en Stripe y
+    // la comprobación de propiedad (requirePaymentOwnership) solo podía usar
+    // nuestros registros. Mismo criterio que stripePaymentIntent.
+    const companyId = resolveCompanyContext(request);
     const paymentIntentCustomized = await stripe.paymentIntents.create({
       amount: totalToCharge,
       currency: "usd",
       payment_method_types: ["card"],
       capture_method: "manual",
       receipt_email: customerEmail,
+      ...(companyId ? { metadata: { company_id: String(companyId) } } : {}),
     });
     return response.status(201).json({
       clientSecret: paymentIntentCustomized.client_secret,
@@ -395,6 +400,8 @@ const stripePaymentIntentCustomized = async (request, response) => {
 const stripePaymentIntentSubscription = async (request, response) => {
   const { total, customerEmail } = request.body;
   try {
+    // Fase 0.1b: la compañía en metadata, como en stripePaymentIntent.
+    const companyId = resolveCompanyContext(request);
     const paymentSubscription = await stripe.paymentIntents.create({
       amount: total,
       currency: "usd",
@@ -402,6 +409,7 @@ const stripePaymentIntentSubscription = async (request, response) => {
         enabled: true,
       },
       receipt_email: customerEmail,
+      ...(companyId ? { metadata: { company_id: String(companyId) } } : {}),
     });
     return response.status(201).json({
       clientSecret: paymentSubscription.client_secret,
