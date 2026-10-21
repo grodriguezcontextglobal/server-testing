@@ -73,63 +73,12 @@ const renderAllCustomerByEvent = async (request, response) => {
   }
 };
 
-const consultingCustomerInfo = async (request, response) => {
-  try {
-    const reference = Object.entries(request.body);
-    const query = `
-      SELECT * FROM company_attending_event 
-      WHERE \`${reference[0][0]}\` = ?`;
-    const values = [reference[0][1]];
-
-    const [result] = await connection.execute(query, values);
-
-    return response.status(200).json({
-      ok: true,
-      customer: result,
-    });
-  } catch (error) {
-    console.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
-  }
-};
-
-const consultingCustomerTable = async (request, response) => {
-  try {
-    const query = "SELECT * FROM consumer_attending_event";
-    const [result] = await connection.execute(query);
-
-    return response.status(200).json({
-      ok: true,
-      customers: result,
-    });
-  } catch (error) {
-    console.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
-  }
-};
-
-const deleteCustomer = async (request, response) => {
-  try {
-    const query = "DELETE FROM consumer_info WHERE consumer_id = ?";
-    const values = [request.body.consumer_id];
-
-    const [result] = await connection.execute(query, values);
-
-    return response.status(200).json({
-      ok: true,
-      customer_deleted: result,
-    });
-  } catch (error) {
-    console.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
-  }
-};
+// consultingCustomerInfo, consultingCustomerTable y deleteCustomer se borraron
+// el 2026-10-21 (FedRAMP P1.11): ninguna ruta los montaba, y el primero armaba
+// el nombre de columna con la clave del body (inyección SQL si alguien lo montaba).
 
 module.exports = {
-  consultingCustomerInfo,
   insertingConsumerAttendingEvent,
-  consultingCustomerTable,
-  deleteCustomer,
   consultingCustomerAttendingEventsInfo,
   renderAllCustomerByEvent,
 };
