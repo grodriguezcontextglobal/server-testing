@@ -11,16 +11,22 @@ const { validateJWT } = require('../middlewares/validate-jwt');
 // función retornada por la factory. Usada para inspección del stack de rutas.
 const AUTHZ_SIGNATURE = 'insufficient permissions';
 
-// Inspecciona el stack de un Express Router y devuelve los handles de una
-// ruta concreta. Retorna null si la ruta no existe.
+// Inspecciona el stack de un Express Router y devuelve la cadena EFECTIVA de
+// una ruta: los `router.use` para todo el router registrados antes de ella
+// (denegar por defecto, FedRAMP P1.1) seguidos de los handles de la propia
+// ruta. Retorna null si la ruta no existe.
 function getRouteHandlers(router, method, routePath) {
-  const layer = router.stack.find(
+  const index = router.stack.findIndex(
     l => l.route &&
          l.route.path === routePath &&
          l.route.methods[method.toLowerCase()],
   );
-  if (!layer) return null;
-  return layer.route.stack.map(l => l.handle);
+  if (index === -1) return null;
+  const routerLevel = router.stack
+    .slice(0, index)
+    .filter(l => !l.route && l.regexp && l.regexp.fast_slash)
+    .map(l => l.handle);
+  return [...routerLevel, ...router.stack[index].route.stack.map(l => l.handle)];
 }
 
 // Recarga un módulo de ruta limpiando su entrada en require.cache.

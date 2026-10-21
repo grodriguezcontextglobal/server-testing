@@ -48,6 +48,18 @@ const { authorizePermission } = require("../../middlewares/authorizePermission")
 const { reconcileEventCount, closeEventCount } = require("../controllers/eventCount");
 const router = Router();
 
+// ─── Denegar por defecto (FedRAMP P1.1 · AC-3, 2026-10-21) ───────────────────
+//
+// Todo /api/db_event exige sesión de staff. 23 de sus rutas respondían sin
+// sesión, entre ellas crear y editar eventos, meter y sacar equipos y cerrar el
+// evento. Nadie las llama sin sesión: el dashboard siempre con sesión
+// (clasificación del 2026-10-14; events_information desde Login.jsx va después
+// de guardar el token), y ni la app del consumidor ni el servidor las usan.
+// Una ruta pública nueva tendría que ir en PUBLIC_ROUTES, registrada antes del
+// router.use. test/eventRouterGuards.test.js lo comprueba.
+const PUBLIC_ROUTES = [];
+router.use(validateJWT, checkTokenVersion);
+
 //check event info
 router.post("/consulting-event", consultingEventInformation);
 
@@ -95,7 +107,7 @@ router.post(
   itemFinalStatusWhenEventIsFinishedRefactored,
 );
 //delete event
-router.delete("/:id", validateJWT, checkTokenVersion, authorizePermission("event", "delete"), deleteEvent);
+router.delete("/:id", authorizePermission("event", "delete"), deleteEvent);
 
 //consulting all inventory in event
 router.get("/event-inventory/:id", consultingInventoryEvent);
@@ -122,8 +134,6 @@ router.post(
 // acaba de entregar — el cliente no podía consultar su propio trabajo.
 router.post(
   "/inserting-items-in-event-from-container",
-  validateJWT,
-  checkTokenVersion,
   insertingDeviceInEventDirectlyFromContainer,
 );
 
@@ -143,7 +153,6 @@ router.post(
 // event_manager permission required — used only on the event inventory selection page
 router.post(
   "/retrieve-item-group-location-quantity",
-  validateJWT,
   authorizePermission("event", "read"),
   getGroupedItemInventory,
 );
@@ -161,8 +170,6 @@ router.post(
 // could run arbitrary statements against production. Do not remove these.
 router.post(
   "/inventory-based-on-submitted-parameters",
-  validateJWT,
-  checkTokenVersion,
   consultingCompanyInventoryBasedOnSubmittedParameters,
 );
 
@@ -171,8 +178,6 @@ router.post(
 // also changing which namespace they post to.
 router.post(
   "/inventory-query",
-  validateJWT,
-  checkTokenVersion,
   runNamedInventoryQuery,
 );
 
@@ -181,13 +186,11 @@ router.post(
 // three independent transactions.
 router.post(
   "/return-event-devices",
-  validateJWT,
-  checkTokenVersion,
   returnEventDevicesToWarehouse,
 );
 
 //allocate
-router.post("/allocate-device-event", validateJWT, checkTokenVersion, authorizePermission("event", "update"), allocateDeviceToEvent);
+router.post("/allocate-device-event", authorizePermission("event", "update"), allocateDeviceToEvent);
 
 // Variante de contenedor de /allocate-device-event, y era anónima mientras la
 // otra ya estaba gateada: hace UPDATE item_inv + INSERT al evento sobre los
@@ -197,8 +200,6 @@ router.post("/allocate-device-event", validateJWT, checkTokenVersion, authorizeP
 // ese permiso; decisión pendiente.
 router.post(
   "/allocate-device-container-event",
-  validateJWT,
-  checkTokenVersion,
   allocateDeviceMarkedAsContainerInEvent,
 );
 
@@ -206,7 +207,6 @@ router.post(
 // event_manager permission required — updates event state (reserve = event:update)
 router.post(
   "/reserve-items-for-event",
-  validateJWT,
   authorizePermission("event", "update"),
   reserveItemsInInventoryForEvent,
 );
@@ -223,18 +223,15 @@ router.post("/lock-items-for-event", lockItemsForEvent);
 // buscarlo y barre otra vez); `close` es la que escribe.
 router.post(
   "/event-count/reconcile",
-  validateJWT,
-  checkTokenVersion,
   authorizePermission("inventory", "read"),
   reconcileEventCount,
 );
 
 router.post(
   "/event-count/close",
-  validateJWT,
-  checkTokenVersion,
   authorizePermission("inventory", "update"),
   closeEventCount,
 );
 
 module.exports = router;
+module.exports.PUBLIC_ROUTES = PUBLIC_ROUTES;
