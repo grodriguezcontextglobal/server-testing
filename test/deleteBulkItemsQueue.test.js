@@ -260,12 +260,18 @@ test('mysql/routes/company.js POST /delete-bulk-items: lleva la misma cadena de 
   const { validateJWT } = require('../middlewares/validate-jwt');
   const { checkTokenVersion } = require('../middlewares/checkValidateToken');
 
+  // Cadena EFECTIVA: los router.use previos (denegar por defecto, FedRAMP
+  // P1.1) más los de la propia ruta.
   const chainOf = (router, path) => {
-    const layer = router.stack.find(
+    const index = router.stack.findIndex(
       (l) => l.route && l.route.path === path && l.route.methods.post
     );
-    assert.ok(layer, `la ruta POST ${path} debe estar montada`);
-    return layer.route.stack.map((l) => l.handle);
+    assert.ok(index >= 0, `la ruta POST ${path} debe estar montada`);
+    const routerLevel = router.stack
+      .slice(0, index)
+      .filter((l) => !l.route && l.regexp && l.regexp.fast_slash)
+      .map((l) => l.handle);
+    return [...routerLevel, ...router.stack[index].route.stack.map((l) => l.handle)];
   };
 
   const companyChain = chainOf(require('../mysql/routes/company'), '/delete-bulk-items');
@@ -273,11 +279,10 @@ test('mysql/routes/company.js POST /delete-bulk-items: lleva la misma cadena de 
 
   assert.ok(companyChain.includes(validateJWT), 'sin validateJWT no hay sqlStaffId → 403 garantizado');
   assert.ok(companyChain.includes(checkTokenVersion));
-  assert.equal(
-    companyChain.length,
-    itemChain.length,
-    'las dos rutas apuntan al mismo controller: deben exigir lo mismo'
-  );
+  // Las dos rutas apuntan al mismo controller: deben exigir lo mismo.
+  for (const guard of [validateJWT, checkTokenVersion]) {
+    assert.equal(companyChain.includes(guard), itemChain.includes(guard), guard.name);
+  }
   // authorizePermission se identifica por su firma textual, como en
   // routeSecurityHardening.test.js (la factory devuelve funciones anónimas).
   assert.ok(

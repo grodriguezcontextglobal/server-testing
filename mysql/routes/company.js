@@ -52,23 +52,71 @@ const {
   getInventoryGroupedFull,
 } = require("../controllers/categories_groups");
 const { listCompanyLocations } = require("../controllers/location");
+const { optionalJWT } = require("../../middlewares/optionalJWT");
+const { isStaffSession } = require("../../helpers/consumerUserFilter");
+const logger = require("../../helpers/logger");
 const router = Router();
 router.use(require('express').json());
 
-// Check company info
-router.post("/consulting-company", consultingCompany);
+// ─── Denegar por defecto (FedRAMP P1.1 · AC-3, 2026-10-21) ───────────────────
+//
+// Todo /api/db_company exige sesión de staff salvo PUBLIC_ROUTES, registradas
+// antes del router.use. test/defaultDenyRouters.test.js lo comprueba.
+//
+// - industry: la lista de sectores para el formulario de registro. Pública.
+// - consulting-company y new_company: el registro de compañía del dashboard
+//   (pages/authentication) puede llamarlas antes de tener sesión. Sin sesión
+//   pasan por DB_COMPANY_PUBLIC_MODE: `warn` (por defecto) las deja pasar y
+//   las registra; `enforce` responde 401. Pasar a enforce cuando el log
+//   confirme que nadie las usa sin sesión.
+const PUBLIC_ROUTES = ["POST /industry", "POST /consulting-company", "POST /new_company"];
 
-// Check company table
-router.post("/companies_information", consultingCompanyTable);
+const publicMode = () => String(process.env.DB_COMPANY_PUBLIC_MODE || "warn").toLowerCase();
+
+// Sin sesión, consulting-company solo busca por id o nombre (lo único que
+// manda el registro).
+const ANONYMOUS_FILTERS = { "/consulting-company": new Set(["company_id", "company_name"]) };
+
+const registrationLane = async (req, res, next) => {
+  try {
+    if (await isStaffSession(req)) return next();
+  } catch {
+    // sin poder comprobar la sesión, se trata como anónima
+  }
+  if (publicMode() === "enforce") {
+    return res.status(401).json({ ok: false, msg: "Authentication is required for this endpoint." });
+  }
+  const allowed = ANONYMOUS_FILTERS[req.path];
+  if (allowed) {
+    const keys = Object.keys(req.body ?? {});
+    if (keys.length === 0 || keys.some((k) => !allowed.has(k))) {
+      return res.status(400).json({ ok: false, msg: "Filter by company_id or company_name." });
+    }
+  }
+  logger.warn("db_company: anonymous registration call allowed (DB_COMPANY_PUBLIC_MODE=warn)", {
+    route: req.path,
+    origin: req.header?.("origin"),
+    ip: req.ip,
+  });
+  return next();
+};
 
 // Check industry column from company table
 router.post("/industry", consultingIndustryCompanyTable);
 
+// Check company info
+router.post("/consulting-company", optionalJWT, registrationLane, consultingCompany);
+
 // Insert new company
-router.post("/new_company", insertingCompany);
+router.post("/new_company", optionalJWT, registrationLane, insertingCompany);
+
+router.use(validateJWT, checkTokenVersion);
+
+// Check company table
+router.post("/companies_information", consultingCompanyTable);
 
 // update company data
-router.post("/update_company", validateJWT, checkTokenVersion, authorizePermission("company", "update"), updateCompanyData);
+router.post("/update_company", authorizePermission("company", "update"), updateCompanyData);
 
 //retrieve company inventory based on params
 router.post("/retrieve-company-inventory", retrieveCompanyInventoryBasedOnParams);
@@ -76,8 +124,6 @@ router.post("/retrieve-company-inventory", retrieveCompanyInventoryBasedOnParams
 // Delete company — mapea :id a company_id para que authorizePermission lo encuentre
 router.delete(
   "/:id",
-  validateJWT,
-  checkTokenVersion,
   (req, _res, next) => { req.params.company_id = req.params.id; next(); },
   authorizePermission("company", "delete"),
   deleteCompany,
@@ -106,8 +152,6 @@ router.post("/update-content-in-container", updateContentInContainerItem);
 // TODAS las compañías. El scope ahora lo impone el controlador.
 router.post(
   "/company-inventory-pagination",
-  validateJWT,
-  checkTokenVersion,
   consultingCompanyInventoryWithPagination
 );
 
@@ -118,7 +162,7 @@ router.post(
 );
 
 //company inventory structure to be displayed in inventory page.
-router.post("/company-inventory-structure", validateJWT, checkTokenVersion, retrieveItemData);
+router.post("/company-inventory-structure", retrieveItemData);
 
 //company inventory with current warehouse status
 router.post(
@@ -130,7 +174,7 @@ router.post(
 router.post("/insert-new-single-item", insertingItem);
 
 //checking current inventory state of company inventory
-router.get("/current-inventory/:company_id", validateJWT, checkTokenVersion, checkingInventoryCurrentState);
+router.get("/current-inventory/:company_id", checkingInventoryCurrentState);
 
 //get inventory company based on location and sublocation
 router.post("/get-inventory-company", getGroupedItemInventory);
@@ -138,8 +182,6 @@ router.post("/get-inventory-company", getGroupedItemInventory);
 //consulting company inventory based on submitted parameters
 router.post(
   "/inventory-based-on-submitted-parameters",
-  validateJWT,
-  checkTokenVersion,
   consultingCompanyInventoryBasedOnSubmittedParameters
 );
 
@@ -148,8 +190,6 @@ router.post(
 // also changing which namespace they post to.
 router.post(
   "/inventory-query",
-  validateJWT,
-  checkTokenVersion,
   runNamedInventoryQuery
 );
 
@@ -158,8 +198,6 @@ router.post(
 // three independent transactions.
 router.post(
   "/return-event-devices",
-  validateJWT,
-  checkTokenVersion,
   returnEventDevicesToWarehouse
 );
 
@@ -169,8 +207,6 @@ router.post("/update-all-items-in-inventory", updateAllItemsInInventory);
 //update all items in inventory company based on submitted parameters
 router.post(
   "/update-items-based-on-alphanumeric-serial-number",
-  validateJWT,
-  checkTokenVersion,
   updateItemsBasedOnAlphanumericSerialNumber
 );
 
@@ -183,8 +219,6 @@ router.post(
 //get location/sub location and items type hierarchy
 router.post(
   "/get-location-item-types-hierarchy",
-  validateJWT,
-  checkTokenVersion,
   getInventoryHierarchyWithTypes
 );
 
@@ -201,31 +235,30 @@ router.post("/filter-suppliers-info-items", filterSuppliersInfoItems);
 // borrado. Ese commit toco el controller pero no las rutas, asi que esta quedo
 // atras: sin validateJWT no hay sqlStaffId, getStaffCompanyAccess devuelve null
 // y respondia 403 "Staff record not found for this company" a TODA llamada.
-router.post("/delete-bulk-items", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteBulkItems);
+router.post("/delete-bulk-items", authorizePermission("inventory", "delete"), deleteBulkItems);
 
 //checking item info
-router.post("/check-item", validateJWT, checkTokenVersion, checkingItem);
+router.post("/check-item", checkingItem);
 
 //retrieve company items with locations
 router.post("/retrieve-company-items-with-locations", retrieveCompanyInventory);
 
 // ─── Categories ──────────────────────────────────────────────────────────────
-router.post("/categories", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), listCompanyCategories);
-router.post("/locations", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), listCompanyLocations);
-router.post("/categories/upsert", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), upsertCategory);
-router.delete("/categories/:category_id", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteCategory);
+router.post("/categories", authorizePermission("inventory", "read"), listCompanyCategories);
+router.post("/locations", authorizePermission("inventory", "read"), listCompanyLocations);
+router.post("/categories/upsert", authorizePermission("inventory", "create"), upsertCategory);
+router.delete("/categories/:category_id", authorizePermission("inventory", "delete"), deleteCategory);
 
 // ─── Groups ──────────────────────────────────────────────────────────────────
-router.post("/groups", validateJWT, checkTokenVersion, authorizePermission("inventory", "read"), listCompanyGroups);
-router.post("/groups/upsert", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), upsertGroup);
-router.delete("/groups/:group_id", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteGroup);
+router.post("/groups", authorizePermission("inventory", "read"), listCompanyGroups);
+router.post("/groups/upsert", authorizePermission("inventory", "create"), upsertGroup);
+router.delete("/groups/:group_id", authorizePermission("inventory", "delete"), deleteGroup);
 
 // ─── Inventory grouped with sub-levels (new — does not affect existing endpoints)
 router.post(
   "/company-inventory-grouped-full",
-  validateJWT,
-  checkTokenVersion,
   getInventoryGroupedFull,
 );
 
 module.exports = router;
+module.exports.PUBLIC_ROUTES = PUBLIC_ROUTES;
