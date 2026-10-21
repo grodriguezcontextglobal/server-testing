@@ -260,18 +260,11 @@ test('mysql/routes/company.js POST /delete-bulk-items: lleva la misma cadena de 
   const { validateJWT } = require('../middlewares/validate-jwt');
   const { checkTokenVersion } = require('../middlewares/checkValidateToken');
 
-  // Cadena EFECTIVA: los router.use previos (denegar por defecto, FedRAMP
-  // P1.1) más los de la propia ruta.
+  const { effectiveChain } = require('./helpers/effectiveChain');
   const chainOf = (router, path) => {
-    const index = router.stack.findIndex(
-      (l) => l.route && l.route.path === path && l.route.methods.post
-    );
-    assert.ok(index >= 0, `la ruta POST ${path} debe estar montada`);
-    const routerLevel = router.stack
-      .slice(0, index)
-      .filter((l) => !l.route && l.regexp && l.regexp.fast_slash)
-      .map((l) => l.handle);
-    return [...routerLevel, ...router.stack[index].route.stack.map((l) => l.handle)];
+    const chain = effectiveChain(router, 'post', path);
+    assert.ok(chain, `la ruta POST ${path} debe estar montada`);
+    return chain;
   };
 
   const companyChain = chainOf(require('../mysql/routes/company'), '/delete-bulk-items');

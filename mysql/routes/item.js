@@ -55,13 +55,24 @@ const {
 } = require("../controllers/items_events");
 const router = express.Router();
 
+// ─── Denegar por defecto (FedRAMP P1.1 · AC-3, 2026-10-21) ───────────────────
+//
+// Todo /api/db_item exige sesión de staff. 16 rutas respondían sin sesión,
+// entre ellas el envío de equipos de evento (PUT/DELETE /event-items) y la
+// devolución al almacén. El dashboard las llama siempre con sesión
+// (clasificación del 2026-10-14) y ni la app del consumidor ni el servidor las
+// usan. Una ruta pública nueva iría en PUBLIC_ROUTES, antes del router.use.
+// test/defaultDenyRouters.test.js lo comprueba.
+const PUBLIC_ROUTES = [];
+router.use(validateJWT, checkTokenVersion);
+
 router.put("/event-items", updateEventItemShipping);
 router.post("/event-items/search", getEventItemShipping);
 router.delete("/event-items", removeEventItemShipping);
-router.put("/event-items/bulk-update", validateJWT, checkTokenVersion, bulkUpdateEventItemShipping);
+router.put("/event-items/bulk-update", bulkUpdateEventItemShipping);
 
 //delete items in bulk way based on criteria
-router.post("/delete-bulk-items-criteria", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteBulkItemBasedOnCriteria);
+router.post("/delete-bulk-items-criteria", authorizePermission("inventory", "delete"), deleteBulkItemBasedOnCriteria);
 
 // ✅ Force body parsing to ensure JSON bodies are read
 router.use(express.json());
@@ -69,10 +80,10 @@ router.use(express.json());
 //check item info
 // Anónima hasta el 2026-10-19: devolvía inventario de cualquier compañía. Solo la
 // llama el dashboard, desde páginas con sesión.
-router.post("/consulting-item", validateJWT, checkTokenVersion, consultingItem);
+router.post("/consulting-item", consultingItem);
 
 //check item in warehouse
-router.post("/warehouse-items", validateJWT, consultingItemInWarehouseTable);
+router.post("/warehouse-items", consultingItemInWarehouseTable);
 
 // Página de inventario servida desde el servidor: una página de la tabla, y los
 // agregados que llenan los filtros sin descargar el inventario entero.
@@ -81,32 +92,32 @@ router.post("/warehouse-items", validateJWT, consultingItemInWarehouseTable);
 // más abajo. Ese catch-all captura cualquier POST de un solo segmento, y hoy ya
 // deja sin efecto a catorce rutas registradas después que él —entre ellas
 // /inventory-query y /inventory-pagination—, que acaban en `deleteItem`.
-router.post("/inventory-page", validateJWT, checkTokenVersion, getInventoryPage);
-router.post("/inventory-facets", validateJWT, checkTokenVersion, getInventoryFacets);
-router.get("/serial-suggest", validateJWT, checkTokenVersion, suggestSerials);
+router.post("/inventory-page", getInventoryPage);
+router.post("/inventory-facets", getInventoryFacets);
+router.get("/serial-suggest", suggestSerials);
 
 // Export del inventario completo, en cola: responde 202 + jobId y el fichero se
 // recoge por `GET /api/jobs/owned/:jobId`. Mismo cuerpo que /inventory-page sin
 // paginación, así que exporta EXACTAMENTE lo que la tabla está enseñando.
 // Va aquí arriba por lo mismo que las tres de encima: el catch-all /:id.
-router.post("/inventory-export", validateJWT, checkTokenVersion, postInventoryExport);
+router.post("/inventory-export", postInventoryExport);
 
 // Import de una hoja de calculo entera: una fila por unidad, en UNA peticion.
 // El endpoint por grupos (/bulk-item-alphanumeric) necesita 499 peticiones para
 // un fichero de 500 unidades, contra un limite de 300 cada 15 minutos.
 // Tambien aqui arriba por el catch-all /:id.
-router.post("/bulk-item-from-spreadsheet", validateJWT, checkTokenVersion, postInventoryImport);
+router.post("/bulk-item-from-spreadsheet", postInventoryImport);
 
 //check table
 // Devuelve el inventario de la compañía. Antes iba sin token y filtraba por el
 // NOMBRE de la compañía tomado del body; ahora exige JWT y usa el company_id
 // verificado. Queda obsoleta a favor de /inventory-page.
-router.post("/items_information", validateJWT, checkTokenVersion, consultingItemTable);
+router.post("/items_information", consultingItemTable);
 
 //check inventory current state by query
 // Anónima y con SQL armado desde las claves del body hasta el 2026-10-19
 // (FedRAMP S1.11). Ningún frontend la llama.
-router.post("/current-inventory", validateJWT, checkTokenVersion, consultingInventoryCurrentState);
+router.post("/current-inventory", consultingInventoryCurrentState);
 
 //check inventory current state by query
 router.post("/inventory_event/:id", consultingInventoryInEvent);
@@ -115,23 +126,23 @@ router.post("/inventory_event/:id", consultingInventoryInEvent);
 router.post("/tracking_item/:id", consultingInventoryTracking);
 
 //insert new item
-router.post("/new_item", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), insertingItem);
+router.post("/new_item", authorizePermission("inventory", "create"), insertingItem);
 
 //insert bulk item
-router.post("/bulk-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), insertBulkItem);
+router.post("/bulk-item", authorizePermission("inventory", "create"), insertBulkItem);
 
 //insert bulk item alpha numeric format
-router.post("/bulk-item-alphanumeric", validateJWT, checkTokenVersion, authorizePermission("inventory", "create"), insertBulkItemAlhpanumericFormat);
+router.post("/bulk-item-alphanumeric", authorizePermission("inventory", "create"), insertBulkItemAlhpanumericFormat);
 
 //update new item
-router.post("/edit-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "update"), updateItemInTable);
+router.post("/edit-item", authorizePermission("inventory", "update"), updateItemInTable);
 
 //updating item in inv after being added to event set up
 // Previously ungated. Gated to match the other inventory writes: the event-
 // assignment roles (sale_manager L2, event_manager L3) already hold
 // inventory:update, so this does not lock them out; scope is enforced in the
 // controller. Clients must now send the JWT to this endpoint (frontend coordination).
-router.post("/item-out-warehouse", validateJWT, checkTokenVersion, authorizePermission("inventory", "update"), updateItemInWarehouseAfterBeingAddedToEvent);
+router.post("/item-out-warehouse", authorizePermission("inventory", "update"), updateItemInWarehouseAfterBeingAddedToEvent);
 
 //updateItemInWarehouseAfterBeingAddedToEvent
 // Borrar un ítem. El parámetro está acotado a DÍGITOS a propósito.
@@ -149,13 +160,13 @@ router.post("/item-out-warehouse", validateJWT, checkTokenVersion, authorizePerm
 // El handler no usa el parámetro; esta ruta es un duplicado de /delete-item.
 // Se puede borrar del todo cuando las métricas confirmen que nadie llama a la
 // forma numérica.
-router.post("/:id(\\d+)", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
+router.post("/:id(\\d+)", authorizePermission("inventory", "delete"), deleteItem);
 
 //delete item in inventory
-router.post("/delete-item", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteItem);
+router.post("/delete-item", authorizePermission("inventory", "delete"), deleteItem);
 
 //bulk delete items
-router.post("/delete-bulk-items", validateJWT, checkTokenVersion, authorizePermission("inventory", "delete"), deleteBulkItems);
+router.post("/delete-bulk-items", authorizePermission("inventory", "delete"), deleteBulkItems);
 
 //consulting item inv assigned event table
 router.post(
@@ -170,10 +181,10 @@ router.post("/search-inventory", searchingInventoryTracking);
 router.get("/search-inventory", searchingGetInventoryTracking);
 
 //get item info
-router.post("/check-item", validateJWT, checkingItem);
+router.post("/check-item", checkingItem);
 
 //get current inventory state
-router.get("/check-inventory/:company_id", validateJWT, checkingInventoryCurrentState);
+router.get("/check-inventory/:company_id", checkingInventoryCurrentState);
 
 //get fragment data
 router.get("/fragment-data", fragmentData);
@@ -200,7 +211,7 @@ router.post(
 // OBSOLETA a favor de /inventory-page (arriba), que pagina con allowlist de
 // filtros, hasMore y columnas explícitas. Se le añade el token porque al quitar
 // la sombra del catch-all `/:id` esta ruta vuelve a ser alcanzable.
-router.post("/inventory-pagination", validateJWT, checkTokenVersion, consultingCompanyInventoryWithPagination);
+router.post("/inventory-pagination", consultingCompanyInventoryWithPagination);
 
 //company inventory based on location and sublocation
 router.post(
@@ -215,8 +226,6 @@ router.post(
 // could run arbitrary statements against production. Do not remove these.
 router.post(
   "/inventory-based-on-submitted-parameters",
-  validateJWT,
-  checkTokenVersion,
   consultingCompanyInventoryBasedOnSubmittedParameters
 );
 
@@ -225,8 +234,6 @@ router.post(
 // also changing which namespace they post to.
 router.post(
   "/inventory-query",
-  validateJWT,
-  checkTokenVersion,
   runNamedInventoryQuery
 );
 
@@ -235,14 +242,13 @@ router.post(
 // three independent transactions.
 router.post(
   "/return-event-devices",
-  validateJWT,
-  checkTokenVersion,
   returnEventDevicesToWarehouse
 );
 
 //get inventory company based on location and sublocation
 router.post("/get-inventory-company", getGroupedItemInventory);
 
-router.post("/retrieve-item-data", validateJWT, retrieveItemData);
+router.post("/retrieve-item-data", retrieveItemData);
 
 module.exports = router;
+module.exports.PUBLIC_ROUTES = PUBLIC_ROUTES;

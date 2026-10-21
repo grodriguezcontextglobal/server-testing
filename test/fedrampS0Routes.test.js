@@ -46,11 +46,13 @@ const res = () => {
 };
 const call = async (fn, body) => { const r = res(); await fn({ body }, r); return r; };
 
+const { effectiveChain } = require('./helpers/effectiveChain');
+
+// Cadena efectiva: incluye el router.use de los routers que deniegan por defecto.
 const handlersOf = (routerPath, method, routePath) => {
-  const router = require(routerPath);
-  const layer = router.stack.find((l) => l.route?.path === routePath && l.route.methods[method]);
-  assert.ok(layer, `${method.toUpperCase()} ${routePath} debe existir`);
-  return layer.route.stack.map((l) => l.handle);
+  const handlers = effectiveChain(require(routerPath), method, routePath);
+  assert.ok(handlers, `${method.toUpperCase()} ${routePath} debe existir`);
+  return handlers;
 };
 
 // ── rutas ───────────────────────────────────────────────────────────────────

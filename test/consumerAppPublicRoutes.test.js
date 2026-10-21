@@ -41,18 +41,7 @@ const CONSUMER_APP_ROUTES = [
 
 const root = path.resolve(__dirname, '..');
 
-/** Cadena efectiva: router.use previos + la propia ruta. */
-function effectiveChain(router, method, routePath) {
-  const index = router.stack.findIndex(
-    (l) => l.route && l.route.path === routePath && l.route.methods[method.toLowerCase()]
-  );
-  if (index === -1) return null;
-  const routerLevel = router.stack
-    .slice(0, index)
-    .filter((l) => !l.route && l.regexp && l.regexp.fast_slash)
-    .map((l) => l.handle);
-  return [...routerLevel, ...router.stack[index].route.stack.map((l) => l.handle)];
-}
+const { effectiveChain } = require('./helpers/effectiveChain');
 
 for (const [file, method, routePath, where] of CONSUMER_APP_ROUTES) {
   test(`app del consumidor: ${method} ${file.split('/').pop()}${routePath} sigue sin exigir sesión (${where})`, () => {

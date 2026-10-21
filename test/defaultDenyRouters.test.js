@@ -15,7 +15,7 @@ process.env.STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'sk_test_placeh
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const DEFAULT_DENY = ['../routes/receivers', '../mysql/routes/events', '../mysql/routes/company'];
+const DEFAULT_DENY = ['../routes/receivers', '../mysql/routes/events', '../mysql/routes/company', '../mysql/routes/item'];
 
 for (const modulePath of DEFAULT_DENY) {
   const router = require(modulePath);
