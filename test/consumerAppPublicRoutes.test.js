@@ -37,6 +37,7 @@ const CONSUMER_APP_ROUTES = [
   ['routes/document', 'POST', '/download/documentUrl', 'MainDocument.jsx:49'],
   ['routes/nodeMailer', 'POST', '/confirmation-account', 'ConsumerInitialForm: correo de confirmación'],
   ['routes/receivers', 'POST', '/receiver-assigned-list', 'OrderFormat.jsx: equipos asignados'],
+  ['routes/event', 'POST', '/event-list', 'Home, DeviceSelection, AuthenticationLogin: carga el evento por _id'],
 ];
 
 const root = path.resolve(__dirname, '..');

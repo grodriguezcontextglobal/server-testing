@@ -7,12 +7,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { validateJWT } = require('../middlewares/validate-jwt');
 
-function handlers(router, method, routePath) {
-  const layer = router.stack.find(
-    (l) => l.route && l.route.path === routePath && l.route.methods[method],
-  );
-  return layer ? layer.route.stack.map((l) => l.handle) : null;
-}
+// Cadena efectiva: incluye el router.use de los routers que deniegan por defecto.
+const { effectiveChain } = require('./helpers/effectiveChain');
+const handlers = (router, method, routePath) => effectiveChain(router, method, routePath);
 
 const cases = [
   ['../routes/document', 'patch', '/:id'],
