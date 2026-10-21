@@ -165,9 +165,11 @@ router.post("/folders", canManage, getFolders);
 router.get("/folder/:id", canManage, getFolderByID);
 router.put("/folder/:id", canManage, updateFolder);
 router.delete("/folder/:id", canManage, deleteFolder);
+// Crear una verificación (el contrato que alguien firmará) es una acción de
+// staff: el dashboard la llama siempre con sesión (FedRAMP P1.1, 2026-10-21).
 router.post(
   "/verification/staff_member/signed_document",
-  publicViewer,
+  canManage,
   createStaffMemberVerification
 );
 router.post(
@@ -184,7 +186,7 @@ router.patch(
 //verification consumer contract
 router.post(
   "/verification/consumer_member/signed_document",
-  publicViewer,
+  canManage,
   createConsumerVerification
 );
 // /display-contracts del consumidor: sesión de staff o token del enlace del
@@ -215,18 +217,38 @@ router.patch(
   addSignatureToConsumerDocument
 );
 
-router.post("/verification/member/signed_document", publicViewer, createMemberVerification);
+router.post("/verification/member/signed_document", canManage, createMemberVerification);
 
+// Ningún cliente las llama (clasificación del 2026-10-14): con sesión hasta que
+// un flujo público las necesite, y entonces con enlace firmado, como las del
+// consumidor.
 router.post(
   "/verification/member/check_signed_document",
-  publicViewer,
+  canManage,
   memberVerificationSignedDocumentForAssignmentDevices
 );
 
 router.patch(
   "/verification/member/signing_document",
-  publicViewer,
+  canManage,
   addSignatureToMemberDocument
 );
 
+// Rutas que responden sin sesión, cada una con su motivo. Este router no puede
+// usar router.use(validateJWT) delante: GET /:id es pública y capturaría /types
+// y /triggers. test/documentRouterGuards.test.js exige que toda ruta que no
+// esté aquí lleve validateJWT.
+const PUBLIC_ROUTES = [
+  "GET /:id", // el consumidor o tutor ve el documento antes de firmarlo
+  "GET /download/:documentId/:userId", // ídem, descarga
+  "POST /download/documentUrl", // app del consumidor + /display-contracts (contractLinkGate)
+  "POST /verification/consumer_member/check_signed_document", // /display-contracts (contractLinkGate)
+  "PATCH /verification/consumer_member/signing_document", // /display-contracts (contractLinkGate, gasta el token)
+  // Página pública StaffMember.jsx. SIN enlace firmado todavía: quien conozca
+  // los ids puede consultar y firmar por un miembro de staff. Pendiente.
+  "POST /verification/staff_member/check_signed_document",
+  "PATCH /verification/staff_member/signing_document",
+];
+
 module.exports = router;
+module.exports.PUBLIC_ROUTES = PUBLIC_ROUTES;

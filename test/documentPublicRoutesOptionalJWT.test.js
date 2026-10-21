@@ -17,19 +17,18 @@ function handlers(method, routePath) {
   return layer ? layer.route.stack.map((l) => l.handle) : null;
 }
 
+// Desde 2026-10-21 (FedRAMP P1.1) ya no están aquí: las tres de crear una
+// verificación (*/signed_document, el dashboard las llama con sesión) y
+// member/check_signed_document y member/signing_document (nadie las llama).
+// Ver test/documentRouterGuards.test.js y la clasificación del 2026-10-14.
 const PUBLIC_ROUTES = [
   ['get', '/:id'],
   ['get', '/download/:documentId/:userId'],
   ['post', '/download/documentUrl'],
-  ['post', '/verification/staff_member/signed_document'],
   ['post', '/verification/staff_member/check_signed_document'],
   ['patch', '/verification/staff_member/signing_document'],
-  ['post', '/verification/consumer_member/signed_document'],
   ['post', '/verification/consumer_member/check_signed_document'],
   ['patch', '/verification/consumer_member/signing_document'],
-  ['post', '/verification/member/signed_document'],
-  ['post', '/verification/member/check_signed_document'],
-  ['patch', '/verification/member/signing_document'],
 ];
 
 for (const [method, routePath] of PUBLIC_ROUTES) {
