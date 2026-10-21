@@ -61,7 +61,7 @@ const jwtPath = require.resolve('../helpers/jwt');
 require.cache[jwtPath] = {
   id: jwtPath, filename: jwtPath, loaded: true,
   exports: {
-    generateJWT: async (uid, name, tokenVersion, rememberMe, sqlStaffId) =>
+    generateJWT: async (uid, name, tokenVersion, sqlStaffId) =>
       `token::${uid}::${sqlStaffId}`,
   },
 };

@@ -130,7 +130,7 @@ en la instalación; el resto es teclear URLs.
 
 `/api/metrics` (`index.js:240`) y `/api/jobs/stats` (`routes/jobs.js:24`) exigen
 `validateJWT + requirePlatformRead`, y `helpers/jwt.js:11` emite tokens de **12 h**
-(30 días con `rememberMe`). Un bearer copiado en la configuración de Kuma
+(sin opción de 30 días desde 2026-10-21). Un bearer copiado en la configuración de Kuma
 **empieza a dar 401 a las 12 horas** y genera una alerta falsa — que es peor que
 no tener alerta, porque enseña a ignorarlas.
 

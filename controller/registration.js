@@ -260,7 +260,7 @@ const registerNewUserAndCompany = async (request, response) => {
     // el token de enrolamiento en vez de sesión (ver admin.js § loginUser).
     const auth = isMfaRequired()
       ? { mfaSetupRequired: true, mfaSetupToken: await generateMfaSetupToken(adminUser.id) }
-      : { token: await generateJWT(adminUser.id, adminUser.name, adminUser.tokenVersion, false, sqlStaffId) };
+      : { token: await generateJWT(adminUser.id, adminUser.name, adminUser.tokenVersion, sqlStaffId) };
 
     return response.status(201).json({
       ok: true,

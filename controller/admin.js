@@ -7,7 +7,7 @@ const jwt = require("jsonwebtoken");
 // Los hashes son compatibles en ambos sentidos ($2a$/$2b$): no hay que rehashear.
 const bcrypt = require("bcrypt");
 const AdminUser = require("../models/AdminUser");
-const { generateJWT } = require("../helpers/jwt");
+const { generateJWT, SESSION_MAX_SECONDS } = require("../helpers/jwt");
 const getConnection = require("../mysql/database/config");
 const StripeTransaction = require("../models/StripeTransaction");
 const { clientRedis } = require("../database/cacheMemoryConfig");
@@ -106,7 +106,7 @@ const createAdminUser = async (request, response = express.response) => {
 };
 
 const loginUser = async (request, response) => {
-  const { email, password, rememberMe, forceLogin, mfaCode } = request.body;
+  const { email, password, forceLogin, mfaCode } = request.body;
   try {
     // Contador de intentos fallidos (AC-7). Sin Redis no se bloquea: ver
     // helpers/loginAttempts.js.
@@ -222,7 +222,8 @@ const loginUser = async (request, response) => {
     const redis = await clientRedis();
     const sessionKey = `staff_session:${adminUser.id ?? adminUser.uid}`;
     const ownerKey = `${sessionKey}:owner`;
-    const ttlSeconds = rememberMe ? 30 * 24 * 60 * 60 : 12 * 60 * 60;
+    // Igual que el token: 12 h desde el login, sin opción de 30 días (AC-12).
+    const ttlSeconds = SESSION_MAX_SECONDS;
 
     // Build a simple fingerprint (UA + IP + user ID)
     const userAgent = request.headers["user-agent"] || "Unknown";
@@ -289,7 +290,6 @@ const loginUser = async (request, response) => {
         adminUser.id,
         adminUser.name,
         adminUser.tokenVersion,
-        rememberMe,
         sqlStaffId
       );
     } catch (e) {
@@ -800,7 +800,15 @@ const renewToken = async (request, response = express.response) => {
     }
   }
 
-  const token = await generateJWT(uid, name, request.tokenVersion, false, sqlStaffId);
+  // Conserva la hora del login: renovar no alarga la sesión más allá de 12 h.
+  let token;
+  try {
+    token = await generateJWT(uid, name, request.tokenVersion, sqlStaffId, {
+      authTime: request.authTime,
+    });
+  } catch {
+    return response.status(401).json({ ok: false, msg: "Session expired. Log in again." });
+  }
 
   return response.json({
     ok: true,
