@@ -130,7 +130,9 @@ router.patch("/update-password", updatePassword);
 router.post("/verify-password", validateJWT, checkTokenVersion, verifyPassword);
 
 //post receivers per user per transaction
-router.post("/receiver-assignation", addReceiverToTransaction);
+// Con sesión (FedRAMP P1.1, 2026-10-21): el dashboard es el único que la llama,
+// siempre con sesión; la misma de /api/receiver/receiver-assignation.
+router.post("/receiver-assignation", validateJWT, checkTokenVersion, addReceiverToTransaction);
 
 //check paymentIntent was used for receivers
 // (movida arriba, por encima de GET /:id — ver el comentario allí)
