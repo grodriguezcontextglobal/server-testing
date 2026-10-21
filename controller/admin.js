@@ -18,6 +18,12 @@ const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
 const {
+  getLockoutRemaining,
+  recordLoginFailure,
+  clearLoginFailures,
+} = require("../helpers/loginAttempts");
+const { isAcceptablePassword, passwordPolicyMessage } = require("../helpers/passwordPolicy");
+const {
   generatePasswordResetToken,
   readPasswordResetUid,
   isValidPasswordResetToken,
@@ -101,9 +107,54 @@ const createAdminUser = async (request, response = express.response) => {
 const loginUser = async (request, response) => {
   const { email, password, rememberMe, forceLogin, mfaCode } = request.body;
   try {
+    // Contador de intentos fallidos (AC-7). Sin Redis no se bloquea: ver
+    // helpers/loginAttempts.js.
+    let attemptsStore = null;
+    try {
+      attemptsStore = await clientRedis();
+    } catch {}
+
+    const lockedFor = await getLockoutRemaining(attemptsStore, email);
+    if (lockedFor > 0) {
+      response.set?.("Retry-After", String(lockedFor));
+      return response.status(429).json({
+        ok: false,
+        msg: "Too many failed sign-in attempts. Try again later.",
+        accountLocked: true,
+        retryAfter: lockedFor,
+      });
+    }
+
+    // Todo login fallido se registra (AU-2) y suma al contador. Si con este
+    // fallo la cuenta queda bloqueada, la respuesta ya es la del bloqueo.
+    const failLogin = async (reason, user, status, body) => {
+      const { locked, retryAfter } = await recordLoginFailure(attemptsStore, email);
+      logger.warn("Admin login failed", { email, reason, ip: request.ip, locked });
+      await logStaffActivity({
+        staff_member_id: user?.id ?? null,
+        actor_type: user ? "staff" : "anonymous",
+        action: "LOGIN_FAILED",
+        target_model: "AdminUser",
+        target_id: user?.id,
+        details: { email, reason, locked },
+        ip_address: request.ip,
+        device_info: request.headers["user-agent"],
+      });
+      if (locked) {
+        response.set?.("Retry-After", String(retryAfter));
+        return response.status(429).json({
+          ok: false,
+          msg: "Too many failed sign-in attempts. Try again later.",
+          accountLocked: true,
+          retryAfter,
+        });
+      }
+      return response.status(status).json(body);
+    };
+
     let adminUser = await AdminUser.findOne({ email }).select("+password");
     if (!adminUser) {
-      return response.status(400).json({
+      return failLogin("unknown_user", null, 400, {
         ok: false,
         msg: "User is not found",
       });
@@ -111,7 +162,7 @@ const loginUser = async (request, response) => {
     //confirm password
     const validPassword = await bcrypt.compare(password, adminUser.password);
     if (!validPassword) {
-      return response.status(400).json({
+      return failLogin("invalid_password", adminUser, 400, {
         ok: false,
         msg: "You have entered an invalid username or password",
       });
@@ -153,12 +204,14 @@ const loginUser = async (request, response) => {
       });
 
       if (!verified) {
-        return response.status(400).json({
+        return failLogin("invalid_mfa_code", adminUser, 400, {
           ok: false,
           msg: "Invalid MFA code",
         });
       }
     }
+
+    await clearLoginFailures(attemptsStore, email);
 
     // Enforce single active session using Redis, with reclaim/force-login
     const redis = await clientRedis();
@@ -780,10 +833,10 @@ const updatePassword = async (request, response) => {
     const resetUid = withLink ? readPasswordResetUid(resetToken) : null;
     const byUid = typeof uid === "string" && isValidObjectId(uid);
     const byEmail = typeof email === "string" && email.length > 0;
-    if ((!withLink && !byUid && !byEmail) || typeof password !== "string" || password.length < 6) {
+    if ((!withLink && !byUid && !byEmail) || !isAcceptablePassword(password)) {
       return response.status(400).json({
         ok: false,
-        msg: "Email (or uid) and a password of at least 6 characters are required.",
+        msg: `Email (or uid) and a valid password are required. ${passwordPolicyMessage}`,
       });
     }
     const filter = withLink ? { _id: resetUid } : byUid ? { _id: uid } : { email };

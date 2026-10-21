@@ -6,6 +6,7 @@
 const { Router } = require("express");
 const router = Router();
 const { check } = require("express-validator");
+const { isAcceptablePassword, passwordPolicyMessage } = require("../helpers/passwordPolicy");
 const {
   renewToken,
   createAdminUser,
@@ -62,9 +63,9 @@ router.post(
     //middelwares para validar
     check("name", "Name must be provided").not().isEmpty(),
     check("email", "Email must be provided").isEmail(),
-    check("password", "Password must have 6 charaters or more").isLength({
-      min: 6,
-    }),
+    // Política de alta/cambio (IA-5). El login de abajo sigue aceptando 6: las
+    // contraseñas anteriores más cortas tienen que poder entrar.
+    check("password", passwordPolicyMessage).custom(isAcceptablePassword),
     validateFields,
   ],
   createAdminUser

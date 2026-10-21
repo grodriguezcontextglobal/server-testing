@@ -75,30 +75,37 @@ const code = () => speakeasy.totp({ secret: SECRET, encoding: 'base32' });
 beforeEach(reset);
 
 test('update-password: con el código MFA correcto cambia la contraseña, invalida tokens y borra la sesión', async () => {
-  const r = await call({ email: 'mfa@a.com', password: 'nueva123', mfaCode: code() });
+  const r = await call({ email: 'mfa@a.com', password: 'nueva-clave-123', mfaCode: code() });
   assert.equal(r.code, 201);
   assert.equal(calls.updates.length, 1);
   const { update } = calls.updates[0];
-  assert.ok(update.$set.password && update.$set.password !== 'nueva123', 'se guarda el hash, no la contraseña');
+  assert.ok(update.$set.password && update.$set.password !== 'nueva-clave-123', 'se guarda el hash, no la contraseña');
   assert.deepEqual(update.$inc, { tokenVersion: 1 });
   assert.deepEqual(calls.redisDel, [`staff_session:${U}`, `staff_session:${U}:owner`]);
 });
 
+test('update-password: una contraseña de menos de 12 caracteres da 400 y no cambia nada (IA-5)', async () => {
+  const r = await call({ email: 'mfa@a.com', password: 'nueva123', mfaCode: code() });
+  assert.equal(r.code, 400);
+  assert.match(r.body.msg, /12/);
+  assert.equal(calls.updates.length, 0);
+});
+
 test('update-password: solo con el email (como antes) da 403 mfaRequired y no cambia nada', async () => {
-  const r = await call({ email: 'mfa@a.com', password: 'nueva123' });
+  const r = await call({ email: 'mfa@a.com', password: 'nueva-clave-123' });
   assert.equal(r.code, 403);
   assert.equal(r.body.mfaRequired, true);
   assert.equal(calls.updates.length, 0);
 });
 
 test('update-password: código MFA incorrecto da 400 y no cambia nada', async () => {
-  const r = await call({ email: 'mfa@a.com', password: 'nueva123', mfaCode: '000000' });
+  const r = await call({ email: 'mfa@a.com', password: 'nueva-clave-123', mfaCode: '000000' });
   assert.equal(r.code, 400);
   assert.equal(calls.updates.length, 0);
 });
 
 test('update-password: email desconocido responde igual que un código incorrecto', async () => {
-  const r = await call({ email: 'nadie@a.com', password: 'nueva123', mfaCode: '123456' });
+  const r = await call({ email: 'nadie@a.com', password: 'nueva-clave-123', mfaCode: '123456' });
   assert.equal(r.code, 400);
   assert.equal(r.body.msg, 'Invalid email or MFA code');
   assert.equal(calls.updates.length, 0);
@@ -106,7 +113,7 @@ test('update-password: email desconocido responde igual que un código incorrect
 
 test('update-password: cuenta sin MFA da 403 mfaSetupRequired (activarla y reenviar), con o sin código', async () => {
   for (const mfaCode of [undefined, '123456']) {
-    const r = await call({ email: 'nomfa@a.com', password: 'nueva123', mfaCode });
+    const r = await call({ email: 'nomfa@a.com', password: 'nueva-clave-123', mfaCode });
     assert.equal(r.code, 403);
     assert.equal(r.body.mfaSetupRequired, true);
     assert.equal(r.body.mfaRequired, undefined);
@@ -117,7 +124,7 @@ test('update-password: cuenta sin MFA da 403 mfaSetupRequired (activarla y reenv
 });
 
 test('update-password: email desconocido sin código pide el código, igual que una cuenta con MFA', async () => {
-  const r = await call({ email: 'nadie@a.com', password: 'nueva123' });
+  const r = await call({ email: 'nadie@a.com', password: 'nueva-clave-123' });
   assert.equal(r.code, 403);
   assert.equal(r.body.mfaRequired, true);
 });
@@ -131,14 +138,14 @@ test('update-password: contraseña ausente o corta da 400', async () => {
 });
 
 test('update-password: el enlace del reset puede identificar la cuenta por uid', async () => {
-  const r = await call({ uid: U, password: 'nueva123', mfaCode: code() });
+  const r = await call({ uid: U, password: 'nueva-clave-123', mfaCode: code() });
   assert.equal(r.code, 201);
   assert.equal(calls.updates[0].id, U);
 });
 
 test('update-password: un objeto como email o uid (filtro de Mongo) se rechaza con 400', async () => {
   for (const body of [{ email: { $ne: null } }, { uid: { $ne: null } }]) {
-    const r = await call({ ...body, password: 'nueva123', mfaCode: code() });
+    const r = await call({ ...body, password: 'nueva-clave-123', mfaCode: code() });
     assert.equal(r.code, 400);
   }
   assert.equal(calls.updates.length, 0);
@@ -150,7 +157,7 @@ const { verifyMfaSetupToken } = require('../helpers/mfaSetupToken');
 
 test('update-password: cuenta sin MFA CON enlace firmado recibe mfaSetupToken de esa cuenta', async () => {
   const resetToken = await generatePasswordResetToken(users['nomfa@a.com']);
-  const r = await call({ resetToken, password: 'nueva123' });
+  const r = await call({ resetToken, password: 'nueva-clave-123' });
   assert.equal(r.code, 403);
   assert.equal(r.body.mfaSetupRequired, true);
   assert.equal(verifyMfaSetupToken(r.body.mfaSetupToken), N);
@@ -159,7 +166,7 @@ test('update-password: cuenta sin MFA CON enlace firmado recibe mfaSetupToken de
 
 test('update-password: con enlace firmado y código MFA cambia la contraseña (la cuenta sale del token)', async () => {
   const resetToken = await generatePasswordResetToken(users['mfa@a.com']);
-  const r = await call({ resetToken, email: 'nomfa@a.com', password: 'nueva123', mfaCode: code() });
+  const r = await call({ resetToken, email: 'nomfa@a.com', password: 'nueva-clave-123', mfaCode: code() });
   assert.equal(r.code, 201);
   assert.equal(calls.updates[0].id, U);
 });
@@ -168,7 +175,7 @@ test('update-password: enlace falso, ajeno o ya usado da 400 resetLinkInvalid y 
   const used = await generatePasswordResetToken(users['nomfa@a.com']);
   users['nomfa@a.com'].password = 'hash-nuevo'; // la contraseña ya cambió con ese enlace
   for (const resetToken of ['basura', { $ne: null }, used]) {
-    const r = await call({ resetToken, password: 'nueva123' });
+    const r = await call({ resetToken, password: 'nueva-clave-123' });
     assert.equal(r.code, 400, String(resetToken));
     assert.equal(r.body.resetLinkInvalid, true);
     assert.equal(r.body.mfaSetupToken, undefined);
@@ -196,7 +203,7 @@ test('reset-admin-password: el servidor arma el enlace con un token firmado y de
   assert.equal(url.pathname, '/reset-password');
   assert.equal(url.searchParams.get('uid'), N);
   assert.equal(req.body.link, undefined);
-  const r = await call({ resetToken: url.searchParams.get('token'), password: 'nueva123' });
+  const r = await call({ resetToken: url.searchParams.get('token'), password: 'nueva-clave-123' });
   assert.ok(r.body.mfaSetupToken, 'el token del correo abre el enrolamiento');
 });
 
