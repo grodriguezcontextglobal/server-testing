@@ -18,36 +18,36 @@ Contrapartida tipada: **`docs/api-payloads.d.ts`** (interfaces + mapa `ApiEndpoi
 - Los tipos NO están en esta tabla a propósito: viven en el `.d.ts`, donde se marca que
   son inferidos.
 
-Cobertura: **457 de 507** endpoints montados tienen payload detectado.
+Cobertura: **454 de 508** endpoints montados tienen payload detectado.
 Routers presentes en el repo pero **no montados** en `index.js` (no existen en runtime): `routes/twilio.js`, `mysql/routes/location_manager.js`, `routes/cloudinary.js`.
 
 ## `/api/admin`
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DELETE | `/api/admin/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "delete")` | `controller/admin.js:629` |
-| GET | `/api/admin/:id` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:821` |
+| DELETE | `/api/admin/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "delete")` | `controller/admin.js:734` |
+| GET | `/api/admin/:id` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:934` |
 | GET | `/api/admin/activity-logs/vocabulary` | — | — | — | — | `validateJWT` `checkTokenVersion` | `controller/staffActivityLog.js:286` |
 | GET | `/api/admin/activity-logs` | — | — | — | `action` `actor_type` `consumer` `end_date` `event_id` `include_automatic` `item_id` `limit` `member_id` `page` `serial_number` `source` `staff_member_id` `start_date` `target_id` `target_model` | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/staffActivityLog.js:228` |
 | POST | `/api/admin/activity-logs` | `action` `target_model` | `details` `target_id` | — | — | `validateJWT` `checkTokenVersion` | `controller/staffActivityLog.js:276` |
-| PATCH | `/api/admin/admin-user/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "update")` | `controller/admin.js:587` |
-| GET | `/api/admin/check-online-status/:email` | — | — | `email` | — | — | `controller/admin.js:994` |
-| POST | `/api/admin/invalidate-all-sessions` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `optionalJWT` | `controller/admin.js:1208` |
-| POST | `/api/admin/login` | `mfaCode` | `email` `forceLogin` `password` `rememberMe` | — | — | `validateFields` | `controller/admin.js:101` |
-| POST | `/api/admin/logout` | — | `uid` | — | — | — | `controller/admin.js:375` |
-| POST | `/api/admin/manually_logout` | — | `uid` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `controller/admin.js:426` |
-| POST | `/api/admin/mfa/disable` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` | `controller/admin.js:1092` |
-| POST | `/api/admin/mfa/generate` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateMfaEnrollment` | `controller/admin.js:1027` |
-| POST | `/api/admin/mfa/verify` | — | `token` | — | — | `validateMfaEnrollment` | `controller/admin.js:1061` |
-| POST | `/api/admin/new_admin_user` | — | `email` `imageProfile` `lastName` `name` `password` `phone` | — | — | `check("email", "Email must be provided").isEmail()` `validateFields` | `controller/admin.js:31` |
-| PATCH | `/api/admin/profile/:id` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | `id` | — | `validateJWT` | `controller/admin.js:488` |
+| PATCH | `/api/admin/admin-user/:id` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "update")` | `controller/admin.js:663` |
+| GET | `/api/admin/check-online-status/:email` | — | — | `email` | — | — | `controller/admin.js:1107` |
+| POST | `/api/admin/invalidate-all-sessions` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` `checkTokenVersion` `requireSuperUser` | `controller/admin.js:1321` |
+| POST | `/api/admin/login` | `mfaCode` | `email` `forceLogin` `password` | — | — | `validateFields` | `controller/admin.js:108` |
+| POST | `/api/admin/logout` | — | `uid` | — | — | — | `controller/admin.js:433` |
+| POST | `/api/admin/manually_logout` | — | `uid` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `controller/admin.js:484` |
+| POST | `/api/admin/mfa/disable` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` | `controller/admin.js:1205` |
+| POST | `/api/admin/mfa/generate` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateMfaEnrollment` | `controller/admin.js:1140` |
+| POST | `/api/admin/mfa/verify` | — | `token` | — | — | `validateMfaEnrollment` | `controller/admin.js:1174` |
+| POST | `/api/admin/new_admin_user` | — | `email` `imageProfile` `lastName` `name` `password` `phone` | — | — | `check("email", "Email must be provided").isEmail()` `check("password", passwordPolicyMessage).custom(isAcceptablePassword)` `validateFields` | `controller/admin.js:38` |
+| PATCH | `/api/admin/profile/:id` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | `id` | — | `validateJWT` | `controller/admin.js:546` |
 | GET | `/api/admin/protected` | — | — | — | — | `validateJWT` | `middlewares/checkValidateToken.js:4` |
 | POST | `/api/admin/receiver-assignation` | — | `active` `adminUser` `company` `device` `eventSelected` `event_id` `paymentIntent` `provider` `timeStamp` `user` ⚠️ el body se pasa completo a `new Receivers()`: los campos son los del esquema `models/Receivers.js` | — | — | — | `controller/receiver.js:24` |
 | GET | `/api/admin/receiver-assigned` | — | `paymentIntent` | — | — | `validateJWT` | `controller/receiver.js:47` |
-| GET | `/api/admin/renew` | — | — | — | — | `validateJWT` | `controller/admin.js:665` |
-| PATCH | `/api/admin/update-password` | `mfaCode` | `email` `password` `resetToken` `uid` | — | — | — | `controller/admin.js:726` |
-| POST | `/api/admin/users` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | — | `controller/admin.js:821` |
-| POST | `/api/admin/verify-password` | `password` | — | — | — | `validateJWT` `checkTokenVersion` | `controller/admin.js:884` |
+| GET | `/api/admin/renew` | — | — | — | — | `validateJWT` | `controller/admin.js:770` |
+| PATCH | `/api/admin/update-password` | `mfaCode` | `email` `password` `resetToken` `uid` | — | — | — | `controller/admin.js:839` |
+| POST | `/api/admin/users` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` | `controller/admin.js:934` |
+| POST | `/api/admin/verify-password` | `password` | — | — | — | `validateJWT` `checkTokenVersion` | `controller/admin.js:997` |
 
 ## `/api/article`
 
@@ -122,7 +122,7 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | POST | `/api/consumer/stripe/create-customer` | — | `email` `name` `phoneNumber` | — | — | `optionalJWT` | `controller/stripe.js:30` |
-| POST | `/api/consumer/stripe/find-customer` | — | `email` `name` `phone` `stripeid` ⚠️ el body se usa como FILTRO Mongo en `StripeCustomer.find()`: cualquier subconjunto de los campos de `models/StripeCustomer.js` (`{}` trae todo) | — | — | `optionalJWT` | `controller/stripe.js:763` |
+| POST | `/api/consumer/stripe/find-customer` | — | `email` `name` `phone` `stripeid` ⚠️ el body se usa como FILTRO Mongo en `StripeCustomer.find()`: cualquier subconjunto de los campos de `models/StripeCustomer.js` (`{}` trae todo) | — | — | `optionalJWT` | `controller/stripe.js:771` |
 | GET | `/api/consumer/users` | — | — | — | — | `optionalJWT` | `controller/auth.js:51` |
 | POST | `/api/consumer/users` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `optionalJWT` | `controller/auth.js:51` |
 
@@ -175,9 +175,9 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| DELETE | `/api/db_consumer/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("consumer", "delete")` | `mysql/controllers/consumer.js:124` |
-| POST | `/api/db_consumer/consulting-consumer` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/consumer.js:25` |
-| POST | `/api/db_consumer/consumers_information` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/consumer.js:40` |
+| DELETE | `/api/db_consumer/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("consumer", "delete")` | `mysql/controllers/consumer.js:137` |
+| POST | `/api/db_consumer/consulting-consumer` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) | — | — | `staffSession` | `mysql/controllers/consumer.js:31` |
+| POST | `/api/db_consumer/consumers_information` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `staffSession` | `mysql/controllers/consumer.js:53` |
 | POST | `/api/db_consumer/new_consumer` | — | `email` `first_name` `last_name` `phone_number` | — | — | `optionalJWT` `requireSessionFromDashboard` | `mysql/controllers/consumer.js:6` |
 
 ## `/api/db_consumer_attending_event_record`
@@ -193,8 +193,8 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | DELETE | `/api/db_event/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `authorizePermission("event", "delete")` | `mysql/controllers/events.js:251` |
-| POST | `/api/db_event/allocate-device-container-event` | `company_id` `data` `event_id` | `company_id_nosql` `eventName` `logistic_status` `warehouse` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/items_events.js:655` |
-| POST | `/api/db_event/allocate-device-event` | `data` | `category_name` `company_id` `event_id` `item_group` `logistic_status` `warehouse` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("event", "update")` | `mysql/controllers/items_events.js:558` |
+| POST | `/api/db_event/allocate-device-container-event` | `company_id` `data` `event_id` | `company_id_nosql` `eventName` `logistic_status` `warehouse` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/items_events.js:664` |
+| POST | `/api/db_event/allocate-device-event` | `data` | `category_name` `company_id` `event_id` `item_group` `logistic_status` `warehouse` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("event", "update")` | `mysql/controllers/items_events.js:567` |
 | POST | `/api/db_event/confirm-item-return` | `company_id` `noSqlEventName` `serial_numbers` `user_id` | `location` `noSqlCompanyId` `sub_location` | — | — | — | `mysql/controllers/item.js:3987` |
 | POST | `/api/db_event/consulting-event` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/events.js:146` |
 | POST | `/api/db_event/device-final-status-refactored` | — | `allInventoryOfEvent` `eventId` `groupingDevicesFromNoSQL` `update_at` | — | — | — | `mysql/controllers/item.js:1226` |
@@ -205,17 +205,17 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | POST | `/api/db_event/event-count/close` | — | `company_id` `event_id` `scanned` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "update")` | `mysql/controllers/eventCount.js:242` |
 | POST | `/api/db_event/event-count/reconcile` | — | `company_id` `event_id` `scanned` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "read")` | `mysql/controllers/eventCount.js:205` |
 | GET | `/api/db_event/event-inventory/:id` | — | — | `id` | — | — | `mysql/controllers/events.js:329` |
-| POST | `/api/db_event/event-inventory/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `mysql/controllers/items_events.js:413` |
+| POST | `/api/db_event/event-inventory/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `mysql/controllers/items_events.js:422` |
 | POST | `/api/db_event/events_company` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/events.js:212` |
 | POST | `/api/db_event/events_information` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/events.js:179` |
-| POST | `/api/db_event/inserting-items-in-event-from-container` | — | `event_id` `refDatabase` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/items_events.js:498` |
+| POST | `/api/db_event/inserting-items-in-event-from-container` | — | `event_id` `refDatabase` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/items_events.js:507` |
 | POST | `/api/db_event/inventory-based-on-submitted-parameters` | — | `query` `values` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2451` |
 | POST | `/api/db_event/inventory-query` | `queryName` | `params` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2411` |
-| POST | `/api/db_event/lock-items-for-event` | `company_id` `event_id` `items` | — | — | — | — | `mysql/controllers/items_events.js:823` |
+| POST | `/api/db_event/lock-items-for-event` | `company_id` `event_id` `items` | — | — | — | — | `mysql/controllers/items_events.js:832` |
 | POST | `/api/db_event/new_event` | — | `city_address` `company_assigned_event_id` `email_company` `event_name` `phone_number` `state_address` `street_address` `venue_name` `zip_address` | — | — | — | `mysql/controllers/events.js:33` |
 | POST | `/api/db_event/remove-item-inventory-event` | — | `category_name` `event_id` `item_group` `serial_number` | — | — | — | `mysql/controllers/items_events.js:301` |
-| POST | `/api/db_event/remove-reserved-items-for-event` | — | `company_id` `event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:917` |
-| POST | `/api/db_event/reserve-items-for-event` | — | `company_id` `items` | — | — | `validateJWT` `authorizePermission("event", "update")` | `mysql/controllers/items_events.js:875` |
+| POST | `/api/db_event/remove-reserved-items-for-event` | — | `company_id` `event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:926` |
+| POST | `/api/db_event/reserve-items-for-event` | — | `company_id` `items` | — | — | `validateJWT` `authorizePermission("event", "update")` | `mysql/controllers/items_events.js:884` |
 | POST | `/api/db_event/retrieve-item-group-location-quantity` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | `validateJWT` `authorizePermission("event", "read")` | `mysql/controllers/item.js:1896` |
 | POST | `/api/db_event/retrieve-item-group-quantity-with-format` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/item.js:2152` |
 | POST | `/api/db_event/retrieve-item-location-quantity-full-details` | `company_id` `item_group` `location` `quantity` | `category_name` `enableAssignFeature` `serial_number` `warehouse` | — | — | — | `mysql/controllers/item.js:1825` |
@@ -257,11 +257,11 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | POST | `/api/db_item/bulk-item-from-spreadsheet` | — | `company` `company_id` `defaults` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/inventoryImport.js:48` |
 | POST | `/api/db_item/bulk-item` | `company_id` `max_serial_number` `min_serial_number` | `category_name` `location` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "create")` | `mysql/controllers/item.js:433` |
 | GET | `/api/db_item/check-company-has-inventory` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1728` |
-| GET | `/api/db_item/check-inventory/:company_id` | — | — | `company_id` | — | `validateJWT` | `mysql/controllers/items_events.js:357` |
+| GET | `/api/db_item/check-inventory/:company_id` | — | — | `company_id` | — | `validateJWT` | `mysql/controllers/items_events.js:366` |
 | POST | `/api/db_item/check-item` | — | `preference` `role` ⚠️ rest-spread `...bodyFilters`: acepta campos extra | — | — | `validateJWT` | `mysql/controllers/item.js:1313` |
-| POST | `/api/db_item/consulting-item` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/item.js:584` |
-| POST | `/api/db_item/consulting-row-item-assigned-event` | — | `company_assigned_event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:438` |
-| POST | `/api/db_item/current-inventory` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/items_events.js:330` |
+| POST | `/api/db_item/consulting-item` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:584` |
+| POST | `/api/db_item/consulting-row-item-assigned-event` | — | `company_assigned_event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:447` |
+| POST | `/api/db_item/current-inventory` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/items_events.js:330` |
 | POST | `/api/db_item/delete-bulk-items-criteria` | `category_name` `company_id` | `item_group` `serial_number` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:4086` |
 | POST | `/api/db_item/delete-bulk-items` | `company_id` `item_ids` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:3775` |
 | POST | `/api/db_item/delete-item` | `company_id` `item_id` | — | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("inventory", "delete")` | `mysql/controllers/item.js:610` |
@@ -272,7 +272,7 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | PUT | `/api/db_item/event-items` | `company_id` `event_id` `items` `updates` | — | — | — | — | `mysql/controllers/items_events.js:205` |
 | GET | `/api/db_item/fragment-data` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `mysql/controllers/item.js:1455` |
 | POST | `/api/db_item/get-inventory-company` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | — | `mysql/controllers/item.js:1896` |
-| POST | `/api/db_item/inventory_event/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `mysql/controllers/items_events.js:413` |
+| POST | `/api/db_item/inventory_event/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `mysql/controllers/items_events.js:422` |
 | POST | `/api/db_item/inventory-based-on-location-and-sublocation` | — | `company_id` `location` `location_id` ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | `sub_location` | — | `mysql/controllers/item.js:2087` |
 | POST | `/api/db_item/inventory-based-on-submitted-parameters` | — | `query` `values` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/item.js:2451` |
 | POST | `/api/db_item/inventory-export` | — | `company_id` `filters` `search` `sortBy` `sortDir` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/inventoryExport.js:36` |
@@ -298,15 +298,15 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/api/db_lease/consulting-consumer-lease` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/lease.js:197` |
-| POST | `/api/db_lease/consulting-lease` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/lease.js:179` |
-| POST | `/api/db_lease/delete-consumer-lease-info` | — | `company_id` `consumer_member_id` `device_id` | — | — | — | `mysql/controllers/lease.js:396` |
-| POST | `/api/db_lease/delete-lease-info` | — | `company_id` `device_id` `staff_member_id` | — | — | — | `mysql/controllers/lease.js:376` |
-| POST | `/api/db_lease/new-consumer-lease` | — | `subscription_expected_return_data` `subscription_initial_date` | — | — | — | `mysql/controllers/lease.js:95` |
-| POST | `/api/db_lease/new-lease` | — | `company_id` `device_id` `location` `staff_admin_id` `staff_member_id` `subscription_expected_return_data` `verification_id` | — | — | — | `mysql/controllers/lease.js:6` |
-| POST | `/api/db_lease/status` | `company_id` | `lessee_type` `only_overdue` | — | — | `canReadInventory` | `mysql/controllers/lease.js:444` |
-| POST | `/api/db_lease/update-consumer-lease-info` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/lease.js:296` |
-| POST | `/api/db_lease/update-lease-info` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `mysql/controllers/lease.js:215` |
+| POST | `/api/db_lease/consulting-consumer-lease` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | — | — | `staffSession` | `mysql/controllers/lease.js:220` |
+| POST | `/api/db_lease/consulting-lease` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | — | — | `staffSession` | `mysql/controllers/lease.js:204` |
+| POST | `/api/db_lease/delete-consumer-lease-info` | — | `company_id` `consumer_member_id` `device_id` | — | — | `staffSession` | `mysql/controllers/lease.js:417` |
+| POST | `/api/db_lease/delete-lease-info` | — | `company_id` `device_id` `staff_member_id` | — | — | `staffSession` | `mysql/controllers/lease.js:397` |
+| POST | `/api/db_lease/new-consumer-lease` | — | `subscription_expected_return_data` `subscription_initial_date` | — | — | `staffSession` | `mysql/controllers/lease.js:95` |
+| POST | `/api/db_lease/new-lease` | — | `company_id` `device_id` `location` `staff_admin_id` `staff_member_id` `subscription_expected_return_data` `verification_id` | — | — | `staffSession` | `mysql/controllers/lease.js:6` |
+| POST | `/api/db_lease/status` | `company_id` | `lessee_type` `only_overdue` | — | — | `canReadInventory` | `mysql/controllers/lease.js:465` |
+| POST | `/api/db_lease/update-consumer-lease-info` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `staffSession` | `mysql/controllers/lease.js:317` |
+| POST | `/api/db_lease/update-lease-info` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `staffSession` | `mysql/controllers/lease.js:236` |
 
 ## `/api/db_location`
 
@@ -346,11 +346,11 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/api/db_record/checking-lease-information` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | — | `mysql/controllers/items_events.js:507` |
-| POST | `/api/db_record/checking` | — | `company_assigned_event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:438` |
+| POST | `/api/db_record/checking-lease-information` | — | — ⚠️ cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL | — | — | — | `mysql/controllers/items_events.js:516` |
+| POST | `/api/db_record/checking` | — | `company_assigned_event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:447` |
 | POST | `/api/db_record/inserting-record-refactored` | — | `dataToStoreAsRecord` `event` `groupingInventoryByGroupName` | — | — | — | `mysql/controllers/recordEvent.js:59` |
 | POST | `/api/db_record/inserting-record` | — | `activity` `category_name` `email` `event` `item_group` `payment_id` `serial_number` `status` | — | — | — | `mysql/controllers/recordEvent.js:6` |
-| POST | `/api/db_record/removing-row-item-event-record` | — | `event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:457` |
+| POST | `/api/db_record/removing-row-item-event-record` | — | `event_id` `item_id` | — | — | — | `mysql/controllers/items_events.js:466` |
 
 ## `/api/db_shipment`
 
@@ -379,8 +379,8 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/api/db_stripe/consulting-stripe` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `mysql/controllers/stripe.js:29` |
-| POST | `/api/db_stripe/new_stripe` | — | `company_id` `stripe_id` | — | — | — | `mysql/controllers/stripe.js:6` |
+| POST | `/api/db_stripe/consulting-stripe` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/stripe.js:33` |
+| POST | `/api/db_stripe/new_stripe` | — | `company_id` `stripe_id` | — | — | `validateJWT` `checkTokenVersion` | `mysql/controllers/stripe.js:6` |
 
 ## `/api/db_sub_location`
 
@@ -484,8 +484,8 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/api/image/images` | — | `category` `company` `item_group` `source` `time` ⚠️ el body se usa como FILTRO Mongo en `Image.find()`: cualquier subconjunto de los campos de `models/Image.js` (`{}` trae todo) | — | — | — | `controller/image.js:23` |
-| POST | `/api/image/new_image` | — | `category` `company` `item_group` `source` `time` ⚠️ el body se pasa completo a `new Image()`: los campos son los del esquema `models/Image.js` | — | — | — | `controller/image.js:5` |
+| POST | `/api/image/images` | — | `category` `company` `item_group` `source` `time` ⚠️ el body se usa como FILTRO Mongo en `Image.find()`: cualquier subconjunto de los campos de `models/Image.js` (`{}` trae todo) | — | — | `staffSession` | `controller/image.js:23` |
+| POST | `/api/image/new_image` | — | `category` `company` `item_group` `source` `time` ⚠️ el body se pasa completo a `new Image()`: los campos son los del esquema `models/Image.js` | — | — | `staffSession` | `controller/image.js:5` |
 
 ## `/api/inventory`
 
@@ -624,9 +624,9 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| POST | `/api/registration/accept-invitation` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `controller/registration.js:517` |
-| POST | `/api/registration/add-company` | `company` | `user` | — | — | `check("company.company_name", "company.company_name es requerido").not().isEmpty()` `check("company.website", "company.website es requerido").not().isEmpty()` `validateFields` | `controller/registration.js:302` |
-| POST | `/api/registration/new` | `company` `user` | `terms` | — | — | `check("user.lastName", "user.lastName es requerido").not().isEmpty()` `check("user.email", "user.email debe ser un email válido").isEmail()` `check("user.password", "user.password debe tener al menos 6 caracteres").isLength({ min: 6 })` `check("company.company_name", "company.company_name es requerido").not().isEmpty()` `check("company.website", "company.website es requerido").not().isEmpty()` `validateFields` | `controller/registration.js:147` |
+| POST | `/api/registration/accept-invitation` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `controller/registration.js:521` |
+| POST | `/api/registration/add-company` | `company` | `user` | — | — | `check("company.company_name", "company.company_name es requerido").not().isEmpty()` `check("company.website", "company.website es requerido").not().isEmpty()` `validateFields` | `controller/registration.js:306` |
+| POST | `/api/registration/new` | `company` `user` | `terms` | — | — | `check("user.lastName", "user.lastName es requerido").not().isEmpty()` `check("user.email", "user.email debe ser un email válido").isEmail()` `check("user.password", passwordPolicyMessage).custom(isAcceptablePassword)` `check("company.company_name", "company.company_name es requerido").not().isEmpty()` `check("company.website", "company.website es requerido").not().isEmpty()` `validateFields` | `controller/registration.js:148` |
 
 ## `/api/school`
 
@@ -641,9 +641,9 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | POST | `/api/school/consent/status` | `company_id` | `policy_type` `policy_version` | — | — | `canRead` | `mysql/controllers/school.js:1334` |
 | POST | `/api/school/consent` | `company_id` `member_id` | — | — | — | `canRead` | `mysql/controllers/school.js:1206` |
 | POST | `/api/school/dashboard` | `company_id` | — | — | — | `canRead` | `mysql/controllers/school.js:76` |
-| POST | `/api/school/event-invitations/confirm` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `publicInvitationRateLimit` | `controller/eventInvitation.js:276` |
-| POST | `/api/school/event-invitations/response` | — | `company_id` `event_id` `member_email` `member_id` `reason` `responder_email` `responder_role` `response` | — | — | `publicInvitationRateLimit` | `controller/eventInvitation.js:372` |
-| POST | `/api/school/event-invitations/send` | — | `company_id` `event_id` `member_ids` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("member", "create")` | `controller/eventInvitation.js:163` |
+| POST | `/api/school/event-invitations/confirm` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `publicInvitationRateLimit` | `controller/eventInvitation.js:365` |
+| POST | `/api/school/event-invitations/response` | — | `company_id` `event_id` `member_email` `member_id` `reason` `responder_email` `responder_role` `response` | — | — | `publicInvitationRateLimit` | `controller/eventInvitation.js:461` |
+| POST | `/api/school/event-invitations/send` | — | `company_id` `event_id` `member_ids` | — | — | `validateJWT` `checkTokenVersion` `authorizePermission("member", "create")` | `controller/eventInvitation.js:236` |
 | POST | `/api/school/guardians/add` | `company_id` `email` `first_name` `guardian_id` `last_name` `member_id` | `is_primary` `phone_number` `relationship` | — | — | `canCreate` | `mysql/controllers/school.js:498` |
 | POST | `/api/school/guardians/search` | `company_id` `email` `guardian_id` `member_id` | — | — | — | `canRead` | `mysql/controllers/school.js:603` |
 | POST | `/api/school/guardians` | `company_id` `member_id` | — | — | — | `canRead` | `mysql/controllers/school.js:465` |
@@ -672,13 +672,13 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/api/staff/__staff-search` | — | — | — | — | — | `controller/admin.js:863` |
-| POST | `/api/staff/__staff-search` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `controller/admin.js:863` |
-| GET | `/api/staff/admin-users` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `platform_observer` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:935` |
-| POST | `/api/staff/admin-users` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `platform_observer` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:935` |
-| GET | `/api/staff/consumers/search` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `controller/stripe.js:1072` |
-| PATCH | `/api/staff/edit-admin/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `validateJWT` `checkTokenVersion` `selfOrStaffUpdate` | `controller/admin.js:587` |
-| POST | `/api/staff/force-logout` | `email` | — | — | — | `tokenIfPresent` | `controller/admin.js:1119` |
+| GET | `/api/staff/__staff-search` | — | — | — | — | — | `controller/admin.js:976` |
+| POST | `/api/staff/__staff-search` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | — | `controller/admin.js:976` |
+| GET | `/api/staff/admin-users` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `platform_observer` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:1048` |
+| POST | `/api/staff/admin-users` | — | `active` `agreedPlatformConditions` `companiesAssigned` `dailySummaries` `email` `emailNotifications` `eventReminder` `imageProfile` `lastName` `mfaEnabled` `mfaSecret` `multipleCompanies` `name` `online` `password` `phone` `platform_observer` `role` `role_type` `subscriptionRenewals` `super_user` `tokenVersion` ⚠️ el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("staff", "read")` | `controller/admin.js:1048` |
+| GET | `/api/staff/consumers/search` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `controller/stripe.js:1080` |
+| PATCH | `/api/staff/edit-admin/:id` | — | — ⚠️ cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`) | `id` | — | `validateJWT` `checkTokenVersion` `selfOrStaffUpdate` | `controller/admin.js:663` |
+| POST | `/api/staff/force-logout` | `email` | — | — | — | `tokenIfPresent` | `controller/admin.js:1232` |
 
 ## `/api/staff-activity-log`
 
@@ -699,61 +699,61 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | POST | `/api/stripe/account_link` | — | `connectedAccountId` `origin` | — | — | — | `controller/stripe.js:124` |
 | POST | `/api/stripe/account_sessions` | — | `connectedAccountId` | — | — | — | `controller/stripe.js:149` |
 | POST | `/api/stripe/accounts` | — | `country` `email` | — | — | — | `controller/stripe.js:65` |
-| POST | `/api/stripe/cancel/subscriptions/:id` | — | `cancelAtPeriodEnd` `cancellationComment` | `id` | — | — | `controller/stripe.js:605` |
+| POST | `/api/stripe/cancel/subscriptions/:id` | — | `cancelAtPeriodEnd` `cancellationComment` | `id` | — | — | `controller/stripe.js:613` |
 | POST | `/api/stripe/company-account-stripe/update` | — | `connectedAccountId` ⚠️ rest-spread `...updateData`: acepta campos extra · pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `controller/stripe.js:273` |
-| POST | `/api/stripe/company-account-stripe` | — | `company` | — | — | — | `controller/stripe.js:1037` |
+| POST | `/api/stripe/company-account-stripe` | — | `company` | — | — | — | `controller/stripe.js:1045` |
 | POST | `/api/stripe/create-payment-intent-customized` | — | `receipt_email` `total` | — | — | — | `controller/stripe.js:369` |
-| POST | `/api/stripe/create-payment-intent-subscription` | — | `customerEmail` `total` | — | — | — | `controller/stripe.js:395` |
+| POST | `/api/stripe/create-payment-intent-subscription` | — | `customerEmail` `total` | — | — | — | `controller/stripe.js:400` |
 | POST | `/api/stripe/create-payment-intent` | — | `customerEmail` `customerId` `device` | — | — | `validatePublicPaymentPayload` `attachServerIdempotencyKey` | `controller/stripe.js:304` |
-| POST | `/api/stripe/create-subscriptions_no_trial` | — | `items` `period` `stripeCustomerID` | — | — | — | `controller/stripe.js:478` |
-| POST | `/api/stripe/create-subscriptions` | — | `items` `period` `stripeCustomerID` | — | — | — | `controller/stripe.js:420` |
+| POST | `/api/stripe/create-subscriptions_no_trial` | — | `items` `period` `stripeCustomerID` | — | — | — | `controller/stripe.js:486` |
+| POST | `/api/stripe/create-subscriptions` | — | `items` `period` `stripeCustomerID` | — | — | — | `controller/stripe.js:428` |
 | POST | `/api/stripe/customer` | — | `email` `name` `phoneNumber` | — | — | — | `controller/stripe.js:30` |
-| GET | `/api/stripe/customers/search` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "read")` | `controller/stripe.js:779` |
-| GET | `/api/stripe/customers` | — | `email` `name` `phone` `stripeid` ⚠️ el body se usa como FILTRO Mongo en `StripeCustomer.find()`: cualquier subconjunto de los campos de `models/StripeCustomer.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "read")` | `controller/stripe.js:763` |
-| POST | `/api/stripe/customers` | — | `email` `name` `phone` `stripeid` ⚠️ el body se usa como FILTRO Mongo en `StripeCustomer.find()`: cualquier subconjunto de los campos de `models/StripeCustomer.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "read")` | `controller/stripe.js:763` |
-| POST | `/api/stripe/internal/partial-refund` | — | `paymentIntent` `total` | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "update")` `validateRefundPayload` | `controller/stripe.js:903` |
-| POST | `/api/stripe/internal/payment-intents/:id/cancel` | — | `id` | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "update")` `validatePaymentIntentIdParam` | `controller/stripe.js:858` |
-| POST | `/api/stripe/internal/payment-intents/:id/capture` | — | `amount_to_capture` `id` | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "update")` `validatePaymentIntentIdParam` | `controller/stripe.js:833` |
-| POST | `/api/stripe/internal/refund` | — | `paymentIntent` | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "update")` `validateRefundPayload` | `controller/stripe.js:882` |
-| GET | `/api/stripe/invoices` | — | `subscriptionID` | — | — | — | `controller/stripe.js:648` |
-| POST | `/api/stripe/invoices` | — | `subscriptionID` | — | — | — | `controller/stripe.js:648` |
+| GET | `/api/stripe/customers/search` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "read")` | `controller/stripe.js:787` |
+| GET | `/api/stripe/customers` | — | `email` `name` `phone` `stripeid` ⚠️ el body se usa como FILTRO Mongo en `StripeCustomer.find()`: cualquier subconjunto de los campos de `models/StripeCustomer.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "read")` | `controller/stripe.js:771` |
+| POST | `/api/stripe/customers` | — | `email` `name` `phone` `stripeid` ⚠️ el body se usa como FILTRO Mongo en `StripeCustomer.find()`: cualquier subconjunto de los campos de `models/StripeCustomer.js` (`{}` trae todo) | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "read")` | `controller/stripe.js:771` |
+| POST | `/api/stripe/internal/partial-refund` | — | `paymentIntent` `total` | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "update")` `validateRefundPayload` `ownsBodyPaymentIntent` | `controller/stripe.js:911` |
+| POST | `/api/stripe/internal/payment-intents/:id/cancel` | — | `id` | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "update")` `validatePaymentIntentIdParam` `sameIdInUrlAndBody` `ownsBodyId` | `controller/stripe.js:866` |
+| POST | `/api/stripe/internal/payment-intents/:id/capture` | — | `amount_to_capture` `id` | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "update")` `validatePaymentIntentIdParam` `sameIdInUrlAndBody` `ownsBodyId` | `controller/stripe.js:841` |
+| POST | `/api/stripe/internal/refund` | — | `paymentIntent` | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "update")` `validateRefundPayload` `ownsBodyPaymentIntent` | `controller/stripe.js:890` |
+| GET | `/api/stripe/invoices` | — | `subscriptionID` | — | — | — | `controller/stripe.js:656` |
+| POST | `/api/stripe/invoices` | — | `subscriptionID` | — | — | — | `controller/stripe.js:656` |
 | POST | `/api/stripe/new-company-account` | — | `companyName` `ownerEmail` `ownerFirstName` `ownerLastName` | — | — | — | `controller/stripe.js:190` |
-| POST | `/api/stripe/partial-refund` | — | `paymentIntent` `total` | — | — | `canMoveCollectedMoney` `validateRefundPayload` | `controller/stripe.js:903` |
-| POST | `/api/stripe/payment_intents/:id/update-payment-method` | — | `newPaymentMethodID` `paymentIntentId` | — | — | — | `controller/stripe.js:668` |
-| GET | `/api/stripe/payment_intents/:id` | — | — | `id` | — | — | `controller/stripe.js:967` |
-| POST | `/api/stripe/payment_methods/:id/attach` | — | `customerID` | `id` | — | — | `controller/stripe.js:709` |
-| POST | `/api/stripe/payment-intents/:id/cancel` | — | `id` | — | — | `canMoveCollectedMoney` `validatePaymentIntentIdParam` | `controller/stripe.js:858` |
-| POST | `/api/stripe/payment-intents/:id/capture` | — | `amount_to_capture` `id` | — | — | `canMoveCollectedMoney` `validatePaymentIntentIdParam` | `controller/stripe.js:833` |
-| GET | `/api/stripe/payment-intents/search` | — | — | — | — | — | `controller/stripe.js:729` |
-| POST | `/api/stripe/payment-method/subscriptions/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `controller/stripe.js:689` |
-| POST | `/api/stripe/refund` | — | `paymentIntent` | — | — | `canMoveCollectedMoney` `validateRefundPayload` | `controller/stripe.js:882` |
-| DELETE | `/api/stripe/remove-duplicate/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `controller/stripe.js:945` |
+| POST | `/api/stripe/partial-refund` | — | `paymentIntent` `total` | — | — | `canMoveCollectedMoney` `validateRefundPayload` `ownsBodyPaymentIntent` | `controller/stripe.js:911` |
+| POST | `/api/stripe/payment_intents/:id/update-payment-method` | — | `newPaymentMethodID` `paymentIntentId` | — | — | — | `controller/stripe.js:676` |
+| GET | `/api/stripe/payment_intents/:id` | — | — | `id` | — | — | `controller/stripe.js:975` |
+| POST | `/api/stripe/payment_methods/:id/attach` | — | `customerID` | `id` | — | — | `controller/stripe.js:717` |
+| POST | `/api/stripe/payment-intents/:id/cancel` | — | `id` | — | — | `canMoveCollectedMoney` `validatePaymentIntentIdParam` `sameIdInUrlAndBody` `ownsBodyId` | `controller/stripe.js:866` |
+| POST | `/api/stripe/payment-intents/:id/capture` | — | `amount_to_capture` `id` | — | — | `canMoveCollectedMoney` `validatePaymentIntentIdParam` `sameIdInUrlAndBody` `ownsBodyId` | `controller/stripe.js:841` |
+| GET | `/api/stripe/payment-intents/search` | — | — | — | — | — | `controller/stripe.js:737` |
+| POST | `/api/stripe/payment-method/subscriptions/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `controller/stripe.js:697` |
+| POST | `/api/stripe/refund` | — | `paymentIntent` | — | — | `canMoveCollectedMoney` `validateRefundPayload` `ownsBodyPaymentIntent` | `controller/stripe.js:890` |
+| DELETE | `/api/stripe/remove-duplicate/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `controller/stripe.js:953` |
 | DELETE | `/api/stripe/removing/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `controller/transaction.js:237` |
 | POST | `/api/stripe/save-transaction-admin-dashboard` | — | `active` `clientSecret` `company` `consumerInfo` `created_at` `date` `device` `eventSelected` `event_id` `paymentIntent` `provider` `type` ⚠️ el body se pasa completo a `new Transaction()`: los campos son los del esquema `models/Transaction.js` | — | — | — | `controller/transaction.js:79` |
 | POST | `/api/stripe/save-transaction-template-no-regular-user` | — | `active` `clientSecret` `company` `consumerInfo` `created_at` `date` `device` `eventSelected` `event_id` `paymentIntent` `provider` `type` ⚠️ el body se pasa completo a `new Transaction()`: los campos son los del esquema `models/Transaction.js` | — | — | — | `controller/transaction.js:103` |
 | POST | `/api/stripe/save-transaction` | — | `company` `consumerInfo` `event_id` `paymentIntent` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | — | `controller/transaction.js:32` |
-| POST | `/api/stripe/setup-search` | — | `setupId` | — | — | — | `controller/stripe.js:523` |
-| POST | `/api/stripe/stripe-transaction-admin` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se pasa completo a `new StripeTransaction()`: los campos son los del esquema `models/StripeTransaction.js` | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "update")` | `controller/stripe.js:815` |
-| POST | `/api/stripe/stripe-transaction-no-regular-user` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se pasa completo a `new StripeTransaction()`: los campos son los del esquema `models/StripeTransaction.js` | — | — | — | `controller/stripe.js:924` |
-| POST | `/api/stripe/stripe-transaction` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se pasa completo a `new StripeTransaction()`: los campos son los del esquema `models/StripeTransaction.js` | — | — | — | `controller/stripe.js:797` |
-| GET | `/api/stripe/stripe-transactions-saved-list` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | — | `controller/stripe.js:1020` |
-| POST | `/api/stripe/stripe-transactions-saved-list` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | — | `controller/stripe.js:1020` |
-| DELETE | `/api/stripe/subscriptions/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `controller/stripe.js:629` |
-| GET | `/api/stripe/subscriptions/:id` | — | — | `id` | — | — | `controller/stripe.js:569` |
+| POST | `/api/stripe/setup-search` | — | `setupId` | — | — | — | `controller/stripe.js:531` |
+| POST | `/api/stripe/stripe-transaction-admin` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se pasa completo a `new StripeTransaction()`: los campos son los del esquema `models/StripeTransaction.js` | — | — | `validateJWT` `checkTokenVersion` `authorizeMongoPermission("billing", "update")` | `controller/stripe.js:823` |
+| POST | `/api/stripe/stripe-transaction-no-regular-user` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se pasa completo a `new StripeTransaction()`: los campos son los del esquema `models/StripeTransaction.js` | — | — | — | `controller/stripe.js:932` |
+| POST | `/api/stripe/stripe-transaction` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se pasa completo a `new StripeTransaction()`: los campos son los del esquema `models/StripeTransaction.js` | — | — | — | `controller/stripe.js:805` |
+| GET | `/api/stripe/stripe-transactions-saved-list` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | — | `controller/stripe.js:1028` |
+| POST | `/api/stripe/stripe-transactions-saved-list` | — | `clientSecret` `company` `device` `eventSelected` `paymentIntent` `provider` `type` `user` ⚠️ el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo) | — | — | — | `controller/stripe.js:1028` |
+| DELETE | `/api/stripe/subscriptions/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `controller/stripe.js:637` |
+| GET | `/api/stripe/subscriptions/:id` | — | — | `id` | — | — | `controller/stripe.js:577` |
 | GET | `/api/stripe/transaction` | — | `active` `clientSecret` `company` `consumerInfo` `created_at` `date` `device` `eventSelected` `event_id` `paymentIntent` `provider` `type` ⚠️ el body se usa como FILTRO Mongo en `Transaction.find()`: cualquier subconjunto de los campos de `models/Transaction.js` (`{}` trae todo) | — | — | — | `controller/transaction.js:159` |
-| PATCH | `/api/stripe/updating-subscription/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `controller/stripe.js:585` |
+| PATCH | `/api/stripe/updating-subscription/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | — | `controller/stripe.js:593` |
 
 ## `/api/subscription`
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | POST | `/api/subscription/company-subscription` | — | `companyName` | — | — | — | `controller/subscription.js:74` |
-| POST | `/api/subscription/new_subscription_no_trial` | — | `items` `period` `stripeCustomerID` | — | — | — | `controller/stripe.js:478` |
+| POST | `/api/subscription/new_subscription_no_trial` | — | `items` `period` `stripeCustomerID` | — | — | — | `controller/stripe.js:486` |
 | POST | `/api/subscription/new_subscription` | — | `company` `record` `stripeCompanyID` ⚠️ el body se pasa completo a `new Subscription()`: los campos son los del esquema `models/Subscription.js` | — | — | — | `controller/subscription.js:6` |
 | GET | `/api/subscription/search_subscription` | — | `company` `record` `stripeCompanyID` ⚠️ el body se usa como FILTRO Mongo en `Subscription.findOne()`: cualquier subconjunto de los campos de `models/Subscription.js` (`{}` trae todo) | — | — | — | `controller/subscription.js:51` |
 | POST | `/api/subscription/search_subscription` | — | `company` `record` `stripeCompanyID` ⚠️ el body se usa como FILTRO Mongo en `Subscription.findOne()`: cualquier subconjunto de los campos de `models/Subscription.js` (`{}` trae todo) | — | — | — | `controller/subscription.js:51` |
-| GET | `/api/subscription/searching-subscription/subscriptions/:id` | — | — | `id` | — | — | `controller/stripe.js:993` |
-| GET | `/api/subscription/subscriptions/:id` | — | — | `id` | — | — | `controller/stripe.js:1056` |
+| GET | `/api/subscription/searching-subscription/subscriptions/:id` | — | — | `id` | — | — | `controller/stripe.js:1001` |
+| GET | `/api/subscription/subscriptions/:id` | — | — | `id` | — | — | `controller/stripe.js:1064` |
 | PATCH | `/api/subscription/update-subscription/:id` | — | `newSubscriptionData` | `id` | — | — | `controller/subscription.js:22` |
 
 ## `/api/transaction`
@@ -761,12 +761,14 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | POST | `/api/transaction/check-and-release-deposit-transactions` | — | `company` `eventSelected` | — | — | `staffOnly` | `controller/transaction.js:282` |
+| POST | `/api/transaction/receipt-link` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | — | — | `staffOnly` `ownsBodyPaymentIntent` | `controller/receiptLink.js (handler no localizado)` |
+| GET | `/api/transaction/receipt` | — | — | — | — | — | `controller/receiptLink.js (handler no localizado)` |
 | DELETE | `/api/transaction/remove-duplicate-transaction/:id` | — | — ⚠️ el handler IGNORA el body (mandar `{}`) | `id` | — | `optionalJWT` | `controller/transaction.js:237` |
 | POST | `/api/transaction/save-transaction-admin-dashboard` | — | `active` `clientSecret` `company` `consumerInfo` `created_at` `date` `device` `eventSelected` `event_id` `paymentIntent` `provider` `type` ⚠️ el body se pasa completo a `new Transaction()`: los campos son los del esquema `models/Transaction.js` | — | — | `staffOnly` | `controller/transaction.js:79` |
 | POST | `/api/transaction/save-transaction-template-no-regular-user` | — | `active` `clientSecret` `company` `consumerInfo` `created_at` `date` `device` `eventSelected` `event_id` `paymentIntent` `provider` `type` ⚠️ el body se pasa completo a `new Transaction()`: los campos son los del esquema `models/Transaction.js` | — | — | `staffOnly` | `controller/transaction.js:103` |
 | POST | `/api/transaction/save-transaction` | — | `company` `consumerInfo` `event_id` `paymentIntent` ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) | — | — | `optionalJWT` | `controller/transaction.js:32` |
-| GET | `/api/transaction/subscriptions/:id` | — | — | `id` | — | `staffOnly` | `controller/stripe.js:993` |
-| GET | `/api/transaction/transaction` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | — | `controller/transaction.js:183` |
+| GET | `/api/transaction/subscriptions/:id` | — | — | `id` | — | `staffOnly` | `controller/stripe.js:1001` |
+| GET | `/api/transaction/transaction` | — | — ⚠️ lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler | — | — | `optionalJWT` `anonymousTransactionRead` | `controller/transaction.js:183` |
 | POST | `/api/transaction/transaction` | — | `active` `clientSecret` `company` `consumerInfo` `created_at` `date` `device` `eventSelected` `event_id` `paymentIntent` `provider` `type` ⚠️ el body se usa como FILTRO Mongo en `Transaction.find()`: cualquier subconjunto de los campos de `models/Transaction.js` (`{}` trae todo) | — | — | `optionalJWT` | `controller/transaction.js:159` |
 | POST | `/api/transaction/update-multiple-documents` | — | `active` `clientSecret` `company` `consumerInfo` `created_at` `date` `device` `eventSelected` `event_id` `find` `paymentIntent` `provider` `type` `update` ⚠️ el body se usa como FILTRO Mongo en `Transaction.find()`: cualquier subconjunto de los campos de `models/Transaction.js` (`{}` trae todo) | — | — | `staffOnly` | `controller/transaction.js:219` |
 | PATCH | `/api/transaction/update-transaction/:id` | — | — ⚠️ pasa `req.body` completo a otra capa (revisar el controlador para el detalle) · el handler IGNORA el body (mandar `{}`) | `id` | — | `staffOnly` | `controller/transaction.js:126` |
@@ -775,5 +777,4 @@ Routers presentes en el repo pero **no montados** en `index.js` (no existen en r
 
 | Método | Ruta | Requeridos (400 si faltan) | Opcionales / otros | Params | Query | Auth | Fuente |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| GET | `/api/transaction-audit-log/audit-log` | — | — | — | — | — | `controller/transactionAuditLog.js:25` |
-| POST | `/api/transaction-audit-log/create-audit` | — | `actionTaken` `time` `transaction` `user` ⚠️ el body se pasa completo a `new TransactionAuditLog()`: los campos son los del esquema `models/TransactionAuditLog.js` | — | — | — | `controller/transactionAuditLog.js:6` |
+| GET | `/api/transaction-audit-log/audit-log` | — | — | — | — | `validateJWT` `checkTokenVersion` `requireSuperUser` | `controller/transactionAuditLog.js:9` |

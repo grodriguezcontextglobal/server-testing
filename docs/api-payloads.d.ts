@@ -18,8 +18,8 @@
 
 /**
  * `DELETE /api/admin/:id`
- * handler: deleteAdminUser — controller/admin.js:629
- * ruta: routes/admin.js:115
+ * handler: deleteAdminUser — controller/admin.js:734
+ * ruta: routes/admin.js:122
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "delete")
  * headers: user-agent
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -31,8 +31,8 @@ export interface DeleteAdminByIdParams {
 
 /**
  * `GET /api/admin/:id`
- * handler: showAllUsers — controller/admin.js:821
- * ruta: routes/admin.js:103
+ * handler: showAllUsers — controller/admin.js:934
+ * ruta: routes/admin.js:108
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read")
  * NOTA: el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo)
  * status: 201, 500
@@ -51,7 +51,7 @@ export interface GetAdminByIdBody {
 /**
  * `GET /api/admin/activity-logs`
  * handler: getStaffActivityLogs — controller/staffActivityLog.js:228
- * ruta: routes/admin.js:52
+ * ruta: routes/admin.js:57
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read")
  * generado por factory: createGetStaffActivityLogs
  * status: 403, 404, 500
@@ -78,7 +78,7 @@ export interface GetAdminActivityLogsQuery {
 /**
  * `POST /api/admin/activity-logs`
  * handler: registerStaffActivity — controller/staffActivityLog.js:276
- * ruta: routes/admin.js:51
+ * ruta: routes/admin.js:56
  * auth: validateJWT, checkTokenVersion
  * headers: user-agent
  * generado por factory: createRegisterStaffActivity
@@ -93,21 +93,24 @@ export interface PostAdminActivityLogsBody {
 
 /**
  * `PATCH /api/admin/admin-user/:id`
- * handler: editOtherAdminUser — controller/admin.js:587
- * ruta: routes/admin.js:112
+ * handler: editOtherAdminUser — controller/admin.js:663
+ * ruta: routes/admin.js:119
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "update")
- * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
- * NOTA: el handler NO lee el body: manda `{}` (o nada).
- * status: 500
+ * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
+ * status: 400, 403, 404, 500
  */
+export interface PatchAdminAdminUserByIdBody {
+  /** cuerpo dinámico: cada par clave/valor se traduce a filtro/columna SQL */
+  [key: string]: unknown;
+}
 export interface PatchAdminAdminUserByIdParams {
   id: string;
 }
 
 /**
  * `GET /api/admin/check-online-status/:email`
- * handler: checkStatus — controller/admin.js:994
- * ruta: routes/admin.js:132
+ * handler: checkStatus — controller/admin.js:1107
+ * ruta: routes/admin.js:139
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -117,33 +120,32 @@ export interface GetAdminCheckOnlineStatusByEmailParams {
 
 /**
  * `POST /api/admin/invalidate-all-sessions`
- * handler: invalidateAllSessions — controller/admin.js:1208
- * ruta: routes/admin.js:44
- * auth: optionalJWT
+ * handler: invalidateAllSessions — controller/admin.js:1321
+ * ruta: routes/admin.js:49
+ * auth: validateJWT, checkTokenVersion, requireSuperUser
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 200, 500
  */
 
 /**
  * `POST /api/admin/login`
- * handler: loginUser — controller/admin.js:101
- * ruta: routes/admin.js:70
+ * handler: loginUser — controller/admin.js:108
+ * ruta: routes/admin.js:75
  * auth: validateFields
  * headers: accept-language, cf-ipcountry, timezone, user-agent, x-client-ip, x-forwarded-for, x-location, x-real-ip, x-request-id, x-request-timestamp, x-timezone
- * status: 200, 400, 403, 409, 500
+ * status: 200, 403, 409, 429, 500
  */
 export interface PostAdminLoginBody {
   email?: string;
   forceLogin?: boolean;
   mfaCode: string;
   password?: string;
-  rememberMe?: string;
 }
 
 /**
  * `POST /api/admin/logout`
- * handler: logoutUser — controller/admin.js:375
- * ruta: routes/admin.js:84
+ * handler: logoutUser — controller/admin.js:433
+ * ruta: routes/admin.js:89
  * auth: sin middleware de auth en la ruta
  * headers: x-token
  * status: 201, 401, 500
@@ -154,8 +156,8 @@ export interface PostAdminLogoutBody {
 
 /**
  * `POST /api/admin/manually_logout`
- * handler: manuallyLogoutUser — controller/admin.js:426
- * ruta: routes/admin.js:87
+ * handler: manuallyLogoutUser — controller/admin.js:484
+ * ruta: routes/admin.js:92
  * auth: sin middleware de auth en la ruta
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
  * status: 201, 500
@@ -166,8 +168,8 @@ export interface PostAdminManuallyLogoutBody {
 
 /**
  * `POST /api/admin/mfa/disable`
- * handler: disableMfa — controller/admin.js:1092
- * ruta: routes/admin.js:139
+ * handler: disableMfa — controller/admin.js:1205
+ * ruta: routes/admin.js:146
  * auth: validateJWT
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 403, 500
@@ -175,8 +177,8 @@ export interface PostAdminManuallyLogoutBody {
 
 /**
  * `POST /api/admin/mfa/generate`
- * handler: generateMfaSecret — controller/admin.js:1027
- * ruta: routes/admin.js:137
+ * handler: generateMfaSecret — controller/admin.js:1140
+ * ruta: routes/admin.js:144
  * auth: validateMfaEnrollment
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 404, 409, 500
@@ -184,8 +186,8 @@ export interface PostAdminManuallyLogoutBody {
 
 /**
  * `POST /api/admin/mfa/verify`
- * handler: verifyMfaSetup — controller/admin.js:1061
- * ruta: routes/admin.js:138
+ * handler: verifyMfaSetup — controller/admin.js:1174
+ * ruta: routes/admin.js:145
  * auth: validateMfaEnrollment
  * status: 400, 404, 500
  */
@@ -195,9 +197,9 @@ export interface PostAdminMfaVerifyBody {
 
 /**
  * `POST /api/admin/new_admin_user`
- * handler: createAdminUser — controller/admin.js:31
- * ruta: routes/admin.js:55
- * auth: check("email", "Email must be provided").isEmail(), validateFields
+ * handler: createAdminUser — controller/admin.js:38
+ * ruta: routes/admin.js:60
+ * auth: check("email", "Email must be provided").isEmail(), check("password", passwordPolicyMessage).custom(isAcceptablePassword), validateFields
  * status: 201, 400, 500
  */
 export interface PostAdminNewAdminUserBody {
@@ -211,8 +213,8 @@ export interface PostAdminNewAdminUserBody {
 
 /**
  * `PATCH /api/admin/profile/:id`
- * handler: editAdminUser — controller/admin.js:488
- * ruta: routes/admin.js:109
+ * handler: editAdminUser — controller/admin.js:546
+ * ruta: routes/admin.js:116
  * auth: validateJWT
  * headers: user-agent
  * NOTA: cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL
@@ -229,7 +231,7 @@ export interface PatchAdminProfileByIdParams {
 /**
  * `POST /api/admin/receiver-assignation`
  * handler: addReceiverToTransaction — controller/receiver.js:24
- * ruta: routes/admin.js:126
+ * ruta: routes/admin.js:133
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se pasa completo a `new Receivers()`: los campos son los del esquema `models/Receivers.js`
  * status: 201, 500
@@ -250,7 +252,7 @@ export interface PostAdminReceiverAssignationBody {
 /**
  * `GET /api/admin/receiver-assigned`
  * handler: checkingReceiversAssigned — controller/receiver.js:47
- * ruta: routes/admin.js:101
+ * ruta: routes/admin.js:106
  * auth: validateJWT
  * status: 201, 501
  */
@@ -260,8 +262,8 @@ export interface GetAdminReceiverAssignedBody {
 
 /**
  * `PATCH /api/admin/update-password`
- * handler: updatePassword — controller/admin.js:726
- * ruta: routes/admin.js:119
+ * handler: updatePassword — controller/admin.js:839
+ * ruta: routes/admin.js:126
  * auth: sin middleware de auth en la ruta
  * status: 201, 400, 403, 500
  */
@@ -275,9 +277,9 @@ export interface PatchAdminUpdatePasswordBody {
 
 /**
  * `POST /api/admin/users`
- * handler: showAllUsers — controller/admin.js:821
- * ruta: routes/admin.js:106
- * auth: sin middleware de auth en la ruta
+ * handler: showAllUsers — controller/admin.js:934
+ * ruta: routes/admin.js:113
+ * auth: validateJWT, checkTokenVersion
  * NOTA: el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo)
  * status: 201, 500
  */
@@ -294,8 +296,8 @@ export interface PostAdminUsersBody {
 
 /**
  * `POST /api/admin/verify-password`
- * handler: verifyPassword — controller/admin.js:884
- * ruta: routes/admin.js:123
+ * handler: verifyPassword — controller/admin.js:997
+ * ruta: routes/admin.js:130
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 500
  */
@@ -871,7 +873,7 @@ export interface PostConsumerStripeCreateCustomerBody {
 
 /**
  * `POST /api/consumer/stripe/find-customer`
- * handler: listAllCustomers — controller/stripe.js:763
+ * handler: listAllCustomers — controller/stripe.js:771
  * ruta: routes/consumer.js:25
  * auth: optionalJWT
  * NOTA: el body se usa como FILTRO Mongo en `StripeCustomer.find()`: cualquier subconjunto de los campos de `models/StripeCustomer.js` (`{}` trae todo)
@@ -1509,8 +1511,8 @@ export interface PostDbConsumerAttendingEventRecordNewConsumerEventBody {
 
 /**
  * `DELETE /api/db_consumer/:id`
- * handler: deleteCustomer — mysql/controllers/consumer.js:124
- * ruta: mysql/routes/consumers.js:28
+ * handler: deleteCustomer — mysql/controllers/consumer.js:137
+ * ruta: mysql/routes/consumers.js:33
  * auth: validateJWT, checkTokenVersion, authorizePermission("consumer", "delete")
  * generado por factory: createDeleteCustomer
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -1519,12 +1521,11 @@ export interface PostDbConsumerAttendingEventRecordNewConsumerEventBody {
 
 /**
  * `POST /api/db_consumer/consulting-consumer`
- * handler: consultingConsumerInfo — mysql/controllers/consumer.js:25
- * ruta: mysql/routes/consumers.js:17
- * auth: sin middleware de auth en la ruta
+ * handler: consultingConsumerInfo — mysql/controllers/consumer.js:31
+ * ruta: mysql/routes/consumers.js:22
+ * auth: staffSession
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
- * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
- * status: 200, 500
+ * status: 200, 400, 500
  */
 export interface PostDbConsumerConsultingConsumerBody {
   /** cuerpo dinámico: cada par clave/valor se traduce a filtro/columna SQL */
@@ -1533,9 +1534,9 @@ export interface PostDbConsumerConsultingConsumerBody {
 
 /**
  * `POST /api/db_consumer/consumers_information`
- * handler: consultingConsumerTable — mysql/controllers/consumer.js:40
- * ruta: mysql/routes/consumers.js:20
- * auth: sin middleware de auth en la ruta
+ * handler: consultingConsumerTable — mysql/controllers/consumer.js:53
+ * ruta: mysql/routes/consumers.js:25
+ * auth: staffSession
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 200, 500
  */
@@ -1543,7 +1544,7 @@ export interface PostDbConsumerConsultingConsumerBody {
 /**
  * `POST /api/db_consumer/new_consumer`
  * handler: insertingCustomer — mysql/controllers/consumer.js:6
- * ruta: mysql/routes/consumers.js:25
+ * ruta: mysql/routes/consumers.js:30
  * auth: optionalJWT, requireSessionFromDashboard
  * status: 201, 500
  */
@@ -1568,7 +1569,7 @@ export interface DeleteDbEventByIdParams {
 
 /**
  * `POST /api/db_event/allocate-device-container-event`
- * handler: allocateDeviceMarkedAsContainerInEvent — mysql/controllers/items_events.js:655
+ * handler: allocateDeviceMarkedAsContainerInEvent — mysql/controllers/items_events.js:664
  * ruta: mysql/routes/events.js:198
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 404, 500
@@ -1585,7 +1586,7 @@ export interface PostDbEventAllocateDeviceContainerEventBody {
 
 /**
  * `POST /api/db_event/allocate-device-event`
- * handler: allocateDeviceToEvent — mysql/controllers/items_events.js:558
+ * handler: allocateDeviceToEvent — mysql/controllers/items_events.js:567
  * ruta: mysql/routes/events.js:190
  * auth: validateJWT, checkTokenVersion, authorizePermission("event", "update")
  * status: 200, 400, 422
@@ -1734,7 +1735,7 @@ export interface GetDbEventEventInventoryByIdParams {
 
 /**
  * `POST /api/db_event/event-inventory/:id`
- * handler: consultingInventoryInEvent — mysql/controllers/items_events.js:413
+ * handler: consultingInventoryInEvent — mysql/controllers/items_events.js:422
  * ruta: mysql/routes/events.js:76
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -1769,7 +1770,7 @@ export interface PostDbEventEventsInformationBody {
 
 /**
  * `POST /api/db_event/inserting-items-in-event-from-container`
- * handler: insertingDeviceInEventDirectlyFromContainer — mysql/controllers/items_events.js:498
+ * handler: insertingDeviceInEventDirectlyFromContainer — mysql/controllers/items_events.js:507
  * ruta: mysql/routes/events.js:123
  * auth: validateJWT, checkTokenVersion
  * headers: Idempotency-Key, idempotency-key
@@ -1807,7 +1808,7 @@ export interface PostDbEventInventoryQueryBody {
 
 /**
  * `POST /api/db_event/lock-items-for-event`
- * handler: lockItemsForEvent — mysql/controllers/items_events.js:823
+ * handler: lockItemsForEvent — mysql/controllers/items_events.js:832
  * ruta: mysql/routes/events.js:218
  * auth: sin middleware de auth en la ruta
  * status: 201, 400, 500
@@ -1853,7 +1854,7 @@ export interface PostDbEventRemoveItemInventoryEventBody {
 
 /**
  * `POST /api/db_event/remove-reserved-items-for-event`
- * handler: removeReservedItemsInInventoryForEvent — mysql/controllers/items_events.js:917
+ * handler: removeReservedItemsInInventoryForEvent — mysql/controllers/items_events.js:926
  * ruta: mysql/routes/events.js:215
  * auth: sin middleware de auth en la ruta
  * status: 200, 404
@@ -1866,7 +1867,7 @@ export interface PostDbEventRemoveReservedItemsForEventBody {
 
 /**
  * `POST /api/db_event/reserve-items-for-event`
- * handler: reserveItemsInInventoryForEvent — mysql/controllers/items_events.js:875
+ * handler: reserveItemsInInventoryForEvent — mysql/controllers/items_events.js:884
  * ruta: mysql/routes/events.js:207
  * auth: validateJWT, authorizePermission("event", "update")
  * status: 200, 404, 500
@@ -2152,7 +2153,7 @@ export interface PostDbInventoryUpdateLocationSubLocationBody {
 /**
  * `POST /api/db_item/:id(\\d+)`
  * handler: deleteItem — mysql/controllers/item.js:610
- * ruta: mysql/routes/item.js:148
+ * ruta: mysql/routes/item.js:152
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "delete")
  * status: 201, 400, 403, 404, 500
  */
@@ -2164,7 +2165,7 @@ export interface PostDbItemByIdDBody {
 /**
  * `POST /api/db_item/bulk-item-alphanumeric`
  * handler: insertBulkItemAlhpanumericFormat — mysql/controllers/item.js:518
- * ruta: mysql/routes/item.js:120
+ * ruta: mysql/routes/item.js:124
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "create")
  * headers: Idempotency-Key, idempotency-key
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
@@ -2179,7 +2180,7 @@ export interface PostDbItemBulkItemAlphanumericBody {
 /**
  * `POST /api/db_item/bulk-item-from-spreadsheet`
  * handler: postInventoryImport — mysql/controllers/inventoryImport.js:48
- * ruta: mysql/routes/item.js:96
+ * ruta: mysql/routes/item.js:98
  * auth: validateJWT, checkTokenVersion
  * headers: Idempotency-Key, idempotency-key
  * status: 202, 400, 401, 403, 500
@@ -2193,7 +2194,7 @@ export interface PostDbItemBulkItemFromSpreadsheetBody {
 /**
  * `POST /api/db_item/bulk-item`
  * handler: insertBulkItem — mysql/controllers/item.js:433
- * ruta: mysql/routes/item.js:117
+ * ruta: mysql/routes/item.js:121
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "create")
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
  * status: 201, 202, 400, 403, 404, 500
@@ -2209,7 +2210,7 @@ export interface PostDbItemBulkItemBody {
 /**
  * `GET /api/db_item/check-company-has-inventory`
  * handler: checkingIfCompanyHasInventory — mysql/controllers/item.js:1728
- * ruta: mysql/routes/item.js:187
+ * ruta: mysql/routes/item.js:191
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
  * status: 201, 500
@@ -2221,8 +2222,8 @@ export interface GetDbItemCheckCompanyHasInventoryBody {
 
 /**
  * `GET /api/db_item/check-inventory/:company_id`
- * handler: checkingInventoryCurrentState — mysql/controllers/items_events.js:357
- * ruta: mysql/routes/item.js:172
+ * handler: checkingInventoryCurrentState — mysql/controllers/items_events.js:366
+ * ruta: mysql/routes/item.js:176
  * auth: validateJWT
  * status: 200, 403, 500
  */
@@ -2233,7 +2234,7 @@ export interface GetDbItemCheckInventoryByCompanyIdParams {
 /**
  * `POST /api/db_item/check-item`
  * handler: checkingItem — mysql/controllers/item.js:1313
- * ruta: mysql/routes/item.js:169
+ * ruta: mysql/routes/item.js:173
  * auth: validateJWT
  * NOTA: rest-spread `...bodyFilters`: acepta campos extra
  * status: 201, 400, 403, 500
@@ -2246,8 +2247,8 @@ export interface PostDbItemCheckItemBody {
 /**
  * `POST /api/db_item/consulting-item`
  * handler: consultingItem — mysql/controllers/item.js:584
- * ruta: mysql/routes/item.js:70
- * auth: sin middleware de auth en la ruta
+ * ruta: mysql/routes/item.js:72
+ * auth: validateJWT, checkTokenVersion
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
  * status: 201, 400, 500
@@ -2259,8 +2260,8 @@ export interface PostDbItemConsultingItemBody {
 
 /**
  * `POST /api/db_item/consulting-row-item-assigned-event`
- * handler: consultingRowInItemInvAssignedEventTable — mysql/controllers/items_events.js:438
- * ruta: mysql/routes/item.js:157
+ * handler: consultingRowInItemInvAssignedEventTable — mysql/controllers/items_events.js:447
+ * ruta: mysql/routes/item.js:161
  * auth: sin middleware de auth en la ruta
  * status: 200, 500
  */
@@ -2272,11 +2273,10 @@ export interface PostDbItemConsultingRowItemAssignedEventBody {
 /**
  * `POST /api/db_item/current-inventory`
  * handler: consultingInventoryCurrentState — mysql/controllers/items_events.js:330
- * ruta: mysql/routes/item.js:105
- * auth: sin middleware de auth en la ruta
+ * ruta: mysql/routes/item.js:109
+ * auth: validateJWT, checkTokenVersion
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
- * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
- * status: 200, 500
+ * status: 200, 400, 500
  */
 export interface PostDbItemCurrentInventoryBody {
   /** cuerpo dinámico: cada par clave/valor se traduce a filtro/columna SQL */
@@ -2300,7 +2300,7 @@ export interface PostDbItemDeleteBulkItemsCriteriaBody {
 /**
  * `POST /api/db_item/delete-bulk-items`
  * handler: deleteBulkItems — mysql/controllers/item.js:3775
- * ruta: mysql/routes/item.js:154
+ * ruta: mysql/routes/item.js:158
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "delete")
  * headers: Idempotency-Key, idempotency-key
  * status: 200, 202, 400, 403, 500
@@ -2313,7 +2313,7 @@ export interface PostDbItemDeleteBulkItemsBody {
 /**
  * `POST /api/db_item/delete-item`
  * handler: deleteItem — mysql/controllers/item.js:610
- * ruta: mysql/routes/item.js:151
+ * ruta: mysql/routes/item.js:155
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "delete")
  * status: 201, 400, 403, 404, 500
  */
@@ -2325,7 +2325,7 @@ export interface PostDbItemDeleteItemBody {
 /**
  * `POST /api/db_item/edit-item`
  * handler: updateItemInTable — mysql/controllers/item.js:752
- * ruta: mysql/routes/item.js:123
+ * ruta: mysql/routes/item.js:127
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "update")
  * NOTA: cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL
  * NOTA: hay que enviar al menos uno de estos identificadores: company_id, item_id, serial_number
@@ -2420,7 +2420,7 @@ export interface PutDbItemEventItemsBody {
 /**
  * `GET /api/db_item/fragment-data`
  * handler: fragmentData — mysql/controllers/item.js:1455
- * ruta: mysql/routes/item.js:175
+ * ruta: mysql/routes/item.js:179
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
  * status: 201
@@ -2433,7 +2433,7 @@ export interface GetDbItemFragmentDataBody {
 /**
  * `POST /api/db_item/get-inventory-company`
  * handler: getGroupedItemInventory — mysql/controllers/item.js:1896
- * ruta: mysql/routes/item.js:240
+ * ruta: mysql/routes/item.js:244
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL
  * status: 200, 500
@@ -2445,8 +2445,8 @@ export interface PostDbItemGetInventoryCompanyBody {
 
 /**
  * `POST /api/db_item/inventory_event/:id`
- * handler: consultingInventoryInEvent — mysql/controllers/items_events.js:413
- * ruta: mysql/routes/item.js:108
+ * handler: consultingInventoryInEvent — mysql/controllers/items_events.js:422
+ * ruta: mysql/routes/item.js:112
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 200, 500
@@ -2458,7 +2458,7 @@ export interface PostDbItemInventoryEventByIdParams {
 /**
  * `POST /api/db_item/inventory-based-on-location-and-sublocation`
  * handler: consultingCompanyInventoryBasedOnLocationAndSubLocation — mysql/controllers/item.js:2087
- * ruta: mysql/routes/item.js:202
+ * ruta: mysql/routes/item.js:206
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
@@ -2477,7 +2477,7 @@ export interface PostDbItemInventoryBasedOnLocationAndSublocationQuery {
 /**
  * `POST /api/db_item/inventory-based-on-submitted-parameters`
  * handler: consultingCompanyInventoryBasedOnSubmittedParameters — mysql/controllers/item.js:2451
- * ruta: mysql/routes/item.js:212
+ * ruta: mysql/routes/item.js:216
  * auth: validateJWT, checkTokenVersion
  * status: 200, 500
  */
@@ -2489,7 +2489,7 @@ export interface PostDbItemInventoryBasedOnSubmittedParametersBody {
 /**
  * `POST /api/db_item/inventory-export`
  * handler: postInventoryExport — mysql/controllers/inventoryExport.js:36
- * ruta: mysql/routes/item.js:90
+ * ruta: mysql/routes/item.js:92
  * auth: validateJWT, checkTokenVersion
  * headers: Idempotency-Key, idempotency-key
  * status: 202, 400, 401, 500
@@ -2505,7 +2505,7 @@ export interface PostDbItemInventoryExportBody {
 /**
  * `POST /api/db_item/inventory-facets`
  * handler: getInventoryFacets — mysql/controllers/inventoryPage.js:132
- * ruta: mysql/routes/item.js:83
+ * ruta: mysql/routes/item.js:85
  * auth: validateJWT, checkTokenVersion
  * status: 200
  */
@@ -2519,7 +2519,7 @@ export interface PostDbItemInventoryFacetsBody {
 /**
  * `POST /api/db_item/inventory-page`
  * handler: getInventoryPage — mysql/controllers/inventoryPage.js:96
- * ruta: mysql/routes/item.js:82
+ * ruta: mysql/routes/item.js:84
  * auth: validateJWT, checkTokenVersion
  * status: 200
  */
@@ -2536,7 +2536,7 @@ export interface PostDbItemInventoryPageBody {
 /**
  * `POST /api/db_item/inventory-pagination`
  * handler: consultingCompanyInventoryWithPagination — mysql/controllers/item.js:1978
- * ruta: mysql/routes/item.js:199
+ * ruta: mysql/routes/item.js:203
  * auth: validateJWT, checkTokenVersion
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 200, 400, 500
@@ -2549,7 +2549,7 @@ export interface PostDbItemInventoryPaginationQuery {
 /**
  * `POST /api/db_item/inventory-query`
  * handler: runNamedInventoryQuery — mysql/controllers/item.js:2411
- * ruta: mysql/routes/item.js:222
+ * ruta: mysql/routes/item.js:226
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 500
  */
@@ -2561,7 +2561,7 @@ export interface PostDbItemInventoryQueryBody {
 /**
  * `POST /api/db_item/item-out-warehouse`
  * handler: updateItemInWarehouseAfterBeingAddedToEvent — mysql/controllers/item.js:937
- * ruta: mysql/routes/item.js:130
+ * ruta: mysql/routes/item.js:134
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "update")
  * status: 201, 400, 403, 404, 500
  */
@@ -2577,7 +2577,7 @@ export interface PostDbItemItemOutWarehouseBody {
 /**
  * `POST /api/db_item/items_information`
  * handler: consultingItemTable — mysql/controllers/item.js:669
- * ruta: mysql/routes/item.js:102
+ * ruta: mysql/routes/item.js:104
  * auth: validateJWT, checkTokenVersion
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 201, 500
@@ -2586,7 +2586,7 @@ export interface PostDbItemItemOutWarehouseBody {
 /**
  * `GET /api/db_item/location-count`
  * handler: gettingDataFromLocationOption — mysql/controllers/item.js:1520
- * ruta: mysql/routes/item.js:178
+ * ruta: mysql/routes/item.js:182
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
  * status: 201
@@ -2599,7 +2599,7 @@ export interface GetDbItemLocationCountBody {
 /**
  * `POST /api/db_item/new_item`
  * handler: insertingItem — mysql/controllers/item.js:163
- * ruta: mysql/routes/item.js:114
+ * ruta: mysql/routes/item.js:118
  * auth: validateJWT, checkTokenVersion, authorizePermission("inventory", "create")
  * status: 201, 403
  */
@@ -2637,7 +2637,7 @@ export interface PostDbItemNewItemBody {
 /**
  * `POST /api/db_item/retrieve-item-data`
  * handler: retrieveItemData — mysql/controllers/item.js:2498
- * ruta: mysql/routes/item.js:242
+ * ruta: mysql/routes/item.js:246
  * auth: validateJWT
  * status: 200, 400, 403, 500
  */
@@ -2648,7 +2648,7 @@ export interface PostDbItemRetrieveItemDataBody {
 /**
  * `POST /api/db_item/retrieve-item-location-quantity`
  * handler: retrieveItemLocationQuantityForEvent — mysql/controllers/item.js:1751
- * ruta: mysql/routes/item.js:190
+ * ruta: mysql/routes/item.js:194
  * auth: sin middleware de auth en la ruta
  * headers: accept-encoding
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
@@ -2663,7 +2663,7 @@ export interface PostDbItemRetrieveItemLocationQuantityBody {
 /**
  * `POST /api/db_item/return-event-devices`
  * handler: returnEventDevicesToWarehouse — mysql/controllers/item.js:2246
- * ruta: mysql/routes/item.js:232
+ * ruta: mysql/routes/item.js:236
  * auth: validateJWT, checkTokenVersion
  * status: 200, 400, 404, 500
  */
@@ -2677,7 +2677,7 @@ export interface PostDbItemReturnEventDevicesBody {
 /**
  * `POST /api/db_item/returning-item-refactored`
  * handler: returningItemToStockWhenEventIsFinishedRefactored — mysql/controllers/item.js:1099
- * ruta: mysql/routes/item.js:181
+ * ruta: mysql/routes/item.js:185
  * auth: sin middleware de auth en la ruta
  * status: 200, 201, 400, 500
  */
@@ -2691,7 +2691,7 @@ export interface PostDbItemReturningItemRefactoredBody {
 /**
  * `GET /api/db_item/search-inventory`
  * handler: searchingGetInventoryTracking — mysql/controllers/item.js:1408
- * ruta: mysql/routes/item.js:166
+ * ruta: mysql/routes/item.js:170
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
  * status: 201, 500
@@ -2704,7 +2704,7 @@ export interface GetDbItemSearchInventoryBody {
 /**
  * `POST /api/db_item/search-inventory`
  * handler: searchingInventoryTracking — mysql/controllers/item.js:1361
- * ruta: mysql/routes/item.js:163
+ * ruta: mysql/routes/item.js:167
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -2716,7 +2716,7 @@ export interface PostDbItemSearchInventoryBody {
 /**
  * `GET /api/db_item/serial-suggest`
  * handler: suggestSerials — mysql/controllers/inventoryPage.js:176
- * ruta: mysql/routes/item.js:84
+ * ruta: mysql/routes/item.js:86
  * auth: validateJWT, checkTokenVersion
  * status: 200
  */
@@ -2729,7 +2729,7 @@ export interface GetDbItemSerialSuggestQuery {
 /**
  * `POST /api/db_item/tracking_item/:id`
  * handler: consultingInventoryTracking — mysql/controllers/item.js:1259
- * ruta: mysql/routes/item.js:111
+ * ruta: mysql/routes/item.js:115
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 201, 500
@@ -2741,7 +2741,7 @@ export interface PostDbItemTrackingItemByIdParams {
 /**
  * `POST /api/db_item/warehouse-items`
  * handler: consultingItemInWarehouseTable — mysql/controllers/item.js:720
- * ruta: mysql/routes/item.js:73
+ * ruta: mysql/routes/item.js:75
  * auth: validateJWT
  * NOTA: rest-spread `...filters`: acepta campos extra
  * status: 201, 403, 500
@@ -2753,37 +2753,29 @@ export interface PostDbItemWarehouseItemsBody {
 
 /**
  * `POST /api/db_lease/consulting-consumer-lease`
- * handler: consultingConsumerLease — mysql/controllers/lease.js:197
- * ruta: mysql/routes/lease.js:25
- * auth: sin middleware de auth en la ruta
- * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
+ * handler: consultingConsumerLease — mysql/controllers/lease.js:220
+ * ruta: mysql/routes/lease.js:30
+ * auth: staffSession
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
- * status: 200, 500
+ * NOTA: el handler NO lee el body: manda `{}` (o nada).
+ * status: 200, 400, 500
  */
-export interface PostDbLeaseConsultingConsumerLeaseBody {
-  /** cuerpo dinámico: cada par clave/valor se traduce a filtro/columna SQL */
-  [key: string]: unknown;
-}
 
 /**
  * `POST /api/db_lease/consulting-lease`
- * handler: consultingLease — mysql/controllers/lease.js:179
- * ruta: mysql/routes/lease.js:22
- * auth: sin middleware de auth en la ruta
- * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
+ * handler: consultingLease — mysql/controllers/lease.js:204
+ * ruta: mysql/routes/lease.js:27
+ * auth: staffSession
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
- * status: 200, 500
+ * NOTA: el handler NO lee el body: manda `{}` (o nada).
+ * status: 200, 400, 500
  */
-export interface PostDbLeaseConsultingLeaseBody {
-  /** cuerpo dinámico: cada par clave/valor se traduce a filtro/columna SQL */
-  [key: string]: unknown;
-}
 
 /**
  * `POST /api/db_lease/delete-consumer-lease-info`
- * handler: deleteConsumerLeaseInfo — mysql/controllers/lease.js:396
- * ruta: mysql/routes/lease.js:43
- * auth: sin middleware de auth en la ruta
+ * handler: deleteConsumerLeaseInfo — mysql/controllers/lease.js:417
+ * ruta: mysql/routes/lease.js:48
+ * auth: staffSession
  * status: 200, 500
  */
 export interface PostDbLeaseDeleteConsumerLeaseInfoBody {
@@ -2794,9 +2786,9 @@ export interface PostDbLeaseDeleteConsumerLeaseInfoBody {
 
 /**
  * `POST /api/db_lease/delete-lease-info`
- * handler: deleteLeaseInfo — mysql/controllers/lease.js:376
- * ruta: mysql/routes/lease.js:40
- * auth: sin middleware de auth en la ruta
+ * handler: deleteLeaseInfo — mysql/controllers/lease.js:397
+ * ruta: mysql/routes/lease.js:45
+ * auth: staffSession
  * status: 200, 500
  */
 export interface PostDbLeaseDeleteLeaseInfoBody {
@@ -2808,8 +2800,8 @@ export interface PostDbLeaseDeleteLeaseInfoBody {
 /**
  * `POST /api/db_lease/new-consumer-lease`
  * handler: insertingNewLeaseConsumer — mysql/controllers/lease.js:95
- * ruta: mysql/routes/lease.js:31
- * auth: sin middleware de auth en la ruta
+ * ruta: mysql/routes/lease.js:36
+ * auth: staffSession
  * status: 201, 400, 500
  */
 export interface PostDbLeaseNewConsumerLeaseBody {
@@ -2820,8 +2812,8 @@ export interface PostDbLeaseNewConsumerLeaseBody {
 /**
  * `POST /api/db_lease/new-lease`
  * handler: insertingNewLease — mysql/controllers/lease.js:6
- * ruta: mysql/routes/lease.js:28
- * auth: sin middleware de auth en la ruta
+ * ruta: mysql/routes/lease.js:33
+ * auth: staffSession
  * status: 201, 400
  */
 export interface PostDbLeaseNewLeaseBody {
@@ -2836,8 +2828,8 @@ export interface PostDbLeaseNewLeaseBody {
 
 /**
  * `POST /api/db_lease/status`
- * handler: retrieveLeaseStatus — mysql/controllers/lease.js:444
- * ruta: mysql/routes/lease.js:19
+ * handler: retrieveLeaseStatus — mysql/controllers/lease.js:465
+ * ruta: mysql/routes/lease.js:24
  * auth: canReadInventory
  * status: 200, 400, 500
  */
@@ -2849,18 +2841,18 @@ export interface PostDbLeaseStatusBody {
 
 /**
  * `POST /api/db_lease/update-consumer-lease-info`
- * handler: updateConsumerLeaseInfo — mysql/controllers/lease.js:296
- * ruta: mysql/routes/lease.js:37
- * auth: sin middleware de auth en la ruta
+ * handler: updateConsumerLeaseInfo — mysql/controllers/lease.js:317
+ * ruta: mysql/routes/lease.js:42
+ * auth: staffSession
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 200, 400, 500
  */
 
 /**
  * `POST /api/db_lease/update-lease-info`
- * handler: updateLeaseInfo — mysql/controllers/lease.js:215
- * ruta: mysql/routes/lease.js:34
- * auth: sin middleware de auth en la ruta
+ * handler: updateLeaseInfo — mysql/controllers/lease.js:236
+ * ruta: mysql/routes/lease.js:39
+ * auth: staffSession
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 200, 400, 500
  */
@@ -3215,7 +3207,7 @@ export interface PatchDbMemberUpdateMemberInfoBody {
 
 /**
  * `POST /api/db_record/checking-lease-information`
- * handler: consultingLeaseInformationConsumer — mysql/controllers/items_events.js:507
+ * handler: consultingLeaseInformationConsumer — mysql/controllers/items_events.js:516
  * ruta: mysql/routes/recordEvent.js:24
  * auth: sin middleware de auth en la ruta
  * NOTA: cuerpo DINÁMICO: se itera el body (`Object.entries`) para armar el SQL
@@ -3228,7 +3220,7 @@ export interface PostDbRecordCheckingLeaseInformationBody {
 
 /**
  * `POST /api/db_record/checking`
- * handler: consultingRowInItemInvAssignedEventTable — mysql/controllers/items_events.js:438
+ * handler: consultingRowInItemInvAssignedEventTable — mysql/controllers/items_events.js:447
  * ruta: mysql/routes/recordEvent.js:19
  * auth: sin middleware de auth en la ruta
  * status: 200, 500
@@ -3271,7 +3263,7 @@ export interface PostDbRecordInsertingRecordBody {
 
 /**
  * `POST /api/db_record/removing-row-item-event-record`
- * handler: deletingRecordInItemInvAssignedEventRow — mysql/controllers/items_events.js:457
+ * handler: deletingRecordInItemInvAssignedEventRow — mysql/controllers/items_events.js:466
  * ruta: mysql/routes/recordEvent.js:22
  * auth: sin middleware de auth en la ruta
  * status: 200, 500
@@ -3445,11 +3437,10 @@ export interface PostDbStaffNewMemberBody {
 
 /**
  * `POST /api/db_stripe/consulting-stripe`
- * handler: consultingStripeCustomer — mysql/controllers/stripe.js:29
- * ruta: mysql/routes/stripe.js:12
- * auth: sin middleware de auth en la ruta
+ * handler: consultingStripeCustomer — mysql/controllers/stripe.js:33
+ * ruta: mysql/routes/stripe.js:16
+ * auth: validateJWT, checkTokenVersion
  * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
- * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
  * status: 200, 400, 500
  */
 export interface PostDbStripeConsultingStripeBody {
@@ -3460,8 +3451,8 @@ export interface PostDbStripeConsultingStripeBody {
 /**
  * `POST /api/db_stripe/new_stripe`
  * handler: insertingStripeCustomer — mysql/controllers/stripe.js:6
- * ruta: mysql/routes/stripe.js:30
- * auth: sin middleware de auth en la ruta
+ * ruta: mysql/routes/stripe.js:35
+ * auth: validateJWT, checkTokenVersion
  * status: 201, 500
  */
 export interface PostDbStripeNewStripeBody {
@@ -4183,8 +4174,8 @@ export interface PostFeedbackNewFeedbackBody {
 /**
  * `POST /api/image/images`
  * handler: retrieveImage — controller/image.js:23
- * ruta: routes/image.js:14
- * auth: sin middleware de auth en la ruta
+ * ruta: routes/image.js:20
+ * auth: staffSession
  * NOTA: el body se usa como FILTRO Mongo en `Image.find()`: cualquier subconjunto de los campos de `models/Image.js` (`{}` trae todo)
  * status: 201, 500
  */
@@ -4199,8 +4190,8 @@ export interface PostImageImagesBody {
 /**
  * `POST /api/image/new_image`
  * handler: storingImage — controller/image.js:5
- * ruta: routes/image.js:11
- * auth: sin middleware de auth en la ruta
+ * ruta: routes/image.js:17
+ * auth: staffSession
  * NOTA: el body se pasa completo a `new Image()`: los campos son los del esquema `models/Image.js`
  * status: 201, 500
  */
@@ -5575,8 +5566,8 @@ export interface PatchReceiverUpdateBulkItemsInTransactionBody {
 
 /**
  * `POST /api/registration/accept-invitation`
- * handler: acceptInvitation — controller/registration.js:517
- * ruta: routes/registration.js:45
+ * handler: acceptInvitation — controller/registration.js:521
+ * ruta: routes/registration.js:46
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 400, 404, 409, 500
@@ -5584,8 +5575,8 @@ export interface PatchReceiverUpdateBulkItemsInTransactionBody {
 
 /**
  * `POST /api/registration/add-company`
- * handler: registerExistingUserNewCompany — controller/registration.js:302
- * ruta: routes/registration.js:30
+ * handler: registerExistingUserNewCompany — controller/registration.js:306
+ * ruta: routes/registration.js:31
  * auth: check("company.company_name", "company.company_name es requerido").not().isEmpty(), check("company.website", "company.website es requerido").not().isEmpty(), validateFields
  * status: 201, 400, 404, 500
  */
@@ -5596,9 +5587,9 @@ export interface PostRegistrationAddCompanyBody {
 
 /**
  * `POST /api/registration/new`
- * handler: registerNewUserAndCompany — controller/registration.js:147
- * ruta: routes/registration.js:14
- * auth: check("user.lastName", "user.lastName es requerido").not().isEmpty(), check("user.email", "user.email debe ser un email válido").isEmail(), check("user.password", "user.password debe tener al menos 6 caracteres").isLength({ min: 6 }), check("company.company_name", "company.company_name es requerido").not().isEmpty(), check("company.website", "company.website es requerido").not().isEmpty(), validateFields
+ * handler: registerNewUserAndCompany — controller/registration.js:148
+ * ruta: routes/registration.js:15
+ * auth: check("user.lastName", "user.lastName es requerido").not().isEmpty(), check("user.email", "user.email debe ser un email válido").isEmail(), check("user.password", passwordPolicyMessage).custom(isAcceptablePassword), check("company.company_name", "company.company_name es requerido").not().isEmpty(), check("company.website", "company.website es requerido").not().isEmpty(), validateFields
  * status: 201, 400, 500
  */
 export interface PostRegistrationNewBody {
@@ -5729,7 +5720,7 @@ export interface PostSchoolDashboardBody {
 
 /**
  * `POST /api/school/event-invitations/confirm`
- * handler: confirmEventInvitation — controller/eventInvitation.js:276
+ * handler: confirmEventInvitation — controller/eventInvitation.js:365
  * ruta: mysql/routes/school.js:102
  * auth: publicInvitationRateLimit
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -5738,7 +5729,7 @@ export interface PostSchoolDashboardBody {
 
 /**
  * `POST /api/school/event-invitations/response`
- * handler: recordEventInvitationResponse — controller/eventInvitation.js:372
+ * handler: recordEventInvitationResponse — controller/eventInvitation.js:461
  * ruta: mysql/routes/school.js:103
  * auth: publicInvitationRateLimit
  * status: 201, 400, 401, 404
@@ -5756,7 +5747,7 @@ export interface PostSchoolEventInvitationsResponseBody {
 
 /**
  * `POST /api/school/event-invitations/send`
- * handler: sendEventInvitations — controller/eventInvitation.js:163
+ * handler: sendEventInvitations — controller/eventInvitation.js:236
  * ruta: mysql/routes/school.js:95
  * auth: validateJWT, checkTokenVersion, authorizePermission("member", "create")
  * status: 200, 400, 404, 500
@@ -6042,7 +6033,7 @@ export interface GetStaffActivityLogQuery {
 
 /**
  * `POST /api/staff/__staff-search`
- * handler: searchStaffByEmail — controller/admin.js:863
+ * handler: searchStaffByEmail — controller/admin.js:976
  * ruta: routes/staff.js:49
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -6051,7 +6042,7 @@ export interface GetStaffActivityLogQuery {
 
 /**
  * `GET /api/staff/admin-users`
- * handler: displayAllAdminUser — controller/admin.js:935
+ * handler: displayAllAdminUser — controller/admin.js:1048
  * ruta: routes/staff.js:19
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read")
  * NOTA: el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo)
@@ -6084,7 +6075,7 @@ export interface GetStaffAdminUsersBody {
 
 /**
  * `POST /api/staff/admin-users`
- * handler: displayAllAdminUser — controller/admin.js:935
+ * handler: displayAllAdminUser — controller/admin.js:1048
  * ruta: routes/staff.js:22
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read")
  * NOTA: el body se usa como FILTRO Mongo en `AdminUser.find()`: cualquier subconjunto de los campos de `models/AdminUser.js` (`{}` trae todo)
@@ -6117,7 +6108,7 @@ export interface PostStaffAdminUsersBody {
 
 /**
  * `GET /api/staff/consumers/search`
- * handler: searchCustomerByParameters — controller/stripe.js:1072
+ * handler: searchCustomerByParameters — controller/stripe.js:1080
  * ruta: routes/staff.js:44
  * auth: sin middleware de auth en la ruta
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
@@ -6130,20 +6121,23 @@ export interface GetStaffConsumersSearchBody {
 
 /**
  * `PATCH /api/staff/edit-admin/:id`
- * handler: editOtherAdminUser — controller/admin.js:587
+ * handler: editOtherAdminUser — controller/admin.js:663
  * ruta: routes/staff.js:41
  * auth: validateJWT, checkTokenVersion, selfOrStaffUpdate
- * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
- * NOTA: el handler NO lee el body: manda `{}` (o nada).
- * status: 500
+ * NOTA: cuerpo DINÁMICO: los pares del body se convierten en columnas/filtros SQL (`Object.keys(req.body)`)
+ * status: 400, 403, 404, 500
  */
+export interface PatchStaffEditAdminByIdBody {
+  /** cuerpo dinámico: cada par clave/valor se traduce a filtro/columna SQL */
+  [key: string]: unknown;
+}
 export interface PatchStaffEditAdminByIdParams {
   id: string;
 }
 
 /**
  * `POST /api/staff/force-logout`
- * handler: forceEndSession — controller/admin.js:1119
+ * handler: forceEndSession — controller/admin.js:1232
  * ruta: routes/staff.js:63
  * auth: tokenIfPresent
  * status: 200, 400, 403, 404, 500
@@ -6155,7 +6149,7 @@ export interface PostStaffForceLogoutBody {
 /**
  * `POST /api/stripe/account_link`
  * handler: stripeAccountLink — controller/stripe.js:124
- * ruta: routes/stripe.js:116
+ * ruta: routes/stripe.js:131
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6167,7 +6161,7 @@ export interface PostStripeAccountLinkBody {
 /**
  * `POST /api/stripe/account_sessions`
  * handler: stripeAccountSession — controller/stripe.js:149
- * ruta: routes/stripe.js:119
+ * ruta: routes/stripe.js:134
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6178,7 +6172,7 @@ export interface PostStripeAccountSessionsBody {
 /**
  * `POST /api/stripe/accounts`
  * handler: stripeAccountCreate — controller/stripe.js:65
- * ruta: routes/stripe.js:113
+ * ruta: routes/stripe.js:128
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6189,8 +6183,8 @@ export interface PostStripeAccountsBody {
 
 /**
  * `POST /api/stripe/cancel/subscriptions/:id`
- * handler: updateCancelSubscription — controller/stripe.js:605
- * ruta: routes/stripe.js:205
+ * handler: updateCancelSubscription — controller/stripe.js:613
+ * ruta: routes/stripe.js:220
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6205,7 +6199,7 @@ export interface PostStripeCancelSubscriptionsByIdParams {
 /**
  * `POST /api/stripe/company-account-stripe/update`
  * handler: stripeCompanyAccountUpdate — controller/stripe.js:273
- * ruta: routes/stripe.js:311
+ * ruta: routes/stripe.js:338
  * auth: sin middleware de auth en la ruta
  * NOTA: rest-spread `...updateData`: acepta campos extra
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
@@ -6217,8 +6211,8 @@ export interface PostStripeCompanyAccountStripeUpdateBody {
 
 /**
  * `POST /api/stripe/company-account-stripe`
- * handler: stripeCompanyAccountFound — controller/stripe.js:1037
- * ruta: routes/stripe.js:196
+ * handler: stripeCompanyAccountFound — controller/stripe.js:1045
+ * ruta: routes/stripe.js:211
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6229,7 +6223,7 @@ export interface PostStripeCompanyAccountStripeBody {
 /**
  * `POST /api/stripe/create-payment-intent-customized`
  * handler: stripePaymentIntentCustomized — controller/stripe.js:369
- * ruta: routes/stripe.js:130
+ * ruta: routes/stripe.js:145
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6240,8 +6234,8 @@ export interface PostStripeCreatePaymentIntentCustomizedBody {
 
 /**
  * `POST /api/stripe/create-payment-intent-subscription`
- * handler: stripePaymentIntentSubscription — controller/stripe.js:395
- * ruta: routes/stripe.js:133
+ * handler: stripePaymentIntentSubscription — controller/stripe.js:400
+ * ruta: routes/stripe.js:148
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6253,7 +6247,7 @@ export interface PostStripeCreatePaymentIntentSubscriptionBody {
 /**
  * `POST /api/stripe/create-payment-intent`
  * handler: stripePaymentIntent — controller/stripe.js:304
- * ruta: routes/stripe.js:122
+ * ruta: routes/stripe.js:137
  * auth: validatePublicPaymentPayload, attachServerIdempotencyKey
  * status: 201, 500
  */
@@ -6265,8 +6259,8 @@ export interface PostStripeCreatePaymentIntentBody {
 
 /**
  * `POST /api/stripe/create-subscriptions_no_trial`
- * handler: createSubscriptionNoTrialPeriod — controller/stripe.js:478
- * ruta: routes/stripe.js:145
+ * handler: createSubscriptionNoTrialPeriod — controller/stripe.js:486
+ * ruta: routes/stripe.js:160
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6278,8 +6272,8 @@ export interface PostStripeCreateSubscriptionsNoTrialBody {
 
 /**
  * `POST /api/stripe/create-subscriptions`
- * handler: creatingSubscription — controller/stripe.js:420
- * ruta: routes/stripe.js:142
+ * handler: creatingSubscription — controller/stripe.js:428
+ * ruta: routes/stripe.js:157
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6292,7 +6286,7 @@ export interface PostStripeCreateSubscriptionsBody {
 /**
  * `POST /api/stripe/customer`
  * handler: stripeCustomer — controller/stripe.js:30
- * ruta: routes/stripe.js:110
+ * ruta: routes/stripe.js:125
  * auth: sin middleware de auth en la ruta
  * status: 201, 400
  */
@@ -6304,8 +6298,8 @@ export interface PostStripeCustomerBody {
 
 /**
  * `GET /api/stripe/customers/search`
- * handler: searchCustomerId — controller/stripe.js:779
- * ruta: routes/stripe.js:178
+ * handler: searchCustomerId — controller/stripe.js:787
+ * ruta: routes/stripe.js:193
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "read")
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
  * status: 201, 500
@@ -6317,8 +6311,8 @@ export interface GetStripeCustomersSearchBody {
 
 /**
  * `GET /api/stripe/customers`
- * handler: listAllCustomers — controller/stripe.js:763
- * ruta: routes/stripe.js:172
+ * handler: listAllCustomers — controller/stripe.js:771
+ * ruta: routes/stripe.js:187
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "read")
  * NOTA: el body se usa como FILTRO Mongo en `StripeCustomer.find()`: cualquier subconjunto de los campos de `models/StripeCustomer.js` (`{}` trae todo)
  * status: 201, 500
@@ -6332,8 +6326,8 @@ export interface GetStripeCustomersBody {
 
 /**
  * `POST /api/stripe/customers`
- * handler: listAllCustomers — controller/stripe.js:763
- * ruta: routes/stripe.js:175
+ * handler: listAllCustomers — controller/stripe.js:771
+ * ruta: routes/stripe.js:190
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "read")
  * NOTA: el body se usa como FILTRO Mongo en `StripeCustomer.find()`: cualquier subconjunto de los campos de `models/StripeCustomer.js` (`{}` trae todo)
  * status: 201, 500
@@ -6347,9 +6341,9 @@ export interface PostStripeCustomersBody {
 
 /**
  * `POST /api/stripe/internal/partial-refund`
- * handler: partialRefundStripePaymentIntent — controller/stripe.js:903
- * ruta: routes/stripe.js:273
- * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), validateRefundPayload
+ * handler: partialRefundStripePaymentIntent — controller/stripe.js:911
+ * ruta: routes/stripe.js:299
+ * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), validateRefundPayload, ownsBodyPaymentIntent
  * status: 201, 500
  */
 export interface PostStripeInternalPartialRefundBody {
@@ -6359,9 +6353,9 @@ export interface PostStripeInternalPartialRefundBody {
 
 /**
  * `POST /api/stripe/internal/payment-intents/:id/cancel`
- * handler: cancelStripePaymentIntent — controller/stripe.js:858
- * ruta: routes/stripe.js:237
- * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), validatePaymentIntentIdParam
+ * handler: cancelStripePaymentIntent — controller/stripe.js:866
+ * ruta: routes/stripe.js:258
+ * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), validatePaymentIntentIdParam, sameIdInUrlAndBody, ownsBodyId
  * status: 201, 500
  */
 export interface PostStripeInternalPaymentIntentsByIdCancelBody {
@@ -6370,9 +6364,9 @@ export interface PostStripeInternalPaymentIntentsByIdCancelBody {
 
 /**
  * `POST /api/stripe/internal/payment-intents/:id/capture`
- * handler: captureStripePaymentIntent — controller/stripe.js:833
- * ruta: routes/stripe.js:230
- * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), validatePaymentIntentIdParam
+ * handler: captureStripePaymentIntent — controller/stripe.js:841
+ * ruta: routes/stripe.js:249
+ * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), validatePaymentIntentIdParam, sameIdInUrlAndBody, ownsBodyId
  * status: 201, 404
  */
 export interface PostStripeInternalPaymentIntentsByIdCaptureBody {
@@ -6382,9 +6376,9 @@ export interface PostStripeInternalPaymentIntentsByIdCaptureBody {
 
 /**
  * `POST /api/stripe/internal/refund`
- * handler: refundStripePaymentIntent — controller/stripe.js:882
- * ruta: routes/stripe.js:266
- * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), validateRefundPayload
+ * handler: refundStripePaymentIntent — controller/stripe.js:890
+ * ruta: routes/stripe.js:291
+ * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), validateRefundPayload, ownsBodyPaymentIntent
  * status: 201, 500
  */
 export interface PostStripeInternalRefundBody {
@@ -6393,8 +6387,8 @@ export interface PostStripeInternalRefundBody {
 
 /**
  * `GET /api/stripe/invoices`
- * handler: displayAllPaidInvoicesPerSubscription — controller/stripe.js:648
- * ruta: routes/stripe.js:199
+ * handler: displayAllPaidInvoicesPerSubscription — controller/stripe.js:656
+ * ruta: routes/stripe.js:214
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6404,8 +6398,8 @@ export interface GetStripeInvoicesBody {
 
 /**
  * `POST /api/stripe/invoices`
- * handler: displayAllPaidInvoicesPerSubscription — controller/stripe.js:648
- * ruta: routes/stripe.js:202
+ * handler: displayAllPaidInvoicesPerSubscription — controller/stripe.js:656
+ * ruta: routes/stripe.js:217
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6416,7 +6410,7 @@ export interface PostStripeInvoicesBody {
 /**
  * `POST /api/stripe/new-company-account`
  * handler: companyInformationAccountStripe — controller/stripe.js:190
- * ruta: routes/stripe.js:139
+ * ruta: routes/stripe.js:154
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6429,9 +6423,9 @@ export interface PostStripeNewCompanyAccountBody {
 
 /**
  * `POST /api/stripe/partial-refund`
- * handler: partialRefundStripePaymentIntent — controller/stripe.js:903
- * ruta: routes/stripe.js:259
- * auth: canMoveCollectedMoney, validateRefundPayload
+ * handler: partialRefundStripePaymentIntent — controller/stripe.js:911
+ * ruta: routes/stripe.js:283
+ * auth: canMoveCollectedMoney, validateRefundPayload, ownsBodyPaymentIntent
  * status: 201, 500
  */
 export interface PostStripePartialRefundBody {
@@ -6441,8 +6435,8 @@ export interface PostStripePartialRefundBody {
 
 /**
  * `POST /api/stripe/payment_intents/:id/update-payment-method`
- * handler: updatePaymentMethodFromAdminDashboard — controller/stripe.js:668
- * ruta: routes/stripe.js:160
+ * handler: updatePaymentMethodFromAdminDashboard — controller/stripe.js:676
+ * ruta: routes/stripe.js:175
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6453,8 +6447,8 @@ export interface PostStripePaymentIntentsByIdUpdatePaymentMethodBody {
 
 /**
  * `GET /api/stripe/payment_intents/:id`
- * handler: retrievePaymentIntent — controller/stripe.js:967
- * ruta: routes/stripe.js:181
+ * handler: retrievePaymentIntent — controller/stripe.js:975
+ * ruta: routes/stripe.js:196
  * auth: sin middleware de auth en la ruta
  * status: 201, 400, 401, 404, 500
  */
@@ -6464,8 +6458,8 @@ export interface GetStripePaymentIntentsByIdParams {
 
 /**
  * `POST /api/stripe/payment_methods/:id/attach`
- * handler: updateDefaultPaymentMethodInCustomer — controller/stripe.js:709
- * ruta: routes/stripe.js:154
+ * handler: updateDefaultPaymentMethodInCustomer — controller/stripe.js:717
+ * ruta: routes/stripe.js:169
  * auth: sin middleware de auth en la ruta
  * status: 201
  */
@@ -6478,9 +6472,9 @@ export interface PostStripePaymentMethodsByIdAttachParams {
 
 /**
  * `POST /api/stripe/payment-intents/:id/cancel`
- * handler: cancelStripePaymentIntent — controller/stripe.js:858
- * ruta: routes/stripe.js:222
- * auth: canMoveCollectedMoney, validatePaymentIntentIdParam
+ * handler: cancelStripePaymentIntent — controller/stripe.js:866
+ * ruta: routes/stripe.js:239
+ * auth: canMoveCollectedMoney, validatePaymentIntentIdParam, sameIdInUrlAndBody, ownsBodyId
  * status: 201, 500
  */
 export interface PostStripePaymentIntentsByIdCancelBody {
@@ -6489,9 +6483,9 @@ export interface PostStripePaymentIntentsByIdCancelBody {
 
 /**
  * `POST /api/stripe/payment-intents/:id/capture`
- * handler: captureStripePaymentIntent — controller/stripe.js:833
- * ruta: routes/stripe.js:214
- * auth: canMoveCollectedMoney, validatePaymentIntentIdParam
+ * handler: captureStripePaymentIntent — controller/stripe.js:841
+ * ruta: routes/stripe.js:229
+ * auth: canMoveCollectedMoney, validatePaymentIntentIdParam, sameIdInUrlAndBody, ownsBodyId
  * status: 201, 404
  */
 export interface PostStripePaymentIntentsByIdCaptureBody {
@@ -6501,8 +6495,8 @@ export interface PostStripePaymentIntentsByIdCaptureBody {
 
 /**
  * `POST /api/stripe/payment-method/subscriptions/:id`
- * handler: updateDefaultPaymentMethodInSubscription — controller/stripe.js:689
- * ruta: routes/stripe.js:148
+ * handler: updateDefaultPaymentMethodInSubscription — controller/stripe.js:697
+ * ruta: routes/stripe.js:163
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 201
@@ -6513,9 +6507,9 @@ export interface PostStripePaymentMethodSubscriptionsByIdParams {
 
 /**
  * `POST /api/stripe/refund`
- * handler: refundStripePaymentIntent — controller/stripe.js:882
- * ruta: routes/stripe.js:251
- * auth: canMoveCollectedMoney, validateRefundPayload
+ * handler: refundStripePaymentIntent — controller/stripe.js:890
+ * ruta: routes/stripe.js:274
+ * auth: canMoveCollectedMoney, validateRefundPayload, ownsBodyPaymentIntent
  * status: 201, 500
  */
 export interface PostStripeRefundBody {
@@ -6524,8 +6518,8 @@ export interface PostStripeRefundBody {
 
 /**
  * `DELETE /api/stripe/remove-duplicate/:id`
- * handler: removeDuplicateEntries — controller/stripe.js:945
- * ruta: routes/stripe.js:280
+ * handler: removeDuplicateEntries — controller/stripe.js:953
+ * ruta: routes/stripe.js:307
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 201, 500
@@ -6537,7 +6531,7 @@ export interface DeleteStripeRemoveDuplicateByIdParams {
 /**
  * `DELETE /api/stripe/removing/:id`
  * handler: removeDuplicateEntry — controller/transaction.js:237
- * ruta: routes/stripe.js:299
+ * ruta: routes/stripe.js:326
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 201, 404, 409, 500
@@ -6549,7 +6543,7 @@ export interface DeleteStripeRemovingByIdParams {
 /**
  * `POST /api/stripe/save-transaction-admin-dashboard`
  * handler: saveTransactionAdmin — controller/transaction.js:79
- * ruta: routes/stripe.js:287
+ * ruta: routes/stripe.js:314
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se pasa completo a `new Transaction()`: los campos son los del esquema `models/Transaction.js`
  * status: 201, 500
@@ -6572,7 +6566,7 @@ export interface PostStripeSaveTransactionAdminDashboardBody {
 /**
  * `POST /api/stripe/save-transaction-template-no-regular-user`
  * handler: saveTransactionTemplateForNoRegularUser — controller/transaction.js:103
- * ruta: routes/stripe.js:290
+ * ruta: routes/stripe.js:317
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se pasa completo a `new Transaction()`: los campos son los del esquema `models/Transaction.js`
  * status: 201, 500
@@ -6595,7 +6589,7 @@ export interface PostStripeSaveTransactionTemplateNoRegularUserBody {
 /**
  * `POST /api/stripe/save-transaction`
  * handler: saveTransaction — controller/transaction.js:32
- * ruta: routes/stripe.js:284
+ * ruta: routes/stripe.js:311
  * auth: sin middleware de auth en la ruta
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
  * status: 200, 201, 500
@@ -6609,8 +6603,8 @@ export interface PostStripeSaveTransactionBody {
 
 /**
  * `POST /api/stripe/setup-search`
- * handler: findSubscriptionIdBySetUpId — controller/stripe.js:523
- * ruta: routes/stripe.js:169
+ * handler: findSubscriptionIdBySetUpId — controller/stripe.js:531
+ * ruta: routes/stripe.js:184
  * auth: sin middleware de auth en la ruta
  * status: 201, 404, 500
  */
@@ -6620,8 +6614,8 @@ export interface PostStripeSetupSearchBody {
 
 /**
  * `POST /api/stripe/stripe-transaction-admin`
- * handler: saveStripeTransactionAdmin — controller/stripe.js:815
- * ruta: routes/stripe.js:211
+ * handler: saveStripeTransactionAdmin — controller/stripe.js:823
+ * ruta: routes/stripe.js:226
  * auth: validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update")
  * NOTA: el body se pasa completo a `new StripeTransaction()`: los campos son los del esquema `models/StripeTransaction.js`
  * status: 201, 500
@@ -6639,8 +6633,8 @@ export interface PostStripeStripeTransactionAdminBody {
 
 /**
  * `POST /api/stripe/stripe-transaction-no-regular-user`
- * handler: saveStripeTransactionTemplateForNoRegularUser — controller/stripe.js:924
- * ruta: routes/stripe.js:245
+ * handler: saveStripeTransactionTemplateForNoRegularUser — controller/stripe.js:932
+ * ruta: routes/stripe.js:268
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se pasa completo a `new StripeTransaction()`: los campos son los del esquema `models/StripeTransaction.js`
  * status: 201, 500
@@ -6658,8 +6652,8 @@ export interface PostStripeStripeTransactionNoRegularUserBody {
 
 /**
  * `POST /api/stripe/stripe-transaction`
- * handler: saveStripeTransaction — controller/stripe.js:797
- * ruta: routes/stripe.js:208
+ * handler: saveStripeTransaction — controller/stripe.js:805
+ * ruta: routes/stripe.js:223
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se pasa completo a `new StripeTransaction()`: los campos son los del esquema `models/StripeTransaction.js`
  * status: 201, 500
@@ -6677,8 +6671,8 @@ export interface PostStripeStripeTransactionBody {
 
 /**
  * `GET /api/stripe/stripe-transactions-saved-list`
- * handler: getListOfAllSavedStripeTransaction — controller/stripe.js:1020
- * ruta: routes/stripe.js:184
+ * handler: getListOfAllSavedStripeTransaction — controller/stripe.js:1028
+ * ruta: routes/stripe.js:199
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo)
  * status: 201, 500
@@ -6696,8 +6690,8 @@ export interface GetStripeStripeTransactionsSavedListBody {
 
 /**
  * `POST /api/stripe/stripe-transactions-saved-list`
- * handler: getListOfAllSavedStripeTransaction — controller/stripe.js:1020
- * ruta: routes/stripe.js:190
+ * handler: getListOfAllSavedStripeTransaction — controller/stripe.js:1028
+ * ruta: routes/stripe.js:205
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se usa como FILTRO Mongo en `StripeTransaction.find()`: cualquier subconjunto de los campos de `models/StripeTransaction.js` (`{}` trae todo)
  * status: 201, 500
@@ -6715,8 +6709,8 @@ export interface PostStripeStripeTransactionsSavedListBody {
 
 /**
  * `DELETE /api/stripe/subscriptions/:id`
- * handler: cancelSubscriptionCompany — controller/stripe.js:629
- * ruta: routes/stripe.js:308
+ * handler: cancelSubscriptionCompany — controller/stripe.js:637
+ * ruta: routes/stripe.js:335
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 201, 500
@@ -6727,8 +6721,8 @@ export interface DeleteStripeSubscriptionsByIdParams {
 
 /**
  * `GET /api/stripe/subscriptions/:id`
- * handler: searchSubscriptions — controller/stripe.js:569
- * ruta: routes/stripe.js:302
+ * handler: searchSubscriptions — controller/stripe.js:577
+ * ruta: routes/stripe.js:329
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
  */
@@ -6739,7 +6733,7 @@ export interface GetStripeSubscriptionsByIdParams {
 /**
  * `GET /api/stripe/transaction`
  * handler: getListOfAllSavedTransaction — controller/transaction.js:159
- * ruta: routes/stripe.js:296
+ * ruta: routes/stripe.js:323
  * auth: sin middleware de auth en la ruta
  * NOTA: el body se usa como FILTRO Mongo en `Transaction.find()`: cualquier subconjunto de los campos de `models/Transaction.js` (`{}` trae todo)
  * status: 201, 500
@@ -6761,8 +6755,8 @@ export interface GetStripeTransactionBody {
 
 /**
  * `PATCH /api/stripe/updating-subscription/:id`
- * handler: updateSubcriptionInCompanyAccount — controller/stripe.js:585
- * ruta: routes/stripe.js:305
+ * handler: updateSubcriptionInCompanyAccount — controller/stripe.js:593
+ * ruta: routes/stripe.js:332
  * auth: sin middleware de auth en la ruta
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 201, 500
@@ -6784,7 +6778,7 @@ export interface PostSubscriptionCompanySubscriptionBody {
 
 /**
  * `POST /api/subscription/new_subscription_no_trial`
- * handler: createSubscriptionNoTrialPeriod — controller/stripe.js:478
+ * handler: createSubscriptionNoTrialPeriod — controller/stripe.js:486
  * ruta: routes/subscription.js:15
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
@@ -6839,7 +6833,7 @@ export interface PostSubscriptionSearchSubscriptionBody {
 
 /**
  * `GET /api/subscription/searching-subscription/subscriptions/:id`
- * handler: retrieveSubscriptionID — controller/stripe.js:993
+ * handler: retrieveSubscriptionID — controller/stripe.js:1001
  * ruta: routes/subscription.js:33
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
@@ -6850,7 +6844,7 @@ export interface GetSubscriptionSearchingSubscriptionSubscriptionsByIdParams {
 
 /**
  * `GET /api/subscription/subscriptions/:id`
- * handler: searchingSubscriptionInStripe — controller/stripe.js:1056
+ * handler: searchingSubscriptionInStripe — controller/stripe.js:1064
  * ruta: routes/subscription.js:27
  * auth: sin middleware de auth en la ruta
  * status: 201, 500
@@ -6874,24 +6868,9 @@ export interface PatchSubscriptionUpdateSubscriptionByIdParams {
 }
 
 /**
- * `POST /api/transaction-audit-log/create-audit`
- * handler: createAuditLog — controller/transactionAuditLog.js:6
- * ruta: routes/transactionAuditLog.js:12
- * auth: sin middleware de auth en la ruta
- * NOTA: el body se pasa completo a `new TransactionAuditLog()`: los campos son los del esquema `models/TransactionAuditLog.js`
- * status: 201, 500
- */
-export interface PostTransactionAuditLogCreateAuditBody {
-  actionTaken?: string;
-  time?: string;
-  transaction?: string;
-  user?: string;
-}
-
-/**
  * `POST /api/transaction/check-and-release-deposit-transactions`
  * handler: checkingAndReleasingDepositTransactions — controller/transaction.js:282
- * ruta: routes/transaction.js:67
+ * ruta: routes/transaction.js:99
  * auth: staffOnly
  * status: 201, 500
  */
@@ -6901,9 +6880,17 @@ export interface PostTransactionCheckAndReleaseDepositTransactionsBody {
 }
 
 /**
+ * `POST /api/transaction/receipt-link`
+ * handler: issueReceiptLink — controller/receiptLink.js (handler no localizado)
+ * ruta: routes/transaction.js:83
+ * auth: staffOnly, ownsBodyPaymentIntent
+ * NOTA: el handler NO lee el body: manda `{}` (o nada).
+ */
+
+/**
  * `DELETE /api/transaction/remove-duplicate-transaction/:id`
  * handler: removeDuplicateEntry — controller/transaction.js:237
- * ruta: routes/transaction.js:58
+ * ruta: routes/transaction.js:90
  * auth: optionalJWT
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
  * status: 201, 404, 409, 500
@@ -6915,7 +6902,7 @@ export interface DeleteTransactionRemoveDuplicateTransactionByIdParams {
 /**
  * `POST /api/transaction/save-transaction-admin-dashboard`
  * handler: saveTransactionAdmin — controller/transaction.js:79
- * ruta: routes/transaction.js:39
+ * ruta: routes/transaction.js:61
  * auth: staffOnly
  * NOTA: el body se pasa completo a `new Transaction()`: los campos son los del esquema `models/Transaction.js`
  * status: 201, 500
@@ -6938,7 +6925,7 @@ export interface PostTransactionSaveTransactionAdminDashboardBody {
 /**
  * `POST /api/transaction/save-transaction-template-no-regular-user`
  * handler: saveTransactionTemplateForNoRegularUser — controller/transaction.js:103
- * ruta: routes/transaction.js:42
+ * ruta: routes/transaction.js:64
  * auth: staffOnly
  * NOTA: el body se pasa completo a `new Transaction()`: los campos son los del esquema `models/Transaction.js`
  * status: 201, 500
@@ -6961,7 +6948,7 @@ export interface PostTransactionSaveTransactionTemplateNoRegularUserBody {
 /**
  * `POST /api/transaction/save-transaction`
  * handler: saveTransaction — controller/transaction.js:32
- * ruta: routes/transaction.js:36
+ * ruta: routes/transaction.js:58
  * auth: optionalJWT
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
  * status: 200, 201, 500
@@ -6975,8 +6962,8 @@ export interface PostTransactionSaveTransactionBody {
 
 /**
  * `GET /api/transaction/subscriptions/:id`
- * handler: retrieveSubscriptionID — controller/stripe.js:993
- * ruta: routes/transaction.js:61
+ * handler: retrieveSubscriptionID — controller/stripe.js:1001
+ * ruta: routes/transaction.js:93
  * auth: staffOnly
  * status: 201, 500
  */
@@ -6987,8 +6974,8 @@ export interface GetTransactionSubscriptionsByIdParams {
 /**
  * `GET /api/transaction/transaction`
  * handler: gettingListOfSavedTransaction — controller/transaction.js:183
- * ruta: routes/transaction.js:52
- * auth: sin middleware de auth en la ruta
+ * ruta: routes/transaction.js:79
+ * auth: optionalJWT, anonymousTransactionRead
  * NOTA: lee el QUERY STRING crudo (`request._parsedUrl.query`) y lo parte por `&`: el orden y el formato de los parámetros importan, revisar el handler
  * status: 201, 500
  */
@@ -7000,7 +6987,7 @@ export interface GetTransactionTransactionBody {
 /**
  * `POST /api/transaction/transaction`
  * handler: getListOfAllSavedTransaction — controller/transaction.js:159
- * ruta: routes/transaction.js:49
+ * ruta: routes/transaction.js:71
  * auth: optionalJWT
  * NOTA: el body se usa como FILTRO Mongo en `Transaction.find()`: cualquier subconjunto de los campos de `models/Transaction.js` (`{}` trae todo)
  * status: 201, 500
@@ -7023,7 +7010,7 @@ export interface PostTransactionTransactionBody {
 /**
  * `POST /api/transaction/update-multiple-documents`
  * handler: updateMultipleDocuments — controller/transaction.js:219
- * ruta: routes/transaction.js:64
+ * ruta: routes/transaction.js:96
  * auth: staffOnly
  * NOTA: el body se usa como FILTRO Mongo en `Transaction.find()`: cualquier subconjunto de los campos de `models/Transaction.js` (`{}` trae todo)
  * status: 201, 500
@@ -7048,7 +7035,7 @@ export interface PostTransactionUpdateMultipleDocumentsBody {
 /**
  * `PATCH /api/transaction/update-transaction/:id`
  * handler: updateTransaction — controller/transaction.js:126
- * ruta: routes/transaction.js:55
+ * ruta: routes/transaction.js:87
  * auth: staffOnly
  * NOTA: pasa `req.body` completo a otra capa (revisar el controlador para el detalle)
  * NOTA: el handler NO lee el body: manda `{}` (o nada).
@@ -7064,7 +7051,7 @@ export interface ApiEndpoints {
   "GET /api/admin/:id": { body: GetAdminByIdBody };
   "GET /api/admin/activity-logs": { query: GetAdminActivityLogsQuery };
   "POST /api/admin/activity-logs": { body: PostAdminActivityLogsBody };
-  "PATCH /api/admin/admin-user/:id": { params: PatchAdminAdminUserByIdParams };
+  "PATCH /api/admin/admin-user/:id": { body: PatchAdminAdminUserByIdBody; params: PatchAdminAdminUserByIdParams };
   "GET /api/admin/check-online-status/:email": { params: GetAdminCheckOnlineStatusByEmailParams };
   "POST /api/admin/invalidate-all-sessions": {  };
   "POST /api/admin/login": { body: PostAdminLoginBody };
@@ -7253,8 +7240,8 @@ export interface ApiEndpoints {
   "GET /api/db_item/serial-suggest": { query: GetDbItemSerialSuggestQuery };
   "POST /api/db_item/tracking_item/:id": { params: PostDbItemTrackingItemByIdParams };
   "POST /api/db_item/warehouse-items": { body: PostDbItemWarehouseItemsBody };
-  "POST /api/db_lease/consulting-consumer-lease": { body: PostDbLeaseConsultingConsumerLeaseBody };
-  "POST /api/db_lease/consulting-lease": { body: PostDbLeaseConsultingLeaseBody };
+  "POST /api/db_lease/consulting-consumer-lease": {  };
+  "POST /api/db_lease/consulting-lease": {  };
   "POST /api/db_lease/delete-consumer-lease-info": { body: PostDbLeaseDeleteConsumerLeaseInfoBody };
   "POST /api/db_lease/delete-lease-info": { body: PostDbLeaseDeleteLeaseInfoBody };
   "POST /api/db_lease/new-consumer-lease": { body: PostDbLeaseNewConsumerLeaseBody };
@@ -7481,7 +7468,7 @@ export interface ApiEndpoints {
   "GET /api/staff/admin-users": { body: GetStaffAdminUsersBody };
   "POST /api/staff/admin-users": { body: PostStaffAdminUsersBody };
   "GET /api/staff/consumers/search": { body: GetStaffConsumersSearchBody };
-  "PATCH /api/staff/edit-admin/:id": { params: PatchStaffEditAdminByIdParams };
+  "PATCH /api/staff/edit-admin/:id": { body: PatchStaffEditAdminByIdBody; params: PatchStaffEditAdminByIdParams };
   "POST /api/staff/force-logout": { body: PostStaffForceLogoutBody };
   "POST /api/stripe/account_link": { body: PostStripeAccountLinkBody };
   "POST /api/stripe/account_sessions": { body: PostStripeAccountSessionsBody };
@@ -7536,8 +7523,8 @@ export interface ApiEndpoints {
   "GET /api/subscription/searching-subscription/subscriptions/:id": { params: GetSubscriptionSearchingSubscriptionSubscriptionsByIdParams };
   "GET /api/subscription/subscriptions/:id": { params: GetSubscriptionSubscriptionsByIdParams };
   "PATCH /api/subscription/update-subscription/:id": { body: PatchSubscriptionUpdateSubscriptionByIdBody; params: PatchSubscriptionUpdateSubscriptionByIdParams };
-  "POST /api/transaction-audit-log/create-audit": { body: PostTransactionAuditLogCreateAuditBody };
   "POST /api/transaction/check-and-release-deposit-transactions": { body: PostTransactionCheckAndReleaseDepositTransactionsBody };
+  "POST /api/transaction/receipt-link": {  };
   "DELETE /api/transaction/remove-duplicate-transaction/:id": { params: DeleteTransactionRemoveDuplicateTransactionByIdParams };
   "POST /api/transaction/save-transaction-admin-dashboard": { body: PostTransactionSaveTransactionAdminDashboardBody };
   "POST /api/transaction/save-transaction-template-no-regular-user": { body: PostTransactionSaveTransactionTemplateNoRegularUserBody };
