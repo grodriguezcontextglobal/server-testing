@@ -136,7 +136,7 @@ function baseUserPayload(overrides = {}) {
     name:         'Ana',
     lastName:     'López',
     email:        'ana@test.com',
-    password:     'secret123',
+    password:     'secret123-long',
     phone:        '555-0001',
     imageProfile: '',
     ...overrides,
@@ -207,6 +207,18 @@ test('registerNewUserAndCompany: 400 si faltan campos requeridos del user', asyn
 
   assert.equal(res.statusCode, 400);
   assert.equal(res.body.ok, false);
+});
+
+test('registerNewUserAndCompany: 400 con una contraseña de menos de 12 caracteres (IA-5)', async () => {
+  resetState();
+
+  const req = { body: { user: baseUserPayload({ password: 'secret123' }), company: baseCompanyPayload() } };
+  const res = mockRes();
+  await registerNewUserAndCompany(req, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.match(res.body.msg, /12/);
+  assert.equal(sqlLog.length, 0, 'no toca MySQL');
 });
 
 test('registerNewUserAndCompany: 400 si faltan campos requeridos de company', async () => {

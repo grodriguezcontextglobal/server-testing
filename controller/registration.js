@@ -7,6 +7,7 @@ const Company = require("../models/Company");
 const getConnection = require("../mysql/database/config");
 const { generateJWT } = require("../helpers/jwt");
 const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
+const { isAcceptablePassword, passwordPolicyMessage } = require("../helpers/passwordPolicy");
 const { generateInvitationToken, readInvitationToken } = require("../helpers/invitationToken");
 const logger = require("../helpers/logger");
 
@@ -154,6 +155,9 @@ const registerNewUserAndCompany = async (request, response) => {
         ok: false,
         msg: "user.name, user.lastName, user.email y user.password son requeridos.",
       });
+    }
+    if (!isAcceptablePassword(user.password)) {
+      return response.status(400).json({ ok: false, msg: passwordPolicyMessage });
     }
     if (!company?.company_name || !company?.website) {
       return response.status(400).json({
@@ -575,6 +579,9 @@ const acceptInvitation = async (request, response) => {
           ok: false,
           msg: "user.password es requerido para usuarios nuevos.",
         });
+      }
+      if (!isAcceptablePassword(user.password)) {
+        return response.status(400).json({ ok: false, msg: passwordPolicyMessage });
       }
       const salt = await bcrypt.genSalt();
       const hashedPassword = await bcrypt.hash(user.password, salt);

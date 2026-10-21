@@ -157,6 +157,23 @@ test('cada fallo queda en el audit trail, también el de un email sin cuenta', a
   assert.equal(failed[1].details.email, 'nadie@x.com');
 });
 
+test('un email sin cuenta responde igual que una contraseña incorrecta y también se bloquea', async () => {
+  const unknown = await login({ email: 'nadie@x.com', password: 'x' });
+  const wrong = await login({ email: 'ana@x.com', password: 'mal' });
+  assert.equal(unknown.code, wrong.code);
+  assert.equal(unknown.body.msg, wrong.body.msg);
+  await login({ email: 'nadie@x.com', password: 'x' });
+  const third = await login({ email: 'nadie@x.com', password: 'x' });
+  assert.equal(third.code, 429);
+  assert.equal(third.body.accountLocked, true);
+});
+
+test('el 400 dice cuántos intentos quedan', async () => {
+  assert.equal((await login({ email: 'ana@x.com', password: 'mal' })).body.attemptsRemaining, 2);
+  assert.equal((await login({ email: 'nadie@x.com', password: 'x' })).body.attemptsRemaining, 2);
+  assert.equal((await login({ email: 'ana@x.com', password: 'mal' })).body.attemptsRemaining, 1);
+});
+
 test('sin Redis no se bloquea el login (fail-open)', async () => {
   redisDown = true;
   for (let i = 0; i < 4; i++) {

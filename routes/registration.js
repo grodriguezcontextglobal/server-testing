@@ -1,5 +1,6 @@
 const { Router } = require("express");
 const { check } = require("express-validator");
+const { isAcceptablePassword, passwordPolicyMessage } = require("../helpers/passwordPolicy");
 const router = Router();
 
 const validateFields = require("../middlewares/validate-field");
@@ -17,7 +18,7 @@ router.post(
     check("user.name", "user.name es requerido").not().isEmpty(),
     check("user.lastName", "user.lastName es requerido").not().isEmpty(),
     check("user.email", "user.email debe ser un email válido").isEmail(),
-    check("user.password", "user.password debe tener al menos 6 caracteres").isLength({ min: 6 }),
+    check("user.password", passwordPolicyMessage).custom(isAcceptablePassword),
     check("company.company_name", "company.company_name es requerido").not().isEmpty(),
     check("company.website", "company.website es requerido").not().isEmpty(),
     validateFields,

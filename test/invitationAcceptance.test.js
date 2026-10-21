@@ -202,7 +202,7 @@ describe("POST /api/registration/accept-invitation", () => {
       const res = mockRes();
       await acceptInvitation({ body: {
         invitationToken,
-        user: { email: "invited@test.com", password: "Abc123!@" },
+        user: { email: "invited@test.com", password: "Abc123!@Abc123" },
         company: { company_name: "Acme Corp" },
       } }, res);
       assert.equal(res._code, 400);
@@ -215,7 +215,7 @@ describe("POST /api/registration/accept-invitation", () => {
     const res = mockRes();
     await acceptInvitation({ body: {
       invitationToken: await tokenFor("x@x.com", "otra-company"),
-      user: { name: "X", lastName: "Y", password: "Abc123!@" },
+      user: { name: "X", lastName: "Y", password: "Abc123!@Abc123" },
     } }, res);
     assert.equal(res._code, 404);
     assert.equal(res._body.ok, false);
@@ -227,7 +227,7 @@ describe("POST /api/registration/accept-invitation", () => {
     const res = mockRes();
     await acceptInvitation({ body: {
       invitationToken: await tokenFor("nadie@test.com"),
-      user: { name: "Intruso", lastName: "X", password: "Abc123!@" },
+      user: { name: "Intruso", lastName: "X", password: "Abc123!@Abc123" },
     } }, res);
 
     assert.equal(res._code, 404);
@@ -242,7 +242,7 @@ describe("POST /api/registration/accept-invitation", () => {
     const res = mockRes();
     await acceptInvitation({ body: {
       invitationToken: await tokenFor("maria@test.com"),
-      user: { name: "M", lastName: "L", email: "atacante@test.com", password: "Secure1!X" },
+      user: { name: "M", lastName: "L", email: "atacante@test.com", password: "Secure1!X-long" },
     } }, res);
 
     assert.equal(res._code, 201);
@@ -257,7 +257,7 @@ describe("POST /api/registration/accept-invitation", () => {
     const res = mockRes();
     await acceptInvitation({ body: {
       invitationToken: await tokenFor("maria@test.com"),
-      user: { password: "Secure1!X" },
+      user: { password: "Secure1!X-long" },
     } }, res);
     assert.equal(res._code, 409);
     assert.equal(res._body.invitationAlreadyAccepted, true);
@@ -273,13 +273,29 @@ describe("POST /api/registration/accept-invitation", () => {
     const res = mockRes();
     await acceptInvitation({ body: {
       invitationToken: await tokenFor("maria@test.com"),
-      user: { name: "Maria", lastName: "Lopez", password: "Secure1!X" },
+      user: { name: "Maria", lastName: "Lopez", password: "Secure1!X-long" },
       roleType: "root_admin", // intento de escalada — debe ignorarse
     } }, res);
 
     assert.equal(res._code, 201);
     assert.deepEqual(capturedSQL.roleLookups, ["assistant"]);
     assert.equal(res._body.company.roleType, "assistant");
+  });
+
+  it("400 usuario nuevo con contraseña de menos de 12 caracteres (IA-5)", async () => {
+    companyDocs["Acme Corp"] = makeCompanyDoc(
+      "Acme Corp",
+      invitationFor("maria@test.com", "assistant")
+    );
+
+    const res = mockRes();
+    await acceptInvitation({ body: {
+      invitationToken: await tokenFor("maria@test.com"),
+      user: { name: "Maria", lastName: "Lopez", password: "Secure1!X" },
+    } }, res);
+
+    assert.equal(res._code, 400);
+    assert.match(res._body.msg, /12/);
   });
 
   it("201 usuario nuevo: crea AdminUser, staff_member, company_staff y companiesAssigned", async () => {
@@ -291,7 +307,7 @@ describe("POST /api/registration/accept-invitation", () => {
     const res = mockRes();
     await acceptInvitation({ body: {
       invitationToken: await tokenFor("maria@test.com"),
-      user: { name: "Maria", lastName: "Lopez", password: "Secure1!X" },
+      user: { name: "Maria", lastName: "Lopez", password: "Secure1!X-long" },
     } }, res);
 
     assert.equal(res._code, 201);
@@ -364,7 +380,7 @@ describe("POST /api/registration/accept-invitation", () => {
     const res = mockRes();
     await acceptInvitation({ body: {
       invitationToken: await tokenFor("z@test.com"),
-      user: { name: "Z", lastName: "Z", password: "Abc123!@" },
+      user: { name: "Z", lastName: "Z", password: "Abc123!@Abc123" },
     } }, res);
 
     assert.equal(res._code, 201);
@@ -382,7 +398,7 @@ describe("POST /api/registration/accept-invitation", () => {
     const res = mockRes();
     await acceptInvitation({ body: {
       invitationToken: await tokenFor("fail@test.com"),
-      user: { name: "A", lastName: "B", password: "Abc123!@" },
+      user: { name: "A", lastName: "B", password: "Abc123!@Abc123" },
     } }, res);
 
     assert.equal(res._code, 201);
@@ -397,7 +413,7 @@ describe("POST /api/registration/accept-invitation", () => {
     const res = mockRes();
     await acceptInvitation({ body: {
       invitationToken: await tokenFor("invited@test.com"),
-      user: { name: "C", lastName: "D", password: "Abc123!@" },
+      user: { name: "C", lastName: "D", password: "Abc123!@Abc123" },
     } }, res);
 
     assert.equal(doc.saved, true);
@@ -434,7 +450,7 @@ describe("POST /api/nodemailer/new_invitation (attachInvitationLink)", () => {
     const res = mockRes();
     await acceptInvitation({ body: {
       invitationToken: url.searchParams.get("token"),
-      user: { name: "Maria", lastName: "Lopez", password: "Secure1!X" },
+      user: { name: "Maria", lastName: "Lopez", password: "Secure1!X-long" },
     } }, res);
     assert.equal(res._code, 201);
   });

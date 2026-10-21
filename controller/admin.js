@@ -21,6 +21,7 @@ const {
   getLockoutRemaining,
   recordLoginFailure,
   clearLoginFailures,
+  maxAttempts,
 } = require("../helpers/loginAttempts");
 const { isAcceptablePassword, passwordPolicyMessage } = require("../helpers/passwordPolicy");
 const {
@@ -128,7 +129,7 @@ const loginUser = async (request, response) => {
     // Todo login fallido se registra (AU-2) y suma al contador. Si con este
     // fallo la cuenta queda bloqueada, la respuesta ya es la del bloqueo.
     const failLogin = async (reason, user, status, body) => {
-      const { locked, retryAfter } = await recordLoginFailure(attemptsStore, email);
+      const { attempts, locked, retryAfter } = await recordLoginFailure(attemptsStore, email);
       logger.warn("Admin login failed", { email, reason, ip: request.ip, locked });
       await logStaffActivity({
         staff_member_id: user?.id ?? null,
@@ -149,14 +150,18 @@ const loginUser = async (request, response) => {
           retryAfter,
         });
       }
-      return response.status(status).json(body);
+      // Sin contador (Redis caído) no se anuncia nada.
+      const attemptsRemaining = attempts > 0 ? Math.max(maxAttempts() - attempts, 0) : undefined;
+      return response.status(status).json({ ...body, attemptsRemaining });
     };
 
     let adminUser = await AdminUser.findOne({ email }).select("+password");
     if (!adminUser) {
+      // Mismo mensaje que la contraseña incorrecta, y cuenta igual para el
+      // bloqueo: la respuesta no dice qué emails tienen cuenta.
       return failLogin("unknown_user", null, 400, {
         ok: false,
-        msg: "User is not found",
+        msg: "You have entered an invalid username or password",
       });
     }
     //confirm password
