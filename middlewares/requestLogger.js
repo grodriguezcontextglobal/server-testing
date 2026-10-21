@@ -21,30 +21,9 @@ const requestLogger = (req, res, next) => {
     ips: req.ips
   };
 
-  // Extract request information
-  const requestInfo = {
-    method: req.method,
-    url: req.originalUrl,
-    path: req.path,
-    query: req.query,
-    protocol: req.protocol,
-    secure: req.secure,
-    hostname: req.hostname,
-    contentType: req.get('Content-Type'),
-    contentLength: req.get('Content-Length'),
-    authorization: req.get('x-token') ? 'Bearer [REDACTED]' : 'None',
-    referer: req.get('Referer'),
-    origin: req.get('Origin')
-  };
-
-  // Log the incoming request
-  logger.log('http', 'Incoming Request', {
-    type: 'request_start',
-    requestInfo,
-    clientInfo,
-    timestamp: new Date().toISOString(),
-    serverTimestamp: startTime
-  });
+  // Una sola entrada por petición, al terminar (abajo), en una línea JSON de
+  // requests.log: método, ruta, estado, duración, origen, IP y, si hubo sesión,
+  // quién (req.uid lo deja validateJWT/optionalJWT). Nunca el token ni el body.
 
   // Override res.end to capture response information
   const originalEnd = res.end;
@@ -57,8 +36,11 @@ const requestLogger = (req, res, next) => {
       type: 'request_end',
       requestInfo: {
         method: req.method,
-        url: req.originalUrl,
-        requestId: clientInfo.requestId
+        // Sin query string: los enlaces firmados llevan el token en ?token=.
+        url: String(req.originalUrl || '').split('?')[0],
+        requestId: clientInfo.requestId,
+        origin: req.get('Origin'),
+        uid: req.uid ?? null
       },
       responseInfo: {
         statusCode: res.statusCode,

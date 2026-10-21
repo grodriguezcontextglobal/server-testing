@@ -16,9 +16,18 @@ const logFormat = winston.format.combine(
   winston.format.prettyPrint()
 );
 
+// requests.log solo recibe el nivel 'http' (una línea JSON por petición, ver
+// middlewares/requestLogger.js), y el resto de transportes no lo recibe.
+// Hasta 2026-10-21 el logger estaba en 'info' y descartaba todo 'http', así que
+// requests.log no se escribía nunca: no quedaba rastro de las peticiones que
+// terminaban bien (FedRAMP AU-2 / AU-12).
+const onlyHttp = winston.format((info) => (info.level === 'http' ? info : false));
+const level = process.env.LOG_LEVEL || 'info';
+
 // Create logger instance
 const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
+  // El logger deja pasar 'http'; cada transporte decide su propio nivel.
+  level: ['error', 'warn', 'info'].includes(level) ? 'http' : level,
   format: logFormat,
   defaultMeta: { service: 'devitrak-server' },
   transports: [
@@ -32,6 +41,7 @@ const logger = winston.createLogger({
     // Write all logs with level 'info' and below to combined.log
     new winston.transports.File({
       filename: path.join(logsDir, 'combined.log'),
+      level,
       maxsize: 5242880, // 5MB
       maxFiles: 5,
     }),
@@ -39,6 +49,7 @@ const logger = winston.createLogger({
     new winston.transports.File({
       filename: path.join(logsDir, 'requests.log'),
       level: 'http',
+      format: winston.format.combine(onlyHttp(), winston.format.json()),
       maxsize: 10485760, // 10MB
       maxFiles: 10,
     }),
@@ -67,6 +78,7 @@ const logger = winston.createLogger({
 // Add console transport for development
 if (process.env.NODE_ENV !== 'production') {
   logger.add(new winston.transports.Console({
+    level,
     format: winston.format.combine(
       winston.format.colorize(),
       winston.format.simple()
