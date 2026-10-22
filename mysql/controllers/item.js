@@ -2665,6 +2665,9 @@ const updateAllItemsInInventory = async (request, response) => {
       originalTemplate.category_name,
       originalTemplate.item_group,
     ];
+    // Usaba una `connection` de módulo que se quitó el 2026-01-20 (1878c1d):
+    // desde entonces toda llamada fallaba con "connection is not defined".
+    const connection = getConnection();
     const [result] = await connection.execute(query, values);
     const itemIds = result.map((item) => item.item_id);
     const queryToUpdateParams = {
@@ -2740,6 +2743,11 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
       warehouse,
       originalTemplate,
       supplier_info,
+      // Los usaba sin leerlos del body: toda llamada fallaba con ReferenceError.
+      min_serial_number,
+      max_serial_number,
+      company_id,
+      update_at,
     } = request.body;
     if (!min_serial_number || !max_serial_number) {
       return response.status(400).json({
@@ -2943,8 +2951,9 @@ const getContainerItems = async (request, response) => {
     let childIds;
     try {
       const rawChildIds = containerResults[0].child_ids;
-      //     // Remove any BOM or extra characters that might be present
-      //     const cleanJson = rawChildIds?.replace(/^\ufeff/g, '').trim();
+      // Remove any BOM or extra characters that might be present. Estaba
+      // comentado y la l\u00ednea de abajo lo usaba: un child_ids en texto fallaba.
+      const cleanJson = rawChildIds?.replace(/^\ufeff/g, '').trim();
       childIds =
         typeof rawChildIds === "string" ? JSON.parse(cleanJson) : rawChildIds;
 

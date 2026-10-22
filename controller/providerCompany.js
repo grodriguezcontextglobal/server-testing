@@ -1,5 +1,6 @@
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const ProviderCompany = require("../models/ProviderCompany");
+const { uploadPdfToS3 } = require("../helpers/s3Upload");
 const createProviderCompany = async (req, res) => {
   try {
     const cache_connection = await clientRedis();
