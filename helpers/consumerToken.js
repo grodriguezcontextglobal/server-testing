@@ -16,6 +16,11 @@
  * Caducidad: 7 días después del fin del evento, y nunca más de 30 días ni
  * menos de 1. El consumidor no tiene contraseña con la que volver a entrar; el
  * evento es lo que da sentido a la sesión.
+ *
+ * Solo para la app del consumidor (decisión 2026-10-22): se emite, se canjea y
+ * se lee únicamente en peticiones con Origin de CONSUMER_ORIGINS (por defecto
+ * https://app.devitrak.net). El Origin lo pone el navegador y otro cliente
+ * puede falsificarlo: esto acota dónde se usa el token, no lo sustituye.
  */
 
 const jwt = require('jsonwebtoken');
@@ -31,6 +36,24 @@ const secret = () =>
   process.env.CONSUMER_JWT_SECRET || `${process.env.SECRET_JWT_SEED}:consumer_session`;
 
 const now = () => Math.floor(Date.now() / 1000);
+
+// Orígenes de la app del consumidor. CONSUMER_ORIGINS (separados por comas) los
+// sustituye, p. ej. para añadir el localhost de la app en desarrollo.
+const DEFAULT_CONSUMER_ORIGINS = ['https://app.devitrak.net'];
+
+function isConsumerOrigin(req) {
+  const configured = process.env.CONSUMER_ORIGINS
+    ? process.env.CONSUMER_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
+    : DEFAULT_CONSUMER_ORIGINS;
+  const origin = typeof req?.header === 'function' ? req.header('origin') : req?.headers?.origin;
+  return Boolean(origin) && configured.includes(origin);
+}
+
+/** Para las rutas que solo existen para la app del consumidor: 403 desde otro origen. */
+function requireConsumerOrigin(req, res, next) {
+  if (isConsumerOrigin(req)) return next();
+  return res.status(403).json({ ok: false, msg: 'This endpoint is only available to the Devitrak app.' });
+}
 
 /** Segundos de vida: hasta 7 días después del fin del evento, entre 1 y 30 días. */
 function ttlFor(eventEnd) {
@@ -77,6 +100,8 @@ async function issueConsumerToken(consumerId, eventId, { EventModel = Event } = 
 
 module.exports = {
   AUDIENCE,
+  isConsumerOrigin,
+  requireConsumerOrigin,
   MAX_TTL_S,
   signConsumerToken,
   readConsumerToken,

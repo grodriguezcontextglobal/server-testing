@@ -175,3 +175,37 @@ test('session: si el consumidor ya no existe → 404 y el enlace se libera', asy
   assert.equal(r.code, 404);
   assert.equal(released, 1);
 });
+
+// ─── solo desde la app del consumidor (decisión 2026-10-22) ─────────────────
+
+const { isConsumerOrigin, requireConsumerOrigin } = require('../helpers/consumerToken');
+const withOrigin = (origin) => ({ header: (n) => (n === 'origin' ? origin : undefined) });
+
+test('solo https://app.devitrak.net cuenta como la app del consumidor', () => {
+  delete process.env.CONSUMER_ORIGINS;
+  assert.equal(isConsumerOrigin(withOrigin('https://app.devitrak.net')), true);
+  for (const o of ['https://admin.devitrak.net', 'https://evil.example', undefined, 'http://app.devitrak.net']) {
+    assert.equal(isConsumerOrigin(withOrigin(o)), false, String(o));
+  }
+});
+
+test('CONSUMER_ORIGINS sustituye la lista (p. ej. el localhost de desarrollo)', () => {
+  process.env.CONSUMER_ORIGINS = 'https://app.devitrak.net, http://localhost:3791';
+  assert.equal(isConsumerOrigin(withOrigin('http://localhost:3791')), true);
+  delete process.env.CONSUMER_ORIGINS;
+  assert.equal(isConsumerOrigin(withOrigin('http://localhost:3791')), false);
+});
+
+test('pedir y canjear el enlace: 403 fuera de la app del consumidor', () => {
+  const r = res();
+  let passed = false;
+  requireConsumerOrigin(withOrigin('https://admin.devitrak.net'), r, () => { passed = true; });
+  assert.equal(passed, false);
+  assert.equal(r.code, 403);
+
+  const router = require('../routes/auth');
+  for (const p of ['/consumer-login-link', '/consumer-session']) {
+    const layer = router.stack.find((l) => l.route?.path === p && l.route.methods.post);
+    assert.equal(layer.route.stack[0].handle, requireConsumerOrigin, p);
+  }
+});

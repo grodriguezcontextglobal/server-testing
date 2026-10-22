@@ -1,7 +1,7 @@
 const User = require("../models/User");
 const Event = require("../models/Event");
 const Receivers = require("../models/Receivers");
-const { issueConsumerToken } = require("../helpers/consumerToken");
+const { issueConsumerToken, isConsumerOrigin } = require("../helpers/consumerToken");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const runGoWorker = require("../helpers/goWorker");
 const { groupBy } = require("lodash");
@@ -173,9 +173,11 @@ const newUser = async (request, response = response) => {
     // Token de consumidor (helpers/consumerToken.js): quién, en qué evento y de
     // qué compañía. Antes era un JWT con la semilla de staff que validateJWT
     // aceptaba como sesión.
-    const token = await issueConsumerToken(userCreated.id, userCreated.event_providers.at(-1)).catch(
-      () => null
-    );
+    // Solo a la app del consumidor: el dashboard también crea consumidores (con
+    // sesión de staff) y no debe recibir un token de consumidor.
+    const token = isConsumerOrigin(request)
+      ? await issueConsumerToken(userCreated.id, userCreated.event_providers.at(-1)).catch(() => null)
+      : null;
     await cache_connection.del(
       `event_providers=${userCreated.event_providers.at(
         -1

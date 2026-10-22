@@ -23,6 +23,16 @@ los toma de la petición.
 
 La app ignora hoy ese campo, así que nada se rompe.
 
+## Solo desde app.devitrak.net
+
+El token es **solo para la app del consumidor**. El servidor lo emite, lo canjea y (en la
+fase C) lo lee únicamente en peticiones con `Origin: https://app.devitrak.net`:
+
+- `consumer-login-link` y `consumer-session` responden **403** desde cualquier otro origen.
+- `POST /auth/new` solo devuelve `token` si viene de la app; desde el dashboard, `token: null`.
+- **Desarrollo en local:** el backend tiene que listar vuestro localhost en `CONSUMER_ORIGINS`
+  (p. ej. `https://app.devitrak.net,http://localhost:3791`). Decídnos el puerto.
+
 ## 2. Dos rutas nuevas: acceso de un consumidor existente por correo
 
 **`POST /api/auth/consumer-login-link`** `{ email, event_id }`
