@@ -73,7 +73,10 @@ router.post(
   "/receiver-assigned-list",
   optionalJWT,
   assignedListLanes,
-  consumerTokenGate({ subject: (req) => ({ email: req.body?.user }) }),
+  consumerTokenGate({
+    eventScoped: true,
+    subject: (req) => ({ email: req.body?.user, eventName: req.body?.eventSelected }),
+  }),
   listOfAssignedReceiver
 );
 

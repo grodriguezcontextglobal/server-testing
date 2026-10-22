@@ -20,6 +20,16 @@
  *   `enforce` responde 401 sin token válido y 403 si no coincide.
  *   `off` desactiva la comprobación.
  *
+ * Token de nivel 'email' (entrada sin enlace en un evento con depósito,
+ * decisión 2026-10-22): limitado al evento del token.
+ *   - `verifiedOnly: true`: la ruta exige nivel 'verified' (perfil, pagos).
+ *   - `eventScoped: true`: la petición tiene que nombrar el evento del token
+ *     (eventId o eventName en el sujeto); sin evento, no vale con nivel 'email'.
+ *   - `emailLevelBody: [...]`: con nivel 'email', el body solo puede traer esas
+ *     claves (p. ej. unirse al evento, pero no cambiar nombre ni teléfono).
+ * Lo que el nivel 'email' no permite responde 403 con `verificationRequired`,
+ * para que la app pida el enlace del correo.
+ *
  * `bootstrap: true` marca las rutas que la app llama ANTES de tener token
  * (cargar el evento, consultar el email, crear la cuenta): sin token pasan
  * siempre y no se registran; con token, se comprueba igual.
@@ -38,20 +48,54 @@ const tokenOf = (req) =>
 
 const same = (a, b) => String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 
-const CLAIM_OF = { consumerId: 'consumerId', email: 'email', eventId: 'eventId', companyId: 'companyId' };
+const CLAIM_OF = {
+  consumerId: 'consumerId',
+  email: 'email',
+  eventId: 'eventId',
+  eventName: 'eventName',
+  companyId: 'companyId',
+};
+
+const present = (value) => value != null && value !== '';
+
+/** Por qué un token de nivel 'email' no basta para esta petición, o null. */
+function emailLevelProblem(session, subject, req, { verifiedOnly, eventScoped, emailLevelBody }) {
+  if (session.level !== 'email') return null;
+  if (verifiedOnly) return 'la ruta exige el enlace del correo (nivel verified)';
+  if (eventScoped && !present(subject?.eventId) && !present(subject?.eventName)) {
+    return 'la petición no nombra el evento del token';
+  }
+  if (emailLevelBody) {
+    const extra = Object.keys(req.body ?? {}).filter((k) => !emailLevelBody.includes(k));
+    if (extra.length) return `campos que exigen el enlace del correo (${extra.join(', ')})`;
+  }
+  return null;
+}
 
 /** Campos del sujeto que no coinciden con el token. */
 function mismatches(session, subject) {
   return Object.entries(subject ?? {})
-    .filter(([key, value]) => CLAIM_OF[key] && value != null && value !== '')
+    .filter(([key, value]) => CLAIM_OF[key] && present(value))
     .filter(([key, value]) => session[CLAIM_OF[key]] == null || !same(session[CLAIM_OF[key]], value))
     .map(([key]) => key);
 }
 
 /**
- * @param {{ subject?: (req) => object, bootstrap?: boolean }} opts
+ * @param {{
+ *   subject?: (req) => object,
+ *   bootstrap?: boolean,
+ *   verifiedOnly?: boolean,
+ *   eventScoped?: boolean,
+ *   emailLevelBody?: string[],
+ * }} opts
  */
-function consumerTokenGate({ subject = () => ({}), bootstrap = false } = {}) {
+function consumerTokenGate({
+  subject = () => ({}),
+  bootstrap = false,
+  verifiedOnly = false,
+  eventScoped = false,
+  emailLevelBody = null,
+} = {}) {
   return function consumerTokenGate(req, res, next) {
     const currentMode = mode();
     if (currentMode === 'off' || !isConsumerOrigin(req)) return next();
@@ -74,20 +118,33 @@ function consumerTokenGate({ subject = () => ({}), bootstrap = false } = {}) {
       return res.status(401).json({ ok: false, msg: 'Sign in again to continue.' });
     }
 
-    let wrong;
+    let subj;
     try {
-      wrong = mismatches(session, subject(req));
+      subj = subject(req) ?? {};
     } catch {
-      wrong = [];
+      subj = {};
     }
-    if (wrong.length === 0) return next();
+    const wrong = mismatches(session, subj);
+    const levelProblem = wrong.length
+      ? null
+      : emailLevelProblem(session, subj, req, { verifiedOnly, eventScoped, emailLevelBody });
+    if (wrong.length === 0 && !levelProblem) return next();
 
-    const why = `el token no coincide con la petición (${wrong.join(', ')})`;
+    const why = levelProblem
+      ? `token de nivel email: ${levelProblem}`
+      : `el token no coincide con la petición (${wrong.join(', ')})`;
     if (!enforce) {
       logger.warn(`consumer token: ${why} (mode=warn, se deja pasar)`, { ...detail, consumer: session.consumerId });
       return next();
     }
     logger.warn(`consumer token: ${why}`, { ...detail, consumer: session.consumerId });
+    if (levelProblem) {
+      return res.status(403).json({
+        ok: false,
+        msg: 'Open the sign-in link sent to your email to continue.',
+        verificationRequired: true,
+      });
+    }
     return res.status(403).json({ ok: false, msg: 'This request does not belong to your account or event.' });
   };
 }

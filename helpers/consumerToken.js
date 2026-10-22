@@ -17,6 +17,14 @@
  * menos de 1. El consumidor no tiene contraseña con la que volver a entrar; el
  * evento es lo que da sentido a la sesión.
  *
+ * Nivel (`lvl`, decisión 2026-10-22):
+ *   - 'verified': el consumidor demostró su buzón con el enlace del correo.
+ *   - 'email': sin enlace. Solo en eventos con depósito (merchant), donde el
+ *     depósito cubre el equipo: un consumidor existente entra con su email, y
+ *     uno nuevo recibe este nivel al registrarse. Limitado al evento del token
+ *     (ver middlewares/consumerTokenGate.js): para el perfil o los pagos hace
+ *     falta 'verified'.
+ *
  * Solo para la app del consumidor (decisión 2026-10-22): se emite, se canjea y
  * se lee únicamente en peticiones con Origin de CONSUMER_ORIGINS (por defecto
  * https://app.devitrak.net). El Origin lo pone el navegador y otro cliente
@@ -62,7 +70,10 @@ function ttlFor(eventEnd) {
   return Math.min(Math.max(wanted, MIN_TTL_S), MAX_TTL_S);
 }
 
-function signConsumerToken({ consumerId, eventId, companyId, email, eventEnd }) {
+const LEVELS = new Set(['verified', 'email']);
+
+function signConsumerToken({ consumerId, eventId, companyId, email, eventName, level = 'verified', eventEnd }) {
+  if (!LEVELS.has(level)) throw new Error(`unknown consumer token level: ${level}`);
   if (!consumerId || !eventId) throw new Error('consumerId and eventId are required');
   return jwt.sign(
     {
@@ -71,6 +82,9 @@ function signConsumerToken({ consumerId, eventId, companyId, email, eventEnd }) 
       cmp: companyId ? String(companyId) : null,
       // Para comparar con las rutas que la app identifica por email, sin ir a BD.
       eml: email ? String(email).trim().toLowerCase() : null,
+      // Nombre del evento: algunas rutas de la app lo mandan en vez del id.
+      evn: eventName ? String(eventName) : null,
+      lvl: level,
     },
     secret(),
     { subject: String(consumerId), audience: AUDIENCE, expiresIn: ttlFor(eventEnd) },
@@ -83,25 +97,53 @@ function readConsumerToken(token) {
   try {
     const p = jwt.verify(token, secret(), { audience: AUDIENCE });
     if (p.typ !== 'consumer' || !p.sub || !p.evt) return null;
-    return { consumerId: p.sub, eventId: p.evt, companyId: p.cmp ?? null, email: p.eml ?? null, exp: p.exp };
+    if (!LEVELS.has(p.lvl)) return null;
+    return {
+      consumerId: p.sub,
+      eventId: p.evt,
+      companyId: p.cmp ?? null,
+      email: p.eml ?? null,
+      eventName: p.evn ?? null,
+      level: p.lvl,
+      exp: p.exp,
+    };
   } catch {
     return null;
   }
 }
 
-/**
- * Token para un consumidor en un evento, con la compañía y la fecha de fin
- * sacadas de la BD. null si el evento no existe.
- */
-async function issueConsumerToken(consumerId, eventId, { email, EventModel = Event } = {}) {
-  const event = await EventModel.findById(eventId).select('company_id eventInfoDetail.dateEnd').lean();
+/** Lo que el token necesita del evento, o null si no existe. */
+async function loadTokenEvent(eventId, { EventModel = Event } = {}) {
+  const event = await EventModel.findById(eventId)
+    .select('company_id eventInfoDetail.dateEnd eventInfoDetail.eventName eventInfoDetail.merchant')
+    .lean();
   if (!event) return null;
+  return {
+    id: String(eventId),
+    companyId: event.company_id ? String(event.company_id) : null,
+    eventName: event.eventInfoDetail?.eventName ?? null,
+    eventEnd: event.eventInfoDetail?.dateEnd,
+    merchant: event.eventInfoDetail?.merchant === true,
+  };
+}
+
+/**
+ * Token para un consumidor en un evento, con la compañía, el nombre y la fecha
+ * de fin sacados de la BD. null si el evento no existe, o si se pide nivel
+ * 'email' en un evento sin depósito.
+ */
+async function issueConsumerToken(consumerId, eventId, { email, level = 'verified', EventModel = Event } = {}) {
+  const event = await loadTokenEvent(eventId, { EventModel });
+  if (!event) return null;
+  if (level === 'email' && !event.merchant) return null;
   return signConsumerToken({
     consumerId,
     eventId,
-    companyId: event.company_id,
+    companyId: event.companyId,
     email,
-    eventEnd: event.eventInfoDetail?.dateEnd,
+    eventName: event.eventName,
+    level,
+    eventEnd: event.eventEnd,
   });
 }
 
@@ -113,5 +155,6 @@ module.exports = {
   signConsumerToken,
   readConsumerToken,
   issueConsumerToken,
+  loadTokenEvent,
   ttlFor,
 };

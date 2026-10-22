@@ -195,9 +195,9 @@ router.post("/customers", validateJWT, checkTokenVersion, authorizeMongoPermissi
 router.get("/customers/search", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "read"), searchCustomerId);
 
 //retrieve paymentIntent
-// Solo exige un token de consumidor válido: comprobar que el pago es de ese
+// Exige el enlace del correo (nivel verified). Comprobar que el pago es de ese
 // consumidor necesitaría buscar la transacción (pendiente).
-router.get("/payment_intents/:id", consumerTokenGate(), retrievePaymentIntent);
+router.get("/payment_intents/:id", consumerTokenGate({ verifiedOnly: true }), retrievePaymentIntent);
 
 //get list of stripe transactions saved
 router.get(
@@ -224,7 +224,18 @@ router.post("/invoices", displayAllPaidInvoicesPerSubscription);
 router.post("/cancel/subscriptions/:id", updateCancelSubscription);
 
 //save object {device, paymentIntentId, clientSecret} in database
-router.post("/stripe-transaction", saveStripeTransaction);
+router.post(
+  "/stripe-transaction",
+  consumerTokenGate({
+    eventScoped: true,
+    subject: (req) => ({
+      consumerId: req.body?.user,
+      companyId: req.body?.company,
+      eventName: req.body?.eventSelected,
+    }),
+  }),
+  saveStripeTransaction
+);
 
 //save object {device, paymentIntentId, clientSecret} in database
 router.post("/stripe-transaction-admin", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), saveStripeTransactionAdmin);

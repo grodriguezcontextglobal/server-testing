@@ -181,7 +181,18 @@ router.post(
 router.post("/returned-items-to-renter-notification", returnedItemsToRenterNotification);
 
 //terms and condition in event accepted for consumer
-router.post("/terms-and-conditions-acceptance", termsAndConditionsAcceptanceNotification);
+router.post(
+  "/terms-and-conditions-acceptance",
+  consumerTokenGate({
+    subject: (req) => ({
+      consumerId: req.body?.consumer?.id ?? req.body?.consumer?._id,
+      email: req.body?.consumer?.email,
+      eventId: req.body?.event?.id ?? req.body?.event?._id,
+      companyId: req.body?.company?.id ?? req.body?.company?._id,
+    }),
+  }),
+  termsAndConditionsAcceptanceNotification
+);
 
 //notification for returned device in consumer lease
 router.post("/consumer-lease-return-device-notification", consumerLeaseEndedDeviceReturnedNotification)

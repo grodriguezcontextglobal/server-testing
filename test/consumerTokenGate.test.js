@@ -144,6 +144,10 @@ const GATED = [
   ['routes/receivers', 'POST', '/receiver-assigned-list'],
   ['routes/event', 'POST', '/event-list'],
   ['routes/document', 'POST', '/download/documentUrl'],
+  ['routes/stripe', 'POST', '/stripe-transaction'],
+  ['routes/company', 'PATCH', '/update-signatures'],
+  ['routes/nodeMailer', 'POST', '/terms-and-conditions-acceptance'],
+  ['routes/consumer', 'POST', '/stripe/find-customer'],
 ];
 
 for (const [file, method, routePath] of GATED) {
@@ -157,5 +161,53 @@ for (const [file, method, routePath] of GATED) {
 test('gate montado: /api/cloudinary', () => {
   const line = fs.readFileSync(path.join(root, 'index.js'), 'utf8')
     .split('\n').find((l) => l.includes('app.use("/api/cloudinary"'));
-  assert.match(line, /consumerTokenGate\(\)/);
+  assert.match(line, /consumerTokenGate\(\{ verifiedOnly: true \}\)/);
+});
+
+// ─── token de nivel email (sin enlace, eventos con depósito) ────────────────
+
+const emailToken = signConsumerToken({
+  consumerId: C, eventId: E, companyId: CO, email: 'ana@x.com', eventName: 'Fair', level: 'email',
+});
+
+test('nivel email: rutas verifiedOnly (perfil, pagos) → 403 verificationRequired en enforce', () => {
+  process.env.CONSUMER_TOKEN_MODE = 'enforce';
+  const gate = consumerTokenGate({ subject: (req) => ({ consumerId: req.params.id }), verifiedOnly: true });
+  const { passed, res } = run(gate, { tok: emailToken, params: { id: C } });
+  assert.equal(passed, false);
+  assert.equal(res.code, 403);
+  assert.equal(res.body.verificationRequired, true);
+  assert.ok(run(gate, { tok: token, params: { id: C } }).passed, 'con el enlace (verified) pasa');
+});
+
+test('nivel email: eventScoped exige nombrar el evento del token (por id o por nombre)', () => {
+  process.env.CONSUMER_TOKEN_MODE = 'enforce';
+  const gate = consumerTokenGate({
+    eventScoped: true,
+    subject: (req) => ({ email: req.body.email, eventId: req.body.event_id, eventName: req.body.eventSelected }),
+  });
+  assert.ok(run(gate, { tok: emailToken, body: { email: 'ana@x.com', event_id: E } }).passed);
+  assert.ok(run(gate, { tok: emailToken, body: { email: 'ana@x.com', eventSelected: 'fair' } }).passed);
+  assert.equal(run(gate, { tok: emailToken, body: { email: 'ana@x.com' } }).res.code, 403, 'sin evento');
+  assert.equal(run(gate, { tok: emailToken, body: { email: 'ana@x.com', eventSelected: 'Otro' } }).res.code, 403);
+  assert.ok(run(gate, { tok: token, body: { email: 'ana@x.com' } }).passed, 'verified: sin evento también pasa');
+});
+
+test('nivel email: emailLevelBody solo deja unirse al evento y elegir grupo', () => {
+  process.env.CONSUMER_TOKEN_MODE = 'enforce';
+  const gate = consumerTokenGate({
+    subject: (req) => ({ consumerId: req.params.id }),
+    emailLevelBody: ['event_providers', 'company_providers', 'eventSelected', 'provider', 'groupName'],
+  });
+  assert.ok(run(gate, { tok: emailToken, params: { id: C }, body: { event_providers: [E], groupName: 'A' } }).passed);
+  const edit = run(gate, { tok: emailToken, params: { id: C }, body: { phoneNumber: '555' } });
+  assert.equal(edit.res.code, 403);
+  assert.equal(edit.res.body.verificationRequired, true);
+  assert.ok(run(gate, { tok: token, params: { id: C }, body: { phoneNumber: '555' } }).passed);
+});
+
+test('nivel email en warn: nada se bloquea, queda en el log', () => {
+  const gate = consumerTokenGate({ verifiedOnly: true });
+  assert.ok(run(gate, { tok: emailToken }).passed);
+  assert.match(logged.at(-1).msg, /nivel email/);
 });

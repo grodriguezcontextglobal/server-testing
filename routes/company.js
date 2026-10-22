@@ -148,6 +148,7 @@ router.post(
 router.post(
   "/event-consumer-signatures",
   consumerTokenGate({
+    eventScoped: true,
     subject: (req) => ({
       consumerId: req.body?.consumer_id,
       eventId: req.body?.event_id,
@@ -158,7 +159,9 @@ router.post(
 );
 
 //transaction id added to event consumer signatures
-router.patch("/update-signatures", updateStampEventConsumerSignatures);
+// App del consumidor: token válido (fase C). La firma no se compara con el
+// token: necesitaría buscarla (pendiente).
+router.patch("/update-signatures", consumerTokenGate(), updateStampEventConsumerSignatures);
 
 //get specific provider company
 router.post("/provider-company/:id", getSpecificProviderCompany);

@@ -209,3 +209,53 @@ test('pedir y canjear el enlace: 403 fuera de la app del consumidor', () => {
     assert.equal(layer.route.stack[0].handle, requireConsumerOrigin, p);
   }
 });
+
+// ─── T1/T2: nivel email solo en eventos con depósito ────────────────────────
+
+const { issueConsumerToken } = require('../helpers/consumerToken');
+const eventDoc = (merchant) => ({
+  findById: () => chain({ company_id: CO, eventInfoDetail: { eventName: 'Fair', merchant } }),
+});
+
+test('T2: un token de nivel email solo se emite en eventos con depósito', async () => {
+  assert.equal(await issueConsumerToken(C, E, { level: 'email', EventModel: eventDoc(false) }), null);
+  const t = readConsumerToken(await issueConsumerToken(C, E, { level: 'email', EventModel: eventDoc(true) }));
+  assert.equal(t.level, 'email');
+  assert.equal(t.eventName, 'Fair');
+  const v = readConsumerToken(await issueConsumerToken(C, E, { EventModel: eventDoc(false) }));
+  assert.equal(v.level, 'verified', 'con enlace se emite aunque no haya depósito');
+});
+
+test('T1: consumer-session sin enlace, en evento con depósito → nivel email, sin teléfono', async () => {
+  const r = res();
+  await redeemConsumerSession({ header: () => undefined, body: { email: 'Ana@x.com', event_id: E } }, r, {
+    UserModel: userModel({ _id: C, name: 'Ana', lastName: 'B', email: 'ana@x.com', phoneNumber: '1' }),
+    loadEvent: async () => ({ id: E, companyId: CO, eventName: 'Fair', merchant: true }),
+    issueToken: async (id, evt, opts) => signConsumerToken({ consumerId: id, eventId: evt, ...opts }),
+  });
+  assert.equal(r.code, 200);
+  assert.equal(r.body.level, 'email');
+  assert.equal(r.body.consumer.phoneNumber, undefined);
+  assert.equal(readConsumerToken(r.body.token).level, 'email');
+});
+
+test('T1: sin enlace en un evento SIN depósito → 403 verificationRequired', async () => {
+  const r = res();
+  await redeemConsumerSession({ header: () => undefined, body: { email: 'ana@x.com', event_id: E } }, r, {
+    UserModel: userModel({ _id: C }),
+    loadEvent: async () => ({ id: E, merchant: false }),
+  });
+  assert.equal(r.code, 403);
+  assert.equal(r.body.verificationRequired, true);
+});
+
+test('el enlace del correo da nivel verified', async () => {
+  const r = res();
+  await redeemConsumerSession(reqWith(linkFor({ consumer_id: C, event_id: E, company_id: CO })), r, {
+    UserModel: userModel({ _id: C, name: 'Ana', email: 'ana@x.com' }),
+    issueToken: async (id, evt, opts) => signConsumerToken({ consumerId: id, eventId: evt, ...opts }),
+    consume: async () => 'consumed',
+  });
+  assert.equal(r.body.level, 'verified');
+  assert.equal(readConsumerToken(r.body.token).level, 'verified');
+});

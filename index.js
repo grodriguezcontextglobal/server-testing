@@ -222,8 +222,8 @@ const configureRoutes = (app) => {
 
   // Mount utility routes
   app.use("/api/cache_update", utilityRoutes.cache);
-  // Token de consumidor (fase C): solo se exige un token válido de la app.
-  app.use("/api/cloudinary", consumerTokenGate(), utilityRoutes.cloudinary);
+  // Token de consumidor (fase C): la foto de perfil exige el enlace del correo.
+  app.use("/api/cloudinary", consumerTokenGate({ verifiedOnly: true }), utilityRoutes.cloudinary);
 
   // Mount consumer public namespace (attendees app; no token required)
   app.use("/api/consumer", require("./routes/consumer"));

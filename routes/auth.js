@@ -82,7 +82,12 @@ router.patch(
   "/:id",
   optionalJWT,
   requireSessionFromDashboard,
-  consumerTokenGate({ subject: (req) => ({ consumerId: req.params.id }) }),
+  // Con el token de nivel email (sin enlace) solo se puede unirse al evento y
+  // elegir grupo; cambiar nombre, teléfono o foto exige el enlace del correo.
+  consumerTokenGate({
+    subject: (req) => ({ consumerId: req.params.id }),
+    emailLevelBody: ["event_providers", "company_providers", "eventSelected", "provider", "groupName"],
+  }),
   editUser
 );
 
@@ -96,7 +101,8 @@ router.get(
     subject: (req) => ({ consumer_member_id: req.params.id }),
     sharedWithConsumerApp: true,
   }),
-  consumerTokenGate({ subject: (req) => ({ consumerId: req.params.id }) }),
+  // El perfil exige el enlace del correo (nivel verified).
+  consumerTokenGate({ subject: (req) => ({ consumerId: req.params.id }), verifiedOnly: true }),
   getUser
 );
 

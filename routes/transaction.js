@@ -60,10 +60,12 @@ router.post(
   "/save-transaction",
   optionalJWT,
   consumerTokenGate({
+    eventScoped: true,
     subject: (req) => ({
       consumerId: req.body?.consumerInfo?.id,
       email: req.body?.consumerInfo?.email,
       eventId: req.body?.event_id,
+      eventName: req.body?.eventSelected,
     }),
   }),
   saveTransaction
@@ -84,6 +86,8 @@ router.post(
   "/transaction",
   optionalJWT,
   consumerTokenGate({
+    // Con nivel email, solo las transacciones de este evento (no el historial).
+    eventScoped: true,
     subject: (req) => ({ email: req.body?.["consumerInfo.email"], eventId: req.body?.event_id }),
   }),
   getListOfAllSavedTransaction

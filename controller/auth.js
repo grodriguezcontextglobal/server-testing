@@ -174,10 +174,14 @@ const newUser = async (request, response = response) => {
     // qué compañía. Antes era un JWT con la semilla de staff que validateJWT
     // aceptaba como sesión.
     // Solo a la app del consumidor: el dashboard también crea consumidores (con
-    // sesión de staff) y no debe recibir un token de consumidor.
+    // sesión de staff) y no debe recibir un token de consumidor. Y solo en
+    // eventos con depósito, con nivel 'email': sin depósito el consumidor nuevo
+    // entra por el enlace del correo (verificación de sus datos por si hay una
+    // pérdida), y issueConsumerToken devuelve null.
     const token = isConsumerOrigin(request)
       ? await issueConsumerToken(userCreated.id, userCreated.event_providers.at(-1), {
           email: userCreated.email,
+          level: "email",
         }).catch(() => null)
       : null;
     await cache_connection.del(

@@ -15,7 +15,13 @@
  *
  *   POST /api/auth/consumer-session  (cabecera x-link-token o body.link_token)
  *     Canjea el enlace una vez y devuelve el consumidor y su token de sesión
- *     (helpers/consumerToken.js) para ese evento.
+ *     (helpers/consumerToken.js, nivel 'verified') para ese evento.
+ *
+ *   POST /api/auth/consumer-session  { email, event_id }, SIN enlace
+ *     Solo en eventos con depósito (merchant): el depósito cubre el equipo y el
+ *     consumidor entra con su email. Token de nivel 'email', limitado a ese
+ *     evento. Sin depósito, 403: hay que entrar por el enlace. Regla del
+ *     2026-10-22 (T1/T4 de FRONTEND_consumer_token_REPLY_2026-10-22.md).
  *
  * Las rutas viejas (/nodemailer/login-existing-consumer, enlace
  * /authentication/:event/:company/:uid) no se tocan hasta que la app migre.
@@ -32,7 +38,7 @@ const {
   consumeEmailLinkToken,
   releaseEmailLinkToken,
 } = require('../helpers/emailLinkToken');
-const { issueConsumerToken } = require('../helpers/consumerToken');
+const { issueConsumerToken, loadTokenEvent } = require('../helpers/consumerToken');
 const { resolveBranding, applyBrandedEnvelope } = require('../nodeMailer/branding');
 const { renderBrandedEmail, paragraph, escapeHtml } = require('../nodeMailer/emailLayout');
 
@@ -51,6 +57,10 @@ const linkTokenOf = (req) =>
   null;
 
 const normalizeEmail = (value) => String(value ?? '').trim().toLowerCase();
+
+// Exacto pero sin distinguir mayúsculas: la app guarda en minúsculas, los
+// consumidores antiguos no siempre. Escapado: el email no es un patrón.
+const exactEmail = (email) => new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
 
 const buildLoginEmail = ({ user, eventName, link, branding }) => {
   const subject = `Your sign-in link for ${eventName || 'Devitrak'}`;
@@ -85,10 +95,7 @@ const requestConsumerLoginLink = async (req, res, deps = {}) => {
     const event = await EventModel.findById(eventId).select('company_id eventInfoDetail.eventName').lean();
     if (!event) return res.status(200).json(GENERIC_OK);
 
-    // Exacto pero sin distinguir mayúsculas: la app guarda en minúsculas, los
-    // consumidores antiguos no siempre. Escapado: el email no es un patrón.
-    const exact = new RegExp(`^${email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-    const user = await UserModel.findOne({ email: exact }).select('name lastName email').lean();
+    const user = await UserModel.findOne({ email: exactEmail(email) }).select('name lastName email').lean();
     if (!user) return res.status(200).json(GENERIC_OK);
 
     const companyId = event.company_id ? String(event.company_id) : null;
@@ -118,7 +125,10 @@ const redeemConsumerSession = async (req, res, deps = {}) => {
     consume = consumeEmailLinkToken,
     release = releaseEmailLinkToken,
   } = deps;
-  const claims = readEmailLinkToken(PURPOSE, linkTokenOf(req));
+  const linkToken = linkTokenOf(req);
+  if (!linkToken && req.body?.email) return merchantSession(req, res, deps);
+
+  const claims = readEmailLinkToken(PURPOSE, linkToken);
   if (!claims) {
     return res.status(401).json({ ok: false, msg: 'This link is not valid or has expired.' });
   }
@@ -131,7 +141,9 @@ const redeemConsumerSession = async (req, res, deps = {}) => {
     const user = await UserModel.findById(claims.consumer_id)
       .select('name lastName email phoneNumber')
       .lean();
-    const token = user ? await issueToken(String(user._id), claims.event_id, { email: user.email }) : null;
+    const token = user
+      ? await issueToken(String(user._id), claims.event_id, { email: user.email, level: 'verified' })
+      : null;
     if (!user || !token) {
       if (outcome === 'consumed') await release(claims);
       return res.status(404).json({ ok: false, msg: 'This account or event no longer exists.' });
@@ -147,6 +159,7 @@ const redeemConsumerSession = async (req, res, deps = {}) => {
       },
       event_id: claims.event_id,
       company_id: claims.company_id ?? null,
+      level: 'verified',
       token,
     });
   } catch (error) {
@@ -155,6 +168,44 @@ const redeemConsumerSession = async (req, res, deps = {}) => {
     return res.status(500).json({ ok: false, msg: 'Could not sign in.' });
   }
 };
+
+/** Entrada sin enlace en un evento con depósito: token de nivel 'email'. */
+async function merchantSession(req, res, deps = {}) {
+  const { UserModel = User, loadEvent = loadTokenEvent, issueToken = issueConsumerToken } = deps;
+  const email = normalizeEmail(req.body?.email);
+  const eventId = req.body?.event_id;
+  if (!email || !isValidObjectId(eventId)) {
+    return res.status(400).json({ ok: false, msg: 'email and event_id are required.' });
+  }
+  try {
+    const event = await loadEvent(eventId);
+    if (!event) return res.status(404).json({ ok: false, msg: 'Event not found.' });
+    if (!event.merchant) {
+      return res.status(403).json({
+        ok: false,
+        msg: 'This event requires the sign-in link sent by email.',
+        verificationRequired: true,
+      });
+    }
+    const user = await UserModel.findOne({ email: exactEmail(email) }).select('name lastName email').lean();
+    if (!user) return res.status(404).json({ ok: false, msg: 'No account with that email.' });
+
+    const token = await issueToken(String(user._id), eventId, { email: user.email, level: 'email' });
+    if (!token) return res.status(404).json({ ok: false, msg: 'Event not found.' });
+    // Sin teléfono: quien entra sin enlace solo ha demostrado conocer un email.
+    return res.status(200).json({
+      ok: true,
+      consumer: { id: String(user._id), name: user.name, lastName: user.lastName, email: user.email },
+      event_id: String(eventId),
+      company_id: event.companyId,
+      level: 'email',
+      token,
+    });
+  } catch (error) {
+    logger.error('consumer session (merchant): could not sign in', { error: error.message });
+    return res.status(500).json({ ok: false, msg: 'Could not sign in.' });
+  }
+}
 
 module.exports = {
   CONSUMER_LOGIN_PURPOSE: PURPOSE,

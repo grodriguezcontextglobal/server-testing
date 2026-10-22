@@ -39,6 +39,11 @@ const CONSUMER_APP_ROUTES = [
   ['routes/receivers', 'POST', '/receiver-assigned-list', 'OrderFormat.jsx: equipos asignados'],
   ['routes/event', 'POST', '/event-list', 'Home, DeviceSelection, AuthenticationLogin: carga el evento por _id'],
   ['routes/auth', 'POST', '/consumer-login-link', 'fase B: pedir el enlace de acceso por correo'],
+  ['routes/stripe', 'POST', '/stripe-transaction', 'DisplayQRCode.jsx: guardar el pago'],
+  ['routes/company', 'PATCH', '/update-signatures', 'DisplayQRCode.jsx: firma y transacción'],
+  ['routes/nodeMailer', 'POST', '/terms-and-conditions-acceptance', 'MainDocument.jsx: comprobante de términos'],
+  ['routes/consumer', 'POST', '/stripe/find-customer', 'useStripeAccount.js'],
+  ['routes/company', 'POST', '/search-company', 'Home, AuthenticationLogin: carga la compañía del evento'],
   ['routes/auth', 'POST', '/consumer-session', 'fase B: canjear el enlace por el token de consumidor'],
 ];
 
