@@ -26,7 +26,7 @@ require.cache[filename] = {
 const router = require('../routes/event');
 const lanes = router.stack
   .find((l) => l.route?.path === '/event-list' && l.route.methods.post)
-  .route.stack.at(-2).handle;
+  .route.stack.find((l) => l.handle.name === 'eventListLanes').handle;
 
 async function run(body, headers = {}) {
   const req = { body, headers, header: (n) => headers[n.toLowerCase()] };

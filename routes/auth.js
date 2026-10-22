@@ -4,6 +4,7 @@
  */
 
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const router = Router();
 const { check } = require("express-validator");
 const {
@@ -44,7 +45,13 @@ router.post("/consumer-session", requireConsumerOrigin, publicInvitationRateLimi
 router.get("/users", optionalJWT, showAllUsers)
 
 //render user information by queries
-router.post("/user-query", optionalJWT, requireSessionFromDashboard, lookupUsers)
+router.post(
+  "/user-query",
+  optionalJWT,
+  requireSessionFromDashboard,
+  consumerTokenGate({ bootstrap: true, subject: (req) => ({ email: req.body?.email }) }),
+  lookupUsers
+)
 
 //render user information by queries
 router.post("/users", optionalJWT, showAllUsers)
@@ -66,11 +73,18 @@ router.post(
   // App del consumidor: sin token. Dashboard: con sesión (ver attendanceLinkAuth).
   optionalJWT,
   requireSessionFromDashboard,
+  consumerTokenGate({ bootstrap: true, subject: (req) => ({ email: req.body?.email }) }),
   newUser
 );
 
 //edit user
-router.patch("/:id", optionalJWT, requireSessionFromDashboard, editUser);
+router.patch(
+  "/:id",
+  optionalJWT,
+  requireSessionFromDashboard,
+  consumerTokenGate({ subject: (req) => ({ consumerId: req.params.id }) }),
+  editUser
+);
 
 //retrieve consumer information
 // También la llama la app del consumidor sin token. Desde el dashboard sin
@@ -82,6 +96,7 @@ router.get(
     subject: (req) => ({ consumer_member_id: req.params.id }),
     sharedWithConsumerApp: true,
   }),
+  consumerTokenGate({ subject: (req) => ({ consumerId: req.params.id }) }),
   getUser
 );
 

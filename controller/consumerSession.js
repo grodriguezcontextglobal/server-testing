@@ -131,7 +131,7 @@ const redeemConsumerSession = async (req, res, deps = {}) => {
     const user = await UserModel.findById(claims.consumer_id)
       .select('name lastName email phoneNumber')
       .lean();
-    const token = user ? await issueToken(String(user._id), claims.event_id) : null;
+    const token = user ? await issueToken(String(user._id), claims.event_id, { email: user.email }) : null;
     if (!user || !token) {
       if (outcome === 'consumed') await release(claims);
       return res.status(404).json({ ok: false, msg: 'This account or event no longer exists.' });

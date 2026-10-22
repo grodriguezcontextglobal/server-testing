@@ -1,4 +1,5 @@
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const {
   assingDeviceNotification,
   returningDeviceNotification,
@@ -96,7 +97,11 @@ router.post(
 );
 
 //*email notification to confirm new consumer account
-router.post("/confirmation-account", confirmationLinkNewConsumerNotification);
+router.post(
+  "/confirmation-account",
+  consumerTokenGate({ subject: (req) => ({ email: req.body?.consumer?.email }) }),
+  confirmationLinkNewConsumerNotification
+);
 
 //*email notification to login to existing consumer
 router.post("/login-existing-consumer", loginLinkExistingConsumerNotification);

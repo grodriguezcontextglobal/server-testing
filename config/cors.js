@@ -28,6 +28,9 @@ const corsOptions = {
         // Token del enlace firmado de los correos (/display-contracts).
         // Ver middlewares/contractLinkAuth.js.
         "x-link-token",
+        // Token de sesión de la app del consumidor (app.devitrak.net).
+        // Ver helpers/consumerToken.js y middlewares/consumerTokenGate.js.
+        "x-consumer-token",
         "token",
         "s-token-lq",
         "sqlStaffId",

@@ -4,6 +4,7 @@
  */
 
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const router = Router();
 const { publicPaymentRateLimit } = require("../middlewares/publicPaymentRateLimit");
 const { validatePublicPaymentPayload } = require("../middlewares/validatePublicPaymentPayload");
@@ -122,7 +123,7 @@ const idempotencyOnMutations = (req, res, next) =>
   MUTATING.has(req.method) ? idempotencyMutationCache(req, res, next) : next();
 router.use(idempotencyOnMutations);
 
-router.post("/customer", stripeCustomer);
+router.post("/customer", consumerTokenGate({ subject: (req) => ({ email: req.body?.email }) }), stripeCustomer);
 
 //create account
 router.post("/accounts", stripeAccountCreate);
@@ -138,6 +139,7 @@ router.post(
   "/create-payment-intent",
   validatePublicPaymentPayload,
   attachServerIdempotencyKey,
+  consumerTokenGate({ subject: (req) => ({ email: req.body?.customerEmail }) }),
   stripePaymentIntent
 );
 
@@ -193,7 +195,9 @@ router.post("/customers", validateJWT, checkTokenVersion, authorizeMongoPermissi
 router.get("/customers/search", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "read"), searchCustomerId);
 
 //retrieve paymentIntent
-router.get("/payment_intents/:id", retrievePaymentIntent);
+// Solo exige un token de consumidor válido: comprobar que el pago es de ese
+// consumidor necesitaría buscar la transacción (pendiente).
+router.get("/payment_intents/:id", consumerTokenGate(), retrievePaymentIntent);
 
 //get list of stripe transactions saved
 router.get(

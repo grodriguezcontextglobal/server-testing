@@ -4,6 +4,7 @@
  */
 
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const router = Router();
 const {
   createEvent,
@@ -59,7 +60,13 @@ const eventListLanes = async (req, res, next) => {
 };
 
 //display event by parameters
-router.post("/event-list", optionalJWT, eventListLanes, eventList);
+router.post(
+  "/event-list",
+  optionalJWT,
+  eventListLanes,
+  consumerTokenGate({ bootstrap: true, subject: (req) => ({ eventId: req.body?._id }) }),
+  eventList
+);
 
 router.use(validateJWT, checkTokenVersion);
 

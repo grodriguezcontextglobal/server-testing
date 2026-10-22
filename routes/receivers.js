@@ -4,6 +4,7 @@
  */
 
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const router = Router();
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
@@ -68,7 +69,13 @@ const assignedListLanes = async (req, res, next) => {
   return next();
 };
 
-router.post("/receiver-assigned-list", optionalJWT, assignedListLanes, listOfAssignedReceiver);
+router.post(
+  "/receiver-assigned-list",
+  optionalJWT,
+  assignedListLanes,
+  consumerTokenGate({ subject: (req) => ({ email: req.body?.user }) }),
+  listOfAssignedReceiver
+);
 
 router.use(validateJWT, checkTokenVersion);
 

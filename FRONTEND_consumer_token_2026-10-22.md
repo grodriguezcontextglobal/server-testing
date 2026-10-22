@@ -63,9 +63,25 @@ fase C) lo lee únicamente en peticiones con `Origin: https://app.devitrak.net`:
 **Caducidad del token:** 7 días después del fin del evento, entre 1 y 30 días. Si caduca, las
 peticiones seguirán por el carril anónimo mientras dure el modo `warn` de la fase C.
 
-## 4. Fase C (servidor, después)
+## 4. Fase C (servidor): ya está, en modo `warn`
 
-Cada ruta comprobará el token contra lo que se pide: la transacción es de ese consumidor, el
-evento es el del token, etc. Primero en `warn` (registra las llamadas sin token), después en
-`enforce`. Sin token solo quedarán las de arranque: cargar el evento por id, crear la cuenta y
-pedir el enlace. Os avisaremos antes de pasar a `enforce`.
+Las 16 rutas que llamáis sin sesión comprueban el token (`x-consumer-token`, ya permitida en
+CORS) contra lo que se pide. En `warn` **nada se bloquea**: solo se registra lo que `enforce`
+rechazaría. Qué compara cada una:
+
+| Ruta | Tiene que coincidir con el token |
+|---|---|
+| `GET` y `PATCH /auth/:id` | `:id` = el consumidor |
+| `POST /db_consumer/new_consumer`, `POST /stripe/customer` | `email` |
+| `POST /stripe/create-payment-intent` | `customerEmail` |
+| `POST /transaction/transaction` | `consumerInfo.email` y `event_id` |
+| `POST /transaction/save-transaction` | `consumerInfo.id`, `consumerInfo.email` y `event_id` |
+| `POST /company/event-consumer-signatures` | `consumer_id`, `event_id` y `company_id` |
+| `POST /nodemailer/confirmation-account` | `consumer.email` |
+| `POST /receiver/receiver-assigned-list` | `user` (email) |
+| `GET /stripe/payment_intents/:id`, `POST /document/download/documentUrl`, `/cloudinary/upload-image` | solo un token válido |
+| **Arranque, sin token pasan siempre:** `POST /event/event-list` (`_id`), `POST /auth/user-query` y `POST /auth/new` (`email`), `POST /post/posts` (`displayed_in`, `company_id`) | lo indicado, si mandáis token |
+
+Con `enforce`: **401** sin token válido, **403** si la petición no es de ese consumidor, evento
+o compañía. Un token es de **un evento**: si el consumidor cambia de evento, pedid uno nuevo.
+Os avisaremos antes de pasar a `enforce`.

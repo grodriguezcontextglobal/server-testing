@@ -62,7 +62,7 @@ test('no hay rutas registradas dos veces', () => {
 
 // ─── carriles de POST /receiver-assigned-list ───────────────────────────────
 
-const lanes = routes.find((r) => r.key === 'POST /receiver-assigned-list').chain.at(-2);
+const lanes = routes.find((r) => r.key === 'POST /receiver-assigned-list').chain.find((h) => h.name === 'assignedListLanes');
 
 function run(body, headers = {}) {
   const req = { body, headers, header: (n) => headers[n.toLowerCase()] };

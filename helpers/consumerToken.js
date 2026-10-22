@@ -62,10 +62,16 @@ function ttlFor(eventEnd) {
   return Math.min(Math.max(wanted, MIN_TTL_S), MAX_TTL_S);
 }
 
-function signConsumerToken({ consumerId, eventId, companyId, eventEnd }) {
+function signConsumerToken({ consumerId, eventId, companyId, email, eventEnd }) {
   if (!consumerId || !eventId) throw new Error('consumerId and eventId are required');
   return jwt.sign(
-    { typ: 'consumer', evt: String(eventId), cmp: companyId ? String(companyId) : null },
+    {
+      typ: 'consumer',
+      evt: String(eventId),
+      cmp: companyId ? String(companyId) : null,
+      // Para comparar con las rutas que la app identifica por email, sin ir a BD.
+      eml: email ? String(email).trim().toLowerCase() : null,
+    },
     secret(),
     { subject: String(consumerId), audience: AUDIENCE, expiresIn: ttlFor(eventEnd) },
   );
@@ -77,7 +83,7 @@ function readConsumerToken(token) {
   try {
     const p = jwt.verify(token, secret(), { audience: AUDIENCE });
     if (p.typ !== 'consumer' || !p.sub || !p.evt) return null;
-    return { consumerId: p.sub, eventId: p.evt, companyId: p.cmp ?? null, exp: p.exp };
+    return { consumerId: p.sub, eventId: p.evt, companyId: p.cmp ?? null, email: p.eml ?? null, exp: p.exp };
   } catch {
     return null;
   }
@@ -87,13 +93,14 @@ function readConsumerToken(token) {
  * Token para un consumidor en un evento, con la compañía y la fecha de fin
  * sacadas de la BD. null si el evento no existe.
  */
-async function issueConsumerToken(consumerId, eventId, { EventModel = Event } = {}) {
+async function issueConsumerToken(consumerId, eventId, { email, EventModel = Event } = {}) {
   const event = await EventModel.findById(eventId).select('company_id eventInfoDetail.dateEnd').lean();
   if (!event) return null;
   return signConsumerToken({
     consumerId,
     eventId,
     companyId: event.company_id,
+    email,
     eventEnd: event.eventInfoDetail?.dateEnd,
   });
 }

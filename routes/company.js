@@ -4,6 +4,7 @@
  */
 
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const multer = require("multer");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
@@ -144,7 +145,17 @@ router.post(
 );
 
 //event consumer signatures
-router.post("/event-consumer-signatures", stampEventConsumerSignatures);
+router.post(
+  "/event-consumer-signatures",
+  consumerTokenGate({
+    subject: (req) => ({
+      consumerId: req.body?.consumer_id,
+      eventId: req.body?.event_id,
+      companyId: req.body?.company_id,
+    }),
+  }),
+  stampEventConsumerSignatures
+);
 
 //transaction id added to event consumer signatures
 router.patch("/update-signatures", updateStampEventConsumerSignatures);

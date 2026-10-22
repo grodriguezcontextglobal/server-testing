@@ -18,6 +18,7 @@ const {
   securityLogger,
 } = require("./middlewares/requestLogger");
 const { requestMetrics } = require("./middlewares/requestMetrics");
+const { consumerTokenGate } = require("./middlewares/consumerTokenGate");
 const { auditTrail } = require("./middlewares/auditTrail");
 const metrics = require("./helpers/metrics");
 const logger = require("./helpers/logger");
@@ -221,7 +222,8 @@ const configureRoutes = (app) => {
 
   // Mount utility routes
   app.use("/api/cache_update", utilityRoutes.cache);
-  app.use("/api/cloudinary", utilityRoutes.cloudinary);
+  // Token de consumidor (fase C): solo se exige un token válido de la app.
+  app.use("/api/cloudinary", consumerTokenGate(), utilityRoutes.cloudinary);
 
   // Mount consumer public namespace (attendees app; no token required)
   app.use("/api/consumer", require("./routes/consumer"));

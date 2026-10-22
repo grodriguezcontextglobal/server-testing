@@ -6,6 +6,7 @@ const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { optionalJWT } = require("../middlewares/optionalJWT");
 const { contractLinkGate } = require("../middlewares/contractLinkAuth");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 
 // tmp/uploads está gitignoreado (tmp/uploads/), así que puede no existir en un
 // checkout limpio o si el OS/limpiador de temporales lo borra. Multer
@@ -135,6 +136,8 @@ router.post(
     subject: (req) => ({ contract_url: req.body?.documentUrl }),
     sharedWithConsumerApp: true,
   }),
+  // Desde la app del consumidor: token de consumidor válido (fase C).
+  consumerTokenGate(),
   generateTemporaryDownloadUrl
 );
 // Editar y borrar exigen que quien llama pertenezca a la compañía DUEÑA del

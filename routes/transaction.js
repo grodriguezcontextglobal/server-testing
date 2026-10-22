@@ -4,6 +4,7 @@
  */
 
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const router = Router();
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
@@ -55,7 +56,18 @@ const anonymousTransactionRead = async (req, res, next) => {
 };
 
 //*saving new transaction
-router.post("/save-transaction", optionalJWT, saveTransaction);
+router.post(
+  "/save-transaction",
+  optionalJWT,
+  consumerTokenGate({
+    subject: (req) => ({
+      consumerId: req.body?.consumerInfo?.id,
+      email: req.body?.consumerInfo?.email,
+      eventId: req.body?.event_id,
+    }),
+  }),
+  saveTransaction
+);
 
 //*saving new transaction
 router.post("/save-transaction-admin-dashboard", staffOnly, saveTransactionAdmin);
@@ -68,7 +80,14 @@ router.post(
 );
 
 //*saving new transaction
-router.post("/transaction", optionalJWT, getListOfAllSavedTransaction);
+router.post(
+  "/transaction",
+  optionalJWT,
+  consumerTokenGate({
+    subject: (req) => ({ email: req.body?.["consumerInfo.email"], eventId: req.body?.event_id }),
+  }),
+  getListOfAllSavedTransaction
+);
 
 //getting list of all saved transaction
 // Sin sesión la usaba la página pública /receipt del dashboard: devolvía la

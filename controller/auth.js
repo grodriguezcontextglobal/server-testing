@@ -176,7 +176,9 @@ const newUser = async (request, response = response) => {
     // Solo a la app del consumidor: el dashboard también crea consumidores (con
     // sesión de staff) y no debe recibir un token de consumidor.
     const token = isConsumerOrigin(request)
-      ? await issueConsumerToken(userCreated.id, userCreated.event_providers.at(-1)).catch(() => null)
+      ? await issueConsumerToken(userCreated.id, userCreated.event_providers.at(-1), {
+          email: userCreated.email,
+        }).catch(() => null)
       : null;
     await cache_connection.del(
       `event_providers=${userCreated.event_providers.at(

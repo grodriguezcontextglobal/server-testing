@@ -4,6 +4,7 @@
  */
 
 const { Router } = require("express");
+const { consumerTokenGate } = require("../../middlewares/consumerTokenGate");
 const { consultingConsumerInfo, insertingCustomer, consultingConsumerTable, deleteCustomer } = require("../controllers/consumer");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
@@ -27,7 +28,13 @@ router.post('/consumers_information', staffSession, consultingConsumerTable)
 //insert new consumer
 // La app del consumidor la llama sin token. Desde el dashboard sin sesión era la
 // página /attendance-confirmation, que ya confirma por su propia ruta.
-router.post('/new_consumer', optionalJWT, requireSessionFromDashboard, insertingCustomer)
+router.post(
+  '/new_consumer',
+  optionalJWT,
+  requireSessionFromDashboard,
+  consumerTokenGate({ subject: (req) => ({ email: req.body?.email }) }),
+  insertingCustomer
+)
 
 //delete consumer
 router.delete('/:id', validateJWT, checkTokenVersion, authorizePermission("consumer", "delete"), deleteCustomer)
