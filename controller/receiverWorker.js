@@ -10,14 +10,19 @@ const parseTime = (v) => {
   return new Date(v);
 };
 
+// Lo que PATCH/PUT /receiver/receiver-update/:id puede cambiar. Solo se aplica
+// lo que viene: antes hacía `$set: { device }` siempre, y un body sin `device`
+// (p. ej. `{ active: false }`) dejaba el device en undefined.
+const RECEIVER_UPDATABLE = ["device", "active"];
+
 const updateReceiverStatus = async (input) => {
-  const { id, device } = input;
+  const { id } = input;
   if (!id) throw new Error("id is required");
-  const updatedReceiver = await Receivers.findByIdAndUpdate(
-    id,
-    { $set: { device: device } },
-    { new: true },
+  const set = Object.fromEntries(
+    RECEIVER_UPDATABLE.filter((key) => input[key] !== undefined).map((key) => [key, input[key]]),
   );
+  if (Object.keys(set).length === 0) throw new Error("device or active is required");
+  const updatedReceiver = await Receivers.findByIdAndUpdate(id, { $set: set }, { new: true });
   return { ok: true, receiverUpdated: updatedReceiver }; // Go returned {ok: true, receiver: updatedDoc}
 };
 

@@ -98,7 +98,13 @@ const checkingReceiversExistInDatabase = async (request, response) => {
 
 const udpateReceiverStatus = async (request, response) => {
   try {
-    const result = await updateReceiverStatusWorker(request.body);
+    // El id va en la URL (/receiver-update/:id). Hasta 2026-10-22 solo se leía
+    // del body, y un cliente que no lo repetía ahí recibía 500 "id is required".
+    const id = request.params?.id ?? request.body?.id;
+    const result = await updateReceiverStatusWorker({ ...request.body, id });
+    if (!result.receiverUpdated) {
+      return response.status(404).json({ ok: false, msg: "Receiver not found" });
+    }
     return response.status(201).json({
       ok: true,
       id: result.receiverUpdated._id,
