@@ -1,7 +1,7 @@
 const User = require("../models/User");
 const Event = require("../models/Event");
 const Receivers = require("../models/Receivers");
-const { generateJWT } = require("../helpers/jwt");
+const { issueConsumerToken } = require("../helpers/consumerToken");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const runGoWorker = require("../helpers/goWorker");
 const { groupBy } = require("lodash");
@@ -133,13 +133,13 @@ const checkUser = async (request, response = response) => {
   try {
     const user = await User.findOne({ email: userInfoEmailCheck });
 
+    // Sin token (2026-10-21): devolvía un JWT firmado con la semilla de staff a
+    // cualquiera que conociera un email. Un consumidor existente obtiene su
+    // token con el enlace del correo (POST /consumer-login-link).
     if (user !== null) {
-      const token = await generateJWT(user.id, user.name);
-
       return response.status(201).json({
         ok: true,
         user,
-        token,
         msg: "existing user",
       });
     } else {
@@ -170,7 +170,12 @@ const newUser = async (request, response = response) => {
     }
     user = new User(request.body);
     const userCreated = await user.save();
-    const token = await generateJWT(user.id, user.name);
+    // Token de consumidor (helpers/consumerToken.js): quién, en qué evento y de
+    // qué compañía. Antes era un JWT con la semilla de staff que validateJWT
+    // aceptaba como sesión.
+    const token = await issueConsumerToken(userCreated.id, userCreated.event_providers.at(-1)).catch(
+      () => null
+    );
     await cache_connection.del(
       `event_providers=${userCreated.event_providers.at(
         -1
@@ -220,8 +225,8 @@ const editUser = async (request, response = response) => {
       ...request.body,
     };
 
-    const token = await generateJWT(user.id, user.name);
-
+    // Sin token (2026-10-21): esta ruta es anónima y edita por id, así que
+    // emitirlo aquí se lo daría a cualquiera que conozca el id.
     const userUpdated = await User.findByIdAndUpdate(userId, userEdited, {
       new: true,
     });
@@ -245,7 +250,6 @@ const editUser = async (request, response = response) => {
       email: userUpdated.email,
       phone: userUpdated.phoneNumber,
       uid: userUpdated.id,
-      token,
     });
   } catch (error) {
     logger.error(error);

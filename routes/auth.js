@@ -21,7 +21,18 @@ const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { optionalJWT } = require("../middlewares/optionalJWT");
 const { contractLinkGate } = require("../middlewares/contractLinkAuth");
-const { requireSessionFromDashboard } = require("../middlewares/attendanceLinkAuth");
+const {
+  requireSessionFromDashboard,
+  publicInvitationRateLimit,
+} = require("../middlewares/attendanceLinkAuth");
+const { requestConsumerLoginLink, redeemConsumerSession } = require("../controller/consumerSession");
+
+// Acceso de un consumidor existente a la app del consumidor por enlace de
+// correo (token de consumidor, fase A, 2026-10-21). Públicas a propósito: el
+// consumidor no tiene contraseña; la prueba es el buzón. Ver
+// controller/consumerSession.js.
+router.post("/consumer-login-link", publicInvitationRateLimit, requestConsumerLoginLink);
+router.post("/consumer-session", publicInvitationRateLimit, redeemConsumerSession);
 
 // Estas cuatro también las llama gente sin sesión (app.devitrak.net):
 // optionalJWT nunca rechaza. Sin sesión de staff el controller solo permite

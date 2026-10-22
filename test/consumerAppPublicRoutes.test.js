@@ -38,6 +38,8 @@ const CONSUMER_APP_ROUTES = [
   ['routes/nodeMailer', 'POST', '/confirmation-account', 'ConsumerInitialForm: correo de confirmación'],
   ['routes/receivers', 'POST', '/receiver-assigned-list', 'OrderFormat.jsx: equipos asignados'],
   ['routes/event', 'POST', '/event-list', 'Home, DeviceSelection, AuthenticationLogin: carga el evento por _id'],
+  ['routes/auth', 'POST', '/consumer-login-link', 'fase B: pedir el enlace de acceso por correo'],
+  ['routes/auth', 'POST', '/consumer-session', 'fase B: canjear el enlace por el token de consumidor'],
 ];
 
 const root = path.resolve(__dirname, '..');

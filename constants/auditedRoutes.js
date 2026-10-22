@@ -163,6 +163,9 @@ const AUDITED_ROUTES = {
   'DELETE /api/db_consumer/:id': R('DELETE', 'Consumer'),
   'POST /api/auth/new': R('CREATE', 'User'),
   'PATCH /api/auth/:id': R('UPDATE', 'User'),
+  // Acceso del consumidor por enlace de correo (token de consumidor, fase A).
+  'POST /api/auth/consumer-login-link': R('SEND', 'Email'),
+  'POST /api/auth/consumer-session': R('LOGIN', 'User'),
 
   // ── Pagos y transacciones ─────────────────────────────────────────────────
   'POST /api/stripe/create-payment-intent': R('CHARGE', 'Transaction'),
