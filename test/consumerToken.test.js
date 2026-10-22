@@ -39,6 +39,7 @@ const {
 const C = '64b000000000000000000001';
 const E = '6ad8dd4b5fcbd00144d97993';
 const CO = '64c000000000000000000002';
+const FAIR = { id: '6ad8dd4b5fcbd00144d97993', companyId: CO, companyName: 'Acme', eventName: 'Fair', merchant: false };
 
 function res() {
   return { status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
@@ -103,7 +104,7 @@ test('login-link: misma respuesta exista o no el email, y solo encola si existe'
   assert.equal(sent[0].type, 'send-email');
   assert.equal(sent[0].msg.to, 'ana@x.com');
 
-  const token = decodeURIComponent(sent[0].msg.html.match(/authentication\?token=([^"&<\s]+)/)[1]);
+  const token = decodeURIComponent(sent[0].msg.html.match(/authentication\/[^?"]*\?token=([^"&<\s]+)/)[1]);
   const claims = readEmailLinkToken(CONSUMER_LOGIN_PURPOSE, token);
   assert.equal(claims.consumer_id, C);
   assert.equal(claims.event_id, E);
@@ -138,6 +139,8 @@ test('session: canjea el enlace y devuelve el consumidor y su token de ese event
   await redeemConsumerSession(reqWith(linkFor({ consumer_id: C, event_id: E, company_id: CO })), r, {
     UserModel: userModel({ _id: C, name: 'Ana', lastName: 'B', email: 'ana@x.com', phoneNumber: '1' }),
     issueToken: async (id, evt) => signConsumerToken({ consumerId: id, eventId: evt, companyId: CO }),
+    loadEvent: async () => FAIR,
+    register: async () => {},
     consume: async () => 'consumed',
   });
   assert.equal(r.code, 200);
@@ -169,6 +172,7 @@ test('session: si el consumidor ya no existe → 404 y el enlace se libera', asy
   const r = res();
   await redeemConsumerSession(reqWith(linkFor({ consumer_id: C, event_id: E })), r, {
     UserModel: userModel(null),
+    loadEvent: async () => FAIR,
     consume: async () => 'consumed',
     release: async () => { released++; },
   });
@@ -230,8 +234,9 @@ test('T1: consumer-session sin enlace, en evento con depósito → nivel email, 
   const r = res();
   await redeemConsumerSession({ header: () => undefined, body: { email: 'Ana@x.com', event_id: E } }, r, {
     UserModel: userModel({ _id: C, name: 'Ana', lastName: 'B', email: 'ana@x.com', phoneNumber: '1' }),
-    loadEvent: async () => ({ id: E, companyId: CO, eventName: 'Fair', merchant: true }),
+    loadEvent: async () => ({ ...FAIR, merchant: true }),
     issueToken: async (id, evt, opts) => signConsumerToken({ consumerId: id, eventId: evt, ...opts }),
+    register: async () => {},
   });
   assert.equal(r.code, 200);
   assert.equal(r.body.level, 'email');
@@ -254,8 +259,56 @@ test('el enlace del correo da nivel verified', async () => {
   await redeemConsumerSession(reqWith(linkFor({ consumer_id: C, event_id: E, company_id: CO })), r, {
     UserModel: userModel({ _id: C, name: 'Ana', email: 'ana@x.com' }),
     issueToken: async (id, evt, opts) => signConsumerToken({ consumerId: id, eventId: evt, ...opts }),
+    loadEvent: async () => FAIR,
+    register: async () => {},
     consume: async () => 'consumed',
   });
   assert.equal(r.body.level, 'verified');
   assert.equal(readConsumerToken(r.body.token).level, 'verified');
+});
+
+// ─── U1/U2 (FRONTEND_consumer_token_REPLY2_2026-10-22.md) ──────────────────
+
+const { registerInEvent } = require('../controller/consumerSession');
+
+test('U1: el enlace del correo es /authentication/:event/:company/:uid?token=', async () => {
+  const sent = [];
+  await requestConsumerLoginLink({ body: { email: 'ana@x.com', event_id: E } }, res(), {
+    EventModel: eventModel({ company_id: CO, eventInfoDetail: { eventName: 'Fair' } }),
+    UserModel: userModel({ _id: C, name: 'Ana', email: 'ana@x.com' }),
+    enqueueFn: async (type, msg) => sent.push(msg),
+    branding: async () => undefined,
+  });
+  const href = sent[0].html.match(/href="([^"]*authentication[^"]*)"/)[1].replace(/&amp;/g, '&');
+  const url = new URL(href);
+  assert.equal(url.pathname, `/authentication/${E}/${CO}/${C}`);
+  assert.ok(readEmailLinkToken(CONSUMER_LOGIN_PURPOSE, url.searchParams.get('token')));
+});
+
+test('U2: el canje registra al consumidor en el evento y la compañía, sin duplicar', async () => {
+  const updates = [];
+  const UserModel = { updateOne: async (filter, update) => updates.push({ filter, update }) };
+  await registerInEvent(UserModel, C, FAIR, { redisClient: async () => ({ del: async () => 1 }) });
+  assert.deepEqual(updates[0].filter, { _id: C });
+  assert.deepEqual(updates[0].update, {
+    $addToSet: { event_providers: E, company_providers: CO, eventSelected: 'Fair', provider: 'Acme' },
+  });
+});
+
+test('U2: la respuesta trae el consumidor ya registrado en el evento', async () => {
+  let registered = 0;
+  const r = res();
+  await redeemConsumerSession(reqWith(linkFor({ consumer_id: C, event_id: E, company_id: CO })), r, {
+    UserModel: userModel({ _id: C, name: 'Ana', email: 'ana@x.com', phoneNumber: '1', event_providers: ['x'] }),
+    issueToken: async (id, evt, opts) => signConsumerToken({ consumerId: id, eventId: evt, ...opts }),
+    loadEvent: async () => FAIR,
+    register: async () => { registered++; },
+    consume: async () => 'consumed',
+  });
+  assert.equal(registered, 1);
+  assert.deepEqual(r.body.consumer.event_providers, ['x', E]);
+  assert.deepEqual(r.body.consumer.company_providers, [CO]);
+  assert.deepEqual(r.body.consumer.eventSelected, ['Fair']);
+  assert.deepEqual(r.body.consumer.provider, ['Acme']);
+  assert.equal(r.body.consumer.phoneNumber, '1');
 });

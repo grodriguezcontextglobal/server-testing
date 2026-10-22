@@ -115,12 +115,14 @@ function readConsumerToken(token) {
 /** Lo que el token necesita del evento, o null si no existe. */
 async function loadTokenEvent(eventId, { EventModel = Event } = {}) {
   const event = await EventModel.findById(eventId)
-    .select('company_id eventInfoDetail.dateEnd eventInfoDetail.eventName eventInfoDetail.merchant')
+    .select('company company_id eventInfoDetail.dateEnd eventInfoDetail.eventName eventInfoDetail.merchant')
     .lean();
   if (!event) return null;
   return {
     id: String(eventId),
     companyId: event.company_id ? String(event.company_id) : null,
+    // Nombre de la compañía: lo que la app guarda en User.provider.
+    companyName: event.company ?? null,
     eventName: event.eventInfoDetail?.eventName ?? null,
     eventEnd: event.eventInfoDetail?.dateEnd,
     merchant: event.eventInfoDetail?.merchant === true,

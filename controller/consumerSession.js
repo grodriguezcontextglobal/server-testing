@@ -39,6 +39,7 @@ const {
   releaseEmailLinkToken,
 } = require('../helpers/emailLinkToken');
 const { issueConsumerToken, loadTokenEvent } = require('../helpers/consumerToken');
+const { clientRedis } = require('../database/cacheMemoryConfig');
 const { resolveBranding, applyBrandedEnvelope } = require('../nodeMailer/branding');
 const { renderBrandedEmail, paragraph, escapeHtml } = require('../nodeMailer/emailLayout');
 
@@ -84,6 +85,48 @@ const buildLoginEmail = ({ user, eventName, link, branding }) => {
   return { from: 'Devitrak Notifications <noreply@devitrak.com>', to: user.email, subject, html };
 };
 
+const CONSUMER_FIELDS = 'name lastName email phoneNumber event_providers company_providers eventSelected provider';
+
+/**
+ * Registra al consumidor en el evento y la compañía del token (U2 de
+ * FRONTEND_consumer_token_REPLY2_2026-10-22.md): la app ya no lo hace con un
+ * PATCH /auth/:id. $addToSet: repetir el canje no duplica nada.
+ */
+async function registerInEvent(UserModel, userId, event, { redisClient = clientRedis } = {}) {
+  const add = { event_providers: event.id };
+  if (event.companyId) add.company_providers = event.companyId;
+  if (event.eventName) add.eventSelected = event.eventName;
+  if (event.companyName) add.provider = event.companyName;
+  await UserModel.updateOne({ _id: userId }, { $addToSet: add });
+  // La lista de consumidores del evento que pide el dashboard está en caché
+  // (ver controller/auth.js): se invalida como en editUser.
+  try {
+    const redis = await redisClient();
+    await redis.del(`event=${event.id}&company=${event.companyId}`);
+    await redis.del(`event_providers=${event.id}&company_providers=${event.companyId}`);
+  } catch {
+    // sin Redis, la caché caduca sola (180 s)
+  }
+}
+
+const withEvent = (list, value) =>
+  value == null ? list ?? [] : [...new Set([...(list ?? []).map(String), String(value)])];
+
+/** El consumidor como lo devuelve consumer-session, ya registrado en el evento. */
+function consumerView(user, event, { withPhone }) {
+  return {
+    id: String(user._id),
+    name: user.name,
+    lastName: user.lastName,
+    email: user.email,
+    ...(withPhone ? { phoneNumber: user.phoneNumber } : {}),
+    event_providers: withEvent(user.event_providers, event.id),
+    company_providers: withEvent(user.company_providers, event.companyId),
+    eventSelected: withEvent(user.eventSelected, event.eventName),
+    provider: withEvent(user.provider, event.companyName),
+  };
+}
+
 const requestConsumerLoginLink = async (req, res, deps = {}) => {
   const { UserModel = User, EventModel = Event, enqueueFn = enqueue, branding: brandingFn = resolveBranding } = deps;
   const email = normalizeEmail(req.body?.email);
@@ -104,7 +147,13 @@ const requestConsumerLoginLink = async (req, res, deps = {}) => {
       event_id: String(eventId),
       company_id: companyId,
     });
-    const link = `${consumerAppUrl()}/authentication?token=${encodeURIComponent(token)}`;
+    // La app entra siempre por /authentication/:event/:company/:uid (U1 de
+    // FRONTEND_consumer_token_REPLY2_2026-10-22.md). Los ids de la ruta no dan
+    // acceso: el servidor saca consumidor, evento y compañía del token.
+    const link =
+      `${consumerAppUrl()}/authentication/${encodeURIComponent(String(eventId))}` +
+      `/${encodeURIComponent(companyId ?? '')}/${encodeURIComponent(String(user._id))}` +
+      `?token=${encodeURIComponent(token)}`;
     const branding = await brandingFn({}, { request: { verifiedCompanyId: companyId } });
     const message = applyBrandedEnvelope(
       buildLoginEmail({ user, eventName: event.eventInfoDetail?.eventName, link, branding }),
@@ -121,7 +170,9 @@ const requestConsumerLoginLink = async (req, res, deps = {}) => {
 const redeemConsumerSession = async (req, res, deps = {}) => {
   const {
     UserModel = User,
+    loadEvent = loadTokenEvent,
     issueToken = issueConsumerToken,
+    register = registerInEvent,
     consume = consumeEmailLinkToken,
     release = releaseEmailLinkToken,
   } = deps;
@@ -138,25 +189,19 @@ const redeemConsumerSession = async (req, res, deps = {}) => {
     return res.status(410).json({ ok: false, msg: 'This link has already been used.' });
   }
   try {
-    const user = await UserModel.findById(claims.consumer_id)
-      .select('name lastName email phoneNumber')
-      .lean();
-    const token = user
+    const user = await UserModel.findById(claims.consumer_id).select(CONSUMER_FIELDS).lean();
+    const event = user ? await loadEvent(claims.event_id) : null;
+    const token = event
       ? await issueToken(String(user._id), claims.event_id, { email: user.email, level: 'verified' })
       : null;
-    if (!user || !token) {
+    if (!user || !event || !token) {
       if (outcome === 'consumed') await release(claims);
       return res.status(404).json({ ok: false, msg: 'This account or event no longer exists.' });
     }
+    await register(UserModel, user._id, event);
     return res.status(200).json({
       ok: true,
-      consumer: {
-        id: String(user._id),
-        name: user.name,
-        lastName: user.lastName,
-        email: user.email,
-        phoneNumber: user.phoneNumber,
-      },
+      consumer: consumerView(user, event, { withPhone: true }),
       event_id: claims.event_id,
       company_id: claims.company_id ?? null,
       level: 'verified',
@@ -171,7 +216,12 @@ const redeemConsumerSession = async (req, res, deps = {}) => {
 
 /** Entrada sin enlace en un evento con depósito: token de nivel 'email'. */
 async function merchantSession(req, res, deps = {}) {
-  const { UserModel = User, loadEvent = loadTokenEvent, issueToken = issueConsumerToken } = deps;
+  const {
+    UserModel = User,
+    loadEvent = loadTokenEvent,
+    issueToken = issueConsumerToken,
+    register = registerInEvent,
+  } = deps;
   const email = normalizeEmail(req.body?.email);
   const eventId = req.body?.event_id;
   if (!email || !isValidObjectId(eventId)) {
@@ -187,15 +237,16 @@ async function merchantSession(req, res, deps = {}) {
         verificationRequired: true,
       });
     }
-    const user = await UserModel.findOne({ email: exactEmail(email) }).select('name lastName email').lean();
+    const user = await UserModel.findOne({ email: exactEmail(email) }).select(CONSUMER_FIELDS).lean();
     if (!user) return res.status(404).json({ ok: false, msg: 'No account with that email.' });
 
     const token = await issueToken(String(user._id), eventId, { email: user.email, level: 'email' });
     if (!token) return res.status(404).json({ ok: false, msg: 'Event not found.' });
+    await register(UserModel, user._id, event);
     // Sin teléfono: quien entra sin enlace solo ha demostrado conocer un email.
     return res.status(200).json({
       ok: true,
-      consumer: { id: String(user._id), name: user.name, lastName: user.lastName, email: user.email },
+      consumer: consumerView(user, event, { withPhone: false }),
       event_id: String(eventId),
       company_id: event.companyId,
       level: 'email',
@@ -209,6 +260,7 @@ async function merchantSession(req, res, deps = {}) {
 
 module.exports = {
   CONSUMER_LOGIN_PURPOSE: PURPOSE,
+  registerInEvent,
   requestConsumerLoginLink,
   redeemConsumerSession,
 };
