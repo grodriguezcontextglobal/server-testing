@@ -107,7 +107,9 @@ router.get(
 );
 
 //check existing user
-router.post("/",check("email", "Email is mandatory").isEmail(), checkUser);
+// Con sesión (FedRAMP A2, 2026-10-27): devolvía el registro entero del
+// consumidor a quien conociera su email, y ningún cliente la llama sin sesión.
+router.post("/", validateJWT, checkTokenVersion, check("email", "Email is mandatory").isEmail(), checkUser);
 
 //get all consumers based on all events per company
 router.get("/all-consumers-based-on-all-events-per-company/:companyID", validateJWT, checkTokenVersion, getAllConsumersBasedOnAllEventsPerCompany);

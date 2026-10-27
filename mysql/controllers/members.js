@@ -2050,11 +2050,11 @@ const retrieveMyDevices = async (request, response) => {
       : false;
     if (!authorized) {
       // uniform response — do not reveal whether the student ID exists
+      // One message for every case (FedRAMP A2, 2026-10-27): the minor-specific
+      // one confirmed that the student ID exists and belongs to a minor.
       return response.status(404).json({
         ok: false,
-        msg: isMinor && member
-          ? "No record found. For students under 18, use the parent/guardian email on file."
-          : "No record found for that student ID and email.",
+        msg: "No record found for that student ID and email. For students under 18, use the parent/guardian email on file.",
       });
     }
 

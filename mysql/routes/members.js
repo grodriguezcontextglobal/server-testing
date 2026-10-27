@@ -9,6 +9,7 @@
  */
 
 const { Router } = require("express");
+const rateLimit = require("express-rate-limit");
 const {
   insertNewMember,
   updateMemberInfo,
@@ -96,7 +97,16 @@ router.post("/overdue-leases", canRead, retrieveOverdueLeases);
 router.post("/bulk-return", canUpdate, bulkReturnMemberLeases);
 
 // PUBLIC family portal lookup — intentionally unauthenticated; verified by
-// student ID + the responsible party's email (guardian for minors).
-router.post("/my-devices", retrieveMyDevices);
+// student ID + the responsible party's email (guardian for minors). Its own,
+// tight limit: the two values are a guessable credential, so attempts are
+// what has to be scarce (per process, like every in-memory limiter here).
+const myDevicesRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, msg: "Too many attempts. Please try again later." },
+});
+router.post("/my-devices", myDevicesRateLimit, retrieveMyDevices);
 
 module.exports = router;

@@ -13,6 +13,7 @@ const { searchCustomerByParameters } = require("../controller/stripe");
 const { optionalJWT } = require("../middlewares/optionalJWT");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const { tokenIfPresent } = require("../middlewares/tokenIfPresent");
 const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
 
  //display all admin users
@@ -56,10 +57,6 @@ const selfOrStaffUpdate = (req, res, next) =>
 // (volver a entrar sigue exigiendo contraseña + MFA). Si llega token, se valida
 // entero (firma + tokenVersion): uno inválido es 401, no "sin token"; con token
 // se puede cerrar la sesión de otro según los permisos de forceEndSession.
-const tokenIfPresent = (req, res, next) =>
-  req.header("x-token")
-    ? validateJWT(req, res, () => checkTokenVersion(req, res, next))
-    : next();
 router.post("/force-logout", tokenIfPresent, forceEndSession);
 
  module.exports = router;

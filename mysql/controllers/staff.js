@@ -89,6 +89,21 @@ const insertingStaffMember = async (request, response) => {
 
 const consultingStaffMemberInformation = async (request, response) => {
   try {
+    // Sin sesión (login antes de guardar el token): solo email exacto, y solo
+    // lo que el login necesita para elegir el staff_id. Antes devolvía nombre,
+    // email y teléfono filtrando por cualquier columna. FedRAMP A2, 2026-10-27.
+    if (!request.uid) {
+      const { email } = request.body || {};
+      if (typeof email !== "string" || !email.trim()) {
+        return response.status(400).json({ ok: false, msg: "email is required" });
+      }
+      const [rows] = await connection.execute(
+        "SELECT staff_id FROM staff_member WHERE email = ?",
+        [email.trim()]
+      );
+      return response.status(200).json({ ok: true, member: rows });
+    }
+
     const keys = Object.keys(request.body).filter((k) => STAFF_MEMBER_COLUMNS.has(k));
     if (!keys.length) {
       return response.status(400).json({ ok: false, msg: "No valid filter fields provided" });

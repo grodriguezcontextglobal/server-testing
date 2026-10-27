@@ -17,12 +17,15 @@ const {
 } = require("../controllers/staff");
 const { validateJWT } = require("../../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../../middlewares/checkValidateToken");
+const { sessionIfValid } = require("../../middlewares/sessionIfValid");
 const { authorizePermission } = require("../../middlewares/authorizePermission");
 const router = Router();
 
 // Basic staff_member table
-router.post("/consulting-member", consultingStaffMemberInformation);
-router.post("/new_member", insertingStaffMember);
+// consulting-member: el login la llama antes de guardar el token. Sin sesión
+// solo resuelve el staff_id de un email exacto (ver el controlador).
+router.post("/consulting-member", sessionIfValid, consultingStaffMemberInformation);
+router.post("/new_member", validateJWT, checkTokenVersion, insertingStaffMember);
 
 // company_staff role management (requieren JWT)
 router.post("/company-staff",             validateJWT, checkTokenVersion, addCompanyStaff);

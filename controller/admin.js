@@ -438,7 +438,14 @@ const logoutUser = async (request, response) => {
     const staffID = request.body.uid;
     let decoded = {};
     if (token) {
-      decoded = jwt.decode(token);
+      // Firma verificada (FedRAMP A2, 2026-10-27): con jwt.decode un token
+      // inventado cerraba la sesión de quien dijera. Caducado sí vale: cerrar
+      // una sesión vencida no debe fallar.
+      try {
+        decoded = jwt.verify(token, process.env.SECRET_JWT_SEED, { ignoreExpiration: true });
+      } catch (_error) {
+        return response.status(401).json({ ok: false, msg: "Token is not valid" });
+      }
       const sessionKey = `staff_session:${decoded.id ?? decoded.uid}`;
       redis.del(sessionKey);
       // Clear cookie if it existed (name is required)
