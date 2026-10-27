@@ -31,7 +31,7 @@ test('IIS reescribe a 127.0.0.1:34001', () => {
 });
 
 test('la imagen Docker abre BIND_HOST para que el puerto publicado responda', () => {
-  assert.match(read('Dockerfile'), /^ENV BIND_HOST=0\.0\.0\.0$/m);
+  assert.match(read('Dockerfile'), /^ENV BIND_HOST=0\.0\.0\.0\r?$/m);
 });
 
 test('los health checks de deploy no dependen de cómo resuelva "localhost"', () => {
