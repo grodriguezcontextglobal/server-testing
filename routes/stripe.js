@@ -55,6 +55,19 @@ const canMoveCollectedMoney = [
 // (company-account-stripe, new-company-account, accounts y account_link).
 const requireSession = [validateJWT, checkTokenVersion];
 
+// A8b (2026-10-27): con sesión, el recurso de Stripe tiene que ser de la
+// compañía del contexto (middlewares/requireStripeOwnership.js). Cada guarda
+// lee el MISMO campo que su controlador. STRIPE_OWNERSHIP_MODE=warn por defecto.
+const { requireStripeOwnership } = require("../middlewares/requireStripeOwnership");
+const ownsParamSubscription = requireStripeOwnership("subscription", (req) => req.params.id);
+const ownsBodySubscription = requireStripeOwnership("subscription", (req) => req.body?.subscriptionID);
+const ownsBodyCustomer = requireStripeOwnership("customer", (req) => req.body?.stripeCustomerID);
+const ownsBodyCustomerID = requireStripeOwnership("customer", (req) => req.body?.customerID);
+const ownsBodySetupIntent = requireStripeOwnership("setupIntent", (req) => req.body?.setupId);
+const ownsBodyPaymentIntentId = requireStripeOwnership("paymentIntent", (req) => req.body?.paymentIntentId);
+const ownsBodyConnectedAccount = requireStripeOwnership("connectedAccount", (req) => req.body?.connectedAccountId);
+const ownsParamStripeCompany = requireStripeOwnership("stripeCompany", (req) => req.params.id);
+
 // Fase 0.1 (2026-10-19): el pago tiene que ser de la compañía del contexto
 // (middlewares/requirePaymentOwnership.js). Se comprueba el MISMO campo que lee
 // cada controlador: capture/cancel usan body.id, refund/partial-refund
@@ -148,7 +161,7 @@ router.post("/accounts", stripeAccountCreate);
 router.post("/account_link", stripeAccountLink);
 
 //create account session
-router.post("/account_sessions", requireSession, stripeAccountSession);
+router.post("/account_sessions", requireSession, ownsBodyConnectedAccount, stripeAccountSession);
 
 //create payment intent
 router.post(
@@ -179,15 +192,16 @@ router.post(
 router.post("/new-company-account", companyInformationAccountStripe);
 
 //route to create subscription from tiers and make charges monthly/yearly
-router.post("/create-subscriptions", requireSession, creatingSubscription);
+router.post("/create-subscriptions", requireSession, ownsBodyCustomer, creatingSubscription);
 
 //*create subscription no trail period from tiers and make charges monthly/yearly
-router.post("/create-subscriptions_no_trial", requireSession, createSubscriptionNoTrialPeriod);
+router.post("/create-subscriptions_no_trial", requireSession, ownsBodyCustomer, createSubscriptionNoTrialPeriod);
 
 //update payment method in subscription
 router.post(
   "/payment-method/subscriptions/:id",
   requireSession,
+  ownsParamSubscription,
   updateDefaultPaymentMethodInSubscription
 );
 
@@ -195,6 +209,7 @@ router.post(
 router.post(
   "/payment_methods/:id/attach",
   requireSession,
+  ownsBodyCustomerID,
   updateDefaultPaymentMethodInCustomer
 );
 
@@ -202,6 +217,7 @@ router.post(
 router.post(
   "/payment_intents/:id/update-payment-method",
   requireSession,
+  ownsBodyPaymentIntentId,
   updatePaymentMethodFromAdminDashboard
 );
 
@@ -209,7 +225,7 @@ router.post(
 router.get("/payment-intents/search", requireSession, searchStripeTransaction);
 
 //search subscription by setup id
-router.post("/setup-search", requireSession, findSubscriptionIdBySetUpId);
+router.post("/setup-search", requireSession, ownsBodySetupIntent, findSubscriptionIdBySetUpId);
 
 //list all customers created
 router.get("/customers", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "read"), listAllCustomers);
@@ -243,13 +259,13 @@ router.post(
 router.post("/company-account-stripe/", stripeCompanyAccountFound);
 
 //retrieve all invoices per subscription
-router.get("/invoices", requireSession, displayAllPaidInvoicesPerSubscription);
+router.get("/invoices", requireSession, ownsBodySubscription, displayAllPaidInvoicesPerSubscription);
 
 //retrieve all invoices per subscription
-router.post("/invoices", requireSession, displayAllPaidInvoicesPerSubscription);
+router.post("/invoices", requireSession, ownsBodySubscription, displayAllPaidInvoicesPerSubscription);
 
 //update subscription for cancel at the end of period or
-router.post("/cancel/subscriptions/:id", requireSession, updateCancelSubscription);
+router.post("/cancel/subscriptions/:id", requireSession, ownsParamSubscription, updateCancelSubscription);
 
 //save object {device, paymentIntentId, clientSecret} in database
 router.post(
@@ -371,15 +387,15 @@ router.get("/transaction", requireSession, getListOfAllSavedTransaction);
 router.delete("/removing/:id", requireSession, removeDuplicateEntry);
 
 //search subscription information
-router.get("/subscriptions/:id", requireSession, searchSubscriptions);
+router.get("/subscriptions/:id", requireSession, ownsParamSubscription, searchSubscriptions);
 
 //updating stored subscription
-router.patch("/updating-subscription/:id", requireSession, updateSubcriptionInCompanyAccount);
+router.patch("/updating-subscription/:id", requireSession, ownsParamStripeCompany, updateSubcriptionInCompanyAccount);
 
 //cancel subscription
-router.delete("/subscriptions/:id", requireSession, cancelSubscriptionCompany);
+router.delete("/subscriptions/:id", requireSession, ownsParamSubscription, cancelSubscriptionCompany);
 
 //updating stripe company account
-router.post("/company-account-stripe/update", requireSession, stripeCompanyAccountUpdate);
+router.post("/company-account-stripe/update", requireSession, ownsBodyConnectedAccount, stripeCompanyAccountUpdate);
 
 module.exports = router;

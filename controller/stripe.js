@@ -594,14 +594,24 @@ const searchSubscriptions = async (request, response) => {
 const updateSubcriptionInCompanyAccount = async (request, response) => {
   try {
     const storedSubcriptionID = request.params.id;
-    const newInfo = request.body;
+    // Solo el historial de suscripción (lo único que manda el dashboard). Antes
+    // se escribía el body entero: stripeID, companyName u ownerEmail incluidos,
+    // y de ellos depende de qué compañía es este registro (A8b).
+    const { subscriptionHistory } = request.body || {};
+    if (!Array.isArray(subscriptionHistory)) {
+      return response.status(400).json({ ok: false, msg: "subscriptionHistory must be an array." });
+    }
+    const ignored_fields = Object.keys(request.body || {}).filter((k) => k !== "subscriptionHistory");
     const updatingStoredSubscriptionInfo =
-      await StripeCompany.findByIdAndUpdate(storedSubcriptionID, newInfo, {
-        new: true,
-      });
+      await StripeCompany.findByIdAndUpdate(
+        storedSubcriptionID,
+        { $set: { subscriptionHistory } },
+        { new: true }
+      );
     return response.status(201).json({
       ok: true,
       companyCustomer: updatingStoredSubscriptionInfo,
+      ...(ignored_fields.length ? { ignored_fields } : {}),
     });
   } catch (error) {
     return response.status(500).json({
