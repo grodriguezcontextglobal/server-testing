@@ -23,6 +23,8 @@ const {
   generateMfaSecret,
   verifyMfaSetup,
   disableMfa,
+  regenerateRecoveryCodes,
+  resetUserMfa,
   invalidateAllSessions,
 } = require("../controller/admin");
 
@@ -145,7 +147,11 @@ router.get("/check-online-status/:email", validateJWT, checkTokenVersion, checkS
 // cuenta sin MFA, o un JWT de sesión.
 router.post("/mfa/generate", validateMfaEnrollment, generateMfaSecret);
 router.post("/mfa/verify", validateMfaEnrollment, verifyMfaSetup);
-router.post("/mfa/disable", validateJWT, disableMfa);
+router.post("/mfa/disable", validateJWT, checkTokenVersion, disableMfa);
+// Pérdida del dispositivo (FedRAMP A5): códigos nuevos (pide un código TOTP) y
+// reset por un administrador para quien perdió también los códigos.
+router.post("/mfa/recovery-codes", validateJWT, checkTokenVersion, regenerateRecoveryCodes);
+router.post("/mfa/reset/:id", validateJWT, checkTokenVersion, resetUserMfa);
 
 // Canonical action / target_model list for the report's filter dropdown. Static
 // metadata, so it needs no staff:read — only a valid session.

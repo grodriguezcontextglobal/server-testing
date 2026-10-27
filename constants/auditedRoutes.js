@@ -478,6 +478,8 @@ const LOGGED_ELSEWHERE = new Set([
   'PATCH /api/admin/profile/:id',
   'DELETE /api/admin/:id',
   'POST /api/staff/force-logout',
+  'POST /api/admin/mfa/recovery-codes',
+  'POST /api/admin/mfa/reset/:id',
   'POST /api/event/create-event',
   'PATCH /api/event/edit-event/:id',
   'PUT /api/event/edit-event/:id',

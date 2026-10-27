@@ -19,6 +19,11 @@ const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
 const {
+  generateRecoveryCodes,
+  hashRecoveryCode,
+  looksLikeRecoveryCode,
+} = require("../helpers/mfaRecoveryCodes");
+const {
   getLockoutRemaining,
   recordLoginFailure,
   clearLoginFailures,
@@ -107,7 +112,7 @@ const createAdminUser = async (request, response = express.response) => {
 };
 
 const loginUser = async (request, response) => {
-  const { email, password, forceLogin, mfaCode } = request.body;
+  const { email, password, forceLogin, mfaCode, recoveryCode } = request.body;
   try {
     // Contador de intentos fallidos (AC-7). Sin Redis no se bloquea: ver
     // helpers/loginAttempts.js.
@@ -193,9 +198,11 @@ const loginUser = async (request, response) => {
       });
     }
 
-    // MFA Check
+    // MFA Check. `recoveryCode` sustituye a `mfaCode` cuando se perdió el
+    // dispositivo; cuenta para el bloqueo igual que un código TOTP fallido.
+    let recoveryCodesRemaining;
     if (mfaReady) {
-      if (!mfaCode) {
+      if (!mfaCode && !recoveryCode) {
         return response.status(403).json({
           ok: false,
           msg: "MFA code required",
@@ -203,16 +210,35 @@ const loginUser = async (request, response) => {
         });
       }
 
-      const verified = speakeasy.totp.verify({
-        secret: userWithSecret.mfaSecret.base32,
-        encoding: "base32",
-        token: mfaCode,
-      });
+      if (mfaCode) {
+        const verified = speakeasy.totp.verify({
+          secret: userWithSecret.mfaSecret.base32,
+          encoding: "base32",
+          token: mfaCode,
+        });
 
-      if (!verified) {
-        return failLogin("invalid_mfa_code", adminUser, 400, {
-          ok: false,
-          msg: "Invalid MFA code",
+        if (!verified) {
+          return failLogin("invalid_mfa_code", adminUser, 400, {
+            ok: false,
+            msg: "Invalid MFA code",
+          });
+        }
+      } else {
+        recoveryCodesRemaining = await consumeRecoveryCode(adminUser.id, recoveryCode);
+        if (recoveryCodesRemaining === null) {
+          return failLogin("invalid_recovery_code", adminUser, 400, {
+            ok: false,
+            msg: "Invalid recovery code",
+          });
+        }
+        await logStaffActivity({
+          staff_member_id: adminUser.id,
+          action: "MFA_RECOVERY_CODE_USED",
+          target_model: "AdminUser",
+          target_id: adminUser.id,
+          details: { recoveryCodesRemaining },
+          ip_address: request.ip,
+          device_info: request.headers["user-agent"],
         });
       }
     }
@@ -414,6 +440,11 @@ const loginUser = async (request, response) => {
       phone: adminUser.phone,
       role: adminUser.role,
       token,
+      // Solo al entrar con un código de recuperación: el cliente avisa de
+      // cuántos quedan y ofrece regenerarlos.
+      ...(recoveryCodesRemaining !== undefined
+        ? { recoveryCodeUsed: true, recoveryCodesRemaining }
+        : {}),
     });
   } catch (error) {
     logger.error("Admin login error", {
@@ -1273,11 +1304,22 @@ const verifyMfaSetup = async (req, res) => {
     });
 
     if (verified) {
+      // Los códigos de recuperación nacen con la MFA y solo se muestran ahora.
+      // Repetir el verify con la MFA ya activa no los cambia (para eso está
+      // /mfa/recovery-codes, que pide un código).
+      const enabling = !adminUser.mfaEnabled;
+      const recovery = enabling ? generateRecoveryCodes(adminUser.id) : null;
       adminUser.mfaEnabled = true;
+      if (recovery) adminUser.mfaRecoveryCodes = recovery.hashes;
       await adminUser.save();
       // No se emite sesión aquí: el token solo sale del login. Quien se enroló
       // con el token de enrolamiento tiene que volver a loguearse con su código.
-      res.json({ ok: true, msg: "MFA enabled successfully", reloginRequired: Boolean(req.mfaSetup) });
+      res.json({
+        ok: true,
+        msg: "MFA enabled successfully",
+        reloginRequired: Boolean(req.mfaSetup),
+        ...(recovery ? { recoveryCodes: recovery.codes } : {}),
+      });
     } else {
       res.status(400).json({ ok: false, msg: "Invalid token" });
     }
@@ -1295,10 +1337,153 @@ const disableMfa = async (req, res) => {
     const adminUser = await AdminUser.findById(req.uid);
     adminUser.mfaEnabled = false;
     adminUser.mfaSecret = undefined;
+    adminUser.mfaRecoveryCodes = undefined;
     await adminUser.save();
     res.json({ ok: true, msg: "MFA disabled successfully" });
   } catch (error) {
     res.status(500).json({ ok: false, msg: "Error disabling MFA" });
+  }
+};
+
+// Gasta un código de recuperación. El $pull condicionado es atómico: dos
+// logins con el mismo código no pueden usarlo los dos. Devuelve cuántos
+// quedan, o null si el código no es válido.
+async function consumeRecoveryCode(uid, code) {
+  if (!looksLikeRecoveryCode(code)) return null;
+  const hash = hashRecoveryCode(uid, code);
+  const updated = await AdminUser.findOneAndUpdate(
+    { _id: uid, mfaRecoveryCodes: hash },
+    { $pull: { mfaRecoveryCodes: hash } },
+    { new: true, projection: { mfaRecoveryCodes: 1 } }
+  );
+  return updated ? (updated.mfaRecoveryCodes ?? []).length : null;
+}
+
+// POST /api/admin/mfa/recovery-codes: códigos nuevos (los anteriores dejan de
+// valer). Pide un código TOTP vigente además de la sesión: una sesión robada
+// sola no basta para hacerse con un acceso permanente a la cuenta.
+const regenerateRecoveryCodes = async (req, res) => {
+  const { mfaCode } = req.body || {};
+  try {
+    const adminUser = await AdminUser.findById(req.uid).select("+mfaSecret");
+    if (!adminUser) return res.status(404).json({ ok: false, msg: "User not found" });
+    if (!adminUser.mfaEnabled || !adminUser.mfaSecret?.base32) {
+      return res.status(400).json({ ok: false, msg: "MFA is not enabled for this account." });
+    }
+    const verified =
+      Boolean(mfaCode) &&
+      speakeasy.totp.verify({
+        secret: adminUser.mfaSecret.base32,
+        encoding: "base32",
+        token: mfaCode,
+      });
+    if (!verified) return res.status(400).json({ ok: false, msg: "Invalid MFA code" });
+
+    const { codes, hashes } = generateRecoveryCodes(adminUser.id);
+    await AdminUser.updateOne({ _id: adminUser.id }, { $set: { mfaRecoveryCodes: hashes } });
+    await logStaffActivity({
+      staff_member_id: req.uid,
+      action: "MFA_RECOVERY_CODES_REGENERATED",
+      target_model: "AdminUser",
+      target_id: adminUser.id,
+      ip_address: req.ip,
+      device_info: req.headers?.["user-agent"],
+    });
+    return res.json({ ok: true, recoveryCodes: codes });
+  } catch (error) {
+    logger.error(error);
+    return res.status(500).json({ ok: false, msg: "Error generating recovery codes" });
+  }
+};
+
+// POST /api/admin/mfa/reset/:id: para quien perdió el dispositivo Y los
+// códigos. Borra su MFA, cierra sus sesiones y le obliga a enrolarse otra vez
+// en el próximo login (con contraseña, como una cuenta nueva).
+//  - Nunca sobre uno mismo: con una sesión robada se podría quitar la MFA.
+//  - super_user de plataforma: a cualquiera.
+//  - Si no: super_user o staff:update en la compañía del contexto, el otro
+//    miembro de ella, y que no esté en otras compañías (mismo criterio que el
+//    cambio de email: un admin de una compañía no decide por las demás).
+const resetUserMfa = async (request, response) => {
+  const targetId = request.params.id;
+  try {
+    const target = isValidObjectId(targetId)
+      ? await AdminUser.findById(targetId).select("email active mfaEnabled")
+      : null;
+    if (!target) return response.status(404).json({ ok: false, msg: "User not found." });
+    if (String(target.id) === String(request.uid)) {
+      return response.status(403).json({
+        ok: false,
+        msg: "You cannot reset your own MFA. Use a recovery code or ask an administrator.",
+      });
+    }
+
+    const caller = await AdminUser.findById(request.uid).select("super_user active email");
+    if (!caller || caller.active === false) {
+      return response.status(403).json({ ok: false, msg: "Forbidden" });
+    }
+    const companyId = resolveCompanyContext(request);
+    if (!caller.super_user) {
+      const callerEmp = await findCompanyMembership(companyId, caller);
+      const callerCan =
+        callerEmp && (callerEmp.super_user || hasPermission(callerEmp.roleType, "staff", "update"));
+      if (!callerCan) {
+        return response.status(403).json({
+          ok: false,
+          msg: "Forbidden: resetting MFA requires staff management rights in this company.",
+        });
+      }
+      if (!(await findCompanyMembership(companyId, target))) {
+        return response.status(404).json({ ok: false, msg: "User not found." });
+      }
+      const inOtherCompanies = await Company.exists({
+        ...membershipsOf(target),
+        ...(isValidObjectId(companyId) ? { _id: { $ne: companyId } } : {}),
+      });
+      if (inOtherCompanies) {
+        return response.status(403).json({
+          ok: false,
+          msg: "This user also belongs to other companies; only a platform administrator can reset their MFA.",
+        });
+      }
+    }
+
+    await AdminUser.updateOne(
+      { _id: target.id },
+      {
+        $set: { mfaEnabled: false },
+        $unset: { mfaSecret: "", mfaRecoveryCodes: "" },
+        $inc: { tokenVersion: 1 },
+      }
+    );
+    try {
+      const redis = await clientRedis();
+      await redis.del(`staff_session:${target.id}`);
+      await redis.del(`staff_session:${target.id}:owner`);
+    } catch (redisErr) {
+      // tokenVersion ya invalida sus tokens; la clave de Redis solo bloquearía
+      // el próximo login hasta caducar.
+      logger.warn("MFA reset: could not clear the Redis session", { err: redisErr.message });
+    }
+
+    await logStaffActivity({
+      staff_member_id: request.uid,
+      company_id: companyId,
+      action: "MFA_RESET",
+      target_model: "AdminUser",
+      target_id: target.id,
+      details: { email: target.email, platform: Boolean(caller.super_user) },
+      ip_address: request.ip,
+      device_info: request.headers?.["user-agent"],
+    });
+
+    return response.json({
+      ok: true,
+      msg: "MFA reset. The user will set it up again on their next sign-in.",
+    });
+  } catch (error) {
+    logger.error(error);
+    return response.status(500).json({ ok: false, msg: "Error resetting MFA" });
   }
 };
 
@@ -1434,6 +1619,8 @@ module.exports = {
   generateMfaSecret,
   verifyMfaSetup,
   disableMfa,
+  regenerateRecoveryCodes,
+  resetUserMfa,
   forceEndSession,
   invalidateAllSessions,
   PROFILE_SELF_FIELDS,

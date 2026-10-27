@@ -51,6 +51,10 @@ const ACTIVITY_ACTIONS = [
   'OPEN',
   // 2026-10-20: emitir el enlace firmado del QR de un recibo (POST /api/transaction/receipt-link).
   'SHARE',
+  // 2026-10-27, FedRAMP A5: pérdida del dispositivo de MFA (controller/admin.js).
+  'MFA_RECOVERY_CODE_USED',
+  'MFA_RECOVERY_CODES_REGENERATED',
+  'MFA_RESET',
 ];
 
 const ACTIVITY_TARGET_MODELS = [

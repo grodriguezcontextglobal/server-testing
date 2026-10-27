@@ -72,6 +72,13 @@ const AdminUserSchema = new Schema({
     type: Object, // Stores ASCII, hex, base32, otpauth_url
     select: false, // Do not return by default
   },
+  // Hashes de los códigos de recuperación de MFA (helpers/mfaRecoveryCodes.js).
+  // Cada uno se borra del array al usarse.
+  mfaRecoveryCodes: {
+    type: [String],
+    select: false,
+    default: undefined,
+  },
   emailNotifications: {
     type: Object,
     default: {
@@ -154,9 +161,9 @@ const AdminUserSchema = new Schema({
 });
 
 AdminUserSchema.method("toJSON", function () {
-  // password/mfaSecret nunca se serializan, aunque se hayan cargado con
-  // `.select("+...")` (el login lo hace y responde `entire: adminUser`).
-  const { _id, __v, password, mfaSecret, ...object } = this.toObject();
+  // password/mfaSecret/mfaRecoveryCodes nunca se serializan, aunque se hayan
+  // cargado con `.select("+...")` (el login lo hace y responde `entire: adminUser`).
+  const { _id, __v, password, mfaSecret, mfaRecoveryCodes, ...object } = this.toObject();
 
   object.id = _id;
   return object;

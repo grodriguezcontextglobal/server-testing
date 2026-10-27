@@ -35,7 +35,7 @@ const { effectiveChain } = require('./helpers/effectiveChain');
 // ── lote 1: exigen sesión ───────────────────────────────────────────────────
 
 const SESSION_ROUTES = {
-  '../routes/admin': [['get', '/check-online-status/:email'], ['post', '/manually_logout'], ['post', '/new_admin_user']],
+  '../routes/admin': [['get', '/check-online-status/:email'], ['post', '/manually_logout'], ['post', '/new_admin_user'], ['post', '/mfa/disable'], ['post', '/mfa/recovery-codes'], ['post', '/mfa/reset/:id']],
   '../routes/article': [['get', '/articles'], ['delete', '/article-delete/:id'], ['patch', '/article-edit/:id']],
   '../routes/cache_route': [['post', '/remove-cache']],
   '../routes/cashReport': [['post', '/create-cash-report'], ['get', '/cash-report'], ['post', '/cash-reports'], ['post', '/remove-cash-report/:id'], ['patch', '/update-cash-report/:id']],
