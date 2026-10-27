@@ -39,6 +39,22 @@ const canMoveCollectedMoney = [
   authorizeMongoPermission("transaction", "update"),
 ];
 
+// Stripe Fase 2 (FedRAMP A8, 2026-10-27). optionalJWT, en el router.use, lee
+// la sesión si viene pero no la exige: 26 rutas de cobro, suscripción y
+// facturación respondían a cualquiera (cancelar la suscripción de una compañía,
+// buscar pagos, guardar transacciones). Todas las llama solo el dashboard desde
+// páginas con sesión (comprobado contra testing-admin-dashboard b53a1992 y la
+// app de consumidor 3fccd69, que solo usa rutas con consumerTokenGate).
+//
+// Regla (decisión del 2026-10-27): suscripciones, cobros, reembolsos y
+// capturas exigen sesión. Crear un payment intent no, porque también se hace
+// desde sesiones no autenticadas; pero si viene de la app de consumidor, su
+// token se valida (consumerTokenGate). Siguen públicas, y lo fija
+// test/stripeRouteIdentity.test.js: las tres de crear payment intent y las
+// cuatro del alta de compañía, que corre antes de que exista sesión
+// (company-account-stripe, new-company-account, accounts y account_link).
+const requireSession = [validateJWT, checkTokenVersion];
+
 // Fase 0.1 (2026-10-19): el pago tiene que ser de la compañía del contexto
 // (middlewares/requirePaymentOwnership.js). Se comprueba el MISMO campo que lee
 // cada controlador: capture/cancel usan body.id, refund/partial-refund
@@ -132,7 +148,7 @@ router.post("/accounts", stripeAccountCreate);
 router.post("/account_link", stripeAccountLink);
 
 //create account session
-router.post("/account_sessions", stripeAccountSession);
+router.post("/account_sessions", requireSession, stripeAccountSession);
 
 //create payment intent
 router.post(
@@ -144,11 +160,18 @@ router.post(
 );
 
 //create payment intent from admin side
-router.post("/create-payment-intent-customized", stripePaymentIntentCustomized);
+// Sin sesión de staff, pero desde la app de consumidor el token se valida otra
+// vez, como en /create-payment-intent (el gate no actúa sobre el dashboard).
+router.post(
+  "/create-payment-intent-customized",
+  consumerTokenGate({ subject: (req) => ({ email: req.body?.receipt_email }) }),
+  stripePaymentIntentCustomized
+);
 
 //create payment intent for subscription
 router.post(
   "/create-payment-intent-subscription",
+  consumerTokenGate({ subject: (req) => ({ email: req.body?.customerEmail }) }),
   stripePaymentIntentSubscription
 );
 
@@ -156,34 +179,37 @@ router.post(
 router.post("/new-company-account", companyInformationAccountStripe);
 
 //route to create subscription from tiers and make charges monthly/yearly
-router.post("/create-subscriptions", creatingSubscription);
+router.post("/create-subscriptions", requireSession, creatingSubscription);
 
 //*create subscription no trail period from tiers and make charges monthly/yearly
-router.post("/create-subscriptions_no_trial", createSubscriptionNoTrialPeriod);
+router.post("/create-subscriptions_no_trial", requireSession, createSubscriptionNoTrialPeriod);
 
 //update payment method in subscription
 router.post(
   "/payment-method/subscriptions/:id",
+  requireSession,
   updateDefaultPaymentMethodInSubscription
 );
 
 //update payment method in customer
 router.post(
   "/payment_methods/:id/attach",
+  requireSession,
   updateDefaultPaymentMethodInCustomer
 );
 
 //update payment method in customer
 router.post(
   "/payment_intents/:id/update-payment-method",
+  requireSession,
   updatePaymentMethodFromAdminDashboard
 );
 
 //list all payment intent created
-router.get("/payment-intents/search", searchStripeTransaction);
+router.get("/payment-intents/search", requireSession, searchStripeTransaction);
 
 //search subscription by setup id
-router.post("/setup-search", findSubscriptionIdBySetUpId);
+router.post("/setup-search", requireSession, findSubscriptionIdBySetUpId);
 
 //list all customers created
 router.get("/customers", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "read"), listAllCustomers);
@@ -202,12 +228,14 @@ router.get("/payment_intents/:id", consumerTokenGate({ verifiedOnly: true }), re
 //get list of stripe transactions saved
 router.get(
   "/stripe-transactions-saved-list",
+  requireSession,
   getListOfAllSavedStripeTransaction
 );
 
 //get saved stripe transaction by query
 router.post(
   "/stripe-transactions-saved-list",
+  requireSession,
   getListOfAllSavedStripeTransaction
 );
 
@@ -215,13 +243,13 @@ router.post(
 router.post("/company-account-stripe/", stripeCompanyAccountFound);
 
 //retrieve all invoices per subscription
-router.get("/invoices", displayAllPaidInvoicesPerSubscription);
+router.get("/invoices", requireSession, displayAllPaidInvoicesPerSubscription);
 
 //retrieve all invoices per subscription
-router.post("/invoices", displayAllPaidInvoicesPerSubscription);
+router.post("/invoices", requireSession, displayAllPaidInvoicesPerSubscription);
 
 //update subscription for cancel at the end of period or
-router.post("/cancel/subscriptions/:id", updateCancelSubscription);
+router.post("/cancel/subscriptions/:id", requireSession, updateCancelSubscription);
 
 //save object {device, paymentIntentId, clientSecret} in database
 router.post(
@@ -282,6 +310,7 @@ router.post(
 //save No regular user object {device, paymentIntentId, clientSecret} in database
 router.post(
   "/stripe-transaction-no-regular-user",
+  requireSession,
   saveStripeTransactionTemplateForNoRegularUser
 );
 
@@ -319,37 +348,38 @@ router.post(
   partialRefundStripePaymentIntent
 );
 //removing duplicate entries in database
-router.delete("/remove-duplicate/:id",  removeDuplicateEntries);
+router.delete("/remove-duplicate/:id", requireSession, removeDuplicateEntries);
 
 //!new route for transaction model fro new design
 //*saving new transaction
-router.post("/save-transaction", saveTransaction);
+router.post("/save-transaction", requireSession, saveTransaction);
 
 //*saving new transaction
-router.post("/save-transaction-admin-dashboard", saveTransactionAdmin);
+router.post("/save-transaction-admin-dashboard", requireSession, saveTransactionAdmin);
 
 //*saving new transaction
 router.post(
   "/save-transaction-template-no-regular-user",
+  requireSession,
   saveTransactionTemplateForNoRegularUser
 );
 
 //*saving new transaction
-router.get("/transaction", getListOfAllSavedTransaction);
+router.get("/transaction", requireSession, getListOfAllSavedTransaction);
 
 //*remove duplicate entry in transaction document
-router.delete("/removing/:id", removeDuplicateEntry);
+router.delete("/removing/:id", requireSession, removeDuplicateEntry);
 
 //search subscription information
-router.get("/subscriptions/:id", searchSubscriptions);
+router.get("/subscriptions/:id", requireSession, searchSubscriptions);
 
 //updating stored subscription
-router.patch("/updating-subscription/:id", updateSubcriptionInCompanyAccount);
+router.patch("/updating-subscription/:id", requireSession, updateSubcriptionInCompanyAccount);
 
 //cancel subscription
-router.delete("/subscriptions/:id", cancelSubscriptionCompany);
+router.delete("/subscriptions/:id", requireSession, cancelSubscriptionCompany);
 
 //updating stripe company account
-router.post("/company-account-stripe/update", stripeCompanyAccountUpdate);
+router.post("/company-account-stripe/update", requireSession, stripeCompanyAccountUpdate);
 
 module.exports = router;
