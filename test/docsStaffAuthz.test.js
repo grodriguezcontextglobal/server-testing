@@ -52,7 +52,7 @@ function reset() {
     [DOC_A]: makeDoc(DOC_A, CO_A),
     [DOC_B]: makeDoc(DOC_B, CO_B),
   };
-  calls = { updates: [], s3Deletes: [], docDeletes: [], redisDel: [], logs: [], folderCreates: [], folderDeletes: [] };
+  calls = { updates: [], s3Deletes: [], docDeletes: [], redisDel: [], logs: [], folderCreates: [], folderDeletes: [], companyUpdates: [] };
   folders = { [FOLDER_A]: makeFolder(FOLDER_A, CO_A), [FOLDER_B]: makeFolder(FOLDER_B, CO_B) };
 }
 
@@ -77,9 +77,24 @@ const AdminUserStub = {
     return { ...users[id], ...update, id };
   },
 };
+AdminUserStub.exists = async ({ email, _id }) =>
+  Object.values(users).some((u) => u.email === email && String(u.id) !== String(_id?.$ne));
+// Solo las dos formas de consulta que usa checkEmailChange (controller/admin.js).
+const isMemberOf = (company, { userId, user }) =>
+  company.employees.some((e) => (userId != null && String(e.userId) === String(userId)) || e.user === user);
 const CompanyStub = {
   findOne: ({ _id }) => ({ lean: async () => companies[_id] ?? null }),
   findById: async (id) => companies[id] ?? null,
+  exists: async (query) => {
+    if (query.employees?.$elemMatch) {
+      const { user, userId } = query.employees.$elemMatch;
+      return Object.values(companies).some((c) =>
+        c.employees.some((e) => e.user === user && String(e.userId) !== String(userId.$ne)));
+    }
+    const [{ 'employees.userId': userId }, { 'employees.user': user }] = query.$or;
+    return Object.entries(companies).some(([id, c]) => id !== query._id?.$ne && isMemberOf(c, { userId, user }));
+  },
+  updateMany: async (filter, update) => { calls.companyUpdates.push({ filter, update }); },
 };
 let folders;
 const FOLDER_A = 'fffffffffffffffffffffff1';
@@ -548,8 +563,62 @@ test('editOtherAdminUser: los campos que manda el dashboard se aplican', async (
   };
   await editOtherAdminUser(req({ uid: U_ADMIN_A, company: CO_A, params: { id: U_PLAIN_A }, body }), r);
   assert.equal(r.code, 200);
-  assert.deepEqual(calls.updates[0].update, body);
+  // el email no cambia: no se reescribe ni se tocan membresías
+  const { email: _unchanged, ...applied } = body;
+  assert.deepEqual(calls.updates[0].update, applied);
+  assert.equal(calls.companyUpdates.length, 0);
   assert.equal(r.body.ignored_fields, undefined);
+});
+
+// ═══ A3 (2026-10-27): cambio de email ═══════════════════════════════════════
+// Las membresías sin userId se casan por email: cambiar uno cambiaba de quién
+// eran.
+
+test('email: un admin cambia el de alguien que solo está en su compañía, y las membresías lo siguen', async () => {
+  const r = res();
+  await editOtherAdminUser(req({ uid: U_ADMIN_A, company: CO_A, params: { id: U_PLAIN_A }, body: { email: ' nuevo@a.com ' } }), r);
+  assert.equal(r.code, 200);
+  assert.equal(calls.updates[0].update.email, 'nuevo@a.com');
+  assert.equal(calls.companyUpdates.length, 1);
+  assert.deepEqual(calls.companyUpdates[0].update.$set, {
+    'employees.$[e].user': 'nuevo@a.com',
+    'employees.$[e].email': 'nuevo@a.com',
+    'employees.$[e].userId': U_PLAIN_A,
+  });
+});
+
+test('email: no se puede tomar el de una invitación o membresía de otra compañía (409)', async () => {
+  companies[CO_B].employees.push({ user: 'invitado@b.com', roleType: 'admin' }); // pendiente, sin userId
+  const r = res();
+  await editOtherAdminUser(req({ uid: U_ADMIN_A, params: { id: U_ADMIN_A }, body: { email: 'invitado@b.com' } }), r);
+  assert.equal(r.code, 409);
+  assert.equal(calls.updates.length, 0);
+  assert.equal(calls.companyUpdates.length, 0);
+});
+
+test('email: no se puede tomar el de otra cuenta (409)', async () => {
+  const r = res();
+  await editOtherAdminUser(req({ uid: U_ADMIN_A, company: CO_A, params: { id: U_PLAIN_A }, body: { email: 'member@b.com' } }), r);
+  assert.equal(r.code, 409);
+  assert.equal(calls.updates.length, 0);
+});
+
+test('email: el de alguien que también está en otra compañía solo lo cambia la plataforma', async () => {
+  companies[CO_B].employees.push({ userId: U_PLAIN_A, user: 'plain@a.com', roleType: 'assistant' });
+  const admin = res();
+  await editOtherAdminUser(req({ uid: U_ADMIN_A, company: CO_A, params: { id: U_PLAIN_A }, body: { email: 'x@a.com' } }), admin);
+  assert.equal(admin.code, 403);
+  assert.equal(calls.updates.length, 0);
+  const platform = res();
+  await editOtherAdminUser(req({ uid: U_PLATFORM, params: { id: U_PLAIN_A }, body: { email: 'x@a.com' } }), platform);
+  assert.equal(platform.code, 200);
+});
+
+test('email: formato inválido → 400', async () => {
+  const r = res();
+  await editOtherAdminUser(req({ uid: U_ADMIN_A, company: CO_A, params: { id: U_PLAIN_A }, body: { email: 'no-es-email' } }), r);
+  assert.equal(r.code, 400);
+  assert.equal(calls.updates.length, 0);
 });
 
 test('editOtherAdminUser: super_user, platform_observer, tokenVersion, MFA y contraseña se descartan', async () => {

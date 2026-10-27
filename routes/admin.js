@@ -113,7 +113,7 @@ router.get("/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("sta
 router.post("/users", validateJWT, checkTokenVersion, showAllUsers);
 
 //edit admin user
-router.patch("/profile/:id", validateJWT, editAdminUser);
+router.patch("/profile/:id", validateJWT, checkTokenVersion, editAdminUser);
 
 //edit admin user
 router.patch("/admin-user/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "update"), editOtherAdminUser);

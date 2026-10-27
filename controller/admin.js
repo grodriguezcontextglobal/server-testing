@@ -7,6 +7,7 @@ const jwt = require("jsonwebtoken");
 // Los hashes son compatibles en ambos sentidos ($2a$/$2b$): no hay que rehashear.
 const bcrypt = require("bcrypt");
 const AdminUser = require("../models/AdminUser");
+const Company = require("../models/Company");
 const { generateJWT, SESSION_MAX_SECONDS } = require("../helpers/jwt");
 const getConnection = require("../mysql/database/config");
 const StripeTransaction = require("../models/StripeTransaction");
@@ -659,6 +660,7 @@ const editAdminUser = async (request, response = response) => {
 //   - a otro usuario solo si pertenece a la compañía del contexto (x-company-id),
 //     salvo super_user de plataforma. Si no, 404.
 // El email se sigue aceptando: el dashboard lo edita desde la ficha del staff.
+// Pero pasa por checkEmailChange (FedRAMP A3, 2026-10-27).
 const STAFF_EDITABLE_FIELDS = new Set([
   ...PROFILE_SELF_FIELDS,
   "email",
@@ -666,6 +668,62 @@ const STAFF_EDITABLE_FIELDS = new Set([
   "subscriptionRenewals",
   "eventReminder",
 ]);
+
+const EMAIL_FORMAT = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Las membresías sin userId (antiguas, e invitaciones pendientes) se casan por
+// email (helpers/companyMembership.js). Así que cambiar un email cambiaba de
+// quién eran: un admin que se ponía el email de una invitación pendiente de
+// otra compañía entraba en ella con ese rol, y el editado perdía las suyas.
+// Ahora: el email nuevo no puede ser de otra cuenta ni de ninguna membresía, y
+// el de alguien que también está en otras compañías solo lo cambia un
+// super_user de plataforma (o él mismo).
+const idOf = (doc) => doc._id ?? doc.id;
+const membershipsOf = (target) => ({
+  $or: [{ "employees.userId": idOf(target) }, { "employees.user": target.email }],
+});
+
+async function checkEmailChange({ target, newEmail, isSelf, callerIsPlatform, companyId }) {
+  if (newEmail === undefined) return { changed: false };
+  const email = typeof newEmail === "string" ? newEmail.trim() : "";
+  if (!EMAIL_FORMAT.test(email)) return { status: 400, error: "Invalid email." };
+  if (email === target.email) return { changed: false };
+
+  if (!isSelf && !callerIsPlatform) {
+    const inOtherCompanies = await Company.exists({
+      ...membershipsOf(target),
+      ...(isValidObjectId(companyId) ? { _id: { $ne: companyId } } : {}),
+    });
+    if (inOtherCompanies) {
+      return {
+        status: 403,
+        error: "This user also belongs to other companies; only a platform administrator can change their email.",
+      };
+    }
+  }
+
+  const [accountTaken, membershipTaken] = await Promise.all([
+    AdminUser.exists({ email, _id: { $ne: idOf(target) } }),
+    Company.exists({ employees: { $elemMatch: { user: email, userId: { $ne: idOf(target) } } } }),
+  ]);
+  if (accountTaken || membershipTaken) return { status: 409, error: "That email is already in use." };
+  return { changed: true, email };
+}
+
+// Las membresías del editado siguen siendo suyas: pasan al email nuevo y quedan
+// atadas por userId. Antes que el AdminUser: si este falla, el userId ya casa.
+const moveMembershipsToEmail = (target, email) =>
+  Company.updateMany(
+    membershipsOf(target),
+    {
+      $set: {
+        "employees.$[e].user": email,
+        "employees.$[e].email": email,
+        "employees.$[e].userId": idOf(target),
+      },
+    },
+    { arrayFilters: [{ $or: [{ "e.userId": idOf(target) }, { "e.user": target.email }] }] }
+  );
 
 const editOtherAdminUser = async (request, response = response) => {
   const adminUserId = request.params.id;
@@ -679,11 +737,13 @@ const editOtherAdminUser = async (request, response = response) => {
     }
 
     const isSelf = String(target.id) === String(request.uid);
+    let callerIsPlatform = false;
     if (!isSelf) {
       const caller = await AdminUser.findById(request.uid).select("super_user active email");
       if (!caller || caller.active === false) {
         return response.status(403).json({ ok: false, msg: "Forbidden" });
       }
+      callerIsPlatform = Boolean(caller.super_user);
       if (!caller.super_user) {
         const companyId = resolveCompanyContext(request);
         if (!companyId || !(await findCompanyMembership(companyId, target))) {
@@ -700,6 +760,24 @@ const editOtherAdminUser = async (request, response = response) => {
     }
     if (Object.keys(adminUserEdited).length === 0) {
       return response.status(400).json({ ok: false, msg: "No editable fields in the request.", ignored_fields });
+    }
+
+    const emailChange = await checkEmailChange({
+      target,
+      newEmail: adminUserEdited.email,
+      isSelf,
+      callerIsPlatform,
+      companyId: resolveCompanyContext(request),
+    });
+    if (emailChange.error) {
+      return response.status(emailChange.status).json({ ok: false, msg: emailChange.error });
+    }
+    if (emailChange.changed) {
+      adminUserEdited.email = emailChange.email;
+      await moveMembershipsToEmail(target, emailChange.email);
+    } else {
+      // el formulario manda el email aunque no cambie
+      delete adminUserEdited.email;
     }
 
     const adminUserUpdated = await AdminUser.findByIdAndUpdate(
