@@ -94,7 +94,7 @@ router.post("/logout", logoutUser);
 router.post("/manually_logout", validateJWT, checkTokenVersion, manuallyLogoutUser);
 
 //renovar token
-router.get("/renew", validateJWT, renewToken);
+router.get("/renew", validateJWT, checkTokenVersion, renewToken);
 
 //show all users in admin page
 // Va ANTES del `GET /:id` de abajo: ese parámetro sin acotar captura cualquier
@@ -105,7 +105,7 @@ router.get("/renew", validateJWT, renewToken);
 // Se revive con `validateJWT`: iba sin token, y dejarla anónima ahora sería
 // abrir un endpoint nuevo. Nadie puede depender de su respuesta actual, porque
 // su respuesta actual es la de otra ruta.
-router.get("/receiver-assigned", validateJWT, checkingReceiversAssigned);
+router.get("/receiver-assigned", validateJWT, checkTokenVersion, checkingReceiversAssigned);
 
 router.get("/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), showAllUsers);
 

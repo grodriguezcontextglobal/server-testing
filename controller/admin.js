@@ -18,6 +18,7 @@ const crypto = require("crypto");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
+const { newSessionId, touchIdle, openStaffSession } = require("../helpers/staffSession");
 const {
   generateRecoveryCodes,
   hashRecoveryCode,
@@ -77,7 +78,11 @@ const createAdminUser = async (request, response = express.response) => {
     // sesión recibe el token de enrolamiento (ver loginUser).
     const auth = isMfaRequired()
       ? { mfaSetupRequired: true, mfaSetupToken: await generateMfaSetupToken(adminUser.id) }
-      : { token: await generateJWT(adminUser.id, adminUser.name, adminUser.tokenVersion) };
+      : {
+          token: await generateJWT(adminUser.id, adminUser.name, adminUser.tokenVersion, undefined, {
+            sid: await openStaffSession(clientRedis, adminUser.id),
+          }),
+        };
 
     if (auth.token) {
       // Store JWT in a cookie
@@ -311,13 +316,16 @@ const loginUser = async (request, response) => {
     }
 
     //generate jwt (json web token)
+    // Cada login abre una sesión nueva: el sid anterior deja de valer.
+    const sid = newSessionId();
     let token;
     try {
       token = await generateJWT(
         adminUser.id,
         adminUser.name,
         adminUser.tokenVersion,
-        sqlStaffId
+        sqlStaffId,
+        { sid }
       );
     } catch (e) {
       // Rollback the claim if token generation fails
@@ -328,10 +336,12 @@ const loginUser = async (request, response) => {
       throw e;
     }
 
-    // Store token and owner fingerprint with TTL
+    // Sesión vigente (su sid) y huella del dueño, con TTL. Hasta A6 aquí se
+    // guardaba el token entero, que nadie leía.
     try {
-      await redis.set(sessionKey, token, { EX: ttlSeconds });
+      await redis.set(sessionKey, sid, { EX: ttlSeconds });
       await redis.set(ownerKey, fingerprint, { EX: ttlSeconds });
+      await touchIdle(redis, adminUser.id);
     } catch {}
 
     // Prepare login information for email notification with better header extraction
@@ -479,7 +489,11 @@ const logoutUser = async (request, response) => {
         return response.status(401).json({ ok: false, msg: "Token is not valid" });
       }
       const sessionKey = `staff_session:${decoded.id ?? decoded.uid}`;
-      redis.del(sessionKey);
+      // Solo cierra la sesión del token. Si ya la sustituyó otro login
+      // (forceLogin en otro navegador), el logout del viejo no debe echar al
+      // nuevo. Los tokens anteriores a A6 no traen sid: se borra como antes.
+      const current = decoded.sid ? await redis.get(sessionKey) : null;
+      if (!decoded.sid || current === decoded.sid) redis.del(sessionKey);
       // Clear cookie if it existed (name is required)
       response.clearCookie("token", {
         httpOnly: true,
@@ -921,6 +935,7 @@ const renewToken = async (request, response = express.response) => {
   try {
     token = await generateJWT(uid, name, request.tokenVersion, sqlStaffId, {
       authTime: request.authTime,
+      sid: request.sid,
     });
   } catch {
     return response.status(401).json({ ok: false, msg: "Session expired. Log in again." });

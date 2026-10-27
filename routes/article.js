@@ -13,7 +13,7 @@ const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 
 //create article
-router.post("/article-creation", validateJWT, articleSetup);
+router.post("/article-creation", validateJWT, checkTokenVersion, articleSetup);
 
 //display all articles
 router.get("/articles", validateJWT, checkTokenVersion, displayArticles);

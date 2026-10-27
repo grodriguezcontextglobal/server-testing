@@ -35,7 +35,7 @@ const { effectiveChain } = require('./helpers/effectiveChain');
 // ── lote 1: exigen sesión ───────────────────────────────────────────────────
 
 const SESSION_ROUTES = {
-  '../routes/admin': [['get', '/check-online-status/:email'], ['post', '/manually_logout'], ['post', '/new_admin_user'], ['post', '/mfa/disable'], ['post', '/mfa/recovery-codes'], ['post', '/mfa/reset/:id']],
+  '../routes/admin': [['get', '/check-online-status/:email'], ['post', '/manually_logout'], ['post', '/new_admin_user'], ['post', '/mfa/disable'], ['post', '/mfa/recovery-codes'], ['post', '/mfa/reset/:id'], ['get', '/renew']],
   '../routes/article': [['get', '/articles'], ['delete', '/article-delete/:id'], ['patch', '/article-edit/:id']],
   '../routes/cache_route': [['post', '/remove-cache']],
   '../routes/cashReport': [['post', '/create-cash-report'], ['get', '/cash-report'], ['post', '/cash-reports'], ['post', '/remove-cash-report/:id'], ['patch', '/update-cash-report/:id']],
@@ -147,6 +147,25 @@ test('PUBLIC_ROUTES no tiene entradas viejas (rutas que ya no existen o ya se ce
   const current = new Set(anonymousRoutes());
   const stale = Object.keys(PUBLIC_ROUTES).filter((r) => !current.has(r));
   assert.deepEqual(stale, [], 'Saca de PUBLIC_ROUTES las rutas que ya exigen identidad o se retiraron.');
+});
+
+// FedRAMP A6: checkTokenVersion es quien comprueba que la sesión siga abierta
+// (logout, force-logout, inactividad; helpers/staffSession.js). Una ruta con
+// validateJWT sin él aceptaría el token de una sesión ya cerrada.
+test('toda ruta con validateJWT lleva también checkTokenVersion', () => {
+  const missing = [];
+  for (const file of routeFiles()) {
+    const router = require(path.join(root, file));
+    for (const layer of router.stack.filter((l) => l.route)) {
+      for (const method of Object.keys(layer.route.methods)) {
+        const chain = effectiveChain(router, method, layer.route.path);
+        if (chain.includes(validateJWT) && !chain.includes(checkTokenVersion)) {
+          missing.push(`${file} ${method.toUpperCase()} ${layer.route.path}`);
+        }
+      }
+    }
+  }
+  assert.deepEqual(missing, [], 'Añade checkTokenVersion detrás de validateJWT.');
 });
 
 test('los archivos de rutas que se saltan siguen sin montarse en index.js', () => {

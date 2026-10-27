@@ -14,6 +14,7 @@
  */
 const { Router } = require("express");
 const { validateJWT } = require("../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { requirePlatformRead } = require("../middlewares/requirePlatformRead");
 const { getJobStatus, getJobStats, getOwnedJobStatus } = require("../controller/jobs");
 
@@ -21,8 +22,8 @@ const router = Router();
 
 // IMPORTANTE: las rutas más específicas van ANTES de /:jobId, si no Express
 // captura "stats"/"owned" como si fueran un jobId.
-router.get("/stats", validateJWT, requirePlatformRead, getJobStats);
-router.get("/owned/:jobId", validateJWT, getOwnedJobStatus);
-router.get("/:jobId", validateJWT, requirePlatformRead, getJobStatus);
+router.get("/stats", validateJWT, checkTokenVersion, requirePlatformRead, getJobStats);
+router.get("/owned/:jobId", validateJWT, checkTokenVersion, getOwnedJobStatus);
+router.get("/:jobId", validateJWT, checkTokenVersion, requirePlatformRead, getJobStatus);
 
 module.exports = router;

@@ -76,9 +76,9 @@ router.put(
   bulkAssignInventory
 );
 
-router.get("/companies/:id/locations", validateJWT, getCompanyLocations);
+router.get("/companies/:id/locations", validateJWT, checkTokenVersion, getCompanyLocations);
 
-router.post("/companies/:id/locations", validateJWT, getCompanyLocations);
+router.post("/companies/:id/locations", validateJWT, checkTokenVersion, getCompanyLocations);
 
 // Devuelve el árbol completo de locaciones y sub-locaciones de una compañía.
 // Era anónimo: la estructura interna de cualquier inquilino a quien la pidiera.

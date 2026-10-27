@@ -7,6 +7,8 @@ const Company = require("../models/Company");
 const getConnection = require("../mysql/database/config");
 const { generateJWT } = require("../helpers/jwt");
 const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
+const { openStaffSession } = require("../helpers/staffSession");
+const { clientRedis } = require("../database/cacheMemoryConfig");
 const { isAcceptablePassword, passwordPolicyMessage } = require("../helpers/passwordPolicy");
 const { generateInvitationToken, readInvitationToken } = require("../helpers/invitationToken");
 const logger = require("../helpers/logger");
@@ -260,7 +262,11 @@ const registerNewUserAndCompany = async (request, response) => {
     // el token de enrolamiento en vez de sesión (ver admin.js § loginUser).
     const auth = isMfaRequired()
       ? { mfaSetupRequired: true, mfaSetupToken: await generateMfaSetupToken(adminUser.id) }
-      : { token: await generateJWT(adminUser.id, adminUser.name, adminUser.tokenVersion, sqlStaffId) };
+      : {
+          token: await generateJWT(adminUser.id, adminUser.name, adminUser.tokenVersion, sqlStaffId, {
+            sid: await openStaffSession(clientRedis, adminUser.id),
+          }),
+        };
 
     return response.status(201).json({
       ok: true,

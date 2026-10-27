@@ -208,11 +208,13 @@ router.post("/member-lease-return-device-notification", returningDeviceLeaseMemb
 router.post(
   "/member-device-incident-notification",
   validateJWT,
+  checkTokenVersion,
   memberDeviceIncidentNotification
 );
 router.post(
   "/member-device-fee-receipt-notification",
   validateJWT,
+  checkTokenVersion,
   memberDeviceFeeReceiptNotification
 );
 

@@ -66,6 +66,22 @@ require.cache[jwtPath] = {
   },
 };
 
+// ─── Stub: Redis ─────────────────────────────────────────────────────────────
+// Con MFA_REQUIRED=false el alta abre sesión (helpers/staffSession.js). Sin
+// esto el test conectaría con el Redis del .env.
+const redisPath = require.resolve('../database/cacheMemoryConfig');
+const redisKeys = {};
+require.cache[redisPath] = {
+  id: redisPath, filename: redisPath, loaded: true,
+  exports: {
+    clientRedis: async () => ({
+      set: async (k, v) => { redisKeys[k] = v; return 'OK'; },
+      get: async (k) => redisKeys[k] ?? null,
+      del: async (k) => { delete redisKeys[k]; return 1; },
+    }),
+  },
+};
+
 // ─── Stub: Logger ─────────────────────────────────────────────────────────────
 const loggerPath = require.resolve('../helpers/logger');
 require.cache[loggerPath] = {

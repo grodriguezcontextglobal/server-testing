@@ -13,7 +13,7 @@ const validateJWT = (request, response = response, next) => {
   }
 
   try {
-    const { uid, name, tokenVersion, sqlStaffId, authTime, iat } = jwt.verify(
+    const { uid, name, tokenVersion, sqlStaffId, authTime, iat, sid } = jwt.verify(
       token,
       process.env.SECRET_JWT_SEED
     );
@@ -29,6 +29,8 @@ const validateJWT = (request, response = response, next) => {
     // Hora del login (helpers/jwt.js). Los tokens anteriores no la llevan: su
     // emisión es la mejor aproximación.
     request.authTime = authTime ?? iat;
+    // Sesión del servidor (helpers/staffSession.js); la comprueba checkTokenVersion.
+    request.sid = sid;
 
   } catch (error) {
     return response.status(401).json({
