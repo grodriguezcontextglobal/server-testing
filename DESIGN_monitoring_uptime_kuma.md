@@ -78,12 +78,12 @@ vigilamos cambia de estado en 40 segundos de forma que importe.
 
 | # | Monitor | Tipo | Objetivo | Por qué este y no otro |
 |---|---|---|---|---|
-| 1 | API viva | HTTP | `http://localhost:34001/health` | Plano y sin dependencias (`routes/health.js`). Es lo que decide *reiniciar o no* |
+| 1 | API viva | HTTP | `http://127.0.0.1:34001/health` | Plano y sin dependencias (`routes/health.js`). Es lo que decide *reiniciar o no* |
 | 2 | API pública | HTTP | `https://db.devitrak.net/health` | Cubre DNS + TLS + IIS, que el nº1 no ve. Y Kuma avisa de la **caducidad del certificado** con este mismo monitor |
 | 3 | Dependencias críticas | HTTP | `https://db.devitrak.net/ready` | Da **503** si MySQL o Mongo caen (`routes/health.js:66`) |
 | 4 | Redis degradado | **JSON query** | `/ready` → `checks.redis.ok` | **Imprescindible, ver §3.b** |
 | 5 | Go worker degradado | **JSON query** | `/ready` → `checks.goWorker.ok` | ídem |
-| 6 | Go worker directo | HTTP o TCP | `localhost:7453/health` | Es servicio propio desde el split; y el 7453 es justo el puerto que ya nos mordió dos veces |
+| 6 | Go worker directo | HTTP o TCP | `http://127.0.0.1:7453/health` | Es servicio propio desde el split; y el 7453 es justo el puerto que ya nos mordió dos veces |
 | 7 | EmailWorker | **Push** | latido desde el bucle | §4 |
 | 8 | BulkWorker (+ `heavy`) | **Push** | latido desde el bucle | §4 |
 | 9 | DeleteWorker | **Push** | latido desde el bucle | §4 |

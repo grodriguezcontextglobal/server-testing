@@ -15,7 +15,7 @@ const {
 const router = Router();
 
 router.post(
-  "/sub-locations",
+  "/sub-locations", validateJWT, checkTokenVersion,
   [
     check("location_id", "Location ID is required").not().isEmpty(),
     check("name", "Name is required").not().isEmpty(),
@@ -24,7 +24,7 @@ router.post(
   createSubLocation
 );
 
-router.get("/locations/:location_id/sub-locations", getSubLocationsHierarchy);
+router.get("/locations/:location_id/sub-locations", validateJWT, checkTokenVersion, getSubLocationsHierarchy);
 
 // Escritura sobre la estructura de locaciones: exige token y permiso de
 // inventario. Antes era anónima, y el handler localiza la sub-locación por su
@@ -38,7 +38,7 @@ router.put(
   updateSubLocation
 );
 
-router.post("/sub-locations/check", checkSubLocation);
+router.post("/sub-locations/check", validateJWT, checkTokenVersion, checkSubLocation);
 
 // Borrado de estructura: token, permiso de borrado de inventario, y el scope de
 // compañía se comprueba en el controlador. El CASCADE de `sub_locations` se

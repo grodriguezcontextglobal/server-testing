@@ -103,7 +103,7 @@ $health    = $null
 $lastError = ''
 foreach ($attempt in 1..10) {
     try {
-        $health = Invoke-WebRequest -Uri "http://localhost:$port/health" `
+        $health = Invoke-WebRequest -Uri "http://127.0.0.1:$port/health" `
                                     -UseBasicParsing -TimeoutSec 5
         break
     } catch {

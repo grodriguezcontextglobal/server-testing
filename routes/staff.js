@@ -41,7 +41,7 @@ const selfOrStaffUpdate = (req, res, next) =>
  router.patch("/edit-admin/:id", validateJWT, checkTokenVersion, selfOrStaffUpdate, editOtherAdminUser);
  
  //search stripe customer by parameters
- router.get('/consumers/search',searchCustomerByParameters)
+ router.get('/consumers/search', validateJWT, checkTokenVersion,searchCustomerByParameters)
 
  //search staff info from not token side
  // Anónima a propósito (alta, invitación, olvidé mi contraseña): exige un email

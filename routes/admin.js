@@ -58,7 +58,7 @@ router.get("/activity-logs", validateJWT, checkTokenVersion, authorizeMongoPermi
 
 //create admin user
 router.post(
-  "/new_admin_user",
+  "/new_admin_user", validateJWT, checkTokenVersion,
   [
     //middelwares para validar
     check("name", "Name must be provided").not().isEmpty(),
@@ -89,7 +89,7 @@ router.post(
 router.post("/logout", logoutUser);
 
 //router for manually log out user
-router.post("/manually_logout", manuallyLogoutUser);
+router.post("/manually_logout", validateJWT, checkTokenVersion, manuallyLogoutUser);
 
 //renovar token
 router.get("/renew", validateJWT, renewToken);
@@ -138,7 +138,7 @@ router.post("/receiver-assignation", validateJWT, checkTokenVersion, addReceiver
 // (movida arriba, por encima de GET /:id — ver el comentario allí)
 
 //check user online status
-router.get("/check-online-status/:email", checkStatus);
+router.get("/check-online-status/:email", validateJWT, checkTokenVersion, checkStatus);
 
 // MFA Routes
 // Aceptan el token de enrolamiento (x-mfa-setup-token) que da el login a una

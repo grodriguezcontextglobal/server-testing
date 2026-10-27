@@ -26,6 +26,10 @@ const logger = require("./helpers/logger");
 // Constants
 const NUM_CPU = Math.min(OS.cpus().length, 4); // Limit to 4 workers to avoid resource exhaustion
 const PORT = process.env.PORT;
+// Loopback by default: IIS/the proxy on the same host is the only intended
+// caller, so 34001 must not answer the network directly (SC-7). Containers set
+// BIND_HOST=0.0.0.0 (see Dockerfile) so the published port still works.
+const BIND_HOST = process.env.BIND_HOST || "127.0.0.1";
 
 const path = require("path");
 const { spawn } = require("child_process");
@@ -439,8 +443,8 @@ const startServer = () => {
       connectWithRetry();
     }
 
-    const server = initializeApp().listen(PORT, () => {
-      logger.info(`Worker ${process.pid} started on port ${PORT}`);
+    const server = initializeApp().listen(PORT, BIND_HOST, () => {
+      logger.info(`Worker ${process.pid} started on ${BIND_HOST}:${PORT}`);
     });
 
     server.on("error", (err) => {

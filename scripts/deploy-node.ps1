@@ -71,7 +71,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot     = Split-Path -Parent $PSScriptRoot
 $nodeModules  = Join-Path $repoRoot 'node_modules'
 $deployLog    = Join-Path $repoRoot 'logs\deploy-node.log'
-$healthUrl    = 'http://localhost:34001/health'
+$healthUrl    = 'http://127.0.0.1:34001/health'
 $minFreeGB    = 3
 
 # Order matters on the way down (API first, so it stops taking traffic) and on
