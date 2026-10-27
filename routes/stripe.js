@@ -67,6 +67,12 @@ const ownsBodySetupIntent = requireStripeOwnership("setupIntent", (req) => req.b
 const ownsBodyPaymentIntentId = requireStripeOwnership("paymentIntent", (req) => req.body?.paymentIntentId);
 const ownsBodyConnectedAccount = requireStripeOwnership("connectedAccount", (req) => req.body?.connectedAccountId);
 const ownsParamStripeCompany = requireStripeOwnership("stripeCompany", (req) => req.params.id);
+// Transacciones guardadas, listadas o borradas desde /api/stripe.
+const ownsBodyCompany = requireStripeOwnership("company", (req) => req.body?.company);
+const scopesListToCompany = requireStripeOwnership("company", (req) => req.body?.company, { injectBodyCompany: true });
+const ownsParamTransaction = requireStripeOwnership("transaction", (req) => req.params.id);
+const ownsParamStripeTransaction = requireStripeOwnership("stripeTransaction", (req) => req.params.id);
+const scopesPaymentSearch = requireStripeOwnership("paymentIntentSearch");
 
 // Fase 0.1 (2026-10-19): el pago tiene que ser de la compañía del contexto
 // (middlewares/requirePaymentOwnership.js). Se comprueba el MISMO campo que lee
@@ -222,7 +228,7 @@ router.post(
 );
 
 //list all payment intent created
-router.get("/payment-intents/search", requireSession, searchStripeTransaction);
+router.get("/payment-intents/search", requireSession, scopesPaymentSearch, searchStripeTransaction);
 
 //search subscription by setup id
 router.post("/setup-search", requireSession, ownsBodySetupIntent, findSubscriptionIdBySetUpId);
@@ -245,6 +251,7 @@ router.get("/payment_intents/:id", consumerTokenGate({ verifiedOnly: true }), re
 router.get(
   "/stripe-transactions-saved-list",
   requireSession,
+  scopesListToCompany,
   getListOfAllSavedStripeTransaction
 );
 
@@ -252,6 +259,7 @@ router.get(
 router.post(
   "/stripe-transactions-saved-list",
   requireSession,
+  scopesListToCompany,
   getListOfAllSavedStripeTransaction
 );
 
@@ -327,6 +335,7 @@ router.post(
 router.post(
   "/stripe-transaction-no-regular-user",
   requireSession,
+  ownsBodyCompany,
   saveStripeTransactionTemplateForNoRegularUser
 );
 
@@ -364,27 +373,28 @@ router.post(
   partialRefundStripePaymentIntent
 );
 //removing duplicate entries in database
-router.delete("/remove-duplicate/:id", requireSession, removeDuplicateEntries);
+router.delete("/remove-duplicate/:id", requireSession, ownsParamStripeTransaction, removeDuplicateEntries);
 
 //!new route for transaction model fro new design
 //*saving new transaction
-router.post("/save-transaction", requireSession, saveTransaction);
+router.post("/save-transaction", requireSession, ownsBodyCompany, saveTransaction);
 
 //*saving new transaction
-router.post("/save-transaction-admin-dashboard", requireSession, saveTransactionAdmin);
+router.post("/save-transaction-admin-dashboard", requireSession, ownsBodyCompany, saveTransactionAdmin);
 
 //*saving new transaction
 router.post(
   "/save-transaction-template-no-regular-user",
   requireSession,
+  ownsBodyCompany,
   saveTransactionTemplateForNoRegularUser
 );
 
 //*saving new transaction
-router.get("/transaction", requireSession, getListOfAllSavedTransaction);
+router.get("/transaction", requireSession, scopesListToCompany, getListOfAllSavedTransaction);
 
 //*remove duplicate entry in transaction document
-router.delete("/removing/:id", requireSession, removeDuplicateEntry);
+router.delete("/removing/:id", requireSession, ownsParamTransaction, removeDuplicateEntry);
 
 //search subscription information
 router.get("/subscriptions/:id", requireSession, ownsParamSubscription, searchSubscriptions);

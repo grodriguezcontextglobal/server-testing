@@ -26,6 +26,19 @@
  *                     la estampa desde 2026-09-28)
  *   connectedAccount  el acct_ de Company.stripe_connected_account
  *   stripeCompany     el registro StripeCompany (por stripeID o por nombre)
+ *   company           el id de compañía que trae la petición (body.company al
+ *                     guardar o listar transacciones)
+ *   transaction       la compañía del Transaction que se borra
+ *   stripeTransaction la compañía del StripeTransaction que se borra
+ *
+ * Listados (`{ injectBodyCompany: true }`): sin body.company, enforce lo pone
+ * con la compañía del contexto; así el filtro que manda el cliente no puede
+ * devolver transacciones de otras. En warn solo se registra (unscoped_list).
+ *
+ * Búsqueda de pagos (`paymentIntentSearch`): no hay id que comprobar; en
+ * enforce deja en req.stripeSearchCompany la compañía por la que el
+ * controlador filtra (metadata.company_id). El super_user de plataforma busca
+ * en todas.
  *
  * Regla: de la compañía del contexto (x-company-id) → sigue; super_user de
  * plataforma → sigue; si no → 404, sin confirmar que el recurso existe.
@@ -41,11 +54,15 @@
 const mode = () => String(process.env.STRIPE_OWNERSHIP_MODE || 'warn').toLowerCase();
 
 const isCus = (v) => typeof v === 'string' && v.startsWith('cus_');
+const sameId = (a, b) => a != null && b != null && String(a?._id ?? a) === String(b);
 const sameText = (a, b) =>
   a != null && b != null && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 
 function createRequireStripeOwnership(deps) {
-  const { findAdmin, resolveCompany, findCompany, findStripeCompaniesByName, findStripeCompany, stripeApi, connectedAccountOf, logger } = deps;
+  const {
+    findAdmin, resolveCompany, findCompany, findStripeCompaniesByName, findStripeCompany,
+    findTransaction, findStripeTransaction, stripeApi, connectedAccountOf, logger,
+  } = deps;
 
   async function customersOf(company) {
     const owned = new Set();
@@ -91,12 +108,24 @@ function createRequireStripeOwnership(deps) {
         const owned = (await customersOf(company)).has(sc.stripeID) || sameText(sc.companyName, company.company_name);
         return owned ? null : 'stripe_company_not_owned';
       }
+      case 'company':
+        return sameId(id, company._id) ? null : 'company_not_owned';
+      case 'transaction': {
+        const doc = await findTransaction(id);
+        if (!doc) return 'transaction_not_found';
+        return sameId(doc.company, company._id) ? null : 'transaction_not_owned';
+      }
+      case 'stripeTransaction': {
+        const doc = await findStripeTransaction(id);
+        if (!doc) return 'stripe_transaction_not_found';
+        return sameId(doc.company, company._id) ? null : 'stripe_transaction_not_owned';
+      }
       default:
         throw new Error(`Unknown Stripe resource kind: ${kind}`);
     }
   }
 
-  return (kind, getId) => async (req, res, next) => {
+  return (kind, getId, { injectBodyCompany = false } = {}) => async (req, res, next) => {
     const m = mode();
     if (m === 'off') return next();
     const enforce = m === 'enforce';
@@ -114,13 +143,29 @@ function createRequireStripeOwnership(deps) {
     };
 
     try {
-      if (typeof id !== 'string' || id.trim() === '') {
-        return refuse(400, 'A Stripe resource id is required.', 'missing_id');
-      }
       const admin = await findAdmin(req.uid);
       if (admin?.super_user) return next();
       const company = companyId ? await findCompany(companyId) : null;
       if (!company) return refuse(400, 'Select a company to continue.', 'no_company');
+
+      if (kind === 'paymentIntentSearch') {
+        if (!enforce) {
+          logger.warn('stripe ownership: unscoped_search (STRIPE_OWNERSHIP_MODE=warn)', { ...detail, reason: 'unscoped_search' });
+        } else {
+          req.stripeSearchCompany = String(company._id);
+        }
+        return next();
+      }
+      const missing = id == null || String(id).trim() === '';
+      if (missing && injectBodyCompany) {
+        if (!enforce) {
+          logger.warn('stripe ownership: unscoped_list (STRIPE_OWNERSHIP_MODE=warn)', { ...detail, reason: 'unscoped_list' });
+          return next();
+        }
+        req.body = { ...(req.body || {}), company: String(company._id) };
+        return next();
+      }
+      if (missing) return refuse(400, 'A Stripe resource id is required.', 'missing_id');
 
       const why = await problem(kind, id, company);
       if (!why) return next();
@@ -158,6 +203,9 @@ function defaultDeps() {
         .select('stripeID companyName')
         .lean(),
     findStripeCompany: (id) => (isValidObjectId(id) ? StripeCompany.findById(id).select('stripeID companyName').lean() : null),
+    findTransaction: (id) => (isValidObjectId(id) ? require('../models/Transaction').findById(id).select('company').lean() : null),
+    findStripeTransaction: (id) =>
+      isValidObjectId(id) ? require('../models/StripeTransaction').findById(id).select('company').lean() : null,
     stripeApi: {
       retrieveSubscription: (id) => stripe.subscriptions.retrieve(id),
       retrieveSetupIntent: (id) => stripe.setupIntents.retrieve(id),
@@ -170,14 +218,14 @@ function defaultDeps() {
 }
 
 let defaultFactory = null;
-/** requireStripeOwnership('subscription', (req) => req.params.id) */
-const requireStripeOwnership = (kind, getId) => {
+/** requireStripeOwnership('subscription', (req) => req.params.id[, { injectBodyCompany }]) */
+const requireStripeOwnership = (kind, getId = () => undefined, opts) => {
   // Dependencias al primer uso: los tests del router no necesitan Mongo ni Stripe.
   let mw = null;
   return function requireStripeOwnership(req, res, next) {
     if (!mw) {
       defaultFactory = defaultFactory || createRequireStripeOwnership(defaultDeps());
-      mw = defaultFactory(kind, getId);
+      mw = defaultFactory(kind, getId, opts);
     }
     return mw(req, res, next);
   };

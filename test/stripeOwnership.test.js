@@ -44,6 +44,8 @@ const guard = createRequireStripeOwnership({
   findStripeCompaniesByName: async (name) =>
     stripeCompanies.filter((s) => s.companyName.trim().toLowerCase() === String(name).trim().toLowerCase()),
   findStripeCompany: async (id) => stripeCompanies.find((s) => s._id === id) ?? null,
+  findTransaction: async (id) => ({ tx_A: { company: { _id: A } }, tx_B: { company: B } })[id] ?? null,
+  findStripeTransaction: async (id) => ({ stx_A: { company: A }, stx_B: { company: B } })[id] ?? null,
   stripeApi: {
     retrieveSubscription: lookup(subscriptions),
     retrieveSetupIntent: lookup(setupIntents),
@@ -63,12 +65,12 @@ beforeEach(() => {
 });
 afterEach(() => { delete process.env.STRIPE_OWNERSHIP_MODE; });
 
-async function run(kind, id, { company = A, uid = 'staff' } = {}) {
-  const req = { uid, headers: company ? { 'x-company-id': company } : {}, originalUrl: '/api/stripe/x', method: 'POST' };
+async function run(kind, id, { company = A, uid = 'staff', opts, body } = {}) {
+  const req = { uid, body, headers: company ? { 'x-company-id': company } : {}, originalUrl: '/api/stripe/x', method: 'POST' };
   const res = { status(c) { this.code = c; return this; }, json(b) { this.body = b; return this; } };
   let passed = false;
-  await guard(kind, () => id)(req, res, () => { passed = true; });
-  return { passed, code: res.code, body: res.body };
+  await guard(kind, () => id, opts)(req, res, () => { passed = true; });
+  return { passed, code: res.code, body: res.body, req };
 }
 
 // ═══ dueño ══════════════════════════════════════════════════════════════════
@@ -113,6 +115,47 @@ test('stripeCompany: el registro de la compañía, por stripeID o por nombre', a
   assert.equal((await run('stripeCompany', SC_A)).passed, true);
   assert.equal((await run('stripeCompany', SC_B)).code, 404);
   assert.equal((await run('stripeCompany', 'eeeeeeeeeeeeeeeeeeeeeeee')).code, 404);
+});
+
+// ═══ transacciones ══════════════════════════════════════════════════════════
+
+test('company: el body.company tiene que ser la compañía del contexto', async () => {
+  assert.equal((await run('company', A)).passed, true);
+  assert.equal((await run('company', B)).code, 404);
+  assert.equal((await run('company', undefined)).code, 400, 'guardar sin compañía no vale');
+});
+
+test('transaction y stripeTransaction: la compañía del documento que se borra', async () => {
+  assert.equal((await run('transaction', 'tx_A')).passed, true);
+  assert.equal((await run('transaction', 'tx_B')).code, 404);
+  assert.equal((await run('transaction', 'tx_none')).code, 404);
+  assert.equal((await run('stripeTransaction', 'stx_A')).passed, true);
+  assert.equal((await run('stripeTransaction', 'stx_B')).code, 404);
+});
+
+test('listado sin company: enforce la pone con la del contexto; con otra, 404', async () => {
+  const opts = { injectBodyCompany: true };
+  const r = await run('company', undefined, { opts, body: { eventSelected: 'X' } });
+  assert.equal(r.passed, true);
+  assert.deepEqual(r.req.body, { eventSelected: 'X', company: A });
+  assert.equal((await run('company', B, { opts, body: { company: B } })).code, 404);
+});
+
+test('listado sin company en warn: deja pasar sin tocar el filtro y lo registra', async () => {
+  process.env.STRIPE_OWNERSHIP_MODE = 'warn';
+  const r = await run('company', undefined, { opts: { injectBodyCompany: true }, body: {} });
+  assert.equal(r.passed, true);
+  assert.deepEqual(r.req.body, {});
+  assert.equal(warnings[0].meta.reason, 'unscoped_list');
+});
+
+test('búsqueda de pagos: enforce deja la compañía para filtrar; plataforma busca en todas', async () => {
+  const r = await run('paymentIntentSearch', undefined);
+  assert.equal(r.passed, true);
+  assert.equal(r.req.stripeSearchCompany, A);
+  const root = await run('paymentIntentSearch', undefined, { uid: 'root', company: null });
+  assert.equal(root.req.stripeSearchCompany, undefined);
+  assert.equal((await run('paymentIntentSearch', undefined, { company: null })).code, 400);
 });
 
 // ═══ casos generales ════════════════════════════════════════════════════════
@@ -166,6 +209,10 @@ test('las rutas de suscripción y facturación llevan la guarda de dueño detrá
     'POST /create-subscriptions', 'POST /create-subscriptions_no_trial', 'POST /payment_methods/:id/attach',
     'POST /payment_intents/:id/update-payment-method', 'POST /setup-search', 'PATCH /updating-subscription/:id',
     'POST /account_sessions', 'POST /company-account-stripe/update',
+    'GET /payment-intents/search', 'GET /stripe-transactions-saved-list', 'POST /stripe-transactions-saved-list',
+    'POST /stripe-transaction-no-regular-user', 'DELETE /remove-duplicate/:id', 'POST /save-transaction',
+    'POST /save-transaction-admin-dashboard', 'POST /save-transaction-template-no-regular-user',
+    'GET /transaction', 'DELETE /removing/:id',
   ];
   for (const key of GUARDED) {
     const [method, p] = key.split(' ');

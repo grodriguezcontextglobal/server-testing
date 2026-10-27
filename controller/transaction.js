@@ -107,8 +107,10 @@ const saveTransactionTemplateForNoRegularUser = async (request, response) => {
     cache_connection.del(
       `event_id=${event_id}&company=${company}&consumerInfo.id=${consumerInfo.id}`
     );
-    const Transaction = new Transaction(request.body);
-    const TransactionSaved = await Transaction.save();
+    // Antes `const Transaction = new Transaction(...)`: la variable tapaba al
+    // modelo y la ruta respondía 500 (ReferenceError) siempre.
+    const transaction = new Transaction(request.body);
+    const TransactionSaved = await transaction.save();
     return response.status(201).json({
       ok: true,
       msg: "Transaction saved",

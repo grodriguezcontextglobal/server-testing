@@ -747,8 +747,15 @@ const updateDefaultPaymentMethodInCustomer = async (request, response) => {
 
 const searchStripeTransaction = async (request, response) => {
   try {
+    // Una sola cuenta de Stripe para todas las compañías: sin filtrar, esto
+    // devolvía los depósitos pendientes de TODAS. La ruta deja la compañía en
+    // req.stripeSearchCompany (A8, 2026-10-27); es un ObjectId validado.
+    const company = request.stripeSearchCompany;
+    const scoped = /^[0-9a-f]{24}$/i.test(company ?? "")
+      ? ` AND metadata['company_id']:'${company}'`
+      : "";
     const paymentIntent = await stripe.paymentIntents.search({
-      query: "status:'requires_capture'",
+      query: `status:'requires_capture'${scoped}`,
     });
     return response.status(201).json({
       paymentIntent,
@@ -1038,8 +1045,10 @@ const retrieveSubscriptionID = async (request, response) => {
 
 const getListOfAllSavedStripeTransaction = async (request, response) => {
   try {
+    // sanitizeFilter: el filtro llega del cliente; un $where o un $ne no puede
+    // pasar como consulta (A8, 2026-10-27). La compañía la fija la ruta.
     const listOfStripeTransactionsSaved = await StripeTransaction.find(
-      request.body
+      mongoose.sanitizeFilter({ ...(request.body || {}) })
     ).populate("user");
     return response.status(201).json({
       ok: true,
