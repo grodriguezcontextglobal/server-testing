@@ -36,7 +36,8 @@
   production down with ERR_REQUIRE_ESM the first time the lockfile was really
   installed, because the repo loads it with require(). npm itself already
   enforces the engines floor (`.npmrc` sets engine-strict=true), so that side
-  needs no extra check here.
+  needs no extra check here; the Node version itself is checked up front,
+  before the services stop (see 'Node floor' below).
 
   Requires an elevated (Administrator) shell, because nssm start/stop does.
 
@@ -143,6 +144,35 @@ Write-Host "    free space on C: ${freeGB} GB"
 Write-DeployLog "free space on C: ${freeGB} GB"
 if (-not $SkipInstall -and $freeGB -lt $minFreeGB) {
     Fail "only ${freeGB} GB free on C:, need at least ${minFreeGB} GB for an install. Clear space (start with logs\) and retry."
+}
+
+# Node floor (FedRAMP A9, 2026-10-28): package.json engines asks for >= 22.12.0
+# and .npmrc has engine-strict=true, so on an older Node `npm ci` fails AFTER
+# node_modules is gone, with the API down. Checked here, before stopping
+# anything: the node.exe on PATH (the one npm ci runs with) and the node.exe
+# each service is registered with in nssm, which ignores PATH.
+$minNode = [version]'22.12.0'
+function Get-NodeVersion([string]$Exe) {
+    $ErrorActionPreference = 'Continue'
+    $raw = (& $Exe -v 2>&1 | Select-Object -First 1) -replace '^v', ''
+    try { return [version]"$raw".Trim() } catch { return $null }
+}
+$nodeChecks = @(@{ Name = 'PATH'; Exe = 'node' })
+foreach ($svc in $services) {
+    if (Test-ServiceMissing (Get-NssmStatus $svc)) { continue }
+    $ErrorActionPreference = 'Continue'
+    $app = ((& nssm get $svc Application 2>&1 | ForEach-Object { "$_" }) -join '') -replace "`0", ''
+    $ErrorActionPreference = 'Stop'
+    if ($app -match 'node\.exe$') { $nodeChecks += @{ Name = $svc; Exe = $app.Trim() } }
+}
+foreach ($check in $nodeChecks) {
+    $ver = Get-NodeVersion $check.Exe
+    Write-Host "    node for $($check.Name): $ver ($($check.Exe))"
+    Write-DeployLog "node for $($check.Name): $ver ($($check.Exe))"
+    if (-not $ver -or $ver -lt $minNode) {
+        Fail ("$($check.Name) runs Node '$ver' from $($check.Exe); package.json needs >= $minNode. " +
+            "Install Node 22 (the ZIP, see DEPLOY.md) and point PATH and the nssm Application at it. Services were NOT stopped.")
+    }
 }
 
 # ------------------------------------------------------------------- stop -----

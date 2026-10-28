@@ -214,9 +214,11 @@ nssm status DevitrakServer                # SERVICE_RUNNING
 > `cmd /c "rmdir /s /q node_modules"` when PowerShell trips over long paths). A single file that
 > keeps refusing to go is usually Defender mid-scan: wait a few seconds and retry.
 
-> **Node >= 20.11.0 is required** (`package.json` -> `engines`), and `.npmrc` sets
-> `engine-strict=true`, so npm **fails** — it does not warn — on an older Node. Production runs
-> 20.11.0. Install with `--omit=dev`: nothing in `devDependencies` (`jsdoc`, `nodemon`,
+> **Node >= 22.12.0 is required** (`package.json` -> `engines`, since 2026-10-28), and `.npmrc`
+> sets `engine-strict=true`, so npm **fails** — it does not warn — on an older Node. Production
+> runs 22.23.2. `scripts/deploy-node.ps1` checks the Node on PATH and the `node.exe` of every
+> nssm service **before** stopping anything, and refuses to continue on an older one.
+> Install with `--omit=dev`: nothing in `devDependencies` (`jsdoc`, `nodemon`,
 > `response-time`) is used at runtime, and skipping them keeps 41 packages out of production.
 
 ### Notificaciones: pasar a `NODEMAILER_AUTH_MODE=enforce`
@@ -1133,6 +1135,10 @@ Error [ERR_REQUIRE_ESM]: require() of ES Module ...\unlimited-timeout\index.js
 `unlimited-timeout` es ESM, y `require(esm)` llegó a la línea 20 **en la
 20.19.0** (por defecto desde esa versión; antes iba tras un flag). O sea que el
 rango real es `>= 20.19`, no `>= 20.4`.
+
+> **Histórico (2026-10-28):** desde A9 la API también pide Node 22
+> (`engines >= 22.12.0`) y producción corre 22.23.2, así que lo de abajo describe
+> por qué Kuma tuvo su propio Node cuando la API seguía en 20.11.0.
 
 **No se actualiza el Node de la máquina.** Es el runtime que sirve la API, el
 `package.json` del servidor fija `>= 20.11.0`, y cambiarlo para poder instalar un

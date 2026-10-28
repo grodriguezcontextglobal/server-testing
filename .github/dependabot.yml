@@ -13,8 +13,8 @@
 # ANTES DE MERGEAR CUALQUIER PR DE npm, dos comprobaciones que Dependabot no
 # hace y que ya tumbaron producción una vez cada una (2026-09-09):
 #
-#   1. Node de producción es 20.11.0 y .npmrc tiene engine-strict=true, así que
-#      un paquete que declare `engines.node >= 22` no rompe el PR: rompe el
+#   1. Node de producción es 22.23.2 y .npmrc tiene engine-strict=true, así que
+#      un paquete que declare `engines.node >= 24` no rompe el PR: rompe el
 #      `npm ci` DEL SERVIDOR, y falla, no avisa. Pasó con el subárbol de
 #      @azure/identity. `npm ci` lo detecta, así que basta instalar antes de
 #      desplegar.

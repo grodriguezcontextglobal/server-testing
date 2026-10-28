@@ -5,7 +5,7 @@ COPY go-worker/ .
 RUN CGO_ENABLED=0 go build -o worker .
 
 # Stage 2: Node production image
-FROM node:20.11.0-bookworm
+FROM node:22.23.2-bookworm
 WORKDIR /app
 
 # native deps for canvas + curl for HEALTHCHECK
