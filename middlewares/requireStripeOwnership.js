@@ -34,6 +34,11 @@
  * Listados (`{ injectBodyCompany: true }`): sin body.company, enforce lo pone
  * con la compañía del contexto; así el filtro que manda el cliente no puede
  * devolver transacciones de otras. En warn solo se registra (unscoped_list).
+ * `injectCompany(req, companyId)` hace lo mismo donde el filtro no es el body
+ * (GET /api/transaction/transaction lee la query).
+ *
+ * `onlyWithSession: true`: en las rutas de dos carriles, sin sesión de staff
+ * (req.uid) no se comprueba nada; ese carril es la app de consumidor.
  *
  * Búsqueda de pagos (`paymentIntentSearch`): no hay id que comprobar; en
  * enforce deja en req.stripeSearchCompany la compañía por la que el
@@ -125,9 +130,17 @@ function createRequireStripeOwnership(deps) {
     }
   }
 
-  return (kind, getId, { injectBodyCompany = false } = {}) => async (req, res, next) => {
+  const setBodyCompany = (req, companyId) => {
+    req.body = { ...(req.body || {}), company: companyId };
+  };
+
+  return (kind, getId, { injectBodyCompany = false, injectCompany = null, onlyWithSession = false } = {}) => async (req, res, next) => {
     const m = mode();
     if (m === 'off') return next();
+    // Rutas de dos carriles (/api/transaction): sin sesión de staff es la app
+    // de consumidor, que tiene sus propias reglas (helpers/publicTransactionLane.js).
+    if (onlyWithSession && !req.uid) return next();
+    const inject = injectCompany || (injectBodyCompany ? setBodyCompany : null);
     const enforce = m === 'enforce';
     const id = getId(req);
     const companyId = resolveCompany(req);
@@ -157,12 +170,12 @@ function createRequireStripeOwnership(deps) {
         return next();
       }
       const missing = id == null || String(id).trim() === '';
-      if (missing && injectBodyCompany) {
+      if (missing && inject) {
         if (!enforce) {
           logger.warn('stripe ownership: unscoped_list (STRIPE_OWNERSHIP_MODE=warn)', { ...detail, reason: 'unscoped_list' });
           return next();
         }
-        req.body = { ...(req.body || {}), company: String(company._id) };
+        inject(req, String(company._id));
         return next();
       }
       if (missing) return refuse(400, 'A Stripe resource id is required.', 'missing_id');
