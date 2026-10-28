@@ -321,6 +321,8 @@ const startServer = () => {
   if (process.env.METRICS_ENABLED !== "false") {
     metrics.startFlushing();
   }
+  // RAM y CPU de este proceso a logs/runtime-metrics.log, también en todos.
+  require("./helpers/runtimeMetrics").startRuntimeMetrics();
 
   // Check if running under PM2
   const isPM2 = process.env.NODE_APP_INSTANCE !== undefined;

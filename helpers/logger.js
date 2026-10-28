@@ -1,6 +1,7 @@
 const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 // Ensure logs directory exists
 const logsDir = path.join(__dirname, '..', 'logs');
@@ -8,13 +9,24 @@ if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
 
-// Define log format
+// Un registro = una línea JSON (FedRAMP AU-3, A10 2026-10-28). Hasta aquí era
+// prettyPrint: bloques de varias líneas que ni un SIEM ni `jq` leen, y que
+// scripts/summarize-warn-logs.js tenía que reconstruir a mano (sigue leyendo
+// los dos formatos, para los logs viejos). La hora va en ISO 8601 UTC (AU-8):
+// antes era la hora local de la VM sin zona.
 const logFormat = winston.format.combine(
-  winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
+  winston.format.timestamp(),
   winston.format.errors({ stack: true }),
-  winston.format.json(),
-  winston.format.prettyPrint()
+  winston.format.json()
 );
+
+// Qué proceso escribió el registro. En la VM escriben en los mismos archivos
+// las cuatro instancias de la API (pm2) y los workers de la cola.
+const processRole = () => {
+  if (process.env.QUEUE_GROUP) return `worker:${process.env.QUEUE_GROUP}`;
+  if (process.env.NODE_APP_INSTANCE !== undefined) return `api:${process.env.NODE_APP_INSTANCE}`;
+  return path.basename(require.main?.filename || 'node', '.js');
+};
 
 // requests.log solo recibe el nivel 'http' (una línea JSON por petición, ver
 // middlewares/requestLogger.js), y el resto de transportes no lo recibe.
@@ -29,7 +41,7 @@ const logger = winston.createLogger({
   // El logger deja pasar 'http'; cada transporte decide su propio nivel.
   level: ['error', 'warn', 'info'].includes(level) ? 'http' : level,
   format: logFormat,
-  defaultMeta: { service: 'devitrak-server' },
+  defaultMeta: { service: 'devitrak-server', host: os.hostname(), pid: process.pid, role: processRole() },
   transports: [
     // Write all logs with level 'error' and below to error.log
     new winston.transports.File({
@@ -96,3 +108,4 @@ winston.addColors({
 });
 
 module.exports = logger;
+module.exports.processRole = processRole;

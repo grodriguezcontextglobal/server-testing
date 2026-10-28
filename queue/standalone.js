@@ -45,6 +45,7 @@ const shutdown = (signal) => {
 
   worker.start();
   logger.info("[queue-standalone] task queue worker started");
+  require("../helpers/runtimeMetrics").startRuntimeMetrics();
 
   process.on("SIGINT", () => shutdown("SIGINT"));
   process.on("SIGTERM", () => shutdown("SIGTERM"));

@@ -345,6 +345,24 @@ Tres cosas que conviene saber antes de interpretarlos:
   memoria y vuelcan a Redis cada 10 s con `HINCRBY`, así que la vista es del
   cluster; las ventanas son por hora y expiran solas a las 3 h.
 
+### Logs y medición de RAM (A10, 2026-10-28)
+
+- **Los logs son una línea JSON por registro** (`combined.log`, `error.log`), con
+  `timestamp` en ISO 8601 **UTC** y `host`, `pid` y `role` (`api:0`…`api:3`,
+  `worker:bulk`…). Antes eran bloques prettyPrint con hora local. Para leerlos:
+  `Get-Content logs\combined.log -Tail 50 | ForEach-Object { $_ | ConvertFrom-Json }`.
+- **Cada proceso Node escribe su RAM y CPU** cada minuto en
+  `logs\runtime-metrics.log` (`RUNTIME_METRICS_INTERVAL_SEC`, 0 lo apaga).
+- **La máquina entera** (bases de datos, IIS, Go incluidos) la mide
+  `scripts\measure-ram.ps1`, que solo lee. Una semana, con un día de evento
+  dentro, en segundo plano y desde una consola de administrador:
+  ```powershell
+  Start-Process powershell -WindowStyle Hidden -ArgumentList `
+    '-ExecutionPolicy Bypass -File C:\Users\CGAdmin\Documents\Github\server-testing\scripts\measure-ram.ps1'
+  ```
+  Deja `logs\ram-<fecha>.csv`. El resumen, con el tamaño de máquina sugerido:
+  `node scripts\summarize-ram.js` (lee `logs\` entero; `--json` para guardarlo).
+
 > **⚠️ If the pull changed `go-worker/worker.exe`** (or any `go-worker/*.go`), the Node
 > restart is **not enough** — the Go worker is a **separate persistent process** and does not
 > hot-reload. You must also **restart the Go worker** (`nssm restart DevitrakGoWorker`, or rebuild
