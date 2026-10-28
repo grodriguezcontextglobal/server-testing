@@ -1,7 +1,9 @@
 # FedRAMP: estado y pasos en la VM
 
-> **Fecha:** 2026-10-28 · **Rama:** `release/observabilidad` · **Prod:** `12ecf78`
-> (desplegado el 2026-10-20; si hubo otro deploy después, revisa la sección 1).
+> **Fecha:** 2026-10-28 · **Rama:** `release/observabilidad` · **Prod:** `2d220f3`
+> desde el 2026-10-28 ~20:09 UTC, con Node 22.23.4 (antes `12ecf78`). La
+> Parte 1 se escribió antes de ese deploy: lo que dice "sin desplegar" ya está
+> en producción.
 >
 > Parte 1: qué está hecho y qué falta. Parte 2: los comandos para pegar en la
 > VM, en orden. Todo se corre en una consola de PowerShell **de administrador**.
@@ -77,6 +79,62 @@ con los `[confirm]` por rellenar.
 - [ ] Cerrar los `[confirm]` del Documentation Package
 
 **Fases 5-7:** evaluación del 3PAO, GovRAMP Ready, FedRAMP. Sin empezar.
+
+### Respuesta de los administradores: topología de red
+
+Fuente: `reports/DeviTrak_network_topology.pptx` (1 diapositiva, recibida el
+2026-10-28). La propia diapositiva dice que es una topología **lógica** y que
+los equipos de la LAN y los nombres de las VM son ilustrativos.
+
+**Lo que muestra, de fuera hacia dentro:**
+
+| # | Elemento | Detalle |
+|---|---|---|
+| 1 | Internet | Verizon FIOS, fibra de 2 Gb, un solo proveedor |
+| 2 | Firewall / router | pfSense, IP pública `108.18.55.2`, NAT hacia la LAN |
+| 3 | Proxy | NGINX SSL proxy, entre pfSense y el switch; sirve `app.devitrak.net` y `db.devitrak.net` |
+| 4 | LAN switch | Un solo switch para todo |
+| 5 | En ese mismo switch | Estaciones de trabajo y dispositivos de usuarios, impresora de red, y el clúster de virtualización |
+| 6 | Clúster de virtualización | 3 servidores físicos (Virtual Server 01-03) |
+| 7 | VMs | "DeviTrak App" (aplicación), "DeviTrak DB" (base de datos), VM 03 y VM 04 (otros servicios) |
+
+**Lo que cambia para el plan:**
+
+- **El TLS se termina dos veces.** NGINX termina el TLS de internet y luego
+  habla con IIS. Lo más probable es que el certificado caducado de la tarea B2
+  sea el de ese salto NGINX → IIS. Si NGINX ya hace el TLS hacia fuera, una
+  opción más simple es que NGINX hable con IIS por HTTP dentro de una red
+  aislada, o directamente con Node. Eso hay que decidirlo con ellos antes de
+  renovar el certificado.
+- **No hay segmentación (SC-7).** Los servidores comparten switch y red con las
+  estaciones de trabajo y la impresora. Un equipo de usuario comprometido llega
+  directo a la VM de producción. Hace falta como mínimo una VLAN o DMZ para los
+  servidores, con reglas en pfSense entre segmentos.
+- **Es una instalación propia, no un centro de datos.** Un solo ISP, un solo
+  firewall y un solo switch. Afecta a los controles físicos y ambientales (PE)
+  y de contingencia (CP-8, SC-5). Esto pesa en la decisión de hosting (Fase 0):
+  cumplir PE aquí obliga a documentar la sala, el acceso físico, el SAI y la
+  climatización.
+- **La IP `172.16.40.2` del error `ERR_ERL_INVALID_IP_ADDRESS`** del rate
+  limiter es casi seguro el NGINX o el IIS de esta cadena: alguno de los dos
+  manda la IP del cliente con el puerto pegado en `X-Forwarded-For`.
+- **El nombre de la VM no cuadra.** Nuestra VM de producción se llama
+  `DeviTrackDB` y en ella corre la API (Node, el Go worker y los workers),
+  mientras que las bases de datos están en PlanetScale y Atlas. En la diapositiva,
+  "DeviTrak DB" figura como VM de base de datos. Hay que confirmar si es la misma
+  máquina y qué hay en "DeviTrak App".
+
+**Preguntas que siguen abiertas para los administradores:**
+
+- [ ] ¿Dónde está físicamente el clúster? ¿Hay control de acceso, SAI, generador y climatización? (PE)
+- [ ] ¿Qué hipervisor usa el clúster (VMware, Hyper-V, Proxmox)? ¿Qué versión tiene y cómo se parchea? (SI-2, CM-8)
+- [ ] ¿NGINX es un equipo físico, una VM o un servicio en pfSense? ¿Quién lo administra y dónde están su configuración y su certificado?
+- [ ] ¿Qué es exactamente "DeviTrak App" y qué es "DeviTrak DB"? ¿`DeviTrackDB` es una de las dos? ¿Qué corre en VM 03 y VM 04?
+- [ ] ¿Hay VLANs, o es una red plana? ¿Qué reglas tiene pfSense entre la LAN de usuarios y los servidores?
+- [ ] ¿Se hacen backups o snapshots a nivel de hipervisor? ¿Dónde se guardan y con qué retención? (CP-9)
+- [ ] ¿Hay un ISP o un firewall de respaldo? (CP-8)
+- [ ] ¿Los logs de pfSense y de NGINX se conservan? ¿Dónde y cuánto tiempo? (AU-11)
+- [ ] ¿Qué IP es `172.16.40.2`? ¿NGINX está configurado con `X-Forwarded-For` y `X-Real-IP`?
 
 ---
 
