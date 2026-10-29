@@ -13,6 +13,7 @@ require("dotenv").config();
 
 // Configuration imports
 const { corsOptions } = require("./config/cors");
+const { normalizeForwardedFor } = require("./middlewares/normalizeForwardedFor");
 const {
   requestLogger,
   securityLogger,
@@ -75,6 +76,10 @@ const app = express();
 
 // Middleware configuration
 const configureMiddleware = (app) => {
+  // Before anything reads req.ip: IIS appends NGINX to X-Forwarded-For with its
+  // port, which broke every per-IP limiter; req.ip becomes NGINX's X-Real-IP.
+  app.use(normalizeForwardedFor);
+
   // Request logging middleware (should be first to capture all requests)
   app.use(requestLogger);
   app.use(securityLogger);
