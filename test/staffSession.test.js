@@ -243,7 +243,17 @@ test('Redis que no responde: deja pasar a los 1.5 s, con aviso', async () => {
   process.env.SESSION_MODE = 'enforce';
   const token = await login();
   redisDown = true;
-  const { passed } = await call(token);
+  // El timeout de 1.5 s del helper lleva unref() (no debe retener el proceso)
+  // y el clientRedis simulado no resuelve nunca: sin otro handle vivo, en
+  // Linux el event loop se vacía y node:test cancela el test (CI 2026-11-02).
+  // Este temporizador con ref lo mantiene vivo solo mientras dura la espera.
+  const keepAlive = setTimeout(() => {}, 5000);
+  let passed;
+  try {
+    ({ passed } = await call(token));
+  } finally {
+    clearTimeout(keepAlive);
+  }
   assert.equal(passed, true);
   assert.ok(warnings.some((w) => /Redis unavailable/.test(w.msg)));
 });

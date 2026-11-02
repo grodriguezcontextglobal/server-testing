@@ -93,7 +93,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install semgrep==1.85.0
+      # semgrep 1.85 importa pkg_resources, que el Python 3.12 del runner ya no
+      # trae y que setuptools >= 81 eliminó: sin esto el job no llegaba a
+      # escanear (ModuleNotFoundError) y nunca subía el SARIF.
+      - run: pip install semgrep==1.85.0 "setuptools<81"
       # Sin --error: informa, no bloquea (ver la cabecera). test/ y los
       # generados fuera para que el informe hable del código que corre.
       - run: >
