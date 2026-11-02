@@ -130,6 +130,11 @@ const getUser = async (request, response = response) => {
 
 const checkUser = async (request, response = response) => {
   const { userInfoEmailCheck } = request.body;
+  // La ruta valida `email`, pero aquí se busca por `userInfoEmailCheck`, que
+  // nadie validaba: un objeto ({"$regex": ...}) servía para enumerar usuarios.
+  if (typeof userInfoEmailCheck !== "string" || !userInfoEmailCheck.trim()) {
+    return response.status(400).json({ ok: false, msg: "userInfoEmailCheck must be a string" });
+  }
   try {
     const user = await User.findOne({ email: userInfoEmailCheck });
 

@@ -4,6 +4,8 @@
  */
 
 const { Router } = require("express");
+const { check } = require("express-validator");
+const validateFields = require("../middlewares/validate-field");
 const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const router = Router();
 const { publicPaymentRateLimit } = require("../middlewares/publicPaymentRateLimit");
@@ -264,7 +266,19 @@ router.post(
 );
 
 //finding company stripe account
-router.post("/company-account-stripe/", stripeCompanyAccountFound);
+// Pública (alta de compañía, antes de que haya sesión). `company` tiene que
+// ser un string: con {"$ne": null} o {"$regex": ...} devolvía la cuenta de
+// Stripe (stripeID, email y nombre del dueño) de otra compañía (SI-10,
+// 2026-11-02). El dashboard manda siempre `company` como texto.
+router.post(
+  "/company-account-stripe/",
+  [
+    check("company", "company must be a non-empty string")
+      .custom((value) => typeof value === "string" && value.trim().length > 0),
+    validateFields,
+  ],
+  stripeCompanyAccountFound
+);
 
 //retrieve all invoices per subscription
 router.get("/invoices", requireSession, ownsBodySubscription, displayAllPaidInvoicesPerSubscription);

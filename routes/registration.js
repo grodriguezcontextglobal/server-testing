@@ -19,7 +19,7 @@ router.post(
     check("user.lastName", "user.lastName es requerido").not().isEmpty(),
     check("user.email", "user.email debe ser un email válido").isEmail(),
     check("user.password", passwordPolicyMessage).custom(isAcceptablePassword),
-    check("company.company_name", "company.company_name es requerido").not().isEmpty(),
+    check("company.company_name", "company.company_name es requerido").isString().not().isEmpty(),
     check("company.website", "company.website es requerido").not().isEmpty(),
     validateFields,
   ],
@@ -32,7 +32,7 @@ router.post(
   "/add-company",
   [
     check("user.userId", "user.userId es requerido").not().isEmpty(),
-    check("company.company_name", "company.company_name es requerido").not().isEmpty(),
+    check("company.company_name", "company.company_name es requerido").isString().not().isEmpty(),
     check("company.website", "company.website es requerido").not().isEmpty(),
     validateFields,
   ],

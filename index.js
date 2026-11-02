@@ -14,6 +14,7 @@ require("dotenv").config();
 // Configuration imports
 const { corsOptions } = require("./config/cors");
 const { normalizeForwardedFor } = require("./middlewares/normalizeForwardedFor");
+const { rejectMongoOperators } = require("./middlewares/rejectMongoOperators");
 const {
   requestLogger,
   securityLogger,
@@ -144,6 +145,10 @@ const configureMiddleware = (app) => {
   // Default JSON limits (50MB) for all other routes
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+  // Claves `$...` en body/query (inyección NoSQL, SI-10). Va justo después de
+  // los parsers: antes no hay body que mirar. NOSQL_INPUT_MODE=warn por defecto.
+  app.use(rejectMongoOperators);
 
   // // SQL Injection detection middleware
   // const { sqlInjectionDetector } = require("./middlewares/sql-injection-detector");

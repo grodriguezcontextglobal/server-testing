@@ -50,8 +50,13 @@ const updateSubscription = async (request, response) => {
 
 const searchSubscription = async (request, response) => {
   try {
-    // Find the subscription by company name and update it
-    let subscription = await Subscription.findOne(request.body);
+    // Solo por `company` (string). Antes el body entero era el filtro: cualquier
+    // campo, y cualquier operador. El dashboard manda solo { company }.
+    const company = request.body?.company ?? request.query?.company;
+    if (typeof company !== "string" || !company.trim()) {
+      return response.status(400).json({ ok: false, msg: "company must be a non-empty string" });
+    }
+    let subscription = await Subscription.findOne({ company });
     if (!subscription) {
       return response.status(404).json({
         ok: false,
@@ -75,6 +80,9 @@ const populateSubscriptionCompany = async (request, response) => {
   try {
     // Find the subscription by company name and update it
     const { companyName } = request.body;
+    if (typeof companyName !== "string" || !companyName.trim()) {
+      return response.status(400).json({ ok: false, msg: "companyName must be a non-empty string" });
+    }
     let subscription = await Subscription.findOne({
       company: companyName,
     });

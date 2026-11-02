@@ -4,6 +4,8 @@
  */
 
  const { Router } = require("express");
+ const { check } = require("express-validator");
+ const validateFields = require("../middlewares/validate-field");
  const router = Router();
  const {
    displayAllAdminUser, editOtherAdminUser, forceEndSession, PROFILE_SELF_FIELDS,
@@ -57,6 +59,16 @@ const selfOrStaffUpdate = (req, res, next) =>
 // (volver a entrar sigue exigiendo contraseña + MFA). Si llega token, se valida
 // entero (firma + tokenVersion): uno inválido es 401, no "sin token"; con token
 // se puede cerrar la sesión de otro según los permisos de forceEndSession.
-router.post("/force-logout", tokenIfPresent, forceEndSession);
+//
+// `email` tiene que ser un email (string): con {"$regex": "^a"} la ruta, que no
+// exige token, servía para averiguar emails de admins y cerrarles la sesión
+// sin conocerlos (SI-10, 2026-11-02). El dashboard (ForceLogout.jsx) manda el
+// email del formulario de login.
+router.post(
+  "/force-logout",
+  [check("email", "A valid email is required").isString().isEmail(), validateFields],
+  tokenIfPresent,
+  forceEndSession
+);
 
  module.exports = router;
