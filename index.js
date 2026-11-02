@@ -76,9 +76,8 @@ const app = express();
 
 // Middleware configuration
 const configureMiddleware = (app) => {
-  // Before anything reads req.ip: IIS appends NGINX to X-Forwarded-For with its
-  // port, which broke every per-IP limiter; req.ip becomes NGINX's X-Real-IP.
-  app.use(normalizeForwardedFor);
+  // normalizeForwardedFor NO va aqui: se monta en initializeApp, antes que las
+  // rutas de sondeo, porque el limitador de /ready tambien lee req.ip.
 
   // Request logging middleware (should be first to capture all requests)
   app.use(requestLogger);
@@ -308,6 +307,12 @@ const initializeApp = () => {
   // cada comprobacion. Llevan su propia cadena: metricas siempre, y limitador
   // propio en /ready. El porque completo esta en routes/health.js, y
   // test/healthRoutes.test.js lo fija como invariante.
+  //
+  // normalizeForwardedFor va ANTES que todo, sondeo incluido: IIS añade a
+  // X-Forwarded-For la IP de NGINX con su puerto y el limitador de /ready
+  // (clave por defecto = req.ip) lanzaba ERR_ERL_INVALID_IP_ADDRESS. No escribe
+  // logs ni rechaza nada, asi que no rompe ninguna razon de las de arriba.
+  app.use(normalizeForwardedFor);
   app.use(require("./routes/health"));
 
   configureMiddleware(app);

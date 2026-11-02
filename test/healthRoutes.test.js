@@ -95,6 +95,28 @@ test('index.js monta las rutas de sondeo ANTES del middleware global', () => {
   );
 });
 
+test('index.js monta normalizeForwardedFor ANTES que las rutas de sondeo', () => {
+  // Montado dentro de configureMiddleware, /ready quedaba fuera: su limitador
+  // usa req.ip como clave y recibia "172.16.40.2:54636" de IIS en prod
+  // (ERR_ERL_INVALID_IP_ADDRESS en service-err.log, 2026-11-02).
+  const source = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
+
+  // configureMiddleware esta definida mas arriba en el fichero que
+  // initializeApp, asi que "aparece antes en el texto" no basta: tiene que
+  // montarse una sola vez y dentro de initializeApp, antes de routes/health.
+  const occurrences = source.split('app.use(normalizeForwardedFor)').length - 1;
+  const init = source.indexOf('const initializeApp');
+  const normalize = source.indexOf('app.use(normalizeForwardedFor)');
+  const mount = source.indexOf('app.use(require("./routes/health"))');
+
+  assert.strictEqual(occurrences, 1, 'normalizeForwardedFor debe montarse una sola vez');
+  assert.notStrictEqual(init, -1, 'index.js deberia definir initializeApp');
+  assert.ok(
+    init < normalize && normalize < mount,
+    'normalizeForwardedFor debe montarse en initializeApp, antes que las rutas de sondeo'
+  );
+});
+
 test('index.js ya no registra /health ni /ready por su cuenta', () => {
   // Quedarse una copia suelta a nivel de modulo reintroduciria el problema: dos
   // registros para la misma ruta, y gana el primero, que seria el que no pasa
