@@ -52,7 +52,7 @@ con los `[confirm]` por rellenar.
 - [ ] Ruta: GovRAMP Core, luego Ready; SOC 2 opcional
 - [ ] Responsable de cumplimiento (ISSO) y responsable técnico
 - [ ] Presupuesto (unos $60k-150k el primer año)
-- [ ] Inscripción en GovRAMP ($500 al año)
+- [ ] Inscripción en GovRAMP Core: $11,733-$25,039 al año según facturación (cuota mínima $1,000 + revisión del PMO, sin 3PAO; [precios](https://govramp.org/pricing-overview), vigentes desde 2025-01-01; confirmar con GovRAMP). Corregido el 2026-11-02: antes decía $500
 - [ ] Al menos 3 cotizaciones de 3PAO
 - [ ] Cuestionario a IT Masters
 - [ ] Estado FedRAMP / SOC 2 de Mongo Atlas, Redis, PlanetScale y AWS (el riesgo mayor)
