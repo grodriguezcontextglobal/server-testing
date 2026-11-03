@@ -30,6 +30,17 @@
  *                     guardar o listar transacciones)
  *   transaction       la compañía del Transaction que se borra
  *   stripeTransaction la compañía del StripeTransaction que se borra
+ *   subscriptionRecord el documento Subscription de Mongo (/api/subscription):
+ *                     su `company` es el NOMBRE de la compañía
+ *   companyName       el nombre de compañía que trae la petición
+ *                     (/api/subscription filtra y crea por nombre)
+ *
+ * Pertenencia (2026-11-03): la compañía del contexto sale de `x-company-id`, que
+ * pone el cliente. Antes solo se comprobaba que el recurso fuera de ESA
+ * compañía, no que quien llama perteneciera a ella: un staff de A que mandara
+ * el id de B pasaba con los recursos de B. Ahora tiene que ser empleado activo
+ * de la compañía del contexto (Company.employees por userId o por email, igual
+ * que authorizeMongoPermission). Si no, `not_a_member`.
  *
  * Listados (`{ injectBodyCompany: true }`): sin body.company, enforce lo pone
  * con la compañía del contexto; así el filtro que manda el cliente no puede
@@ -66,8 +77,18 @@ const sameText = (a, b) =>
 function createRequireStripeOwnership(deps) {
   const {
     findAdmin, resolveCompany, findCompany, findStripeCompaniesByName, findStripeCompany,
-    findTransaction, findStripeTransaction, stripeApi, connectedAccountOf, logger,
+    findTransaction, findStripeTransaction, findSubscriptionRecord, stripeApi, connectedAccountOf, logger,
   } = deps;
+
+  // Misma regla que authorizeMongoPermission: el employee se identifica por
+  // userId (backfilled) o por email, y tiene que estar activo.
+  const isMember = (company, admin, uid) =>
+    (company.employees || []).some(
+      (e) =>
+        e.active !== false &&
+        ((e.userId != null && String(e.userId) === String(uid)) ||
+          (admin?.email != null && e.user === admin.email)),
+    );
 
   async function customersOf(company) {
     const owned = new Set();
@@ -125,6 +146,13 @@ function createRequireStripeOwnership(deps) {
         if (!doc) return 'stripe_transaction_not_found';
         return sameId(doc.company, company._id) ? null : 'stripe_transaction_not_owned';
       }
+      case 'subscriptionRecord': {
+        const doc = await findSubscriptionRecord(id);
+        if (!doc) return 'subscription_record_not_found';
+        return sameText(doc.company, company.company_name) ? null : 'subscription_record_not_owned';
+      }
+      case 'companyName':
+        return sameText(id, company.company_name) ? null : 'company_name_not_owned';
       default:
         throw new Error(`Unknown Stripe resource kind: ${kind}`);
     }
@@ -160,6 +188,7 @@ function createRequireStripeOwnership(deps) {
       if (admin?.super_user) return next();
       const company = companyId ? await findCompany(companyId) : null;
       if (!company) return refuse(400, 'Select a company to continue.', 'no_company');
+      if (!isMember(company, admin, req.uid)) return refuse(403, 'Forbidden.', 'not_a_member');
 
       if (kind === 'paymentIntentSearch') {
         if (!enforce) {
@@ -205,12 +234,16 @@ function defaultDeps() {
   const escape = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   return {
-    findAdmin: (uid) => (uid ? AdminUser.findById(uid).select('super_user').lean() : null),
+    findAdmin: (uid) => (uid ? AdminUser.findById(uid).select('super_user email').lean() : null),
     resolveCompany: resolveCompanyContext,
     findCompany: (id) =>
       isValidObjectId(id)
-        ? Company.findById(id).select('company_name stripe_customer_id stripe_connected_account').lean()
+        ? Company.findById(id)
+            .select('company_name stripe_customer_id stripe_connected_account employees.userId employees.user employees.active')
+            .lean()
         : null,
+    findSubscriptionRecord: (id) =>
+      isValidObjectId(id) ? require('../models/Subscription').findById(id).select('company').lean() : null,
     findStripeCompaniesByName: (name) =>
       StripeCompany.find({ companyName: new RegExp(`^\\s*${escape(String(name).trim())}\\s*$`, 'i') })
         .select('stripeID companyName')

@@ -31,7 +31,17 @@
 
 const sameId = (a, b) => a != null && b != null && String(a) === String(b);
 
-function createRequirePaymentOwnership({ findOwners, retrievePaymentIntent, findAdmin, resolveCompany }) {
+// Misma regla que authorizeMongoPermission: empleado activo de la compañía, por
+// userId (backfilled) o por email.
+const isMember = (company, admin, uid) =>
+  (company?.employees || []).some(
+    (e) =>
+      e.active !== false &&
+      ((e.userId != null && String(e.userId) === String(uid)) ||
+        (admin?.email != null && e.user === admin.email)),
+  );
+
+function createRequirePaymentOwnership({ findOwners, retrievePaymentIntent, findAdmin, resolveCompany, findCompanyEmployees }) {
   return (getPaymentIntentId) => async (req, res, next) => {
     try {
       const paymentIntentId = getPaymentIntentId(req);
@@ -61,7 +71,17 @@ function createRequirePaymentOwnership({ findOwners, retrievePaymentIntent, find
       const ownedByCaller = owners.some((o) => sameId(o, companyId));
       req.paymentOwnership = { paymentIntentId, owners, source, companyId, platformSuperUser };
 
-      if (ownedByCaller || platformSuperUser) return next();
+      if (platformSuperUser) return next();
+      // 2026-11-03: x-company-id lo pone el cliente. Que el pago sea de esa
+      // compañía no basta: quien llama tiene que pertenecer a ella. Las rutas de
+      // capturar y reembolsar ya lo comprobaban con authorizeMongoPermission;
+      // POST /api/transaction/receipt-link no, y un staff de A sacaba el enlace
+      // del recibo de un pago de B mandando el id de B. 404, como un pago ajeno.
+      if (ownedByCaller) {
+        const member = isMember(await findCompanyEmployees(companyId), admin, req.uid);
+        if (member) return next();
+        return res.status(404).json({ ok: false, msg: 'Payment not found' });
+      }
       if (owners.length > 0) {
         return res.status(404).json({ ok: false, msg: 'Payment not found' });
       }
@@ -96,8 +116,12 @@ function defaultDeps() {
       return [...new Set(lists.flat().map((r) => r?.company).filter(Boolean).map(String))];
     },
     retrievePaymentIntent: (id) => stripe.paymentIntents.retrieve(id),
-    findAdmin: (uid) => AdminUser.findById(uid).select('super_user active').lean(),
+    findAdmin: (uid) => AdminUser.findById(uid).select('super_user active email').lean(),
     resolveCompany: resolveCompanyContext,
+    findCompanyEmployees: (id) =>
+      require('mongoose').isValidObjectId(id)
+        ? require('../models/Company').findById(id).select('employees.userId employees.user employees.active').lean()
+        : null,
   };
 }
 

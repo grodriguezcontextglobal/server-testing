@@ -30,8 +30,17 @@ const factory = createRequirePaymentOwnership({
     if (stripePIs[id]) return stripePIs[id];
     throw Object.assign(new Error('No such payment_intent'), { code: 'resource_missing', statusCode: 404 });
   },
-  findAdmin: async (uid) => ({ platform: { super_user: true }, staff: { super_user: false } })[uid] ?? null,
+  findAdmin: async (uid) => ({
+    platform: { super_user: true },
+    staff: { super_user: false, email: 'staff@a.test' },
+    outsider: { super_user: false, email: 'out@else.test' },
+  })[uid] ?? null,
   resolveCompany: (req) => req.headers['x-company-id'] ?? null,
+  // `staff` es de A (por userId) y de B (por email); `outsider` de ninguna.
+  findCompanyEmployees: async (id) => ({
+    [CO_A]: { employees: [{ userId: 'staff' }] },
+    [CO_B]: { employees: [{ user: 'staff@a.test' }] },
+  })[id] ?? null,
 });
 const mw = factory((req) => req.body?.paymentIntent);
 
@@ -129,4 +138,16 @@ test('capture/cancel: el pi_ de la URL y el del body tienen que coincidir (422)'
   assert.equal(passed, false);
   mwSame({ params: { id: PI_A }, body: { id: PI_A } }, res, () => { passed = true; });
   assert.equal(passed, true);
+});
+
+// 2026-11-03: x-company-id lo pone el cliente; el pago de esa compañía no basta.
+test('x-company-id de una compañía a la que no pertenece → 404 aunque el pago sea de ella', async () => {
+  const r = await run({ uid: 'outsider', company: CO_B, paymentIntent: PI_B });
+  assert.equal(r.passed, false);
+  assert.equal(r.code, 404);
+});
+
+test('miembro por email de la compañía dueña → sigue', async () => {
+  const r = await run({ company: CO_B, paymentIntent: PI_B });
+  assert.equal(r.passed, true);
 });

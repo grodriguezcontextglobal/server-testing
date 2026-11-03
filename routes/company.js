@@ -21,6 +21,7 @@ const {
   searchingGetCompanyInfo,
   assignLocationToUser,
 } = require("../controller/company");
+const { linkStripeAccountAtRegistration } = require("../controller/companyRegistrationStripe");
 const {
   createProviderCompany,
   updateProviderCompany,
@@ -81,7 +82,10 @@ router.post("/new", createCompany);
 
 router.patch("/update-company/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("company", "update"), updatingCompany);
 
-router.patch("/update-company/register-process/:id", updatingCompany);
+// Sin sesión (alta de compañía): solo conecta la cuenta de Stripe, una vez y
+// en compañías recién creadas. Antes guardaba el body entero de cualquier
+// compañía. Ver controller/companyRegistrationStripe.js.
+router.patch("/update-company/register-process/:id", linkStripeAccountAtRegistration);
 
 router.post("/search-company", searchingCompany);
 

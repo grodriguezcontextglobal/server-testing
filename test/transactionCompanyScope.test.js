@@ -44,7 +44,8 @@ test('las rutas de staff de /api/transaction llevan la guarda de compañía', ()
 const guard = createRequireStripeOwnership({
   findAdmin: async () => null,
   resolveCompany: (req) => req.headers['x-company-id'] ?? null,
-  findCompany: async (id) => ({ [A]: { _id: A, company_name: 'Acme' } })[id] ?? null,
+  // `staff` es empleado de A: la guarda exige pertenencia desde 2026-11-03.
+  findCompany: async (id) => ({ [A]: { _id: A, company_name: 'Acme', employees: [{ userId: 'staff' }] } })[id] ?? null,
   findStripeCompaniesByName: async () => [],
   findStripeCompany: async () => null,
   findTransaction: async () => null,

@@ -16,10 +16,20 @@ const B = 'bbbbbbbbbbbbbbbbbbbbbbbb';
 const SC_A = 'cccccccccccccccccccccccc';
 const SC_B = 'dddddddddddddddddddddddd';
 
+// `staff` es empleado de las dos (por userId en A, por email en B), así cada
+// test mira el recurso y no la pertenencia. `outsider` no es de ninguna y
+// `former` estuvo en A y ya no está activo.
 const companies = {
-  [A]: { _id: A, company_name: 'Acme', stripe_customer_id: 'cus_A1', stripe_connected_account: { test: 'acct_A' } },
-  [B]: { _id: B, company_name: 'Beta', stripe_customer_id: 'unknown', stripe_connected_account: { test: null } },
+  [A]: {
+    _id: A, company_name: 'Acme', stripe_customer_id: 'cus_A1', stripe_connected_account: { test: 'acct_A' },
+    employees: [{ userId: 'staff', user: 'staff@acme.test' }, { user: 'former@acme.test', active: false }],
+  },
+  [B]: {
+    _id: B, company_name: 'Beta', stripe_customer_id: 'unknown', stripe_connected_account: { test: null },
+    employees: [{ user: 'staff@acme.test', active: true }],
+  },
 };
+const subscriptionRecords = { rec_A: { company: 'acme ' }, rec_B: { company: 'Beta' } };
 const stripeCompanies = [
   { _id: SC_A, companyName: 'ACME ', stripeID: 'cus_A2' },
   { _id: SC_B, companyName: 'Beta', stripeID: 'cus_B1' },
@@ -46,6 +56,7 @@ const guard = createRequireStripeOwnership({
   findStripeCompany: async (id) => stripeCompanies.find((s) => s._id === id) ?? null,
   findTransaction: async (id) => ({ tx_A: { company: { _id: A } }, tx_B: { company: B } })[id] ?? null,
   findStripeTransaction: async (id) => ({ stx_A: { company: A }, stx_B: { company: B } })[id] ?? null,
+  findSubscriptionRecord: async (id) => subscriptionRecords[id] ?? null,
   stripeApi: {
     retrieveSubscription: lookup(subscriptions),
     retrieveSetupIntent: lookup(setupIntents),
@@ -59,7 +70,12 @@ const guard = createRequireStripeOwnership({
 beforeEach(() => {
   warnings = [];
   errors = [];
-  admins = { root: { super_user: true }, staff: { super_user: false } };
+  admins = {
+    root: { super_user: true },
+    staff: { super_user: false, email: 'staff@acme.test' },
+    outsider: { super_user: false, email: 'out@else.test' },
+    former: { super_user: false, email: 'former@acme.test' },
+  };
   stripeDown = false;
   process.env.STRIPE_OWNERSHIP_MODE = 'enforce';
 });
@@ -158,6 +174,44 @@ test('búsqueda de pagos: enforce deja la compañía para filtrar; plataforma bu
   assert.equal((await run('paymentIntentSearch', undefined, { company: null })).code, 400);
 });
 
+test('subscriptionRecord: el Subscription de Mongo por el nombre de su compañía (sin mayúsculas ni espacios)', async () => {
+  assert.equal((await run('subscriptionRecord', 'rec_A')).passed, true);
+  assert.equal((await run('subscriptionRecord', 'rec_B')).code, 404);
+  assert.equal((await run('subscriptionRecord', 'rec_nope')).code, 404);
+});
+
+test('companyName: el nombre que trae la petición tiene que ser el de la compañía del contexto', async () => {
+  assert.equal((await run('companyName', ' ACME')).passed, true);
+  assert.equal((await run('companyName', 'Beta')).code, 404);
+  assert.equal((await run('companyName', 'Beta', { company: B })).passed, true);
+});
+
+// ═══ pertenencia a la compañía del contexto ═════════════════════════════════
+
+test('x-company-id de una compañía a la que no pertenece: 403 aunque el recurso sea de esa compañía', async () => {
+  // Antes pasaba: el recurso era de B y el contexto decía B.
+  const r = await run('subscription', 'sub_B', { uid: 'outsider', company: B });
+  assert.equal(r.passed, false);
+  assert.equal(r.code, 403);
+  assert.equal(warnings.at(-1).meta.reason, 'not_a_member');
+});
+
+test('empleado inactivo: 403', async () => {
+  assert.equal((await run('customer', 'cus_A1', { uid: 'former' })).code, 403);
+});
+
+test('empleado por userId o por email: pasa', async () => {
+  assert.equal((await run('customer', 'cus_A1')).passed, true); // A: por userId
+  assert.equal((await run('customer', 'cus_B1', { company: B })).passed, true); // B: por email
+});
+
+test('no miembro en warn: deja pasar y lo registra como not_a_member', async () => {
+  process.env.STRIPE_OWNERSHIP_MODE = 'warn';
+  const r = await run('subscription', 'sub_B', { uid: 'outsider', company: B });
+  assert.equal(r.passed, true);
+  assert.match(warnings[0].msg, /^stripe ownership: not_a_member \(STRIPE_OWNERSHIP_MODE=warn\)/);
+});
+
 // ═══ casos generales ════════════════════════════════════════════════════════
 
 test('recurso inexistente en Stripe: 404, igual que uno ajeno', async () => {
@@ -222,6 +276,21 @@ test('las rutas de suscripción y facturación llevan la guarda de dueño detrá
     const at = names.indexOf('requireStripeOwnership');
     assert.ok(at > names.indexOf('checkTokenVersion') && names.indexOf('checkTokenVersion') >= 0, key);
   }
+});
+
+test('/api/subscription: todas las rutas llevan la guarda de dueño detrás de la sesión', () => {
+  const router = require('../routes/subscription');
+  const routes = router.stack.filter((l) => l.route);
+  assert.equal(routes.length, 8);
+  for (const layer of routes) {
+    const key = `${Object.keys(layer.route.methods)[0].toUpperCase()} ${layer.route.path}`;
+    const names = layer.route.stack.map((l) => l.handle.name);
+    assert.ok(names.indexOf('checkTokenVersion') >= 0, key);
+    assert.ok(names.indexOf('requireStripeOwnership') > names.indexOf('checkTokenVersion'), key);
+  }
+  // update-subscription: además, el body no puede mover la suscripción de compañía.
+  const update = routes.find((l) => l.route.path === '/update-subscription/:id');
+  assert.ok(update.route.stack.some((l) => l.handle.name === 'keepsSubscriptionCompany'));
 });
 
 // ═══ updating-subscription: solo subscriptionHistory ════════════════════════
