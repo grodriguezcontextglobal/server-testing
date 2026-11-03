@@ -112,7 +112,7 @@ const securityLogger = (req, res, next) => {
   const suspiciousPatterns = [
     /\.\.\//,  // Path traversal
     /<script/i, // XSS attempts
-    /union.*select/i, // SQL injection
+    /union.{0,200}select/i, // SQL injection. Acotado: `.*` era cuadrático con "unionunion..." (Semgrep regex_dos)
     /exec\(/i, // Code injection
     /eval\(/i  // Code injection
   ];

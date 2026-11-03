@@ -342,3 +342,14 @@ test('si escribir el log falla, la respuesta al cliente no se entera', async () 
   assert.equal(res.status, 201);
   await new Promise((r) => srv.close(r));
 });
+
+// Semgrep regex_dos (2026-11-03): la regex de email es cuadrática con
+// "a@" + muchos "." — 100 KB tardaban ~6 s y bloqueaban el event loop.
+test('recipients: un string enorme no se evalúa como email (sin backtracking cuadrático)', () => {
+  const { extractContext } = require('../middlewares/auditTrail');
+  const evil = 'a@' + '.'.repeat(200000) + '@';
+  const t = Date.now();
+  const ctx = extractContext({ params: {}, query: {}, body: { to: evil, email: 'Ok@Example.com' } });
+  assert.ok(Date.now() - t < 200, `tardó ${Date.now() - t} ms`);
+  assert.deepEqual(ctx.recipients, ['ok@example.com']);
+});

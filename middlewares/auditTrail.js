@@ -108,6 +108,11 @@ const COUNT_KEYS = [
 ];
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// La regex es cuadrática con "a@" + muchos "." sin final válido (Semgrep
+// regex_dos): 100 KB de body bloqueaban el event loop ~6 s. Un email no pasa de
+// 254 caracteres (RFC 5321), así que lo más largo ni se evalúa.
+const EMAIL_MAX = 254;
+const isEmail = (s) => s.length <= EMAIL_MAX && EMAIL.test(s);
 const RECIPIENT_KEYS = ['to', 'email', 'emails', 'recipient', 'recipients', 'consumer', 'member', 'staff', 'user'];
 
 /** Direcciones a las que va un correo, vengan sueltas, en listas o en objetos. */
@@ -115,7 +120,7 @@ function collectRecipients(body) {
   const out = new Set();
   const visit = (v, depth) => {
     if (depth > 3 || out.size >= 50 || v === null || v === undefined) return;
-    if (typeof v === 'string') { if (EMAIL.test(v.trim())) out.add(v.trim().toLowerCase()); return; }
+    if (typeof v === 'string') { if (isEmail(v.trim())) out.add(v.trim().toLowerCase()); return; }
     if (Array.isArray(v)) return v.forEach((x) => visit(x, depth + 1));
     if (typeof v === 'object') for (const k of RECIPIENT_KEYS) if (k in v) visit(v[k], depth + 1);
   };
@@ -243,7 +248,7 @@ function personTarget(req, spec) {
   if (!PERSON_MODELS.has(spec.target_model)) return {};
   const b = req.body && typeof req.body === 'object' && !Array.isArray(req.body) ? req.body : {};
   const idKey = PERSON_ID_KEYS.find((k) => isPrimitive(b[k]));
-  const emailKey = PERSON_EMAIL_KEYS.find((k) => typeof b[k] === 'string' && EMAIL.test(b[k].trim()));
+  const emailKey = PERSON_EMAIL_KEYS.find((k) => typeof b[k] === 'string' && isEmail(b[k].trim()));
   return {
     id: idKey ? String(b[idKey]) : undefined,
     label: emailKey ? b[emailKey].trim() : undefined,
