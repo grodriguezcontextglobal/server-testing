@@ -12,7 +12,9 @@ const { generateJWT, SESSION_MAX_SECONDS } = require("../helpers/jwt");
 const getConnection = require("../mysql/database/config");
 const StripeTransaction = require("../models/StripeTransaction");
 const { clientRedis } = require("../database/cacheMemoryConfig");
-const { loginActivityNotification } = require("../nodeMailer/notifications");
+const { loginActivityNotification, buildLinkToResetPasswordMessage } = require("../nodeMailer/notifications");
+const { buildPasswordResetLink, takeResetEmailSlot, sendPasswordResetEmail } = require("../helpers/passwordResetEmail");
+const { enqueue } = require("../helpers/queue");
 const logger = require("../helpers/logger");
 const crypto = require("crypto");
 const speakeasy = require("speakeasy");
@@ -181,6 +183,20 @@ const loginUser = async (request, response) => {
       return failLogin("invalid_password", adminUser, 400, {
         ok: false,
         msg: "You have entered an invalid username or password",
+      });
+    }
+
+    // FedRAMP A5 (2026-11-03): tras un reset de MFA hecho por un administrador,
+    // la contraseña sola ya no basta para volver a enrolarse: el login no da
+    // mfaSetupToken y la persona usa el enlace que le llegó por correo. Va
+    // después de la contraseña (una incorrecta responde como siempre) y vale
+    // también con MFA_REQUIRED=false. El login no reenvía el correo.
+    if (adminUser.mfaResetPending) {
+      return response.status(403).json({
+        ok: false,
+        msg: "Your MFA was reset. Follow the link we emailed you to set it up again.",
+        mfaSetupRequired: true,
+        mfaResetEmailRequired: true,
       });
     }
 
@@ -1029,11 +1045,25 @@ const updatePassword = async (request, response) => {
     const salt = await bcrypt.genSalt();
     const hashed = await bcrypt.hash(password, salt);
 
+    // Un update-password correcto cierra el reset de MFA (A5): el enrolamiento
+    // por sí solo no, para que quien se quede a medias siga pasando por el correo.
+    const wasResetPending = Boolean(adminUser.mfaResetPending);
     const updateAdminUserPassword = await AdminUser.findByIdAndUpdate(
       adminUser.id,
-      { $set: { password: hashed }, $inc: { tokenVersion: 1 } },
+      { $set: { password: hashed, mfaResetPending: false }, $inc: { tokenVersion: 1 } },
       { new: true }
     );
+    if (wasResetPending) {
+      await logStaffActivity({
+        staff_member_id: adminUser.id,
+        action: "MFA_RESET_COMPLETED",
+        target_model: "AdminUser",
+        target_id: adminUser.id,
+        details: { email: adminUser.email, via_reset_link: withLink },
+        ip_address: request.ip,
+        device_info: request.headers?.["user-agent"],
+      });
+    }
 
     try {
       const redis = await clientRedis();
@@ -1156,19 +1186,32 @@ const attachPasswordResetLink = async (request, response, next) => {
     if (!adminUser) {
       return response.status(202).json({ ok: true, notification: "Email queued" });
     }
-    const params = new URLSearchParams({
-      token: await generatePasswordResetToken(adminUser),
-      uid: String(adminUser.id),
-      email: adminUser.email,
-      "stamp-time": new Date().toISOString(),
-    });
-    const origin = process.env.FRONTEND_URL || "https://admin.devitrak.net";
+    // Como mucho 3 correos por cuenta y hora (A5). Pasado el límite, la misma
+    // respuesta sin enviar: la ruta sigue sin decir qué emails tienen cuenta.
+    let redis = null;
+    try { redis = await clientRedis(); } catch {}
+    if (!(await takeResetEmailSlot(redis, adminUser.id))) {
+      logger.warn("reset-admin-password: hourly cap reached", { uid: String(adminUser.id) });
+      return response.status(202).json({ ok: true, notification: "Email queued" });
+    }
     request.body = {
       ...request.body,
       contactInfo: { ...request.body.contactInfo, email: adminUser.email },
-      linkToResetPassword: `${origin}/reset-password?${params.toString()}`,
+      linkToResetPassword: await buildPasswordResetLink(adminUser),
       link: undefined,
     };
+    // El botón "Send a new email" tras un reset de MFA usa esta misma ruta.
+    if (adminUser.mfaResetPending) {
+      await logStaffActivity({
+        staff_member_id: adminUser.id,
+        action: "MFA_RESET_EMAIL_SENT",
+        target_model: "AdminUser",
+        target_id: adminUser.id,
+        details: { email: adminUser.email, resend: true },
+        ip_address: request.ip,
+        device_info: request.headers?.["user-agent"],
+      });
+    }
     return next();
   } catch (error) {
     logger.error("reset-admin-password: no se pudo armar el enlace", { error: error.message });
@@ -1463,16 +1506,20 @@ const resetUserMfa = async (request, response) => {
       }
     }
 
+    // A5 (2026-11-03): además de borrar la MFA, se marca la cuenta. Con la marca,
+    // el login ya no entrega mfaSetupToken a quien sepa la contraseña: la
+    // persona se enrola desde el enlace de reset que se le envía aquí.
     await AdminUser.updateOne(
       { _id: target.id },
       {
-        $set: { mfaEnabled: false },
+        $set: { mfaEnabled: false, mfaResetPending: true },
         $unset: { mfaSecret: "", mfaRecoveryCodes: "" },
         $inc: { tokenVersion: 1 },
       }
     );
+    let redis = null;
     try {
-      const redis = await clientRedis();
+      redis = await clientRedis();
       await redis.del(`staff_session:${target.id}`);
       await redis.del(`staff_session:${target.id}:owner`);
     } catch (redisErr) {
@@ -1480,6 +1527,14 @@ const resetUserMfa = async (request, response) => {
       // el próximo login hasta caducar.
       logger.warn("MFA reset: could not clear the Redis session", { err: redisErr.message });
     }
+
+    const withPassword = await AdminUser.findById(target.id).select("+password email");
+    const resetEmailSent = await sendPasswordResetEmail(withPassword, {
+      enqueueFn: enqueue,
+      buildMessage: buildLinkToResetPasswordMessage,
+      redis,
+      logger,
+    });
 
     await logStaffActivity({
       staff_member_id: request.uid,
@@ -1491,10 +1546,27 @@ const resetUserMfa = async (request, response) => {
       ip_address: request.ip,
       device_info: request.headers?.["user-agent"],
     });
+    if (resetEmailSent) {
+      await logStaffActivity({
+        staff_member_id: request.uid,
+        company_id: companyId,
+        action: "MFA_RESET_EMAIL_SENT",
+        target_model: "AdminUser",
+        target_id: target.id,
+        details: { email: target.email, resend: false },
+        ip_address: request.ip,
+        device_info: request.headers?.["user-agent"],
+      });
+    }
 
+    // resetEmailSent false: el reset se hizo igual; el dashboard avisa al admin
+    // de que la persona use "Forgot password".
     return response.json({
       ok: true,
-      msg: "MFA reset. The user will set it up again on their next sign-in.",
+      msg: resetEmailSent
+        ? "MFA reset. The user must follow the link we emailed them."
+        : "MFA reset, but the email could not be sent. Ask the user to use \"Forgot password\".",
+      resetEmailSent,
     });
   } catch (error) {
     logger.error(error);

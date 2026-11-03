@@ -55,6 +55,9 @@ const ACTIVITY_ACTIONS = [
   'MFA_RECOVERY_CODE_USED',
   'MFA_RECOVERY_CODES_REGENERATED',
   'MFA_RESET',
+  // 2026-11-03, FedRAMP A5: tras el reset, el re-enrolamiento pasa por el correo.
+  'MFA_RESET_EMAIL_SENT',
+  'MFA_RESET_COMPLETED',
 ];
 
 const ACTIVITY_TARGET_MODELS = [

@@ -68,6 +68,14 @@ const AdminUserSchema = new Schema({
     type: Boolean,
     default: false,
   },
+  // FedRAMP A5 (2026-11-03): un administrador restableció la MFA. Mientras siga
+  // en true, el login no entrega mfaSetupToken: la persona vuelve a enrolarse
+  // solo desde el enlace de reset de contraseña que le llega por correo. Lo
+  // limpia un update-password correcto (controller/admin.js).
+  mfaResetPending: {
+    type: Boolean,
+    default: false,
+  },
   mfaSecret: {
     type: Object, // Stores ASCII, hex, base32, otpauth_url
     select: false, // Do not return by default
