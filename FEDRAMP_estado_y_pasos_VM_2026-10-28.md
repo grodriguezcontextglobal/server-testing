@@ -1,5 +1,13 @@
 # FedRAMP: estado y pasos en la VM
 
+> **Actualizado 2026-11-04:** **Prod:** `fdd5de2` (Go 1.27.1 en la VM). Trae
+> sobre `2d220f3`: IP del cliente sin puerto y desde `X-Real-IP` (`1cfe516`,
+> `02cc992`), inyección NoSQL global con `NOSQL_INPUT_MODE=warn` (`b0ba8a1`),
+> compañía del contexto (`96ffee4`, AC-3/AC-6), regex sin ReDoS (`6dd97d9`),
+> Go 1.26.10 (`9af7c7f`, SI-2) y re-enrolamiento de MFA por correo (`fdd5de2`,
+> IA-2/IA-12). Verificado en la VM: 6 servicios en marcha, `/health` 200 y
+> 34001/7453 solo en 127.0.0.1. `NOSQL_INPUT_MODE` se suma a la tabla del paso 4.
+>
 > **Fecha:** 2026-10-28 · **Rama:** `release/observabilidad` · **Prod:** `2d220f3`
 > desde el 2026-10-28 ~20:09 UTC, con Node 22.23.4 (antes `12ecf78`). La
 > Parte 1 se escribió antes de ese deploy: lo que dice "sin desplegar" ya está
@@ -363,6 +371,7 @@ uno por uno, y reinicia Node tras cada cambio:
 | `CONTRACT_LINK_MODE`, `ATTENDANCE_LINK_MODE` | no quedan enlaces sin firmar en el log |
 | `CONSUMER_TOKEN_MODE` | la app del consumidor ya manda el token |
 | `DB_COMPANY_PUBLIC_MODE` | no hay llamadas anónimas al alta de compañía |
+| `NOSQL_INPUT_MODE` | el resumen no muestra claves `$...` legítimas en body o query |
 
 ```powershell
 # ejemplo, para una variable:
