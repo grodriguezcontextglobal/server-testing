@@ -206,7 +206,7 @@ const loginUser = async (request, response) => {
     // Va DESPUÉS de la contraseña: el token de enrolamiento también es prueba
     // de que se conocía.
     const userWithSecret = adminUser.mfaEnabled
-      ? await AdminUser.findById(adminUser.id).select("+mfaSecret")
+      ? await AdminUser.findById(adminUser.id).select("+mfaSecret +mfaRecoveryCodes")
       : null;
     const mfaReady = Boolean(userWithSecret?.mfaSecret?.base32);
     if (!mfaReady && isMfaRequired()) {
@@ -221,7 +221,13 @@ const loginUser = async (request, response) => {
 
     // MFA Check. `recoveryCode` sustituye a `mfaCode` cuando se perdió el
     // dispositivo; cuenta para el bloqueo igual que un código TOTP fallido.
-    let recoveryCodesRemaining;
+    // Cuántos códigos de recuperación quedan, en todo login con MFA (2.4 del
+    // dashboard, 2026-11-04): 0 = cuenta que activó la MFA antes de que
+    // existieran los códigos, o que los gastó todos; el dashboard avisa.
+    let recoveryCodesRemaining = mfaReady
+      ? (userWithSecret.mfaRecoveryCodes ?? []).length
+      : null;
+    let recoveryCodeUsed = false;
     if (mfaReady) {
       if (!mfaCode && !recoveryCode) {
         return response.status(403).json({
@@ -245,13 +251,15 @@ const loginUser = async (request, response) => {
           });
         }
       } else {
-        recoveryCodesRemaining = await consumeRecoveryCode(adminUser.id, recoveryCode);
-        if (recoveryCodesRemaining === null) {
+        const remaining = await consumeRecoveryCode(adminUser.id, recoveryCode);
+        if (remaining === null) {
           return failLogin("invalid_recovery_code", adminUser, 400, {
             ok: false,
             msg: "Invalid recovery code",
           });
         }
+        recoveryCodesRemaining = remaining;
+        recoveryCodeUsed = true;
         await logStaffActivity({
           staff_member_id: adminUser.id,
           action: "MFA_RECOVERY_CODE_USED",
@@ -330,6 +338,7 @@ const loginUser = async (request, response) => {
     } catch (sqlErr) {
       logger.warn("staff_member lookup failed during login — sqlStaffId will be null", { email: adminUser.email, err: sqlErr.message });
     }
+    const companies = await listStaffSqlCompanies(sqlStaffId);
 
     //generate jwt (json web token)
     // Cada login abre una sesión nueva: el sid anterior deja de valer.
@@ -466,11 +475,15 @@ const loginUser = async (request, response) => {
       phone: adminUser.phone,
       role: adminUser.role,
       token,
-      // Solo al entrar con un código de recuperación: el cliente avisa de
-      // cuántos quedan y ofrece regenerarlos.
-      ...(recoveryCodesRemaining !== undefined
-        ? { recoveryCodeUsed: true, recoveryCodesRemaining }
-        : {}),
+      // Número con MFA activa; null sin ella (MFA_REQUIRED=false).
+      recoveryCodesRemaining,
+      // Solo al entrar con un código de recuperación.
+      ...(recoveryCodeUsed ? { recoveryCodeUsed: true } : {}),
+      // Compañías SQL del staff (AC-4): el dashboard deja de buscarlas por
+      // nombre. sqlCompanyId solo cuando hay una sola; con varias, el cliente
+      // elige de `companies`.
+      companies,
+      sqlCompanyId: companies.length === 1 ? companies[0].sqlCompanyId : null,
     });
   } catch (error) {
     logger.error("Admin login error", {
@@ -493,7 +506,6 @@ const logoutUser = async (request, response) => {
     const redis = await clientRedis();
     // Safely read token from cookies or fall back to header
     const token = request.cookies?.token || request.headers["x-token"];
-    const staffID = request.body.uid;
     let decoded = {};
     if (token) {
       // Firma verificada (FedRAMP A2, 2026-10-27): con jwt.decode un token
@@ -522,24 +534,12 @@ const logoutUser = async (request, response) => {
         msg: "user logged out",
       });
     }
-    if (staffID) {
-      const sessionKey = `staff_session:${staffID}`;
-      redis.del(sessionKey);
-      // Clear cookie if it existed (name is required)
-      response.clearCookie("token", {
-        httpOnly: true,
-        sameSite: "none",
-        secure: true,
-      });
-
-      return response.status(201).json({
-        ok: true,
-        msg: "user logged out",
-      });
-    }
+    // Sin token no hay logout (AC-12, 2026-11-04). Antes bastaba `uid` en el
+    // body y cualquiera cerraba la sesión de cualquiera. El dashboard manda
+    // x-token desde el 2026-10-29 (PR #34).
     response.status(401).json({
       ok: false,
-      msg: "No token/Staff Member UID provided",
+      msg: "No token provided",
     });
   } catch (error) {
     return response.status(500).json({
@@ -1402,6 +1402,33 @@ const disableMfa = async (req, res) => {
     res.status(500).json({ ok: false, msg: "Error disabling MFA" });
   }
 };
+
+// Compañías SQL activas del staff, para la respuesta del login. Un fallo de
+// SQL no tumba el login: devuelve [] y el dashboard sigue como antes.
+async function listStaffSqlCompanies(sqlStaffId) {
+  if (!sqlStaffId) return [];
+  try {
+    const [rows] = await getConnection().execute(
+      `SELECT ci.company_id, ci.company_name
+       FROM company_staff cs
+       JOIN company_info ci ON ci.company_id = cs.company_id
+       WHERE cs.staff_id = ? AND cs.is_active = 1
+       ORDER BY ci.company_name, ci.company_id`,
+      [sqlStaffId]
+    );
+    const seen = new Set();
+    const out = [];
+    for (const r of rows || []) {
+      if (r?.company_id == null || seen.has(r.company_id)) continue;
+      seen.add(r.company_id);
+      out.push({ sqlCompanyId: r.company_id, companyName: r.company_name });
+    }
+    return out;
+  } catch (err) {
+    logger.warn("company_staff lookup failed during login — companies will be empty", { sqlStaffId, err: err.message });
+    return [];
+  }
+}
 
 // Gasta un código de recuperación. El $pull condicionado es atómico: dos
 // logins con el mismo código no pueden usarlo los dos. Devuelve cuántos

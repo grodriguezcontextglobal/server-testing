@@ -143,6 +143,14 @@ test('logout: un token propio caducado sí cierra su sesión', async () => {
   assert.deepEqual(deletedKeys, ['staff_session:u1'], 'cierra la del token, no la del body');
 });
 
+test('logout: solo con uid en el body es 401 y no borra ninguna sesión', async () => {
+  deletedKeys.length = 0;
+  const r = res();
+  await logoutUser(logoutReq(null, { uid: 'victima' }), r);
+  assert.equal(r.code, 401);
+  assert.deepEqual(deletedKeys, []);
+});
+
 // ── consulting-member ───────────────────────────────────────────────────────
 
 const { consultingStaffMemberInformation } = require('../mysql/controllers/staff');

@@ -720,15 +720,29 @@ const consultingItemTable = async (request, response) => {
 const consultingItemInWarehouseTable = async (request, response) => {
   try {
     const connection = getConnection();
-    const { role: _role, preference: _pref, ...filters } = request.body;
+    const { role: _role, preference: _pref, ...filters } = request.body ?? {};
     const { company_id } = filters;
+
+    // Las claves del body van al SQL como nombres de columna: solo columnas
+    // conocidas de item_inv, y solo valores escalares (SI-10, 2026-11-04).
+    // Antes cualquier clave se interpolaba tal cual.
+    const invalidCols = Object.keys(filters).filter((k) => !ITEM_INV_COLUMNS.has(k));
+    if (invalidCols.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    }
+    const nonScalar = Object.entries(filters)
+      .filter(([, v]) => v !== null && typeof v === "object")
+      .map(([k]) => k);
+    if (nonScalar.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid value for: ${nonScalar.join(", ")}` });
+    }
 
     const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
     // Base query construction
-    let formatting = Object.keys(filters).map((item) => `${item}=?`).join(" AND ");
+    let formatting = Object.keys(filters).map((item) => `\`${item}\`=?`).join(" AND ");
     const values = Object.values(filters);
 
     // Full-access roles: no restriction. Location/category-scoped roles: restricted

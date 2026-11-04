@@ -50,6 +50,7 @@ function reset() {
   updates = [];
   activity = [];
   redisDels = [];
+  sqlCompanies = [];
   delete process.env.MFA_REQUIRED;
 }
 
@@ -99,7 +100,16 @@ stub('helpers/companyContext.js', { resolveCompanyContext: (r) => r.headers?.['x
 stub('helpers/companyMembership.js', {
   findCompanyMembership: async (companyId, user) => memberships[companyId]?.[user.email] ?? null,
 });
-stub('mysql/database/config.js', () => ({ execute: async () => [[{ staff_id: 7 }]] }));
+let sqlCompanies = [];
+stub('mysql/database/config.js', () => ({
+  execute: async (sql) => {
+    if (sql.includes('FROM company_staff')) {
+      if (sqlCompanies instanceof Error) throw sqlCompanies;
+      return [sqlCompanies];
+    }
+    return [[{ staff_id: 7 }]];
+  },
+}));
 stub('nodeMailer/notifications.js', { loginActivityNotification: async () => ({ success: true }) });
 stub('controller/staffActivityLog.js', { logStaffActivity: async (e) => { activity.push(e); } });
 stub('database/cacheMemoryConfig.js', {
@@ -228,6 +238,58 @@ test('login con mfaCode sigue igual y no anuncia códigos', async () => {
   assert.equal(r.code, 200);
   assert.equal(r.body.recoveryCodeUsed, undefined);
   assert.equal(users[U_ON].mfaRecoveryCodes.length, 10);
+});
+
+test('todo login con MFA dice cuántos códigos quedan; 0 si nunca los tuvo', async () => {
+  const r = res();
+  await loginUser(req({ email: 'on@x.com', password: 'ok', mfaCode: totp(users[U_ON]) }), r);
+  assert.equal(r.code, 200);
+  assert.equal(r.body.recoveryCodesRemaining, 0);
+  giveCodes(U_ON);
+  const r2 = res();
+  await loginUser(req({ email: 'on@x.com', password: 'ok', mfaCode: totp(users[U_ON]) }), r2);
+  assert.equal(r2.body.recoveryCodesRemaining, 10);
+  assert.equal(r2.body.recoveryCodeUsed, undefined);
+});
+
+test('sin MFA activa (MFA_REQUIRED=false): recoveryCodesRemaining es null', async () => {
+  process.env.MFA_REQUIRED = 'false';
+  users[U_ON].mfaEnabled = false;
+  const r = res();
+  await loginUser(req({ email: 'on@x.com', password: 'ok' }), r);
+  assert.equal(r.code, 200);
+  assert.equal(r.body.recoveryCodesRemaining, null);
+});
+
+test('login: companies trae las compañías SQL activas, sin repetir', async () => {
+  sqlCompanies = [
+    { company_id: 12, company_name: 'Acme' },
+    { company_id: 12, company_name: 'Acme' },
+    { company_id: 30, company_name: 'Beta' },
+  ];
+  const r = res();
+  await loginUser(req({ email: 'on@x.com', password: 'ok', mfaCode: totp(users[U_ON]) }), r);
+  assert.deepEqual(r.body.companies, [
+    { sqlCompanyId: 12, companyName: 'Acme' },
+    { sqlCompanyId: 30, companyName: 'Beta' },
+  ]);
+  assert.equal(r.body.sqlCompanyId, null, 'con varias, el cliente elige');
+});
+
+test('login: con una sola compañía, sqlCompanyId es esa', async () => {
+  sqlCompanies = [{ company_id: 12, company_name: 'Acme' }];
+  const r = res();
+  await loginUser(req({ email: 'on@x.com', password: 'ok', mfaCode: totp(users[U_ON]) }), r);
+  assert.equal(r.body.sqlCompanyId, 12);
+});
+
+test('login: si falla la consulta de compañías, el login entra igual', async () => {
+  sqlCompanies = new Error('db down');
+  const r = res();
+  await loginUser(req({ email: 'on@x.com', password: 'ok', mfaCode: totp(users[U_ON]) }), r);
+  assert.equal(r.code, 200);
+  assert.deepEqual(r.body.companies, []);
+  assert.equal(r.body.sqlCompanyId, null);
 });
 
 // ═══ regenerar ══════════════════════════════════════════════════════════════
