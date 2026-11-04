@@ -1,4 +1,5 @@
 const { Schema, model } = require("mongoose");
+const { VALID_ROLE_TYPES_LIST } = require("../mysql/constants/roles");
 
 const Company = new Schema({
   company_name: {
@@ -123,14 +124,20 @@ const Company = new Schema({
         type: Boolean,
         required: true,
       },
+      // Número heredado (0-5). Ningún permiso lo lee: authorizeMongoPermission
+      // decide por roleType. Opcional desde 2026-11-04 para que el dashboard
+      // pueda dejar de escribirlo (S1.3).
       role: {
         type: String,
-        required: true,
+        required: false,
       },
+      // La misma lista que SQL y rolePermissions (10 tipos, con los de
+      // categoría). Antes faltaban category_manager/category_assistant y un
+      // save() con ellos fallaba la validación.
       roleType: {
         type: String,
         required: false,
-        enum: ['root_admin', 'admin', 'sale_manager', 'event_manager', 'inventory_manager', 'assistant', 'inventory_location_manager', 'inventory_location_assistant'],
+        enum: VALID_ROLE_TYPES_LIST,
       },
       active: {
         type: Boolean,
