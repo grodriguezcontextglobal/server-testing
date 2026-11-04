@@ -9,6 +9,7 @@ const router = Router();
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { optionalJWT } = require("../middlewares/optionalJWT");
+const { requireBodyCompanyMembership } = require("../middlewares/requireBodyCompanyMembership");
 const { isStaffOrigin, isStaffSession } = require("../helpers/consumerUserFilter");
 
 const {
@@ -88,11 +89,13 @@ router.post("/receiver-assignation", addReceiverToTransaction);
 //check paymentIntent was used for receivers
 router.post("/receiver-assigned", checkingReceiversAssigned);
 
+// Escriben en el pool de la compañía del body: quien llama tiene que ser
+// empleado activo de ella (AC-3, 2026-11-04).
 //add receivers to pool
-router.post("/receivers-pool", poolReceivers);
+router.post("/receivers-pool", requireBodyCompanyMembership("company"), poolReceivers);
 
-//add multiple receivers to pool
-router.post("/receivers-pool-bulk", poolReceiversBulk);
+//add multiple receivers to pool (sin duplicados por evento + dispositivo)
+router.post("/receivers-pool-bulk", requireBodyCompanyMembership("company"), poolReceiversBulk);
 
 //track receiver returned by issue
 router.post("/receiver-returned-issue", trackReturnedReceiverWithIssue);

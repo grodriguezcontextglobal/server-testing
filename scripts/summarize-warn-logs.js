@@ -37,6 +37,7 @@ const MODES = [
   { mode: 'DB_COMPANY_PUBLIC_MODE', match: /DB_COMPANY_PUBLIC_MODE=warn/ },
   { mode: 'SESSION_MODE', match: /SESSION_MODE=warn/ },
   { mode: 'STRIPE_OWNERSHIP_MODE', match: /^stripe ownership: (\S+) \(STRIPE_OWNERSHIP_MODE=warn/ },
+  { mode: 'COMPANY_CONTEXT_MODE', match: /^company context: body and header disagree \(COMPANY_CONTEXT_MODE=warn/ },
   { mode: 'NOSQL_INPUT_MODE', match: /^nosql input: (operator in \S+) allowed \(NOSQL_INPUT_MODE=warn/ },
 ];
 

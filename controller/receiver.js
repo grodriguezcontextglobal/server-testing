@@ -167,10 +167,12 @@ const poolReceivers = async (request, response) => {
 
 const poolReceiversBulk = async (request, response) => {
   try {
-    const result = await poolReceiversBulkWorker(request.body);
+    const { inserted, skippedDuplicates } = await poolReceiversBulkWorker(request.body);
     return response.status(201).json({
       ok: true,
-      receiversPool: result,
+      receiversPool: inserted,
+      inserted: inserted.length,
+      skippedDuplicates,
     });
   } catch (error) {
     return response.status(500).json({

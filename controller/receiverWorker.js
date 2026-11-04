@@ -119,7 +119,19 @@ const poolReceiversBulk = async (input) => {
 
     if (normalized.length === 0) throw new Error("no valid devices to insert");
 
-    const docs = normalized.map((serial) => ({
+    // Sin duplicados (2026-11-04): ni dentro de la petición ni contra lo que
+    // ya está en el pool para el mismo evento y compañía. Antes cada llamada
+    // repetida, o la de contenedor más la del dashboard, duplicaba filas.
+    const unique = [...new Set(normalized.map(String))];
+    const existing = await ReceiversPool.find(
+      { eventSelected, company, device: { $in: unique } },
+      { device: 1 }
+    ).lean();
+    const already = new Set(existing.map((d) => String(d.device)));
+    const toInsert = unique.filter((serial) => !already.has(serial));
+    const skippedDuplicates = normalized.length - toInsert.length;
+
+    const docs = toInsert.map((serial) => ({
       device: serial,
       status,
       activity,
@@ -130,9 +142,10 @@ const poolReceiversBulk = async (input) => {
       company,
     }));
 
-    // Optional: avoid duplicates for same event/company/device if you have unique indexes or want upsert-like behavior
-    // Otherwise insertMany will insert all.
-    return ReceiversPool.insertMany(docs, { ordered: false });
+    const inserted = docs.length > 0
+      ? await ReceiversPool.insertMany(docs, { ordered: false })
+      : [];
+    return { inserted, skippedDuplicates };
 };
 
 const updatePoolReceivers = async (input) => {
