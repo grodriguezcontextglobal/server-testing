@@ -28,9 +28,12 @@ router.post("/consulting-member", sessionIfValid, consultingStaffMemberInformati
 router.post("/new_member", validateJWT, checkTokenVersion, insertingStaffMember);
 
 // company_staff role management (requieren JWT)
-router.post("/company-staff",             validateJWT, checkTokenVersion, addCompanyStaff);
-router.patch("/company-staff",            validateJWT, checkTokenVersion, updateCompanyStaff);
-router.patch("/company-staff/role",       validateJWT, checkTokenVersion, updateCompanyStaffRole);
+// Escribir company_staff da o quita acceso a una compañía: exige staff:create /
+// staff:update EN la compañía del body (AC-3, AC-6; 2026-11-04). Antes bastaba
+// la sesión y cualquiera se daba de alta como root_admin en otra compañía.
+router.post("/company-staff",             validateJWT, checkTokenVersion, authorizePermission("staff", "create"), addCompanyStaff);
+router.patch("/company-staff",            validateJWT, checkTokenVersion, authorizePermission("staff", "update"), updateCompanyStaff);
+router.patch("/company-staff/role",       validateJWT, checkTokenVersion, authorizePermission("staff", "update"), updateCompanyStaffRole);
 router.post("/company-staff/permissions", validateJWT, checkTokenVersion, getStaffPermissions);
 
 // location/category scope assignment (full-replace). Managing who sees what is a

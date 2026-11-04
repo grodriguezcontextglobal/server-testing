@@ -238,6 +238,7 @@ const AUDITED_ROUTES = {
   // ── Compañía y staff ──────────────────────────────────────────────────────
   'POST /api/company/new': R('CREATE', 'Company'),
   'PATCH /api/company/update-company/:id': R('UPDATE', 'Company'),
+  'POST /api/company/event-staff/deactivate': R('UPDATE', 'Staff'),
   'PATCH /api/company/update-company/register-process/:id': R('UPDATE', 'Company'),
   'POST /api/company/new_provider': R('CREATE', 'Provider'),
   'PATCH /api/company/update_provider/:id': R('UPDATE', 'Provider'),

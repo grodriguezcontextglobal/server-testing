@@ -22,6 +22,7 @@ const {
   assignLocationToUser,
 } = require("../controller/company");
 const { linkStripeAccountAtRegistration } = require("../controller/companyRegistrationStripe");
+const { deactivateEventStaff } = require("../controller/eventStaffAccess");
 const {
   createProviderCompany,
   updateProviderCompany,
@@ -81,6 +82,10 @@ router.use(requireCompanyAuth);
 router.post("/new", createCompany);
 
 router.patch("/update-company/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("company", "update"), updatingCompany);
+
+// Al cerrar un evento, el servidor decide quién pierde el acceso (AC-2, AC-6).
+// event:update y no company:update: quien cierra el evento es el event_manager.
+router.post("/event-staff/deactivate", validateJWT, checkTokenVersion, authorizeMongoPermission("event", "update"), deactivateEventStaff);
 
 // Sin sesión (alta de compañía): solo conecta la cuenta de Stripe, una vez y
 // en compañías recién creadas. Antes guardaba el body entero de cualquier
