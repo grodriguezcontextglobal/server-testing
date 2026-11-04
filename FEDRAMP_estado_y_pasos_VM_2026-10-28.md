@@ -372,6 +372,7 @@ uno por uno, y reinicia Node tras cada cambio:
 | `CONSUMER_TOKEN_MODE` | la app del consumidor ya manda el token |
 | `DB_COMPANY_PUBLIC_MODE` | no hay llamadas anónimas al alta de compañía |
 | `NOSQL_INPUT_MODE` | el resumen no muestra claves `$...` legítimas en body o query |
+| `COMPANY_CONTEXT_MODE` | el resumen no muestra rutas SQL con `company_id` del body distinto de `s-company-lq` |
 
 ```powershell
 # ejemplo, para una variable:
