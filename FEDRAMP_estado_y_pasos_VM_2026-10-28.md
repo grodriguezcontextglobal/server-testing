@@ -1,6 +1,15 @@
 # FedRAMP: estado y pasos en la VM
 
-> **Actualizado 2026-11-04:** **Prod:** `fdd5de2` (Go 1.27.1 en la VM). Trae
+> **Actualizado 2026-11-04 (tarde):** **Prod:** `cb03ab9`. Trae sobre `fdd5de2`
+> los lotes 1-5 de los bloqueos del dashboard: login con `companies`/`sqlCompanyId`
+> y `recoveryCodesRemaining`, logout sin token 401, warehouse-items con lista
+> blanca de columnas, enum de roleType con 10 tipos, `POST /api/csp-report`
+> (SI-4), `POST /api/company/event-staff/deactivate` (AC-2), company-staff con
+> permiso (AC-3/AC-6), receivers-pool con membresía y sin duplicados, y
+> `COMPANY_CONTEXT_MODE=warn`. Verificado en la VM: 6 servicios, `/health` 200,
+> 34001/7453 en 127.0.0.1, csp-report 204. `COMPANY_CONTEXT_MODE` se suma al paso 4.
+>
+> **Antes, 2026-11-04:** **Prod:** `fdd5de2` (Go 1.27.1 en la VM). Trae
 > sobre `2d220f3`: IP del cliente sin puerto y desde `X-Real-IP` (`1cfe516`,
 > `02cc992`), inyección NoSQL global con `NOSQL_INPUT_MODE=warn` (`b0ba8a1`),
 > compañía del contexto (`96ffee4`, AC-3/AC-6), regex sin ReDoS (`6dd97d9`),
