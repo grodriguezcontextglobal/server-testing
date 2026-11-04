@@ -88,7 +88,7 @@ const UNMOUNTED = ['routes/cloudinary.js', 'routes/twilio.js', 'mysql/routes/loc
 // pending = protegida a medias: falta un cambio del cliente para cerrarla.
 const PUBLIC_ROUTES = {
   'routes/admin.js POST /login': 'public: credenciales + MFA + bloqueo por intentos',
-  'routes/admin.js POST /logout': 'pending: con token se verifica la firma; queda el cierre por uid del modal de varias compañías hasta que el dashboard mande el token',
+  'routes/admin.js POST /logout': 'public: exige un token con firma válida (caducado vale); sin token, 401',
   'routes/admin.js PATCH /update-password': 'public: enlace de reset firmado + MFA',
   'routes/admin.js POST /mfa/generate': 'public: mfaSetupToken (validateMfaEnrollment)',
   'routes/admin.js POST /mfa/verify': 'public: mfaSetupToken (validateMfaEnrollment)',
@@ -98,6 +98,7 @@ const PUBLIC_ROUTES = {
   'routes/devitrakApp.js PATCH /:id': 'public: solo ata si aceptación, email y cuenta coinciden, y nunca reasigna',
   'routes/health.js GET /health': 'public: monitoreo',
   'routes/health.js GET /ready': 'public: monitoreo',
+  'routes/cspReport.js POST /api/csp-report': 'public: informes de CSP que manda el navegador; solo escribe campos fijos, 16 kb, limite por IP, siempre 204',
   'routes/status.js GET /status': 'public: página de estado',
   'routes/status.js GET /health': 'public: monitoreo',
   'routes/registration.js POST /new': 'public: alta de compañía (validación + rate limit)',

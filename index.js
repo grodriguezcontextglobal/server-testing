@@ -319,6 +319,9 @@ const initializeApp = () => {
   // logs ni rechaza nada, asi que no rompe ninguna razon de las de arriba.
   app.use(normalizeForwardedFor);
   app.use(require("./routes/health"));
+  // Buzón de violaciones de CSP del dashboard: mismo motivo, fuera del
+  // limitador global y del audit trail. El porqué en routes/cspReport.js.
+  app.use(require("./routes/cspReport"));
 
   configureMiddleware(app);
   configureRoutes(app);
