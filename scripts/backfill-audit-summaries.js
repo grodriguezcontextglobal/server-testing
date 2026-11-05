@@ -13,7 +13,7 @@
  * Solo toca registros SIN `summary`; correrlo dos veces no cambia nada.
  */
 
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const mongoose = require('mongoose');
 const { describeEntry } = require('../helpers/auditDescribe');
 const { enrichContext } = require('../queue/handlers/staffActivityLog');

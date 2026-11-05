@@ -2,7 +2,7 @@ const { response, request } = require("express");
 const { createConnection } = require("mysql2");
 const getConnection = require("../database/config");
 const { readCompanyId } = require("../../middlewares/authorizePermission");
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 const connection = getConnection();
 
 // createConnection({

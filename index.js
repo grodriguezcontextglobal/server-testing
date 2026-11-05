@@ -9,7 +9,7 @@ const helmet = require("helmet");
 const { dbConnection } = require("./database/config");
 
 // Load environment variables
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 // Configuration imports
 const { corsOptions } = require("./config/cors");
@@ -104,10 +104,10 @@ const configureMiddleware = (app) => {
     max: Number(process.env.RATE_LIMIT_MAX) || 300,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => {
-      if (!req.ip) return "unknown";
-      return req.ip.replace(/:\d+[^:]*$/, "");
-    },
+    // IPv6 agrupada por /56 (helpers/rateLimitKey.js). Antes se quitaba aquí el
+    // puerto con una regex que en una IPv6 cortaba también el último grupo;
+    // normalizeForwardedFor ya deja req.ip sin puerto.
+    keyGenerator: require("./helpers/rateLimitKey").clientIpKey,
     message: { ok: false, msg: "Too many requests from this IP, please try again later" },
   });
   app.use(limiter);

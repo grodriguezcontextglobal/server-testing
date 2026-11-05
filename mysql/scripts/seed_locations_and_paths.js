@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 const getConnection = require('../database/config');
 
 async function seed() {

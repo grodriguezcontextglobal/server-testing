@@ -102,7 +102,7 @@ function computeExitCode(findings, { apply = false } = {}) {
 }
 
 async function main() {
-  require('dotenv').config();
+  require('dotenv').config({ quiet: true });
   const { dbConnection } = require('../database/config');
   const Company = require('../models/Company');
   const getConnection = require('../mysql/database/config');

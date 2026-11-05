@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 const { randomUUID } = require("crypto");
 const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");

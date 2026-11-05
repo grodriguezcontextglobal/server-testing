@@ -23,7 +23,7 @@
  */
 
 if (require.main === module) {
-  require("dotenv").config();
+  require("dotenv").config({ quiet: true });
   const mongoose = require("mongoose");
 
   const MONGO_URI = process.env.DB_CNN;

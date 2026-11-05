@@ -1,7 +1,7 @@
 // scripts/patch-nosql-roles.js
 // Normaliza los campos role/roleType de todos los employees en MongoDB.
 // Ejecutar DESPUÉS de migrate-roles.js, con --dry-run primero.
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') })
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'), quiet: true })
 const { MongoClient } = require('mongodb')
 
 const { VALID_ROLE_TYPES } = require('../constants/roles')

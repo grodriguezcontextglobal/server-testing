@@ -42,7 +42,7 @@ module.exports = { buildUserIdBackfill };
 // ─── Ejecución directa ──────────────────────────────────────────────────────
 
 if (require.main === module) {
-  require('dotenv').config(); // carga .env igual que index.js
+  require('dotenv').config({ quiet: true }); // carga .env igual que index.js
   const mongoose = require('mongoose');
 
   const MONGO_URI = process.env.DB_CNN;

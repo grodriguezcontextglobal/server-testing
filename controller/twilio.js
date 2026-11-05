@@ -1,4 +1,4 @@
-require("dotenv").config(); //connect with dotenv file
+require("dotenv").config({ quiet: true }); //connect with dotenv file
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;

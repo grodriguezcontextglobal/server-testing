@@ -1,7 +1,7 @@
 // scripts/migrate-roles.js
 // Lee MongoDB → escribe en PlanetScale SQL
 // Correr UNA vez, en branch de PS, con --dry-run primero
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') })
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'), quiet: true })
 const { MongoClient } = require('mongodb')
 const mysql = require('mysql2/promise')
 const { randomUUID: uuid } = require('crypto')
