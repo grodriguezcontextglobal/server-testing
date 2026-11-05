@@ -44,7 +44,7 @@
     "rate-limit-redis": "^4.2.0",
     "redis": "^4.6.15",
     "speakeasy": "^2.0.0",
-    "stripe": "^17.3.1",
+    "stripe": "^22.6.1",
     "winston": "^3.18.3"
   },
   "devDependencies": {
