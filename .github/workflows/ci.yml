@@ -23,8 +23,11 @@
 #            npm (solo producción) y la lista de módulos de Go, como artifact.
 #
 # Lo que este fichero NO hace (ajustes del repositorio en GitHub, no código):
-#   - exigir que pase y una revisión antes de mergear a main / release/*
-#     (Settings > Branches > branch protection rules);
+#   - exigir que pase y una revisión antes de mergear a main: lo hace el
+#     ruleset .github/rulesets/protect-main.json, que aplica
+#     scripts/apply-branch-protection.ps1 (requiere GitHub Pro u organización;
+#     mientras, main-guard.yml detecta pushes directos). Los nombres de trabajo
+#     test/audit/go son los checks requeridos: renombrarlos rompe el ruleset;
 #   - activar Dependabot security updates (Settings > Code security).
 
 name: CI
