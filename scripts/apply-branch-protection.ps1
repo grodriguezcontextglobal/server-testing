@@ -1,8 +1,8 @@
 <#
   Aplica (o actualiza) el ruleset que cierra main (CM-3, CM-5; 2026-11-05).
 
-  Regla: a main solo se llega por pull request, con 1 aprobación de alguien que
-  no sea quien hizo el último push, conversaciones resueltas y los checks de CI
+  Regla: a main solo se llega por pull request (sin aprobación obligatoria:
+  decisión del 2026-11-05, hay un solo desarrollador), conversaciones resueltas y los checks de CI
   test, audit y go en verde sobre la rama actualizada. Sin push directo, sin
   force-push, sin borrar la rama, y sin bypass (ni para admins).
 
