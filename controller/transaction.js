@@ -2,7 +2,7 @@ const { response, json } = require("express");
 const { default: mongoose, isValidObjectId } = require("mongoose");
 const Transaction = require("../models/Transaction");
 const { clientRedis } = require("../database/cacheMemoryConfig");
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const logger = require("../helpers/logger");

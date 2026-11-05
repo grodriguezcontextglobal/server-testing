@@ -1,5 +1,5 @@
 const cloudinary = require("cloudinary").v2;
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 const cloudinaryUploader = async (request, response) => {
   try {

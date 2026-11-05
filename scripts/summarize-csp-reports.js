@@ -38,7 +38,7 @@ function summarize(reports, top = 15) {
 }
 
 async function main() {
-  require('dotenv').config();
+  require('dotenv').config({ quiet: true });
   const mongoose = require('mongoose');
   const { dbConnection } = require('../database/config');
   await dbConnection();

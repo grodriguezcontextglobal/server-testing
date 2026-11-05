@@ -4,7 +4,7 @@ const StripeCustomer = require("../models/StripeCustomer");
 const StripeTransaction = require("../models/StripeTransaction");
 // const Transaction = require("../models/Transaction");
 const StripeCompany = require("../models/StripeCompany");
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 const logger = require("../helpers/logger");
 
 // Cliente Stripe endurecido (Fase 3, DESIGN_task_queue.md): trae retry
