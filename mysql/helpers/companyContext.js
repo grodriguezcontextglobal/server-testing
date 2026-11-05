@@ -17,12 +17,9 @@ const { getStaffCompanyAccess } = require('./staffAccess');
  * is the single place that decision lives — controllers ask for a context and
  * either get a verified company id or an error to return.
  *
- * Known limitation, deliberate and pre-existing: `req.sqlStaffId` is normally
- * taken from the signed JWT, but `middlewares/validate-jwt.js` falls back to the
- * client-supplied `s-token-lq` header for legacy tokens issued before the JWT
- * carried it. For those tokens the identity this check hangs on is
- * self-declared. The window closes as old tokens expire (12h, or 30 days with
- * remember-me); retiring that fallback is tracked separately.
+ * `req.sqlStaffId` comes only from the signed JWT. Until 2026-10-21
+ * `middlewares/validate-jwt.js` fell back to the client-supplied `s-token-lq`
+ * header for tokens without it, which made this identity self-declared.
  */
 
 const COMPANY_HEADER = 's-company-lq';

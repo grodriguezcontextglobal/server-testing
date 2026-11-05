@@ -1,21 +1,44 @@
 const User = require("../models/User");
 const Event = require("../models/Event");
 const Receivers = require("../models/Receivers");
-const { generateJWT } = require("../helpers/jwt");
+const { issueConsumerToken, isConsumerOrigin } = require("../helpers/consumerToken");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const runGoWorker = require("../helpers/goWorker");
 const { groupBy } = require("lodash");
 const mongoose = require("mongoose");
 const logger = require("../helpers/logger");
+const {
+  buildUserFilter,
+  isStaffOrigin,
+  parseQueryString,
+  isStaffSession,
+  UserFilterError,
+  PUBLIC_PROJECTION,
+} = require("../helpers/consumerUserFilter");
 
-const showAllUsers = async (request, response) => {
+const sendFilterError = (response, error) =>
+  response.status(error.status).json({ ok: false, msg: error.message });
+
+// Con sesión de staff filtra por cualquier campo del modelo; sin sesión solo
+// busca por email exacto (ver helpers/consumerUserFilter.js). `publicFromDashboard`
+// deja ese carril público abierto también para el dashboard (solo POST
+// /user-query, por /attendance-confirmation).
+const findUsers = async (request, response, { publicFromDashboard }) => {
   try {
-    const users = await User.find(request.body);
+    const authenticated = await isStaffSession(request);
+    const filter = buildUserFilter(request.body, {
+      authenticated,
+      sessionRequired: !publicFromDashboard && isStaffOrigin(request),
+    });
+    const users = filter
+      ? await User.find(filter, authenticated ? null : PUBLIC_PROJECTION)
+      : [];
     return response.status(200).json({
       ok: true,
       users,
     });
   } catch (error) {
+    if (error instanceof UserFilterError) return sendFilterError(response, error);
     logger.error(error);
     return response.status(500).json({
       ok: false,
@@ -24,12 +47,33 @@ const showAllUsers = async (request, response) => {
   }
 };
 
+// GET/POST /users
+const showAllUsers = (request, response) =>
+  findUsers(request, response, { publicFromDashboard: false });
+
+// POST /user-query
+const lookupUsers = (request, response) =>
+  findUsers(request, response, { publicFromDashboard: true });
+
 const getListOfUsers = async (request, response = response) => {
   try {
+    const authenticated = await isStaffSession(request);
+    const check = buildUserFilter(parseQueryString(request._parsedUrl.query), {
+      authenticated,
+      sessionRequired: isStaffOrigin(request),
+    });
+    // La caché es la lista por evento+compañía que pide el dashboard. Cualquier
+    // otra consulta (p. ej. por email) iba a parar a "event=null&company=null"
+    // y devolvía lo que hubiera guardado otra consulta distinta.
+    if (!check) return response.status(200).json({ ok: true, users: [] });
+    if (!check.event_providers || !check.company_providers) {
+      const users = await User.find(check, authenticated ? null : PUBLIC_PROJECTION);
+      return response.status(200).json({ ok: true, users });
+    }
+
     const cache_connection = await clientRedis();
-    const params = request._parsedUrl.query;
-    const eventID = new URLSearchParams(params).get("event_providers");
-    const companyID = new URLSearchParams(params).get("company_providers");
+    const eventID = check.event_providers;
+    const companyID = check.company_providers;
 
     const cachedList = await cache_connection.get(
       `event=${eventID}&company=${companyID}`
@@ -41,11 +85,6 @@ const getListOfUsers = async (request, response = response) => {
         users: JSON.parse(cachedList),
       });
     } else {
-      const formatting = [...params.split("&")];
-      const check = formatting.reduce(
-        (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
-        {}
-      );
       const users = await User.find(check);
       cache_connection.set(
         `event=${eventID}&company=${companyID}`,
@@ -58,6 +97,7 @@ const getListOfUsers = async (request, response = response) => {
       });
     }
   } catch (error) {
+    if (error instanceof UserFilterError) return sendFilterError(response, error);
     return response.status(500).json({
       ok: false,
       msg: error,
@@ -90,16 +130,21 @@ const getUser = async (request, response = response) => {
 
 const checkUser = async (request, response = response) => {
   const { userInfoEmailCheck } = request.body;
+  // La ruta valida `email`, pero aquí se busca por `userInfoEmailCheck`, que
+  // nadie validaba: un objeto ({"$regex": ...}) servía para enumerar usuarios.
+  if (typeof userInfoEmailCheck !== "string" || !userInfoEmailCheck.trim()) {
+    return response.status(400).json({ ok: false, msg: "userInfoEmailCheck must be a string" });
+  }
   try {
     const user = await User.findOne({ email: userInfoEmailCheck });
 
+    // Sin token (2026-10-21): devolvía un JWT firmado con la semilla de staff a
+    // cualquiera que conociera un email. Un consumidor existente obtiene su
+    // token con el enlace del correo (POST /consumer-login-link).
     if (user !== null) {
-      const token = await generateJWT(user.id, user.name);
-
       return response.status(201).json({
         ok: true,
         user,
-        token,
         msg: "existing user",
       });
     } else {
@@ -130,7 +175,20 @@ const newUser = async (request, response = response) => {
     }
     user = new User(request.body);
     const userCreated = await user.save();
-    const token = await generateJWT(user.id, user.name);
+    // Token de consumidor (helpers/consumerToken.js): quién, en qué evento y de
+    // qué compañía. Antes era un JWT con la semilla de staff que validateJWT
+    // aceptaba como sesión.
+    // Solo a la app del consumidor: el dashboard también crea consumidores (con
+    // sesión de staff) y no debe recibir un token de consumidor. Y solo en
+    // eventos con depósito, con nivel 'email': sin depósito el consumidor nuevo
+    // entra por el enlace del correo (verificación de sus datos por si hay una
+    // pérdida), y issueConsumerToken devuelve null.
+    const token = isConsumerOrigin(request)
+      ? await issueConsumerToken(userCreated.id, userCreated.event_providers.at(-1), {
+          email: userCreated.email,
+          level: "email",
+        }).catch(() => null)
+      : null;
     await cache_connection.del(
       `event_providers=${userCreated.event_providers.at(
         -1
@@ -180,8 +238,8 @@ const editUser = async (request, response = response) => {
       ...request.body,
     };
 
-    const token = await generateJWT(user.id, user.name);
-
+    // Sin token (2026-10-21): esta ruta es anónima y edita por id, así que
+    // emitirlo aquí se lo daría a cualquiera que conozca el id.
     const userUpdated = await User.findByIdAndUpdate(userId, userEdited, {
       new: true,
     });
@@ -205,7 +263,6 @@ const editUser = async (request, response = response) => {
       email: userUpdated.email,
       phone: userUpdated.phoneNumber,
       uid: userUpdated.id,
-      token,
     });
   } catch (error) {
     logger.error(error);
@@ -218,15 +275,12 @@ const editUser = async (request, response = response) => {
 
 const getListOfUsersAndTransactionsPerEvent = async (request, response) => {
   try {
-    const params = request._parsedUrl.query;
-    const eventID = new URLSearchParams(params).get("event_providers");
-    const companyID = new URLSearchParams(params).get("company_providers");
-
-    const formatting = [...params.split("&")];
-    const check = formatting.reduce(
-      (a, v) => ({ ...a, [v.split("=")[0]]: v.split("=")[1] }),
-      {}
-    );
+    // La ruta exige sesión de staff (routes/event.js).
+    const check = buildUserFilter(parseQueryString(request._parsedUrl.query), {
+      authenticated: true,
+    });
+    const eventID = check.event_providers;
+    const companyID = check.company_providers;
     const eventInfo = await Event.findOne({ _id: eventID });
     const users = await User.find(check);
     // Una sola query por TODAS las transacciones del evento, en vez de un
@@ -280,6 +334,7 @@ const getListOfUsersAndTransactionsPerEvent = async (request, response) => {
       data: JSON.stringify(result),
     });
   } catch (error) {
+    if (error instanceof UserFilterError) return sendFilterError(response, error);
     logger.error(error);
     return response.status(500).json({
       ok: false,
@@ -328,6 +383,7 @@ const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
 };
 
 module.exports = {
+  lookupUsers,
   showAllUsers,
   newUser,
   editUser,

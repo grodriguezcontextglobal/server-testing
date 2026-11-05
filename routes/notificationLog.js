@@ -4,6 +4,8 @@
  */
 
 const { Router } = require("express");
+const { validateJWT } = require("../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const router = Router();
 
 const {
@@ -11,9 +13,9 @@ const {
 } = require("../controller/notificationLog");
 
 // feed event log
-router.post("/notification-feed-log", feedNotificationLog)
+router.post("/notification-feed-log", validateJWT, checkTokenVersion, feedNotificationLog)
 
 //render list of log
-router.get("/notification-log-list", notificationLogList)
+router.get("/notification-log-list", validateJWT, checkTokenVersion, notificationLogList)
 
 module.exports = router;

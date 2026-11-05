@@ -43,6 +43,12 @@ function makeLogModel(captured) {
   };
 }
 
+// Para un usuario normal el filtro de compañía va dentro de un $or (su rama
+// alternativa son sus propios registros sin compañía); para super_user, suelto.
+function companyScope(query) {
+  return query.$or ? query.$or[0].company_id : query.company_id;
+}
+
 function makeHandler({ requester, memberships, captured }) {
   return createGetStaffActivityLogs({
     findAdminUserFn: async () => requester,
@@ -72,9 +78,11 @@ describe("getStaffActivityLogs: alcance por Company.employees", () => {
     assert.equal(res._code, undefined); // 200 implícito vía res.json
     assert.equal(res._body.ok, true);
     // ObjectId (registros nuevos) y nombre (registros históricos) son válidos
-    assert.deepEqual(captured.query.company_id, {
+    assert.deepEqual(companyScope(captured.query), {
       $in: ["companyA", "Acme Corp", "companyB", "Beta LLC"],
     });
+    // Y sus propios registros sin compañía (acciones que llegaron sin cabecera).
+    assert.deepEqual(captured.query.$or[1], { company_id: null, staff_member_id: "S1" });
   });
 
   it("403 solo cuando no hay ninguna membresía activa", async () => {
@@ -121,7 +129,7 @@ describe("getStaffActivityLogs: alcance por Company.employees", () => {
     assert.equal(res._body.ok, true);
     // Filtrar por el id trae también lo guardado bajo el nombre: es el
     // historial de la MISMA compañía, escrito antes de normalizar la clave.
-    assert.deepEqual(captured.query.company_id, { $in: ["companyA", "Acme Corp"] });
+    assert.deepEqual(companyScope(captured.query), { $in: ["companyA", "Acme Corp"] });
   });
 
   // El bug reportado: el cliente manda la compañía en el header y el reporte
@@ -144,7 +152,7 @@ describe("getStaffActivityLogs: alcance por Company.employees", () => {
     );
 
     assert.equal(res._body.ok, true);
-    assert.deepEqual(captured.query.company_id, { $in: ["companyB", "Beta LLC"] });
+    assert.deepEqual(companyScope(captured.query), { $in: ["companyB", "Beta LLC"] });
   });
 
   it("el super_user también queda scopeado cuando hay contexto de compañía", async () => {
@@ -177,7 +185,7 @@ describe("getStaffActivityLogs: alcance por Company.employees", () => {
     await handler({ uid: "S1", query: { company_id: "Acme Corp" } }, res);
 
     assert.equal(res._body.ok, true);
-    assert.deepEqual(captured.query.company_id, { $in: ["companyA", "Acme Corp"] });
+    assert.deepEqual(companyScope(captured.query), { $in: ["companyA", "Acme Corp"] });
   });
 
   it("super_user ve todo y no consulta membresías", async () => {

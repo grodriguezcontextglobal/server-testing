@@ -14,6 +14,7 @@
  */
 
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const router = Router();
 
 const { optionalJWT } = require("../middlewares/optionalJWT");
@@ -22,7 +23,12 @@ const { showAllUsers } = require("../controller/auth");
 
 // Buscar customer de Stripe por email  → { ok, stripeCustomerSaved: [...] }
 // Reemplaza el bloqueado POST /api/stripe/customers (billing:read).
-router.post("/stripe/find-customer", optionalJWT, listAllCustomers);
+router.post(
+  "/stripe/find-customer",
+  optionalJWT,
+  consumerTokenGate({ subject: (req) => ({ email: req.body?.email }) }),
+  listAllCustomers
+);
 
 // Crear customer de Stripe → { ok, id, fullName, ... }
 // Reemplaza el roto POST /api/stripe/create-account (doble /api + ruta inexistente).

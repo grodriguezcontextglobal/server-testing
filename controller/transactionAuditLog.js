@@ -3,24 +3,8 @@ const TransactionAuditLog = require("../models/TransactionAuditLog");
 const logger = require("../helpers/logger");
 const { fromSecondary } = require("../helpers/mongoRead");
 
-const createAuditLog = async (request, response) => {
-  try {
-    let transactionAuitLog = new TransactionAuditLog(request.body);
-
-    await transactionAuitLog.save();
-
-    return response.status(201).json({
-      ok: true,
-      transactionAuitLog,
-    });
-  } catch (error) {
-    logger.error(error);
-    response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrater",
-    });
-  }
-};
+// createAuditLog (POST /create-audit) se retiró el 2026-10-19: ver
+// routes/transactionAuditLog.js.
 
 const displayTransactionAuditLog = async (request, response) => {
   try {
@@ -41,6 +25,5 @@ const displayTransactionAuditLog = async (request, response) => {
   }
 };
 module.exports = {
-  createAuditLog,
   displayTransactionAuditLog,
 };

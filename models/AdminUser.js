@@ -19,10 +19,14 @@ const AdminUserSchema = new Schema({
     required: false,
     unique: false,
   },
+  // Oculta por defecto: el hash salía en toda respuesta que devolviera un
+  // AdminUser, incluida GET /api/staff/__staff-search, que es anónima. Quien lo
+  // necesite (login, verify-password) lo pide con `.select("+password")`.
   password: {
     type: String,
     required: true,
     unique: true,
+    select: false,
   },
   // `question` / `answer` (pregunta secreta) se eliminaron: ningún flujo las
   // leía — no hay recuperación de contraseña por pregunta secreta — y eran
@@ -64,9 +68,24 @@ const AdminUserSchema = new Schema({
     type: Boolean,
     default: false,
   },
+  // FedRAMP A5 (2026-11-03): un administrador restableció la MFA. Mientras siga
+  // en true, el login no entrega mfaSetupToken: la persona vuelve a enrolarse
+  // solo desde el enlace de reset de contraseña que le llega por correo. Lo
+  // limpia un update-password correcto (controller/admin.js).
+  mfaResetPending: {
+    type: Boolean,
+    default: false,
+  },
   mfaSecret: {
     type: Object, // Stores ASCII, hex, base32, otpauth_url
     select: false, // Do not return by default
+  },
+  // Hashes de los códigos de recuperación de MFA (helpers/mfaRecoveryCodes.js).
+  // Cada uno se borra del array al usarse.
+  mfaRecoveryCodes: {
+    type: [String],
+    select: false,
+    default: undefined,
   },
   emailNotifications: {
     type: Object,
@@ -150,7 +169,9 @@ const AdminUserSchema = new Schema({
 });
 
 AdminUserSchema.method("toJSON", function () {
-  const { _id, __v, ...object } = this.toObject();
+  // password/mfaSecret/mfaRecoveryCodes nunca se serializan, aunque se hayan
+  // cargado con `.select("+...")` (el login lo hace y responde `entire: adminUser`).
+  const { _id, __v, password, mfaSecret, mfaRecoveryCodes, ...object } = this.toObject();
 
   object.id = _id;
   return object;

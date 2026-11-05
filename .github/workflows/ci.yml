@@ -1,0 +1,140 @@
+# CI del servidor (FedRAMP P1.6 · CM-3, RA-5 · KSI-CMT).
+#
+# Corre en cada push y en cada pull request. Es la red que sostiene el resto de
+# la Fase 1: cada arreglo de seguridad tiene un test que lo fija, y sin CI esos
+# tests solo protegen si alguien se acuerda de correrlos.
+#
+# Trabajos independientes:
+#   test     la suite completa (node --test). No necesita bases de datos: los
+#            tests stubean Mongo, MySQL y Redis. Solo hacen falta dos variables
+#            con valor ficticio, porque dos módulos construyen su cliente al cargarse.
+#   audit    bloquea si una dependencia de producción tiene una vulnerabilidad
+#            ALTA o crítica (RA-5). Subido de critical a high el 2026-10-27, al
+#            cerrar las 8 altas (pm2 7.1.1, multer 2.5.0, body-parser,
+#            follow-redirects).
+#   go       vet + build + govulncheck del worker de Go. En las máquinas de
+#            desarrollo no hay Go, así que un .go roto o un módulo vulnerable
+#            solo se descubría al compilar en prod. govulncheck solo falla por
+#            vulnerabilidades en código que el worker de verdad llama.
+#   semgrep  análisis estático (SA-11). De momento SOLO INFORMA: deja el SARIF
+#            como artifact y no bloquea. Cuando se revise el primer informe, se
+#            decide qué reglas pasan a bloquear (un trinquete, como el de rutas).
+#   sbom     inventario de dependencias por commit (CM-8, SR-4): CycloneDX de
+#            npm (solo producción) y la lista de módulos de Go, como artifact.
+#
+# Lo que este fichero NO hace (ajustes del repositorio en GitHub, no código):
+#   - exigir que pase y una revisión antes de mergear a main: lo hace el
+#     ruleset .github/rulesets/protect-main.json, que aplica
+#     scripts/apply-branch-protection.ps1 (requiere GitHub Pro u organización;
+#     mientras, main-guard.yml detecta pushes directos). Los nombres de trabajo
+#     test/audit/go son los checks requeridos: renombrarlos rompe el ruleset;
+#   - activar Dependabot security updates (Settings > Code security).
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+        env:
+          # Valores ficticios: controller/transaction.js crea el cliente de
+          # Stripe al cargarse y helpers/jwt.js firma con la semilla.
+          STRIPE_SECRET_KEY: sk_test_ci_placeholder
+          SECRET_JWT_SEED: ci-placeholder-seed
+
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm audit --omit=dev --audit-level=high
+
+  go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: go-worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go-worker/go.mod
+          cache-dependency-path: go-worker/go.sum
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.1.4
+      - run: govulncheck ./...
+
+  semgrep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # semgrep 1.85 importa pkg_resources, que el Python 3.12 del runner ya no
+      # trae y que setuptools >= 81 eliminó: sin esto el job no llegaba a
+      # escanear (ModuleNotFoundError) y nunca subía el SARIF.
+      - run: pip install semgrep==1.85.0 "setuptools<81"
+      # Sin --error: informa, no bloquea (ver la cabecera). test/ y los
+      # generados fuera para que el informe hable del código que corre.
+      - run: >
+          semgrep scan --metrics=off
+          --config p/javascript --config p/nodejsscan --config p/golang
+          --exclude test --exclude graphify-out --exclude docs --exclude reports
+          --sarif --output semgrep.sarif
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semgrep-${{ github.sha }}
+          path: semgrep.sarif
+          retention-days: 90
+
+  sbom:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go-worker/go.mod
+          cache-dependency-path: go-worker/go.sum
+      - run: npm ci
+      - run: npm sbom --sbom-format cyclonedx --omit=dev > sbom-npm.cdx.json
+      - run: go list -m -json all > ../sbom-go-modules.json
+        working-directory: go-worker
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: |
+            sbom-npm.cdx.json
+            sbom-go-modules.json
+          retention-days: 90

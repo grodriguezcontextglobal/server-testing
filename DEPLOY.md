@@ -104,6 +104,7 @@ nssm get DevitrakServer AppEnvironmentExtra
 nssm get DevitrakEmailWorker AppEnvironmentExtra
 nssm get DevitrakBulkWorker AppEnvironmentExtra
 nssm get DevitrakDeleteWorker AppEnvironmentExtra
+nssm get DevitrakHeavyWorker AppEnvironmentExtra
 ```
 
 Assuming the services are on the group form documented above, that gives:
@@ -113,14 +114,19 @@ nssm set DevitrakServer AppEnvironmentExtra PM2_HOME=C:\Users\CGAdmin\Documents\
 nssm set DevitrakEmailWorker AppEnvironmentExtra QUEUE_GROUP=email NODE_ENV=production
 nssm set DevitrakBulkWorker AppEnvironmentExtra QUEUE_GROUP=bulk QUEUE_POLL_MS=300 NODE_ENV=production
 nssm set DevitrakDeleteWorker AppEnvironmentExtra QUEUE_GROUP=delete QUEUE_POLL_MS=300 NODE_ENV=production
+nssm set DevitrakHeavyWorker AppEnvironmentExtra QUEUE_GROUP=heavy NODE_ENV=production
 
 nssm restart DevitrakServer
 nssm restart DevitrakEmailWorker
 nssm restart DevitrakBulkWorker
 nssm restart DevitrakDeleteWorker
+nssm restart DevitrakHeavyWorker
 ```
 
-**All four Node services**, not just the API: `queue\standalone.js` requires
+(`scripts\install-queue-workers.ps1` already sets `NODE_ENV=production` on the Bulk, Delete
+and Heavy workers.)
+
+**All the Node services**, not just the API: `queue\standalone.js` requires
 `helpers/logger.js` at line 22, so the console-transport branch applies to each worker
 independently. `DevitrakGoWorker` is Go and ignores `NODE_ENV` entirely.
 
@@ -183,6 +189,7 @@ nssm stop DevitrakServer
 nssm stop DevitrakEmailWorker
 nssm stop DevitrakBulkWorker
 nssm stop DevitrakDeleteWorker
+nssm stop DevitrakHeavyWorker
 
 # Stopping the services is NOT enough: the pm2 daemon is a separate process that
 # survives `nssm stop` and keeps handles inside node_modules. Leave it alive and
@@ -197,6 +204,7 @@ nssm start DevitrakServer
 nssm start DevitrakEmailWorker
 nssm start DevitrakBulkWorker
 nssm start DevitrakDeleteWorker
+nssm start DevitrakHeavyWorker
 nssm status DevitrakServer                # SERVICE_RUNNING
 (Invoke-WebRequest -Uri "http://localhost:34001/health" -UseBasicParsing).Content
 ```
@@ -206,9 +214,11 @@ nssm status DevitrakServer                # SERVICE_RUNNING
 > `cmd /c "rmdir /s /q node_modules"` when PowerShell trips over long paths). A single file that
 > keeps refusing to go is usually Defender mid-scan: wait a few seconds and retry.
 
-> **Node >= 20.11.0 is required** (`package.json` -> `engines`), and `.npmrc` sets
-> `engine-strict=true`, so npm **fails** — it does not warn — on an older Node. Production runs
-> 20.11.0. Install with `--omit=dev`: nothing in `devDependencies` (`jsdoc`, `nodemon`,
+> **Node >= 22.12.0 is required** (`package.json` -> `engines`, since 2026-10-28), and `.npmrc`
+> sets `engine-strict=true`, so npm **fails** — it does not warn — on an older Node. Production
+> runs 22.23.2. `scripts/deploy-node.ps1` checks the Node on PATH and the `node.exe` of every
+> nssm service **before** stopping anything, and refuses to continue on an older one.
+> Install with `--omit=dev`: nothing in `devDependencies` (`jsdoc`, `nodemon`,
 > `response-time`) is used at runtime, and skipping them keeps 41 packages out of production.
 
 ### Notificaciones: pasar a `NODEMAILER_AUTH_MODE=enforce`
@@ -334,6 +344,24 @@ Tres cosas que conviene saber antes de interpretarlos:
   por la ruta con valores ni por `company_id`. Los cuatro procesos acumulan en
   memoria y vuelcan a Redis cada 10 s con `HINCRBY`, así que la vista es del
   cluster; las ventanas son por hora y expiran solas a las 3 h.
+
+### Logs y medición de RAM (A10, 2026-10-28)
+
+- **Los logs son una línea JSON por registro** (`combined.log`, `error.log`), con
+  `timestamp` en ISO 8601 **UTC** y `host`, `pid` y `role` (`api:0`…`api:3`,
+  `worker:bulk`…). Antes eran bloques prettyPrint con hora local. Para leerlos:
+  `Get-Content logs\combined.log -Tail 50 | ForEach-Object { $_ | ConvertFrom-Json }`.
+- **Cada proceso Node escribe su RAM y CPU** cada minuto en
+  `logs\runtime-metrics.log` (`RUNTIME_METRICS_INTERVAL_SEC`, 0 lo apaga).
+- **La máquina entera** (bases de datos, IIS, Go incluidos) la mide
+  `scripts\measure-ram.ps1`, que solo lee. Una semana, con un día de evento
+  dentro, en segundo plano y desde una consola de administrador:
+  ```powershell
+  Start-Process powershell -WindowStyle Hidden -ArgumentList `
+    '-ExecutionPolicy Bypass -File C:\Users\CGAdmin\Documents\Github\server-testing\scripts\measure-ram.ps1'
+  ```
+  Deja `logs\ram-<fecha>.csv`. El resumen, con el tamaño de máquina sugerido:
+  `node scripts\summarize-ram.js` (lee `logs\` entero; `--json` para guardarlo).
 
 > **⚠️ If the pull changed `go-worker/worker.exe`** (or any `go-worker/*.go`), the Node
 > restart is **not enough** — the Go worker is a **separate persistent process** and does not
@@ -567,7 +595,7 @@ does **not** survive a reboot; prefer the service above.
 
 ---
 
-## Split services (native nssm) — Node · Go worker · email · bulk · delete
+## Split services (native nssm) — Node · Go worker · email · bulk · delete · heavy
 
 Production runs as **separate native nssm services** (no containers; Windows Server
 2019). They share the external MySQL (PlanetScale) + Mongo and talk over localhost.
@@ -577,8 +605,30 @@ Production runs as **separate native nssm services** (no containers; Windows Ser
 | `DevitrakServer` | Node (`index.js`, pm2-runtime) | HTTP API + in-process queue worker for **every job type that has no dedicated worker** (`QUEUE_EXCLUDE_GROUPS=dedicated`) |
 | `DevitrakGoWorker` | `go-worker\worker.exe` | inventory Go operations (see the Go worker section) |
 | `DevitrakEmailWorker` | `node queue\standalone.js` | **email** jobs only |
-| `DevitrakBulkWorker` | `node queue\standalone.js` | **bulk-write** jobs only (see below) — fast poll |
+| `DevitrakBulkWorker` | `node queue\standalone.js` | **bulk-write** jobs (see below) — fast poll |
 | `DevitrakDeleteWorker` | `node queue\standalone.js` | **delete** jobs only (see below) — fast poll |
+| `DevitrakHeavyWorker` | `node queue\standalone.js` | **heavy** jobs: exports, spreadsheet imports, alphanumeric ranges — default poll (desde 2026-10-12) |
+
+**Bulk, Delete y Heavy se instalan (o se recrean) con un solo script**, idempotente,
+en una consola de administrador:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\install-queue-workers.ps1
+# o solo uno:
+powershell -ExecutionPolicy Bypass -File scripts\install-queue-workers.ps1 -Only DevitrakHeavyWorker
+```
+
+Fija el `AppEnvironmentExtra` entero de cada worker, los arranca, espera a
+`SERVICE_RUNNING`, muestra el alcance que cada uno registró en `logs\combined.log`
+y comprueba que `DevitrakServer` tenga `QUEUE_EXCLUDE_GROUPS=dedicated` (solo avisa:
+**no** toca la línea del server, por la trampa de `GO_WORKER_PORT` de más abajo).
+Los bloques manuales de `nssm install` más abajo quedan como referencia histórica.
+
+> **Si falta uno de estos servicios, sus jobs no fallan: se quedan `pending`** sin
+> error visible, porque el server excluye todo `dedicated`. No se pierde nada — al
+> volver el servicio, los drena. Para comprobar que existen: `nssm status <nombre>`
+> o `Get-Service Devitrak*` (un typo en el subcomando de nssm da un error que se
+> confunde con «el servicio no existe»).
 
 The split is driven entirely by env — the code is identical across services. The type
 lists live in **`constants/queueTypeGroups.js`** (groups `email`, `bulk`, `delete`), so a
@@ -594,17 +644,104 @@ server's exclusion and this document:
 - **`DevitrakBulkWorker`**: `QUEUE_GROUP=bulk` and `QUEUE_POLL_MS=300` (see below — this
   one's poll interval matters).
 - **`DevitrakDeleteWorker`**: `QUEUE_GROUP=delete` and `QUEUE_POLL_MS=300`.
+- **`DevitrakHeavyWorker`**: `QUEUE_GROUP=heavy`, default poll.
 - **Grupo `heavy`** (`inventory:bulk-insert-alphanumeric`,
-  `inventory:bulk-update-alphanumeric`, `event:bulk-update-item-shipping`):
-  escrituras pesadas que **nadie espera** — sus controllers responden `202 + jobId`.
-  Ver el aviso de abajo: **necesita consumidor**.
+  `inventory:bulk-update-alphanumeric`, `event:bulk-update-item-shipping`,
+  `inventory:export`, `inventory:bulk-insert-from-spreadsheet`): trabajo pesado
+  que **nadie espera** — sus controllers responden `202 + jobId`. Ver el aviso de abajo: **necesita consumidor**.
+  `inventory:export` sube el .xlsx a S3, así que el servicio que sirva `heavy`
+  necesita `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+  `AWS_S3_BUCKET_NAME` y **`AWS_S3_EXPORTS_BUCKET`** — los toma del `.env` del
+  repositorio, que `queue\standalone.js` carga con dotenv igual que el server; no
+  hay que duplicarlos en nssm. También escribe un fichero temporal en
+  `os.tmpdir()` del usuario del servicio.
+
+  > **`AWS_S3_EXPORTS_BUCKET=devitrak-inventory-exports`** (us-east-2, creado el
+  > 2026-09-22 con una regla que borra los objetos al día). Va en el `.env` del
+  > repositorio y **no** en `nssm`: dotenv lo carga en los cuatro servicios de
+  > una vez, y así no hay que volver a montar un `AppEnvironmentExtra` entero
+  > —que es como se borró un `GO_WORKER_PORT` en este mismo despliegue—.
+  >
+  > Si no está definida, los exports caen al bucket de documentos y **siguen
+  > funcionando**: por eso el código se puede desplegar antes de tocar el `.env`.
+  > Lo que no funcionaría es tenerla puesta a medias, así que es una sola línea
+  > en un solo sitio.
+  >
+  > El bucket tiene que estar en **us-east-2**, la misma región que el cliente
+  > S3: las URLs prefirmadas se firman con la región, y una firmada para Ohio
+  > contra un bucket de Virginia no valida.
+
+### Estado objetivo desde 2026-10-12
+
+`scripts\install-queue-workers.ps1` reconfigura Bulk y Delete (ya instalados) y
+crea `DevitrakHeavyWorker`: el
+grupo `heavy` deja de compartir worker con `bulk` (un export de minutos hacía caer
+a `202 + jobId` los bulk que esperan 4 s). `DevitrakServer` no cambia.
+
+```
+DevitrakServer        PM2_HOME=…\.pm2  GO_WORKER_EXTERNAL=true  GO_WORKER_PORT=7453
+                      QUEUE_EXCLUDE_GROUPS=dedicated   (+ NODE_ENV=production si ya está)
+DevitrakBulkWorker    QUEUE_GROUP=bulk     QUEUE_POLL_MS=300  NODE_ENV=production
+DevitrakDeleteWorker  QUEUE_GROUP=delete   QUEUE_POLL_MS=300  NODE_ENV=production
+DevitrakHeavyWorker   QUEUE_GROUP=heavy                       NODE_ENV=production
+DevitrakEmailWorker   QUEUE_GROUP=email
+```
+
+Latido del nuevo worker: `HEARTBEAT_URL_QUEUE_HEAVY` en el `.env` (el nombre
+`queue_heavy` sale solo de `QUEUE_GROUP`). Sin la variable no late, y nada falla.
+
+### Estado real de producción — verificado en la VM el 2026-09-22 (histórico)
+
+Los bloques de instalación de más abajo son los pasos históricos, **no el estado
+actual**. Esto es lo que devuelve `nssm get <servicio> AppEnvironmentExtra` hoy,
+después del cutover a grupos:
+
+```
+DevitrakServer        PM2_HOME=…\.pm2
+                      GO_WORKER_EXTERNAL=true
+                      GO_WORKER_PORT=7453
+                      QUEUE_EXCLUDE_GROUPS=dedicated
+DevitrakBulkWorker    QUEUE_GROUP=bulk,heavy   QUEUE_POLL_MS=300
+DevitrakDeleteWorker  QUEUE_GROUP=delete       QUEUE_POLL_MS=300
+DevitrakEmailWorker   QUEUE_GROUP=email
+```
+
+> #### ⚠️ `GO_WORKER_PORT=7453` NO se puede omitir de esa línea
+>
+> `nssm set AppEnvironmentExtra` **reemplaza el bloque entero**, así que montar
+> el comando sin esa variable la borra. Y no se cae al valor por defecto del
+> código (que es 7453 y sería correcto): **el `.env` del repositorio tiene
+> `GO_WORKER_PORT=7452`**, `dotenv` no pisa lo que ya viene del entorno, y sin la
+> variable de nssm gana el `.env`. Node marcaría el 7452 mientras el worker
+> escucha en el 7453 → ECONNREFUSED en **todas** las llamadas al Go worker. Es
+> exactamente el incidente del 2026-08-06.
+>
+> Antes de tocar cualquier `AppEnvironmentExtra`, haz primero el `nssm get` y
+> monta la línea nueva a partir de lo que devuelva.
+
+**Lo que había antes del cutover**, por si hay que revertir: `DevitrakServer`
+excluía **solo los tres tipos de correo** (no la lista larga que documentan los
+bloques de abajo), así que competía por los bulk, los borrados y los pesados
+dentro de los procesos que atienden login y pagos. Y `DevitrakBulkWorker` llevaba
+un `QUEUE_TYPES=` explícito — que **tiene precedencia sobre `QUEUE_GROUP`**, así
+que añadirle el grupo sin quitar la lista no habría hecho nada, mientras la API
+sí habría dejado de tomar los pesados: 202 + jobId y nadie procesándolos.
 
 > ### ⚠️ ANTES DE DESPLEGAR EL GRUPO `heavy`: hay que darle consumidor
 >
-> Estos tres tipos **no estaban en ningún grupo**, así que hasta ahora los
-> consumía `DevitrakServer` dentro de los mismos procesos que atienden el login
-> y los pagos. Al meterlos en un grupo, `dedicated` los incluye y el server
-> **deja de tomarlos en cuanto arranque con este código**.
+> Tres de estos cuatro tipos **no estaban en ningún grupo**, así que hasta
+> ahora los consumía `DevitrakServer` dentro de los mismos procesos que
+> atienden el login y los pagos. Al meterlos en un grupo, `dedicated` los
+> incluye y el server **deja de tomarlos en cuanto arranque con este código**.
+> El cuarto, `inventory:export`, nace aquí: nunca lo ha servido nadie.
+>
+> **Ojo con la forma vieja, que es la que corre hoy en la VM.** El comando de
+> `DevitrakServer` de más abajo trae un `QUEUE_EXCLUDE_TYPES=` con los tipos
+> escritos a mano, y `QUEUE_TYPES`/`QUEUE_EXCLUDE_TYPES` **tienen precedencia**
+> sobre los grupos. Mientras esa línea siga puesta, el server principal seguirá
+> reclamando `inventory:export` — generando el .xlsx dentro de la API — por
+> mucho que el tipo esté en `heavy`. Hay que **sustituirla** por
+> `QUEUE_EXCLUDE_GROUPS=dedicated`, no añadir el grupo al lado.
 >
 > Si ningún worker sirve `heavy`, esos jobs se quedan **encolados para
 > siempre**, sin error y sin que nada lo señale. Elige una de las dos:
@@ -620,6 +757,13 @@ server's exclusion and this document:
 > Saca el trabajo pesado de la API, que es el 90 % de la ganancia. A cambio
 > comparte worker con los jobs que sí se esperan, así que un insert de 15.000
 > seriales todavía puede hacerles agotar su ventana de 4 s.
+>
+> **Con `inventory:export` dentro, ese «a cambio» pesa más:** un export grande
+> dura minutos, no segundos, y el worker procesa de a uno. Mientras corre, los
+> `bulk` que esperan 4 s caen al `202 + jobId` — que es un camino correcto y ya
+> soportado (`createSyncOrQueuedController`), pero cambia lo que ve el usuario.
+> Si los exports se vuelven frecuentes, pasar a (b) es un cambio de env, sin
+> tocar código.
 >
 > **(b) Correcto** — su propio servicio, `DevitrakHeavyWorker` con
 > `QUEUE_GROUP=heavy` y **poll normal** (no necesita 300 ms: nadie espera).
@@ -900,3 +1044,345 @@ To close that gap (future work, not covered by this setup):
 - Retries with backoff on the frontend, to absorb short blips.
 - A second instance behind a load balancer (restart one at a time), or migrate to a managed service
   (Azure App Service / Container Apps) with multiple replicas and rolling updates.
+
+---
+
+## Monitoreo: Uptime Kuma interno y los latidos
+
+> Añadido el **2026-09-23**. El diseño y el porqué están en
+> `DESIGN_monitoring_uptime_kuma.md`; aquí van los pasos y las trampas.
+>
+> **Estado:** Kuma **instalado y corriendo** en la VM (2.5.4, servicio
+> `UptimeKuma`), con los cinco monitores de sondeo y los cuatro latidos de
+> workers en verde. **Pendiente:** el canal de notificación —sin él un monitor
+> en rojo no avisa a nadie—, los dos latidos de schedulers (verdes cuando corran
+> a su hora), y la vigilancia externa, que desde dentro de la VM no se puede
+> hacer (§C.1).
+
+### A. Las variables de entorno — van al `.env` del repositorio, NO a nssm
+
+Los seis latidos se configuran con una variable cada uno **en el `.env` del
+repositorio**, que `index.js` y `queue/standalone.js` cargan con dotenv en los
+cuatro servicios:
+
+```
+HEARTBEAT_URL_QUEUE_EMAIL=https://<kuma>/api/push/xxxxxxxx
+HEARTBEAT_URL_QUEUE_BULK=https://<kuma>/api/push/xxxxxxxx
+HEARTBEAT_URL_QUEUE_DELETE=https://<kuma>/api/push/xxxxxxxx
+HEARTBEAT_URL_QUEUE_API=https://<kuma>/api/push/xxxxxxxx
+HEARTBEAT_URL_SCHEDULER_OVERDUE=https://<kuma>/api/push/xxxxxxxx
+HEARTBEAT_URL_SCHEDULER_CONSENT=https://<kuma>/api/push/xxxxxxxx
+```
+
+> #### Por qué en el `.env` y no en `AppEnvironmentExtra`
+>
+> `nssm set <servicio> AppEnvironmentExtra` **reemplaza el bloque entero**. Así
+> es como se borró `GO_WORKER_PORT` el 2026-09-22 y así se repitió el incidente
+> del 2026-08-06. Seis variables más multiplicadas por cuatro servicios es
+> multiplicar esa probabilidad por seis. En el `.env` se escriben una vez, las
+> leen los cuatro, y **no hay que tocar nssm ni reconstruir ninguna línea**.
+
+**Qué servicio lee cuál**: el worker deduce su nombre de `QUEUE_GROUP`, que ya
+está puesto (`helpers/heartbeat.js` § `resolveQueueServiceName`):
+
+| Servicio | `QUEUE_GROUP` | Variable que lee |
+|---|---|---|
+| `DevitrakEmailWorker` | `email` | `HEARTBEAT_URL_QUEUE_EMAIL` |
+| `DevitrakBulkWorker` | `bulk,heavy` | `HEARTBEAT_URL_QUEUE_BULK` (el **primer** grupo da el nombre) |
+| `DevitrakDeleteWorker` | `delete` | `HEARTBEAT_URL_QUEUE_DELETE` |
+| `DevitrakServer` | *(sin grupo)* | `HEARTBEAT_URL_QUEUE_API` |
+
+Los dos schedulers laten con su propio nombre y solo desde el proceso dueño
+(`isNativeMaster || isPM2FirstInstance`), así que **no llegan cuatro latidos**.
+
+**Sin variable, el código no hace absolutamente nada**: ni una petición, ni un
+log. Por eso se puede desplegar antes de que Kuma exista, y desactivar un latido
+es borrar una línea y reiniciar ese servicio.
+
+Dos ajustes opcionales, ambos con valor por defecto sensato:
+
+```
+HEARTBEAT_MIN_INTERVAL_MS=60000   # como mucho un latido por minuto y servicio
+HEARTBEAT_TIMEOUT_MS=5000         # corta el envío si el monitor no responde
+```
+
+El freno importa: los workers dedicados hacen tick cada **300 ms**
+(`QUEUE_POLL_MS=300`), que sin freno serían ~200 peticiones por minuto **por
+servicio**. Un cambio de estado (caída o recuperación) **salta el freno** y sale
+en el acto.
+
+### B. Instalar Kuma — hecho el 2026-09-23, y esto es lo que pasó de verdad
+
+Instalado y corriendo en la VM. **Versión 2.5.4, sobre un Node 22 propio.** Lo
+que sigue no es el procedimiento ideal: es el que funcionó, con las cuatro
+paradas que costaron tiempo.
+
+#### B.1 · La documentación de terceros que circula está desactualizada
+
+Las guías tipo «Install Uptime Kuma on Windows Server» dicen `git clone` +
+`npm install` + `npm start`. **Eso no funciona hoy**, por dos razones a la vez:
+
+- **`master` es `3.0.0-beta.0` y exige Node ≥ 26.2.0.** Clonar y quedarse ahí te
+  pone en una beta que esta máquina no puede correr.
+- **`npm install` no descarga el frontend compilado.** En la línea 1.x ese
+  comando se llama, literalmente, `install-legacy`.
+
+Lo correcto es el script del propio repositorio, que hace las tres cosas bien:
+
+```
+"setup": "git checkout 2.5.4 && npm ci --omit dev --no-audit && npm run download-dist"
+```
+
+```powershell
+cd C:\Services\uptime-kuma
+npm run setup      # fija la version estable, instala prod y baja el dist
+git describe --tags   # 2.5.4
+```
+
+Te deja en **detached HEAD** sobre el tag. Es lo correcto: un vigilante con
+versión fijada. Para actualizar, `git checkout <tag nuevo>` y repetir `setup`.
+
+#### B.2 · Kuma 2.5.4 NO arranca con el Node de producción
+
+Declara `engines: ">= 20.4.0"`, pero es optimista. Con el **20.11.0** de la VM:
+
+```
+Error [ERR_REQUIRE_ESM]: require() of ES Module ...\unlimited-timeout\index.js
+```
+
+`unlimited-timeout` es ESM, y `require(esm)` llegó a la línea 20 **en la
+20.19.0** (por defecto desde esa versión; antes iba tras un flag). O sea que el
+rango real es `>= 20.19`, no `>= 20.4`.
+
+> **Histórico (2026-10-28):** desde A9 la API también pide Node 22
+> (`engines >= 22.12.0`) y producción corre 22.23.2, así que lo de abajo describe
+> por qué Kuma tuvo su propio Node cuando la API seguía en 20.11.0.
+
+**No se actualiza el Node de la máquina.** Es el runtime que sirve la API, el
+`package.json` del servidor fija `>= 20.11.0`, y cambiarlo para poder instalar un
+vigilante es invertir la relación. La salida es un Node propio, porque **nssm
+recibe la ruta absoluta del ejecutable y le da igual el PATH**:
+
+```powershell
+# el ZIP, NO el MSI: el MSI reescribe el PATH del sistema
+Expand-Archive "$env:USERPROFILE\Downloads\node-v22.23.2-win-x64.zip" -DestinationPath C:\Services\
+$dir = Get-ChildItem C:\Services -Directory -Filter "node-v22.*-win-x64" | Select-Object -First 1
+Rename-Item -Path $dir.FullName -NewName node22      # Rename-Item NO acepta comodines en -Path
+& C:\Services\node22\node.exe -v                      # v22.23.2
+node -v                                               # 20.11.0 — produccion intacta
+```
+
+**Y hay que reinstalar las dependencias con el Node nuevo.** El `npm ci` anterior
+resolvió binarios para el ABI de Node 20:
+
+```powershell
+cd C:\Services\uptime-kuma
+Remove-Item -Recurse -Force node_modules
+$env:Path = "C:\Services\node22;" + $env:Path    # solo en esta ventana
+node -v                                          # v22.23.2 antes de seguir
+npm ci --omit dev --no-audit
+```
+
+> `npm start` usa el Node del PATH. Si la cabecera del arranque dice
+> `Your Node.js version: 20.11.0`, estás corriendo con el equivocado por mucho
+> que el 22 esté instalado.
+
+#### B.3 · Primera ejecución y base de datos
+
+```powershell
+$env:UPTIME_KUMA_HOST="127.0.0.1"
+$env:UPTIME_KUMA_PORT="3001"
+npm start
+```
+
+La 2.x pregunta primero **qué base de datos**. Elegido **SQLite**: para ~11
+monitores a 60 s el volumen es mínimo, y MariaDB sería otro servicio que
+instalar, respaldar y mantener — justo lo que no queremos de un vigilante.
+
+Después, crear el usuario administrador, activar 2FA en *Profile → Security*, y
+poner en *Settings → Appearance* la misma zona horaria del servidor, o los
+incidentes no cuadrarán con los logs de winston.
+
+#### B.4 · El servicio
+
+```powershell
+nssm install UptimeKuma "C:\Services\node22\node.exe"
+nssm set UptimeKuma AppParameters "server/server.js"
+nssm set UptimeKuma AppDirectory "C:\Services\uptime-kuma"
+nssm set UptimeKuma AppEnvironmentExtra UPTIME_KUMA_HOST=127.0.0.1 UPTIME_KUMA_PORT=3001
+nssm set UptimeKuma AppStdout "C:\Services\logs\kuma-out.log"
+nssm set UptimeKuma AppStderr "C:\Services\logs\kuma-err.log"
+nssm set UptimeKuma Start SERVICE_AUTO_START
+nssm start UptimeKuma
+```
+
+Tres cosas que se pagan si se saltan:
+
+- **`AppDirectory` no es opcional.** El arranque anuncia `Data Dir: ./data/`, que
+  es **relativo**: sin él, el servicio crea una base vacía en otro sitio y parece
+  que perdiste toda la configuración.
+- **La ruta del ejecutable es el Node 22**, no `node.exe` a secas: el servicio no
+  hereda el PATH de tu sesión y volvería el `ERR_REQUIRE_ESM`.
+- **Fuera de `C:\Users\`.** Los servicios de esta máquina corren como la cuenta
+  de equipo (`DEVITRACKDB$`), no como CGAdmin, y Kuma escribe su base
+  continuamente. Si el log de error muestra permisos sobre `data`:
+  ```powershell
+  icacls "C:\Services\uptime-kuma" /grant "DEVITRACKDB$:(OI)(CI)M" /T
+  ```
+
+La comprobación que importa: abrir `http://127.0.0.1:3001` y **entrar con el
+usuario ya creado**. Si pide crear uno nuevo, el servicio está usando otro
+`data`.
+
+### C. Los monitores
+
+#### C.1 · Desde dentro de la VM no se puede vigilar el dominio público
+
+`https://db.devitrak.net` **no se resuelve desde la propia máquina** (hairpin
+NAT: sale a la IP pública y el cortafuegos no la devuelve hacia dentro). Así que
+los monitores apuntan a `localhost`, y **la cadena externa —DNS, TLS, IIS— y la
+caducidad del certificado se quedan sin cubrir desde aquí**.
+
+No es un problema a rodear: es el punto ciego de
+`DESIGN_monitoring_uptime_kuma.md` §3.e, el mismo por el que un vigilante
+interno tampoco podría avisar si la máquina entera cayera. Se cubre **desde
+fuera**, con el Worker de Cloudflare o un monitor externo gratuito.
+
+> **No lo arregles con el fichero `hosts`.** Apuntar el dominio a `127.0.0.1`
+> cambia la resolución de nombres para TODA la máquina, aplicación incluida, y
+> encima el monitor mentiría: diría que el endpoint público funciona cuando lo
+> único probado es el bucle local.
+
+#### C.2 · Los cinco de sondeo (intervalo 60 s, 2 reintentos)
+
+| Friendly Name | Type | Config |
+|---|---|---|
+| `API liveness (local)` | HTTP(s) | `http://localhost:34001/health` |
+| `API readiness` | HTTP(s) | `http://localhost:34001/ready` |
+| `Redis dependency` | HTTP(s) - Json Query | `http://localhost:34001/ready` · query `checks.redis.ok` · expected `true` |
+| `Go worker dependency` | HTTP(s) - Json Query | `http://localhost:34001/ready` · query `checks.goWorker.ok` · expected `true` |
+| `Go worker direct` | HTTP(s) | `http://localhost:7453/health` |
+
+*Accepted Status Codes* en `200-299`: así el **503** de `/ready` cuando cae MySQL
+o Mongo cuenta como caída, que es lo que se quiere.
+
+> #### Los dos de Json Query usan **jsonata**, no JSONPath
+>
+> La expresión correcta es `checks.redis.ok`, **sin `$` delante**. En jsonata
+> `$checks` significa «la variable llamada checks», que no existe, así que
+> devuelve vacío y el monitor se queda en rojo con las cuatro dependencias
+> perfectamente sanas. El `$.` de delante es costumbre de JSONPath, que es otro
+> lenguaje. Un `$` sí es válido en funciones: `$string(checks.redis.ok)`, útil si
+> alguna vez el booleano no casa con el texto del campo *Expected Value*.
+>
+> Y estos dos monitores no son opcionales: `/ready` responde **200** con Redis o
+> el Go worker caídos, porque degradan sin descalificar
+> (`helpers/readiness.js`). Un monitor por código de estado **nunca** avisaría.
+
+Nunca `?force=1` en la URL: salta la caché de 2 s, golpea las cuatro
+dependencias en cada llamada y su presupuesto son 6 por minuto
+(`middlewares/readinessRateLimit.js`).
+
+#### C.3 · Los seis de Push
+
+| Friendly Name | Interval | Variable del `.env` |
+|---|---|---|
+| `Email worker` | 120 | `HEARTBEAT_URL_QUEUE_EMAIL` |
+| `Bulk worker (bulk + heavy)` | 120 | `HEARTBEAT_URL_QUEUE_BULK` |
+| `Delete worker` | 120 | `HEARTBEAT_URL_QUEUE_DELETE` |
+| `In-process worker (API)` | 120 | `HEARTBEAT_URL_QUEUE_API` |
+| `Overdue reminders (daily)` | ~90000 (25 h) | `HEARTBEAT_URL_SCHEDULER_OVERDUE` |
+| `Consent expiry (daily)` | ~90000 (25 h) | `HEARTBEAT_URL_SCHEDULER_CONSENT` |
+
+Kuma compone la Push URL con la URL base que tenga configurada, que puede no ser
+la buena: **quédate con el token y fuerza el host a `http://127.0.0.1:3001`** —
+los workers corren en la misma máquina, así que el latido no sale de ella.
+
+Cuidado al emparejar token y servicio: si se cruzan dos, **ambos monitores se
+ponen verdes** y estarás vigilando el worker equivocado.
+
+Y el nombre del monitor es lo que aparecerá en el mensaje de alerta a las tres de
+la mañana, así que `Bulk worker (bulk + heavy)` y no `queue_bulk`. Los nombres
+internos (`queue_bulk`, `HEARTBEAT_URL_*`) viven en el código y en el `.env` y no
+tienen por qué coincidir: son dos capas a propósito.
+
+#### C.4 · Ajuste antes de salir del panel
+
+*Settings → Monitor History*: retención a **60 días**. El disco de esta VM es
+lento y Kuma escribe un latido por monitor y por intervalo.
+
+### D. Comprobar que funciona de verdad
+
+```powershell
+# 1. Los cuatro monitores de workers deben ponerse verdes en menos de 2 minutos
+#    tras reiniciar los servicios con el .env ya editado.
+
+# 2. La prueba que vale: parar un worker a proposito
+nssm stop DevitrakDeleteWorker
+# ... el monitor debe ponerse rojo Y MANDAR EL AVISO AL CANAL, no solo cambiar de color
+nssm start DevitrakDeleteWorker
+
+# 3. Los schedulers no se pueden esperar 24h: forzar un latido a mano
+Invoke-RestMethod "http://127.0.0.1:3001/api/push/<token>?status=up&msg=prueba"
+```
+
+**Si un monitor de worker se queda en rojo, sospecha del token antes que del
+código.** El helper registra un `warn` cuando el monitor
+responde con un código de error, así que un token equivocado deja rastro:
+
+```
+heartbeat 'queue_bulk': el monitor respondió 404 — revisa el token de HEARTBEAT_URL_QUEUE_BULK
+```
+
+El botón de «Test» de la notificación prueba el webhook, **no la cadena entera**:
+solo el paso 2 demuestra que un fallo real acaba en el canal.
+
+> #### Dos cosas que hacen parecer que la alerta no funciona, y funciona
+>
+> **1. Kuma solo avisa en los CAMBIOS de estado.** Si un monitor ya estaba rojo
+> —por una configuración a medias, por ejemplo— parar el servicio no produce
+> ninguna transición y **no llega nada**. Antes de probar una caída, asegúrate de
+> que el monitor está en verde.
+>
+> **2. Un fallo real tarda unos SEIS minutos en notificar**, con la
+> configuración recomendada (intervalo 120 s, *Retries* 2, *Retry Interval*
+> 120 s): 120 s del primer fallo más los dos reintentos. Y en ese hueco el
+> monitor está en **PENDING**, que cambia de color pero todavía no avisa. Es el
+> anti-parpadeo que queremos: más vale tardar seis minutos que despertar a
+> alguien por un tropiezo de red.
+>
+> Donde sí conviene apretar es en `API liveness (local)`: **Retries 1**, para
+> avisar en ~2 minutos. Es el único monitor donde el reloj corre contra los
+> usuarios.
+>
+> Para distinguir un caso del otro, la página del monitor tiene **Important
+> Events**: si no hay un evento `Down` a la hora en que paraste el servicio, es
+> el caso 1 o el 2; si lo hay y no llegó mensaje, la notificación no está
+> asignada a ese monitor (*Edit → Notifications*).
+
+### E. El canal de Teams
+
+Los conectores clásicos de Office 365 **están retirados desde el 18–22 de mayo de
+2026**: si encuentras un «Incoming Webhook» viejo en un canal, ya no funciona. El
+camino es **Workflows (Power Automate)**, y el proveedor `Microsoft Teams` de
+Kuma 2.5.4 ya envía **Adaptive Card**, que es lo que ese disparador consume — no
+hace falta el webhook genérico.
+
+1. Canal **dedicado a alertas**. Si caen donde se conversa, en una semana están
+   silenciadas.
+2. En el canal → `⋯` → **Workflows** → plantilla *«Post to a channel when a
+   webhook request is received»* → da una URL HTTP.
+3. En Kuma: *Settings → Notifications → Setup Notification* → tipo `Microsoft
+   Teams` → pegar la URL → marcar **Default enabled** y **Apply on all existing
+   monitors**.
+
+> ⚠️ **La URL lleva una firma `sig=` y es una credencial**: quien la tenga puede
+> publicar en el canal. No se pega en documentos ni en conversaciones.
+>
+> ⚠️ **El flujo pertenece a la cuenta que lo crea.** Si esa persona sale de la
+> organización o pierde la licencia, el flujo se para y **las alertas dejan de
+> llegar en silencio**. Créalo con una cuenta de servicio, no con una personal, y
+> anota aquí de cuál depende.
+
+El paso 3 tiene truco: una notificación configurada **pero no asignada a ningún
+monitor** pasa el *Test* y no avisa de nada, y el panel no lo señala.

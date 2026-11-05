@@ -24,6 +24,10 @@ const createCompany = async (request, response = express.response) => {
       location,
       company_logo,
     } = request.body;
+    // Ruta sin sesión: con {"$regex": ...} se averiguaba qué compañías existen.
+    if (typeof company_name !== "string" || !company_name.trim()) {
+      return response.status(400).json({ ok: false, msg: "company_name must be a non-empty string" });
+    }
     let companyInfo = await Company.findOne({ company_name });
     if (!companyInfo) {
       companyInfo = new Company({

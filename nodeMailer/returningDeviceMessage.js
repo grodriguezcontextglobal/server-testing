@@ -11,6 +11,7 @@ const {
   escapeHtml,
   safeUrl,
 } = require("./emailLayout");
+const { DEVITRAK_EMAIL_ICON_URL, DEVITRAK_EMAIL_NAME_URL } = require("./branding");
 
 /**
  * Receipts are dated in en-US explicitly rather than by server locale: these
@@ -523,6 +524,7 @@ const renderLiabilityContractEmail = ({
   recipient,
   recipientHeading,
   contractLinkParams,
+  linkTokens = {},
 }) => {
   const itemList = asArray(items);
 
@@ -541,6 +543,7 @@ const renderLiabilityContractEmail = ({
       ...contractLinkParams,
       contract_url: contract.view_url,
       item_ids: itemIdsParam,
+      token: linkTokens?.[contract.view_url],
     })
       .filter(([, value]) => value !== undefined && value !== null && value !== "")
       .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
@@ -660,6 +663,8 @@ const liabilityContractConsumerNotificationMessageHtml = (props, branding) => {
       verification_id,
       consumer_member_id: consumer.consumer_member_id,
     },
+    // Uno por contrato, firmados en middlewares/contractLinkAuth.js.
+    linkTokens: props.contract_link_tokens,
   });
 };
 
@@ -1259,7 +1264,7 @@ const customizeMessageHtml = (props) => {
             "
           >
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+              src="${DEVITRAK_EMAIL_ICON_URL}" width="26" height="12"
               alt="devitrak-logo"
               style="
                 object-fit: contain;
@@ -1270,7 +1275,7 @@ const customizeMessageHtml = (props) => {
               "
             />
             <img
-              src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+              src="${DEVITRAK_EMAIL_NAME_URL}" width="57" height="12"
               alt="devitrak-name"
               style="
                 object-fit: contain;
@@ -1369,12 +1374,12 @@ const devitrakEmailHeader = `
             </p>
             <div style="margin-top: 2.5px">
               <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_logo_layer_1_h5n4tc.png"
+                src="${DEVITRAK_EMAIL_ICON_URL}" width="26" height="12"
                 alt="devitrak-logo"
                 style="object-fit: contain; object-position: 50% 50%"
               />
               <img
-                src="https://res.cloudinary.com/dpdzkhh07/image/upload/v1737544399/devitrak_name_layer_1_wxctt1.png"
+                src="${DEVITRAK_EMAIL_NAME_URL}" width="57" height="12"
                 alt="devitrak-name"
                 style="object-fit: contain; object-position: 50% 50%"
               />

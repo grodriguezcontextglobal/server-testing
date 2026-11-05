@@ -65,6 +65,39 @@ register(
   createStaffActivityLogHandler((payload) => StaffActivityLog.create(payload), {
     findCompaniesByName: (name, limit) =>
       Company.find({ company_name: name }, { _id: 1 }).limit(limit).lean(),
+    // Rutas /api/db_*: solo traen el id SQL de la compañía (s-company-lq).
+    findCompanyNameBySqlId: async (sqlId) => {
+      const getConnection = require("../../mysql/database/config");
+      const [[row]] = await getConnection().execute(
+        "SELECT company_name FROM company_info WHERE company_id = ? LIMIT 1",
+        [String(sqlId)]
+      );
+      return row?.company_name ?? null;
+    },
+    // Sin ninguna cabecera de compañía: las compañías activas del autor, con el
+    // mismo criterio de membresía que el reporte (findMemberships).
+    findActorCompanyIds: async (uid) => {
+      const AdminUser = require("../../models/AdminUser");
+      const { findMemberships } = require("../../controller/staffActivityLog");
+      const user = await AdminUser.findById(uid).select("email").lean();
+      if (!user) return [];
+      const companies = await findMemberships({ id: uid, email: user.email });
+      return companies.map((c) => String(c._id));
+    },
+    // Para la frase legible: quién era el autor, y sobre quién / dónde actuaron
+    // las rutas del pool de dispositivos, que no lo dicen en el request.
+    findActor: (uid) =>
+      require("../../models/AdminUser").findById(uid).select("name lastName email").lean(),
+    findReceiver: (id) =>
+      require("../../models/Receivers")
+        .findById(id)
+        .select("user eventSelected event_id device")
+        .lean(),
+    findPoolEntry: (id) =>
+      require("../../models/ReceiversPool").findById(id).select("eventSelected device").lean(),
+    // "where" del desglose: la compañía por su nombre, no por su ObjectId.
+    findCompanyName: async (id) =>
+      (await Company.findById(id).select("company_name").lean())?.company_name,
   })
 );
 // payload incluye el _id pre-generado en controller/errorLog.js (para que el
@@ -170,6 +203,45 @@ const { createDeleteBulkItemsByIdsHandler } = require("./deleteBulkItemsByIds");
 register(
   "inventory:bulk-delete-by-ids",
   createDeleteBulkItemsByIdsHandler({ runGoWorker })
+);
+
+const { createInventoryExportHandler } = require("./inventoryExport");
+const {
+  uploadInventoryExportToS3,
+  getTemporaryDownloadUrl,
+} = require("../../helpers/s3Upload");
+
+// Contrato async completo (202 + jobId), como document:upload-pdf: el cliente
+// hace polling de GET /api/jobs/owned/:jobId y lee result.url, una URL
+// prefirmada al .xlsx. El job lee el inventario a trozos y escribe el libro en
+// streaming -- ni las filas ni el fichero se materializan enteros en memoria
+// (ver mysql/controllers/inventoryExport.js).
+register(
+  "inventory:export",
+  createInventoryExportHandler({
+    getConnection: getSqlConnection,
+    uploadExport: uploadInventoryExportToS3,
+    getDownloadUrl: getTemporaryDownloadUrl,
+  })
+);
+
+const { createInventoryImportHandler } = require("./inventoryImportSpreadsheet");
+const { processLocation } = require("../../mysql/controllers/location");
+const { processSubLocationPath } = require("../../mysql/controllers/sub_location");
+
+// Import de una hoja de calculo entera: UNA fila de item_inv por unidad, con
+// los valores de esa unidad. Va aparte de inventory:bulk-insert-alphanumeric
+// porque aquel copia los escalares del cuerpo sobre todo el lote -- correcto
+// para un grupo de unidades identicas, y la razon por la que un fichero real
+// escribia el coste de otra fila en 482 de 500 unidades
+// (ver mysql/controllers/inventoryImport.js).
+register(
+  "inventory:bulk-insert-from-spreadsheet",
+  createInventoryImportHandler({
+    getConnection: getSqlConnection,
+    processLocation,
+    processSubLocationPath,
+  })
 );
 
 const { createBulkInsertMembersHandler } = require("./bulkInsertMembers");

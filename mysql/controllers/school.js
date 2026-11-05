@@ -1479,7 +1479,42 @@ const setConsentEnforcement = async (req, res) => {
   }
 };
 
+/**
+ * Detiene (o reanuda) los recordatorios automaticos de vencido de UN lease
+ * pendiente. Fabrica para las dos rutas: /reminders/stop y /reminders/resume.
+ * El lease se identifica por (company_id, member_id, device_id) porque la tabla
+ * no tiene lease_id; returned = 0 para no tocar el historial de devoluciones.
+ */
+const setLeaseReminders = (stop) => async (req, res) => {
+  const { company_id, member_id, device_id } = req.body || {};
+  const invalid = validateStudentRequest({ company_id, member_id });
+  if (invalid) return res.status(400).json({ ok: false, msg: invalid });
+  if (hasBlankRequiredId(device_id)) {
+    return res.status(400).json({ ok: false, msg: "device_id is required" });
+  }
+  try {
+    const [result] = await getConnection().execute(
+      `UPDATE member_assigned_device_lease
+          SET reminders_stopped_at = ${stop ? "NOW()" : "NULL"},
+              reminders_stopped_by = ?
+        WHERE company_id = ? AND member_id = ? AND device_id = ? AND returned = 0`,
+      [stop ? String(req.uid || "") || null : null, company_id, member_id, device_id]
+    );
+    if (!result.affectedRows) {
+      return res.status(404).json({ ok: false, msg: "No outstanding lease found for this member and device" });
+    }
+    return res.status(200).json({ ok: true, reminders_stopped: stop });
+  } catch (error) {
+    logger.error("setLeaseReminders error:", error.message);
+    return res.status(500).json({ ok: false, msg: error.message });
+  }
+};
+const stopLeaseReminders = setLeaseReminders(true);
+const resumeLeaseReminders = setLeaseReminders(false);
+
 module.exports = {
+  stopLeaseReminders,
+  resumeLeaseReminders,
   schoolDashboard,
   schoolRoster,
   listStudentGuardians,

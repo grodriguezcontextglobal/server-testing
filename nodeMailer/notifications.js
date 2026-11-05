@@ -1006,6 +1006,8 @@ module.exports = {
   liabilityContractMemberNotification,
   liabilityContractStaffNotification,
   linkToResetPassword,
+  // El reset de MFA (controller/admin.js) encola este mismo correo sin pasar por HTTP.
+  buildLinkToResetPasswordMessage,
   loginActivityNotification,
   loginLinkExistingConsumerNotification,
   lostDeviceFeeCollectedNotification,

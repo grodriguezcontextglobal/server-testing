@@ -26,14 +26,21 @@ const insertingStripeCustomer = async (request, response) => {
   }
 };
 
+// La columna salía de la clave del body; las comillas invertidas no bastaban
+// (una clave con una comilla invertida dentro las cierra). Solo columnas reales.
+const STRIPE_INFO_COLUMNS = new Set(["stripe_id", "company_id", "created_at"]);
+
 const consultingStripeCustomer = async (request, response) => {
   try {
-    const reference = Object.entries(request.body);
+    const reference = Object.entries(request.body ?? {});
     if (!reference.length) {
       return response.status(400).json({
         ok: false,
         msg: "Missing search field",
       });
+    }
+    if (!STRIPE_INFO_COLUMNS.has(reference[0][0])) {
+      return response.status(400).json({ ok: false, msg: `Invalid field: ${reference[0][0]}` });
     }
 
     const query = `SELECT * FROM stripe_info WHERE \`${reference[0][0]}\` = ?`;

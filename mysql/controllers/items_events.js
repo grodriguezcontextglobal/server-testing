@@ -8,7 +8,7 @@ const { getStaffCompanyAccess, buildInventoryScopeFilter } = require("../helpers
 const runGoWorker = require("../../helpers/goWorker");
 const { createQueuedJobController } = require("../../helpers/queuedController");
 const { resolveEventItemShippingUpdatePlan } = require("../../queue/handlers/eventItemShippingBulkUpdate");
-const { performUpdateLargeData } = require("./item");
+const { performUpdateLargeData, ITEM_INV_COLUMNS } = require("./item");
 const {
   poolReceiversBulk: poolReceiversBulkWorker,
 } = require("../../controller/receiverWorker");
@@ -329,10 +329,19 @@ const deletingItemsInEventAfterDeviceInventoryIsUpdated = async (
 
 const consultingInventoryCurrentState = async (request, response) => {
   try {
-    const formatting = Object.keys(request.body)
-      .map((item) => item + "=?")
-      .join(" AND ");
-    const values = Object.values(request.body);
+    // Las columnas salían de las claves del body tal cual (inyección SQL), y solo
+    // la primera llevaba el prefijo `ii.`. Ahora: solo columnas de item_inv, todas
+    // con prefijo.
+    const fields = Object.keys(request.body ?? {});
+    if (fields.length === 0) {
+      return response.status(400).json({ ok: false, msg: "At least one filter is required." });
+    }
+    const invalid = fields.filter((k) => !ITEM_INV_COLUMNS.has(k));
+    if (invalid.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalid.join(", ")}` });
+    }
+    const formatting = fields.map((k) => `ii.\`${k}\`=?`).join(" AND ");
+    const values = fields.map((k) => request.body[k]);
     const query = `
       SELECT ii.item_id, ii.serial_number, ii.warehouse, ii.category_name, ii.item_group, ii.cost, ii.ownership,
              iiae.status, iiae.condition, ei.event_name
@@ -344,7 +353,7 @@ const consultingInventoryCurrentState = async (request, response) => {
       ) max_iiae ON ii.item_id = max_iiae.item_id
       LEFT JOIN item_inv_assigned_event iiae ON ii.item_id = iiae.item_id AND max_iiae.max_created_at = iiae.created_at
       LEFT JOIN event_info ei ON ei.event_id = iiae.event_id
-      WHERE ii.${formatting};`;
+      WHERE ${formatting};`;
 
     const [result] = await connection.execute(query, values);
     response.status(200).json({ ok: true, result });

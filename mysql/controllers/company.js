@@ -45,19 +45,38 @@ const insertingCompany = async (request, response) => {
   }
 };
 
+// Columnas reales de company_info (alta, edición y lo que manda el dashboard,
+// 2026-10-21). Los nombres de columna salían de las claves del body tal cual:
+// inyección SQL, y sin sesión. Ahora, 400.
+const COMPANY_INFO_COLUMNS = new Set([
+  "company_id", "company_name", "street_address", "city_address", "state_address",
+  "zip_address", "phone_number", "email_company", "industry", "create_at", "update_at",
+]);
+// Lo que se puede editar con POST /update_company.
+const COMPANY_EDITABLE_COLUMNS = new Set([
+  "company_name", "street_address", "city_address", "state_address",
+  "zip_address", "phone_number", "email_company", "industry",
+]);
+
+const invalidFields = (keys, allowed) => keys.filter((k) => !allowed.has(k));
+
 const consultingCompany = async (request, response) => {
   try {
     const connection = await getConnection();
-    const filters = request.body;
-
-    let query = "SELECT * FROM company_info";
-    const values = [];
-
-    if (Object.keys(filters).length > 0) {
-      const whereClauses = Object.keys(filters).map(key => `\`${key}\` = ?`);
-      query += ` WHERE ${whereClauses.join(" AND ")}`;
-      values.push(...Object.values(filters));
+    const filters = request.body ?? {};
+    const keys = Object.keys(filters);
+    // Sin filtro devolvía la tabla entera, de todas las compañías.
+    if (keys.length === 0) {
+      return response.status(400).json({ ok: false, msg: "At least one filter is required." });
     }
+    const invalid = invalidFields(keys, COMPANY_INFO_COLUMNS);
+    if (invalid.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalid.join(", ")}` });
+    }
+
+    const whereClauses = keys.map((key) => `\`${key}\` = ?`);
+    const query = `SELECT * FROM company_info WHERE ${whereClauses.join(" AND ")}`;
+    const values = Object.values(filters);
 
     const [result] = await connection.execute(query, values);
     return response.status(200).json({ ok: true, companies: result });
@@ -165,8 +184,12 @@ const updateCompanyData = async (request, response) => {
         .status(400)
         .json({ ok: false, msg: "No fields to update provided." });
     }
+    const invalid = invalidFields(fieldEntries.map(([key]) => key), COMPANY_EDITABLE_COLUMNS);
+    if (invalid.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalid.join(", ")}` });
+    }
 
-    const setClause = fieldEntries.map(([key]) => `${key} = ?`).join(", ");
+    const setClause = fieldEntries.map(([key]) => `\`${key}\` = ?`).join(", ");
     const values = fieldEntries.map(([, value]) => value);
 
     const query = `UPDATE company_info 

@@ -88,8 +88,17 @@ const createGetStaffActivityLogs = ({
       staff_member_id,
       action,
       target_model,
+      target_id,
+      event_id,
+      serial_number,
+      item_id,
+      member_id,
+      consumer,
+      actor_type,
+      source,
       start_date,
       end_date,
+      include_automatic,
       limit = 50,
       page = 1,
     } = req.query;
@@ -151,12 +160,43 @@ const createGetStaffActivityLogs = ({
       } else {
         query.company_id = { $in: memberships.flatMap(keysOf) };
       }
+
+      // Lo propio sin compañía también se ve. Hay acciones que llegan sin
+      // ninguna cabecera de compañía (/api/receiver, /api/event…) y no siempre
+      // se pueden atribuir; filtrarlas por compañía las escondía hasta de quien
+      // las hizo. Solo al autor: sin compañía no hay a quién más mostrárselas.
+      const requesterId = requester.id ?? requester._id;
+      if (requesterId) {
+        query.$or = [
+          { company_id: query.company_id },
+          { company_id: null, staff_member_id: requesterId },
+        ];
+        delete query.company_id;
+      }
     }
 
     // Apply Filters
     if (staff_member_id) query.staff_member_id = staff_member_id;
     if (action) query.action = action;
+    // Los borrados de caché los dispara el dashboard solo, después de cada
+    // acción (8 de cada 45 filas el 2026-10-05). Se siguen REGISTRANDO, como
+    // todo, pero el reporte no los devuelve salvo que se pidan: filtrarlos en el
+    // cliente dejaba páginas de 50 con menos filas y el total descuadrado.
+    // Pedir target_model=Cache explícitamente también los trae.
+    const wantsAutomatic = String(include_automatic).toLowerCase() === 'true';
     if (target_model) query.target_model = target_model;
+    else if (!wantsAutomatic) query.target_model = { $ne: 'Cache' };
+    if (target_id) query.target_id = String(target_id);
+    if (actor_type) query.actor_type = String(actor_type);
+    if (source) query.source = String(source);
+    // Filtros del audit trail por evento y por dispositivo (ask del dashboard
+    // 2026-10-05 §5.4). Un dispositivo se busca por serial o por item_id: las
+    // acciones de SQL traen uno u otro según la ruta.
+    if (event_id) query["context.event_id"] = String(event_id);
+    if (serial_number) query["context.serial_numbers"] = String(serial_number);
+    if (item_id) query["context.item_ids"] = String(item_id);
+    if (member_id) query["context.member_id"] = String(member_id);
+    if (consumer) query["context.consumer"] = String(consumer);
 
     if (start_date || end_date) {
       query.timestamp = {};
@@ -221,6 +261,7 @@ const createRegisterStaffActivity = ({
       target_model,
       target_id,
       details,
+      source: "client",
       ip_address: req.ip,
       device_info: req.headers["user-agent"],
     });

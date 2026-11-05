@@ -4,14 +4,18 @@
  */
 
  const { Router } = require("express");
+ const { check } = require("express-validator");
+ const validateFields = require("../middlewares/validate-field");
  const router = Router();
  const {
-   displayAllAdminUser, editOtherAdminUser, forceEndSession,
+   displayAllAdminUser, editOtherAdminUser, forceEndSession, PROFILE_SELF_FIELDS,
+   searchStaffByEmail,
  } = require("../controller/admin");
 const { searchCustomerByParameters } = require("../controller/stripe");
 const { optionalJWT } = require("../middlewares/optionalJWT");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const { tokenIfPresent } = require("../middlewares/tokenIfPresent");
 const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
 
  //display all admin users
@@ -20,18 +24,51 @@ router.get("/admin-users", validateJWT, checkTokenVersion, authorizeMongoPermiss
 //display all admin by queries
 router.post("/admin-users", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "read"), displayAllAdminUser);
 
- router.patch("/edit-admin/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("staff", "update"), editOtherAdminUser);
+// Editar a OTRO exige staff:update. El dashboard también usa esta ruta para el
+// propio perfil (p. ej. `{ online: false }` al cerrar sesión), y ahí un rol sin
+// staff:update (inventory_manager, assistant...) recibía 403. Si el id es el del
+// que llama y el body solo trae campos personales (PROFILE_SELF_FIELDS, los
+// mismos que deja PATCH /api/admin/profile/:id), no hace falta el permiso.
+// Cualquier otro campo (super_user, email, rol...) sigue pasando por staff:update.
+const canUpdateStaff = authorizeMongoPermission("staff", "update");
+const isSelfProfileEdit = (req) => {
+  const keys = Object.keys(req.body || {});
+  return (
+    String(req.params.id) === String(req.uid) &&
+    keys.length > 0 &&
+    keys.every((k) => PROFILE_SELF_FIELDS.has(k))
+  );
+};
+const selfOrStaffUpdate = (req, res, next) =>
+  isSelfProfileEdit(req) ? next() : canUpdateStaff(req, res, next);
+ router.patch("/edit-admin/:id", validateJWT, checkTokenVersion, selfOrStaffUpdate, editOtherAdminUser);
  
  //search stripe customer by parameters
- router.get('/consumers/search',searchCustomerByParameters)
+ router.get('/consumers/search', validateJWT, checkTokenVersion,searchCustomerByParameters)
 
  //search staff info from not token side
- router.post('/__staff-search',displayAllAdminUser)
+ // Anónima a propósito (alta, invitación, olvidé mi contraseña): exige un email
+ // exacto y devuelve solo campos públicos. Ver searchStaffByEmail.
+ router.post('/__staff-search', searchStaffByEmail)
 
  //router to search all staff information
- router.get('/__staff-search',displayAllAdminUser)
+ router.get('/__staff-search', searchStaffByEmail)
 
  // Route to handle user logout
-router.post("/force-logout", forceEndSession);
+// Token opcional: desde el login no hay token y se borra la sesión del email
+// (volver a entrar sigue exigiendo contraseña + MFA). Si llega token, se valida
+// entero (firma + tokenVersion): uno inválido es 401, no "sin token"; con token
+// se puede cerrar la sesión de otro según los permisos de forceEndSession.
+//
+// `email` tiene que ser un email (string): con {"$regex": "^a"} la ruta, que no
+// exige token, servía para averiguar emails de admins y cerrarles la sesión
+// sin conocerlos (SI-10, 2026-11-02). El dashboard (ForceLogout.jsx) manda el
+// email del formulario de login.
+router.post(
+  "/force-logout",
+  [check("email", "A valid email is required").isString().isEmail(), validateFields],
+  tokenIfPresent,
+  forceEndSession
+);
 
  module.exports = router;

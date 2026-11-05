@@ -13,17 +13,25 @@ require("dotenv").config();
 
 // Configuration imports
 const { corsOptions } = require("./config/cors");
+const { normalizeForwardedFor } = require("./middlewares/normalizeForwardedFor");
+const { rejectMongoOperators } = require("./middlewares/rejectMongoOperators");
 const {
   requestLogger,
   securityLogger,
 } = require("./middlewares/requestLogger");
 const { requestMetrics } = require("./middlewares/requestMetrics");
+const { consumerTokenGate } = require("./middlewares/consumerTokenGate");
+const { auditTrail } = require("./middlewares/auditTrail");
 const metrics = require("./helpers/metrics");
 const logger = require("./helpers/logger");
 
 // Constants
 const NUM_CPU = Math.min(OS.cpus().length, 4); // Limit to 4 workers to avoid resource exhaustion
 const PORT = process.env.PORT;
+// Loopback by default: IIS/the proxy on the same host is the only intended
+// caller, so 34001 must not answer the network directly (SC-7). Containers set
+// BIND_HOST=0.0.0.0 (see Dockerfile) so the published port still works.
+const BIND_HOST = process.env.BIND_HOST || "127.0.0.1";
 
 const path = require("path");
 const { spawn } = require("child_process");
@@ -69,6 +77,9 @@ const app = express();
 
 // Middleware configuration
 const configureMiddleware = (app) => {
+  // normalizeForwardedFor NO va aqui: se monta en initializeApp, antes que las
+  // rutas de sondeo, porque el limitador de /ready tambien lee req.ip.
+
   // Request logging middleware (should be first to capture all requests)
   app.use(requestLogger);
   app.use(securityLogger);
@@ -135,11 +146,20 @@ const configureMiddleware = (app) => {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
+  // Claves `$...` en body/query (inyección NoSQL, SI-10). Va justo después de
+  // los parsers: antes no hay body que mirar. NOSQL_INPUT_MODE=warn por defecto.
+  app.use(rejectMongoOperators);
+
   // // SQL Injection detection middleware
   // const { sqlInjectionDetector } = require("./middlewares/sql-injection-detector");
   // app.use(sqlInjectionDetector);
 
   app.use(express.static("public"));
+
+  // Audit trail del servidor: registra cada acción de la lista de
+  // constants/auditedRoutes.js con su autor. Va después del parseo del body
+  // (necesita req.body) y antes de los routers; decide en `finish`.
+  app.use(auditTrail);
 };
 
 // Route configuration
@@ -215,7 +235,8 @@ const configureRoutes = (app) => {
 
   // Mount utility routes
   app.use("/api/cache_update", utilityRoutes.cache);
-  app.use("/api/cloudinary", utilityRoutes.cloudinary);
+  // Token de consumidor (fase C): la foto de perfil exige el enlace del correo.
+  app.use("/api/cloudinary", consumerTokenGate({ verifiedOnly: true }), utilityRoutes.cloudinary);
 
   // Mount consumer public namespace (attendees app; no token required)
   app.use("/api/consumer", require("./routes/consumer"));
@@ -291,7 +312,16 @@ const initializeApp = () => {
   // cada comprobacion. Llevan su propia cadena: metricas siempre, y limitador
   // propio en /ready. El porque completo esta en routes/health.js, y
   // test/healthRoutes.test.js lo fija como invariante.
+  //
+  // normalizeForwardedFor va ANTES que todo, sondeo incluido: IIS añade a
+  // X-Forwarded-For la IP de NGINX con su puerto y el limitador de /ready
+  // (clave por defecto = req.ip) lanzaba ERR_ERL_INVALID_IP_ADDRESS. No escribe
+  // logs ni rechaza nada, asi que no rompe ninguna razon de las de arriba.
+  app.use(normalizeForwardedFor);
   app.use(require("./routes/health"));
+  // Buzón de violaciones de CSP del dashboard: mismo motivo, fuera del
+  // limitador global y del audit trail. El porqué en routes/cspReport.js.
+  app.use(require("./routes/cspReport"));
 
   configureMiddleware(app);
   configureRoutes(app);
@@ -309,6 +339,8 @@ const startServer = () => {
   if (process.env.METRICS_ENABLED !== "false") {
     metrics.startFlushing();
   }
+  // RAM y CPU de este proceso a logs/runtime-metrics.log, también en todos.
+  require("./helpers/runtimeMetrics").startRuntimeMetrics();
 
   // Check if running under PM2
   const isPM2 = process.env.NODE_APP_INSTANCE !== undefined;
@@ -431,8 +463,8 @@ const startServer = () => {
       connectWithRetry();
     }
 
-    const server = initializeApp().listen(PORT, () => {
-      logger.info(`Worker ${process.pid} started on port ${PORT}`);
+    const server = initializeApp().listen(PORT, BIND_HOST, () => {
+      logger.info(`Worker ${process.pid} started on ${BIND_HOST}:${PORT}`);
     });
 
     server.on("error", (err) => {

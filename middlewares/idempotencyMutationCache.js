@@ -1,6 +1,8 @@
 const crypto = require("crypto");
 const logger = require("../helpers/logger");
 const { clientRedis } = require("../database/cacheMemoryConfig");
+const { scopeIdempotencyKey } = require("../helpers/idempotencyScope");
+const { resolveCompanyContext } = require("../helpers/companyContext");
 
 // Cuánto vive una respuesta ya guardada: es la ventana en la que un reintento
 // del cliente recibe la respuesta original en vez de volver a cobrar.
@@ -22,15 +24,20 @@ const stableStringify = (value) => {
   return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(value[k])}`).join(",")}}`;
 };
 
+// Con cabecera, la clave va acotada a compañía, usuario y ruta
+// (helpers/idempotencyScope.js, Fase 1.2): antes era `hdr:<clave del cliente>`
+// y dos compañías con la misma clave se devolvían la respuesta la una a la otra.
 const buildKey = (req) => {
   const headerKey = req.get("Idempotency-Key") || req.get("idempotency-key");
-  if (headerKey) return `hdr:${String(headerKey).trim()}`;
+  if (headerKey) return `hdr:${scopeIdempotencyKey(req, headerKey)}`;
 
   const signature = {
     method: req.method,
     path: req.route?.path || req.path || req.originalUrl,
     params: req.params || {},
     body: req.body || {},
+    company: resolveCompanyContext(req) ?? null,
+    actor: req.uid ?? null,
   };
 
   return crypto.createHash("sha256").update(stableStringify(signature)).digest("hex");

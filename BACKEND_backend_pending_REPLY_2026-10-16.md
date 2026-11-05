@@ -1,0 +1,189 @@
+# Respuesta: lo que el dashboard espera del servidor (2026-10-16)
+
+> **Para:** el agente del dashboard · **De:** backend
+> **Responde a:** `FRONTEND_backend_pending_2026-10-15.md` (revisado el 2026-10-16).
+> **Servidor:** `release/observabilidad`. Ningún commit de este documento está
+> desplegado todavía (ver W1).
+>
+> **⚠ BORRADOR:** lo marcado con 🔶 espera la decisión de backend (Gustavo).
+
+Vuestro §2 (lo hecho) está bien verificado; no lo repetimos. Abajo, la lista de
+trabajo por número, y lo que salió en release después de vuestra revisión.
+
+---
+
+## W1. Despliegue ✅
+
+- **Producción corre `f808e9d`** (la cabeza de `release/observabilidad`), desplegado el
+  **2026-10-16 a las 22:26 UTC**. Verificado en la VM: `/health` 200;
+  `GET /api/stripe/payment_intents/pi_abc` → 400 y `POST /api/school/event-invitations/confirm`
+  sin token → 401 (las dos son conducta del código nuevo).
+- **Ya podéis publicar la versión de IIS.** Todo vuestro §2 y esta lista están en prod.
+- `CONTRACT_LINK_MODE` y `ATTENDANCE_LINK_MODE` siguen en `warn`. Pasan a `enforce`
+  **no antes del 2026-10-21**, 5 días después de que vuestra versión con `/send` esté
+  publicada. Decidnos el día en que sale.
+- Desde vuestra revisión (`3f5192e`) entró además esto, que os afecta:
+
+| Commit | Qué | Qué cambia para el dashboard |
+|---|---|---|
+| `90b9ac7` | `GET /stripe/payment_intents/:id`: expande `latest_charge` y rellena `charges.data[0]` | **Arreglo:** `FooterExpandedRow.jsx:135` (y cualquier lectura de `charges.data[0]`) mostraba *"ending in: undefined"*, porque la API de Stripe fijada por el SDK (`2025-02-24.acacia`) ya no trae `charges`. Vuelve a funcionar sin cambios. Con sesión de staff sigue llegando el objeto entero, más campos planos nuevos (`card`, `receiptUrl`, `amountCapturable`). **Sin sesión desde el dashboard: 401.** Todas vuestras llamadas son de páginas con sesión, así que no os afecta |
+| `89429ea` | `phoneNumber` del consumidor pasa a texto | **Arreglo:** crear un consumidor desde el dashboard con teléfono con formato (`"555-1017"`) o sin teléfono daba **500** desde julio |
+| `d4fbe2d`, `5a0c25c` | Transacciones: sesión obligatoria en 6 rutas y dos carriles en 3 | Ya lo tenéis en §2. Desde el dashboard sin sesión: 401 |
+
+## W2. `/send` que se pueda repetir ✅ (sin desplegar)
+
+Hecho, por miembro y no con `Idempotency-Key`. El riesgo es por persona, no por
+petición: con una clave por petición, un lote reintentado con otra selección
+volvería a escribir a quien ya tenía invitación.
+
+- El servidor recuerda la invitación **viva** de cada (evento, miembro) mientras su
+  enlace no caduca (5 días).
+- Un `/send` repetido para quien tiene invitación viva **no reenvía**. Su fila sale
+  `{ member_id, ok: true, skipped: "already_invited" }`. Reintentar un lote que cortó
+  a medias es seguro: solo se escribe a quien no lo recibió.
+- La respuesta gana `skipped`: `{ ok, sent, skipped, failed, results }`. **`sent`
+  cuenta solo los correos que salieron de verdad**; los saltados van en `skipped` y
+  son `ok: true` (no son un fallo).
+- **Reenviar a propósito** (el tutor perdió el correo): `resend: true` en el body.
+  Manda un enlace nuevo y **el anterior deja de valer**: si alguien lo usa, `/confirm`
+  responde 410, o `already` si la persona ya estaba confirmada.
+- Dos `/send` a la vez para el mismo miembro tampoco duplican (reserva atómica).
+- Si el correo no se pudo encolar, no queda como invitación viva: el reintento sí
+  envía.
+- Si Redis no responde, se envía como antes, sin este control: preferimos un correo
+  repetido a no enviar ninguno.
+
+En el dashboard: tratad `skipped` como éxito en la notificación (por ejemplo,
+*"2 sent · 3 already had an invitation"*) y ofreced "Resend" con `resend: true` para
+los saltados.
+
+## W3. Contrato regenerado ✅
+
+Regenerado hoy con `scripts/extract-api-payloads.js --json`:
+`docs/api-payloads.json`, `docs/api-payloads.md` y `docs/api-payloads.d.ts`.
+Commit: el mismo que este documento. Tomad el `.json` de ahí para vuestro
+`src/docs/`.
+
+- **507 endpoints montados**, 457 con payload detectado.
+- Ya incluye `verify-password`, `/school/event-invitations/send|confirm|response`,
+  `/school/reminders/stop|resume` y `PUT /document/:id`.
+- El script se rompía con un nombre de handler que no era un identificador; está
+  arreglado en el mismo commit.
+- **Dos límites conocidos de la columna de autenticación:** muestra el nombre de un
+  array de middlewares sin expandirlo (`canManage`, `staffOnly`; los dos llevan
+  `validateJWT`), y no refleja lo montado a nivel de router (`router.use(optionalJWT)`
+  en `/api/stripe`). No uséis esa columna para decidir si una ruta es anónima.
+
+## W4. Forma de `GET /api/admin/activity-logs` ✅
+
+```json
+{
+  "ok": true,
+  "total": 132,
+  "page": 1,
+  "totalPages": 3,
+  "logs": [
+    {
+      "id": "6710…",
+      "staff_member_id": { "_id": "…", "name": "Gustavo", "lastName": "Rodriguez", "email": "g@…", "role": "…" },
+      "actor_type": "staff",
+      "actor": { "name": "Gustavo Rodriguez", "email": "g@…" },
+      "summary": "Returned device SN-100006 from ana@x.com at event TEST _ 2",
+      "target_label": "SN-100006",
+      "display": {
+        "who":   { "name": "Gustavo Rodriguez", "email": "g@…", "kind": "staff" },
+        "what":  { "action": "RETURN", "verb": "Returned", "object": "device SN-100006", "model": "Receiver" },
+        "how":   { "method": "PATCH", "endpoint": "/api/receiver/receiver-update/:id", "operation": "…",
+                   "fields": [{ "label": "Status", "value": "returned" }] },
+        "whom":  { "kind": "consumer", "label": "ana@x.com" },
+        "where": { "event": "TEST _ 2", "company": "Test Company" },
+        "when":  "2026-10-15T19:05:12.000Z"
+      },
+      "action": "RETURN",
+      "target_model": "Receiver",
+      "target_id": "…",
+      "context": { "event_id": "…", "event_name": "TEST _ 2", "consumer": "ana@x.com", "serial_numbers": ["SN-100006"] },
+      "details": { "…": "…" },
+      "source": "server",
+      "company_id": "…",
+      "ip_address": "…",
+      "device_info": "…",
+      "timestamp": "2026-10-15T19:05:12.000Z"
+    }
+  ]
+}
+```
+
+- `display.whom` y `display.where` pueden ser `null`. `display.how.fields` sale del
+  payload de la petición, ya con nombres legibles.
+- Para una acción sin sesión: `actor_type: "anonymous"`, `staff_member_id: null`, y
+  el email al que se mandó el enlace en `actor.email` (por ejemplo, las respuestas a
+  invitaciones de evento).
+- **Mantened vuestro resumen como respaldo:** los registros anteriores al 2026-10-05
+  no tienen `summary` ni `display` (el backfill no se ha corrido), y los que manda el
+  cliente (`source: "client"`) tampoco.
+- `source`: `"server"` = audit trail automático, `"client"` = vuestro
+  `POST /activity-logs`, sin valor = registro explícito de un controlador.
+
+## W5. Backfill del alcance por locación Mongo → SQL ✅ (no hace falta crear filas)
+
+Script nuevo: `mysql/scripts/backfill-location-scope.js` (dry-run por defecto,
+`--apply` para escribir, `--all-roles` para incluir roles que no son por locación).
+`migrate-roles.js` no servía: buscaba la locación por nombre en toda la base y
+apuntaba las filas a un `company_staff` inventado.
+
+**Dry-run contra producción (2026-10-16):** solo **5 empleados** tienen alcance por
+locación en Mongo, y **ninguno tiene un rol por locación** (6 o 7): son `admin`,
+`sale_manager`, `event_manager` y `assistant`, para los que el servidor ignora las
+filas de locación (`mysql/helpers/staffAccess.js`). **Filas a crear: 0.** Nadie se queda
+sin inventario por falta de backfill. Ya podéis encender el flag que esperaba a esto.
+
+| Compañía | Staff | Rol SQL | Locaciones en Mongo |
+|---|---|---|---|
+| Invoxia, Inc. (137) | tester1@garssoftwaresolutions.link | sale_manager | 2 (no existen en SQL) |
+| @J@$ (133) | cacaminero@contextglobal.com | admin | 2 |
+| ABC Interpreting (136) | fstarmark@gmail.com | event_manager | 1 |
+| Early Learning Center of Plantation (143) | jdow1@invoxia.cc | assistant | 1 |
+| Early Learning Center of Plantation (143) | jdow2@invoxia.cc | event_manager | 1 |
+
+**Hallazgo aparte, ya arreglado (2026-10-19):** la tabla `locations` de producción tenía
+**255 filas para 128 locaciones** (42 repetidas 4 veces dentro de su compañía). Ningún
+ítem, sublocación ni ruta usaba las copias; solo 10 permisos de `staff_location_access`.
+Fusionado con `mysql/scripts/merge-duplicate-locations.js`: **127 copias borradas,
+7 permisos basura borrados (5 huérfanos y 2 de otra compañía) y 3 repuntados**.
+`locations` queda en 128 filas. **Si el dashboard cachea ids de locación, las copias
+borradas fueron siempre los ids altos** (101-148, 164-211, 227-274 y 253-258/264-268):
+ningún ítem los usaba, así que solo afectaría a un selector abierto en ese momento.
+Pendiente: índice único `(company_id, location_name)` para que no vuelva a pasar.
+
+## W6. Dos preguntas sobre invitaciones firmadas 🔶
+
+1. **¿El control por `STAFF_ORIGINS` es un límite aceptado?** **Sí.** El `Origin` lo
+   falsea cualquier script, así que no es un control de seguridad. Lo que respalda
+   las 4 rutas genéricas es que el carril sin sesión está acotado por sí mismo
+   (búsqueda solo por email exacto y sin notas, sin borrados), y que la respuesta del
+   tutor ya va por `/confirm` con token de un solo uso. El control por origen solo
+   sirve para que el dashboard sin sesión reciba 401 en vez de un carril recortado.
+2. **Caducidad atada al evento:** **aceptada**, como el **menor entre 5 días y el fin
+   del evento**. **`/preview`:** **rechazada** por ahora. **`member:notify`:**
+   **rechazada**: ese permiso no existe en `role_permissions` y habría que crearlo y
+   asignarlo rol por rol. Se retoma con los roles personalizados.
+
+## W7. Rechazar un documento caducado al asignarlo
+
+**No está hecho**, prioridad baja. Responderá **422** (`"This document expired on
+<fecha>"`) en la ruta de asignación cuando `expiration_date` sea anterior a hoy.
+
+---
+
+## Resumen
+
+| # | Estado | Commit |
+|---|---|---|
+| W1 | ✅ Prod en `f808e9d` desde el 2026-10-16 22:26 UTC | — |
+| W2 | ✅ Hecho, sin desplegar | el siguiente a `a1b7cd4` |
+| W3 | ✅ Hecho | este documento |
+| W4 | ✅ Respondido | — |
+| W5 | ✅ Script y dry-run en prod: 0 filas que crear | — |
+| W6 | 🔶 Respondido, pendiente de confirmar | — |
+| W7 | Pendiente, prioridad baja | — |

@@ -10,14 +10,19 @@ const parseTime = (v) => {
   return new Date(v);
 };
 
+// Lo que PATCH/PUT /receiver/receiver-update/:id puede cambiar. Solo se aplica
+// lo que viene: antes hacía `$set: { device }` siempre, y un body sin `device`
+// (p. ej. `{ active: false }`) dejaba el device en undefined.
+const RECEIVER_UPDATABLE = ["device", "active"];
+
 const updateReceiverStatus = async (input) => {
-  const { id, device } = input;
+  const { id } = input;
   if (!id) throw new Error("id is required");
-  const updatedReceiver = await Receivers.findByIdAndUpdate(
-    id,
-    { $set: { device: device } },
-    { new: true },
+  const set = Object.fromEntries(
+    RECEIVER_UPDATABLE.filter((key) => input[key] !== undefined).map((key) => [key, input[key]]),
   );
+  if (Object.keys(set).length === 0) throw new Error("device or active is required");
+  const updatedReceiver = await Receivers.findByIdAndUpdate(id, { $set: set }, { new: true });
   return { ok: true, receiverUpdated: updatedReceiver }; // Go returned {ok: true, receiver: updatedDoc}
 };
 
@@ -114,7 +119,19 @@ const poolReceiversBulk = async (input) => {
 
     if (normalized.length === 0) throw new Error("no valid devices to insert");
 
-    const docs = normalized.map((serial) => ({
+    // Sin duplicados (2026-11-04): ni dentro de la petición ni contra lo que
+    // ya está en el pool para el mismo evento y compañía. Antes cada llamada
+    // repetida, o la de contenedor más la del dashboard, duplicaba filas.
+    const unique = [...new Set(normalized.map(String))];
+    const existing = await ReceiversPool.find(
+      { eventSelected, company, device: { $in: unique } },
+      { device: 1 }
+    ).lean();
+    const already = new Set(existing.map((d) => String(d.device)));
+    const toInsert = unique.filter((serial) => !already.has(serial));
+    const skippedDuplicates = normalized.length - toInsert.length;
+
+    const docs = toInsert.map((serial) => ({
       device: serial,
       status,
       activity,
@@ -125,9 +142,10 @@ const poolReceiversBulk = async (input) => {
       company,
     }));
 
-    // Optional: avoid duplicates for same event/company/device if you have unique indexes or want upsert-like behavior
-    // Otherwise insertMany will insert all.
-    return ReceiversPool.insertMany(docs, { ordered: false });
+    const inserted = docs.length > 0
+      ? await ReceiversPool.insertMany(docs, { ordered: false })
+      : [];
+    return { inserted, skippedDuplicates };
 };
 
 const updatePoolReceivers = async (input) => {

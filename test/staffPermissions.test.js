@@ -47,7 +47,8 @@ function mockRes() {
 // ─── consultingStaffMemberInformation ─────────────────────────────────────────
 
 test('consulting-member: 400 cuando body no tiene ninguna key de la whitelist', async () => {
-  const req = { body: { nombre: 'Juan', cargo: 'admin', empresa: 'Acme' } };
+  // Con sesión: sin ella solo se acepta `email` (FedRAMP A2, fedrampA2Batch2.test.js).
+  const req = { uid: 'u1', body: { nombre: 'Juan', cargo: 'admin', empresa: 'Acme' } };
   const res = mockRes();
 
   await consultingStaffMemberInformation(req, res);

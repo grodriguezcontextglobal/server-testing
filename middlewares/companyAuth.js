@@ -54,9 +54,11 @@ const MODE = String(process.env.COMPANY_AUTH_MODE || 'warn').toLowerCase();
  * this middleware runs from `router.use`, where `request.route` does not exist
  * yet, so the only thing available is the path itself.
  *
- * This list is SEEDED, not finished. The three below are named after flows that
- * cannot have a token yet, which is evidence but not proof. The warn logs are
- * what completes it.
+ * This list is SEEDED, not finished. The entries below are named after flows
+ * that cannot have a token yet. The ones for app.devitrak.net are certain, not
+ * presumed: the consumer app never sends a token (devitrak/src/devitrakApi.jsx
+ * has no auth interceptor), so every /api/company route it calls must be here.
+ * The warn logs are what completes the rest.
  */
 const PUBLIC_ROUTES = [
   [
@@ -69,7 +71,19 @@ const PUBLIC_ROUTES = [
   ],
   [
     '/event-consumer-signatures',
-    'presumed consumer app (app.devitrak.net), same as above — confirm in the warn logs',
+    'consumer app (app.devitrak.net): never sends a token',
+  ],
+  [
+    '/signatures-for-consumer-member',
+    'dashboard /display-contracts page, no session: gated by the signed email link instead (middlewares/contractLinkAuth.js)',
+  ],
+  [
+    '/search-company',
+    'consumer app (app.devitrak.net): never sends a token — loads the event company',
+  ],
+  [
+    '/update-signatures',
+    'consumer app (app.devitrak.net): never sends a token — stamps the consumer signature',
   ],
 ];
 

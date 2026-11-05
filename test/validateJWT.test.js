@@ -64,27 +64,39 @@ test('validateJWT: token legado sin sqlStaffId y sin header s-token-lq → sqlSt
   });
 });
 
-// ─── token legacy + header s-token-lq (fallback del fix) ─────────────────────
+// ─── la cabecera s-token-lq ya NO se lee (retirada 2026-10-21) ───────────────
 
-test('validateJWT: token legado + header s-token-lq → sqlStaffId toma el valor del header', (t, done) => {
+test('validateJWT: token sin sqlStaffId + header s-token-lq → sqlStaffId null (la cabecera se ignora)', (t, done) => {
   const token = makeToken({ uid: '661d7f57b5dd5c170d866933', name: 'Gustavo', tokenVersion: 1 });
-  const req = { header: makeHeaderFn(token, '42') }; // s-token-lq: '42'
+  const req = { header: makeHeaderFn(token, '42') };
   const res = mockRes();
   validateJWT(req, res, () => {
-    assert.equal(req.sqlStaffId, 42);
+    assert.equal(req.sqlStaffId, null);
     done();
   });
 });
 
-// ─── token con sqlStaffId: null explícito + header s-token-lq ────────────────
-
-test('validateJWT: sqlStaffId null en payload → fallback al header s-token-lq', (t, done) => {
+test('validateJWT: sqlStaffId null en payload + header s-token-lq → sigue null', (t, done) => {
   const token = makeToken({ uid: 'u1', name: 'Test', tokenVersion: 2, sqlStaffId: null });
   const req = { header: makeHeaderFn(token, '99') };
   const res = mockRes();
   validateJWT(req, res, () => {
-    assert.equal(req.sqlStaffId, 99);
+    assert.equal(req.sqlStaffId, null);
     done();
+  });
+});
+
+test('validateJWT: expone authTime del token, o su iat si no lo lleva', (t, done) => {
+  const withAuth = makeToken({ uid: 'u1', authTime: 1000 });
+  const req = { header: makeHeaderFn(withAuth) };
+  validateJWT(req, mockRes(), () => {
+    assert.equal(req.authTime, 1000);
+    const legacy = makeToken({ uid: 'u1' });
+    const req2 = { header: makeHeaderFn(legacy) };
+    validateJWT(req2, mockRes(), () => {
+      assert.equal(req2.authTime, jwt.decode(legacy).iat);
+      done();
+    });
   });
 });
 

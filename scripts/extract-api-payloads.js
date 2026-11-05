@@ -494,6 +494,9 @@ function collectParam(body, param, acc) {
 
 function walk(file, fnName, paramHint, acc, seen, depth) {
   if (depth > 4) return null;
+  // parseImports puede devolver un trozo de código en vez de un nombre (p. ej.
+  // un require dentro de una expresión); usado en un RegExp, tumbaba el script.
+  if (typeof fnName !== 'string' || !/^[\w$]+$/.test(fnName)) return null;
   const key = file + '#' + fnName;
   if (seen.has(key)) return null;
   seen.add(key);

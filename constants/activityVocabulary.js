@@ -31,6 +31,33 @@ const ACTIVITY_ACTIONS = [
   'WAIVE',
   'IMPORT',
   'EXPORT',
+  // Audit trail del servidor (constants/auditedRoutes.js), 2026-10-05.
+  'RESERVE',
+  'RELEASE',
+  'CHECK_OUT',
+  'MOVE',
+  'CAPTURE',
+  'CANCEL',
+  'SETTLE',
+  'SEND',
+  'RESPOND',
+  'SIGN',
+  'UPLOAD',
+  'ERASE',
+  'CLOSE',
+  'RECONCILE',
+  'ACCEPT',
+  'CLEAR',
+  'OPEN',
+  // 2026-10-20: emitir el enlace firmado del QR de un recibo (POST /api/transaction/receipt-link).
+  'SHARE',
+  // 2026-10-27, FedRAMP A5: pérdida del dispositivo de MFA (controller/admin.js).
+  'MFA_RECOVERY_CODE_USED',
+  'MFA_RECOVERY_CODES_REGENERATED',
+  'MFA_RESET',
+  // 2026-11-03, FedRAMP A5: tras el reset, el re-enrolamiento pasa por el correo.
+  'MFA_RESET_EMAIL_SENT',
+  'MFA_RESET_COMPLETED',
 ];
 
 const ACTIVITY_TARGET_MODELS = [
@@ -46,6 +73,37 @@ const ACTIVITY_TARGET_MODELS = [
   'Fee',
   'Verification',
   'Company',
+  // Audit trail del servidor (constants/auditedRoutes.js), 2026-10-05.
+  'Device',
+  'Staff',
+  'Consumer',
+  'Item',
+  'Container',
+  'Category',
+  'Group',
+  'Location',
+  'SubLocation',
+  'Shipment',
+  'Subscription',
+  'CashReport',
+  'Document',
+  'Folder',
+  'Signature',
+  'Provider',
+  'Email',
+  'Invitation',
+  // Invitación de un miembro a un evento (controller/eventInvitation.js).
+  'EventInvitation',
+  'Terms',
+  'Identifier',
+  'StripeLink',
+  'Image',
+  'Post',
+  'Article',
+  'Feedback',
+  'Task',
+  'Cache',
+  'StripeAccount',
 ];
 
 module.exports = { ACTIVITY_ACTIONS, ACTIVITY_TARGET_MODELS };

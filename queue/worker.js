@@ -32,8 +32,36 @@ const { includeTypes: INCLUDE_TYPES, excludeTypes: EXCLUDE_TYPES } = resolveWork
   { warn: (msg) => logger.warn(`queue: ${msg}`) }
 );
 
+// Latido hacia el monitor externo. El nombre sale de cómo está configurado
+// ESTE proceso (QUEUE_GROUP), así que cada servicio nssm late por su cuenta sin
+// una variable extra en nssm — ver helpers/heartbeat.js.
+const {
+  sendHeartbeat,
+  resolveQueueServiceName,
+  resolveHeartbeatUrl,
+  envKeyFor,
+} = require("../helpers/heartbeat");
+const HEARTBEAT_NAME = resolveQueueServiceName();
+
 let timer = null;
 let running = false; // evita solapamiento de ticks
+let jobsSinceBeat = 0; // para que el latido diga algo útil, no solo "sigo vivo"
+
+/**
+ * Late sin bloquear el ciclo. Nunca se espera y nunca lanza: si el monitor no
+ * contesta, el worker sigue trabajando exactamente igual.
+ *
+ * El contador se reinicia solo cuando el latido SALIÓ de verdad; los ticks
+ * frenados por el intervalo mínimo siguen sumando, así que el mensaje que
+ * llega al monitor cuenta todo el trabajo del periodo y no el del último tick.
+ */
+function beat(status, msg, pingMs) {
+  sendHeartbeat(HEARTBEAT_NAME, { status, msg, pingMs })
+    .then((result) => {
+      if (result.sent && status === "up") jobsSinceBeat = 0;
+    })
+    .catch(() => {});
+}
 
 // Opciones de reintento por job (respeta su maxAttempts propio).
 function jobOpts(job) {
@@ -90,6 +118,7 @@ async function recoverStale() {
 async function tick() {
   if (running) return;
   running = true;
+  const startedAt = Date.now();
   try {
     let processed = 0;
     let job;
@@ -97,8 +126,15 @@ async function tick() {
       await processJob(job);
       processed++;
     }
+    jobsSinceBeat += processed;
+    // Un ciclo que termina —aunque no haya tomado nada— ES la señal de vida: el
+    // bucle corre y Mongo contesta. Por eso se late aquí y no al reclamar.
+    beat("up", `${jobsSinceBeat} job(s) procesados desde el latido anterior`, Date.now() - startedAt);
   } catch (err) {
     logger.error("queue: error en tick", { error: err.message });
+    // Un tick que revienta suele ser Mongo caído, y sale al instante porque el
+    // cambio de estado salta el freno del intervalo (helpers/heartbeat.js).
+    beat("down", `tick falló: ${err.message}`, Date.now() - startedAt);
   } finally {
     running = false;
   }
@@ -112,6 +148,15 @@ function start() {
       ? `types=all-except[${EXCLUDE_TYPES.join(",")}]`
       : "types=all";
   logger.info(`Task queue worker starting (id=${WORKER_ID}, poll=${POLL_MS}ms, batch=${BATCH}, ${scope})`);
+  // Que una variable ausente no diga NADA es demasiado silencioso: el latido se
+  // desactiva solo y el monitor se pone rojo sin que nada en el log lo explique.
+  // Una línea al arrancar contesta "¿está configurado y con qué nombre?" de un
+  // vistazo. Nunca se registra la URL: lleva el token del monitor.
+  logger.info(
+    `queue: heartbeat '${HEARTBEAT_NAME}' ${
+      resolveHeartbeatUrl(HEARTBEAT_NAME) ? "configurado" : `SIN CONFIGURAR (falta ${envKeyFor(HEARTBEAT_NAME)})`
+    }`
+  );
   // Al arrancar, recuperar cualquier colgado de una caída previa.
   recoverStale().catch((err) => logger.error("queue: recoverStale falló", { error: err.message }));
   timer = setInterval(tick, POLL_MS);

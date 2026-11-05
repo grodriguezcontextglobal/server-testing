@@ -260,12 +260,11 @@ test('mysql/routes/company.js POST /delete-bulk-items: lleva la misma cadena de 
   const { validateJWT } = require('../middlewares/validate-jwt');
   const { checkTokenVersion } = require('../middlewares/checkValidateToken');
 
+  const { effectiveChain } = require('./helpers/effectiveChain');
   const chainOf = (router, path) => {
-    const layer = router.stack.find(
-      (l) => l.route && l.route.path === path && l.route.methods.post
-    );
-    assert.ok(layer, `la ruta POST ${path} debe estar montada`);
-    return layer.route.stack.map((l) => l.handle);
+    const chain = effectiveChain(router, 'post', path);
+    assert.ok(chain, `la ruta POST ${path} debe estar montada`);
+    return chain;
   };
 
   const companyChain = chainOf(require('../mysql/routes/company'), '/delete-bulk-items');
@@ -273,11 +272,10 @@ test('mysql/routes/company.js POST /delete-bulk-items: lleva la misma cadena de 
 
   assert.ok(companyChain.includes(validateJWT), 'sin validateJWT no hay sqlStaffId → 403 garantizado');
   assert.ok(companyChain.includes(checkTokenVersion));
-  assert.equal(
-    companyChain.length,
-    itemChain.length,
-    'las dos rutas apuntan al mismo controller: deben exigir lo mismo'
-  );
+  // Las dos rutas apuntan al mismo controller: deben exigir lo mismo.
+  for (const guard of [validateJWT, checkTokenVersion]) {
+    assert.equal(companyChain.includes(guard), itemChain.includes(guard), guard.name);
+  }
   // authorizePermission se identifica por su firma textual, como en
   // routeSecurityHardening.test.js (la factory devuelve funciones anónimas).
   assert.ok(

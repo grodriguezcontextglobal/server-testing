@@ -4,6 +4,9 @@ const path = require("path");
 const fs = require("fs");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const { optionalJWT } = require("../middlewares/optionalJWT");
+const { contractLinkGate } = require("../middlewares/contractLinkAuth");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 
 // tmp/uploads está gitignoreado (tmp/uploads/), así que puede no existir en un
 // checkout limpio o si el OS/limpiador de temporales lo borra. Multer
@@ -23,6 +26,7 @@ const {
   getCompanyDocumentByID,
   getDocumentDownloadUrl,
   deleteDocument,
+  updateDocument,
   generateTemporaryDownloadUrl,
   createNewFolder,
   getFolders,
@@ -104,6 +108,13 @@ const router = Router();
 // Dashboard-only: managing a company's document catalog is a staff action.
 const canManage = [validateJWT, checkTokenVersion];
 
+// Lo que ve y firma alguien sin sesión: el consumidor o tutor que abre el
+// documento antes de firmarlo, y el staff que firma desde la app. optionalJWT
+// nunca rechaza: sin token o con uno inválido sigue como público. Si hay un
+// token válido, deja req.uid y req.authContext para saber quién fue. Ninguno
+// de estos controllers lee req.uid hoy, así que la respuesta no cambia.
+const publicViewer = [optionalJWT];
+
 // Routes
 router.post("/upload", canManage, upload.single("document"), uploadDocument);
 router.post("/upload/xlsx", canManage, uploadXLSX.single("document"), uploadExcelToS3);
@@ -114,9 +125,26 @@ router.get("/triggers", canManage, getTriggerActions);
 // (e.g. a consumer/guardian viewing or downloading the exact document they're
 // about to sign, before they have any staff session). Do not add validateJWT
 // here without confirming with the frontend which public flows depend on them.
-router.get("/:id", getCompanyDocumentByID);
-router.get("/download/:documentId/:userId", getDocumentDownloadUrl);
-router.post("/download/documentUrl", generateTemporaryDownloadUrl);
+router.get("/:id", publicViewer, getCompanyDocumentByID);
+router.get("/download/:documentId/:userId", publicViewer, getDocumentDownloadUrl);
+router.post(
+  "/download/documentUrl",
+  publicViewer,
+  // La app del consumidor también la llama sin token: solo se exige el enlace
+  // a lo que viene del dashboard sin sesión (/display-contracts).
+  contractLinkGate({
+    subject: (req) => ({ contract_url: req.body?.documentUrl }),
+    sharedWithConsumerApp: true,
+  }),
+  // Desde la app del consumidor: token de consumidor válido (fase C).
+  consumerTokenGate(),
+  generateTemporaryDownloadUrl
+);
+// Editar y borrar exigen que quien llama pertenezca a la compañía DUEÑA del
+// documento — ver loadCompanyDocument en controller/document.js. PUT y PATCH
+// hacen lo mismo (cambio parcial): PUT es lo que llama el dashboard.
+router.patch("/:id", canManage, updateDocument);
+router.put("/:id", canManage, updateDocument);
 router.delete("/:id", canManage, deleteDocument);
 // Error handling middleware for multer errors
 router.use((error, req, res, next) => {
@@ -134,48 +162,96 @@ router.use((error, req, res, next) => {
   }
   next(error);
 });
-router.post("/new_folder", createNewFolder);
-router.post("/folders", getFolders);
-router.get("/folder/:id", getFolderByID);
-router.put("/folder/:id", updateFolder);
-router.delete("/folder/:id", deleteFolder);
+// Carpetas: solo staff de la compañía dueña (lo comprueba el controller).
+router.post("/new_folder", canManage, createNewFolder);
+router.post("/folders", canManage, getFolders);
+router.get("/folder/:id", canManage, getFolderByID);
+router.put("/folder/:id", canManage, updateFolder);
+router.delete("/folder/:id", canManage, deleteFolder);
+// Crear una verificación (el contrato que alguien firmará) es una acción de
+// staff: el dashboard la llama siempre con sesión (FedRAMP P1.1, 2026-10-21).
 router.post(
   "/verification/staff_member/signed_document",
+  canManage,
   createStaffMemberVerification
 );
 router.post(
   "/verification/staff_member/check_signed_document",
+  publicViewer,
   staffMemberVerificationSignedDocumentForAssignmentDevices
 );
 router.patch(
   "/verification/staff_member/signing_document",
+  publicViewer,
   addSignatureToDocument
 );
 
 //verification consumer contract
 router.post(
   "/verification/consumer_member/signed_document",
+  canManage,
   createConsumerVerification
 );
+// /display-contracts del consumidor: sesión de staff o token del enlace del
+// correo (middlewares/contractLinkAuth.js). Firmar es la acción final y gasta
+// el token.
 router.post(
   "/verification/consumer_member/check_signed_document",
+  publicViewer,
+  contractLinkGate({
+    subject: (req) => ({
+      company_id: req.body?.company_id,
+      consumer_member_id: req.body?.consumer_member_id,
+      contract_url: req.body?.contract_url,
+    }),
+  }),
   consumerMemberVerificationSignedDocumentForAssignmentDevices
 );
 router.patch(
   "/verification/consumer_member/signing_document",
+  publicViewer,
+  contractLinkGate({
+    subject: (req) => ({
+      verification_id: req.body?.verification_id,
+      contract_url: req.body?.contract_url,
+    }),
+    consume: true,
+  }),
   addSignatureToConsumerDocument
 );
 
-router.post("/verification/member/signed_document", createMemberVerification);
+router.post("/verification/member/signed_document", canManage, createMemberVerification);
 
+// Ningún cliente las llama (clasificación del 2026-10-14): con sesión hasta que
+// un flujo público las necesite, y entonces con enlace firmado, como las del
+// consumidor.
 router.post(
   "/verification/member/check_signed_document",
+  canManage,
   memberVerificationSignedDocumentForAssignmentDevices
 );
 
 router.patch(
   "/verification/member/signing_document",
+  canManage,
   addSignatureToMemberDocument
 );
 
+// Rutas que responden sin sesión, cada una con su motivo. Este router no puede
+// usar router.use(validateJWT) delante: GET /:id es pública y capturaría /types
+// y /triggers. test/documentRouterGuards.test.js exige que toda ruta que no
+// esté aquí lleve validateJWT.
+const PUBLIC_ROUTES = [
+  "GET /:id", // el consumidor o tutor ve el documento antes de firmarlo
+  "GET /download/:documentId/:userId", // ídem, descarga
+  "POST /download/documentUrl", // app del consumidor + /display-contracts (contractLinkGate)
+  "POST /verification/consumer_member/check_signed_document", // /display-contracts (contractLinkGate)
+  "PATCH /verification/consumer_member/signing_document", // /display-contracts (contractLinkGate, gasta el token)
+  // Página pública StaffMember.jsx. SIN enlace firmado todavía: quien conozca
+  // los ids puede consultar y firmar por un miembro de staff. Pendiente.
+  "POST /verification/staff_member/check_signed_document",
+  "PATCH /verification/staff_member/signing_document",
+];
+
 module.exports = router;
+module.exports.PUBLIC_ROUTES = PUBLIC_ROUTES;

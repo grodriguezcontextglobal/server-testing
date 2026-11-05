@@ -1,4 +1,5 @@
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const {
   assingDeviceNotification,
   returningDeviceNotification,
@@ -47,7 +48,10 @@ const {
   notificationRateLimit,
   publicRouteRateLimit,
 } = require("../middlewares/notificationAuth");
+const { attachContractLinkTokens } = require("../middlewares/contractLinkAuth");
 const { previewBranding, listPreviewTemplates } = require("../nodeMailer/brandingPreview");
+const { attachPasswordResetLink } = require("../controller/admin");
+const { attachInvitationLink } = require("../controller/registration");
 const router = Router();
 
 // Applies to every route below. See middlewares/notificationAuth.js: the first
@@ -93,13 +97,18 @@ router.post(
 );
 
 //*email notification to confirm new consumer account
-router.post("/confirmation-account", confirmationLinkNewConsumerNotification);
+router.post(
+  "/confirmation-account",
+  consumerTokenGate({ subject: (req) => ({ email: req.body?.consumer?.email }) }),
+  confirmationLinkNewConsumerNotification
+);
 
 //*email notification to login to existing consumer
 router.post("/login-existing-consumer", loginLinkExistingConsumerNotification);
 
-//*email to reset admin password
-router.post("/reset-admin-password", linkToResetPassword);
+//*email to reset admin password — el enlace lo firma el servidor; el que mande
+// el cliente se descarta (ver attachPasswordResetLink).
+router.post("/reset-admin-password", attachPasswordResetLink, linkToResetPassword);
 
 //*notify admin when staff edit device
 router.post("/edit-device-admin", editingDeviceAdminNotification);
@@ -111,7 +120,9 @@ router.post("/customized-notification", customizedEmailNotification);
 router.post("/single-email-notification", singleEmailNotification);
 
 //*invitation for new user in company
-router.post("/new_invitation", newUserInvitationNotification);
+// El enlace de la invitación lo firma el servidor; el `link` del cliente se
+// descarta (ver attachInvitationLink).
+router.post("/new_invitation", attachInvitationLink, newUserInvitationNotification);
 
 //*internal notification
 router.post("/internal-single-email-notification", internalNotification);
@@ -153,8 +164,10 @@ router.post(
 );
 
 //send liability contract email notification to consumers
+// El enlace del correo lleva un token firmado por contrato (Fase 4.1).
 router.post(
   "/liability-contract-consumer-email-notification",
+  attachContractLinkTokens,
   liabilityContractConsumerNotification
 );
 
@@ -168,7 +181,18 @@ router.post(
 router.post("/returned-items-to-renter-notification", returnedItemsToRenterNotification);
 
 //terms and condition in event accepted for consumer
-router.post("/terms-and-conditions-acceptance", termsAndConditionsAcceptanceNotification);
+router.post(
+  "/terms-and-conditions-acceptance",
+  consumerTokenGate({
+    subject: (req) => ({
+      consumerId: req.body?.consumer?.id ?? req.body?.consumer?._id,
+      email: req.body?.consumer?.email,
+      eventId: req.body?.event?.id ?? req.body?.event?._id,
+      companyId: req.body?.company?.id ?? req.body?.company?._id,
+    }),
+  }),
+  termsAndConditionsAcceptanceNotification
+);
 
 //notification for returned device in consumer lease
 router.post("/consumer-lease-return-device-notification", consumerLeaseEndedDeviceReturnedNotification)
@@ -184,11 +208,13 @@ router.post("/member-lease-return-device-notification", returningDeviceLeaseMemb
 router.post(
   "/member-device-incident-notification",
   validateJWT,
+  checkTokenVersion,
   memberDeviceIncidentNotification
 );
 router.post(
   "/member-device-fee-receipt-notification",
   validateJWT,
+  checkTokenVersion,
   memberDeviceFeeReceiptNotification
 );
 

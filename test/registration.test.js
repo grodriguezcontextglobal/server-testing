@@ -61,8 +61,24 @@ const jwtPath = require.resolve('../helpers/jwt');
 require.cache[jwtPath] = {
   id: jwtPath, filename: jwtPath, loaded: true,
   exports: {
-    generateJWT: async (uid, name, tokenVersion, rememberMe, sqlStaffId) =>
+    generateJWT: async (uid, name, tokenVersion, sqlStaffId) =>
       `token::${uid}::${sqlStaffId}`,
+  },
+};
+
+// ─── Stub: Redis ─────────────────────────────────────────────────────────────
+// Con MFA_REQUIRED=false el alta abre sesión (helpers/staffSession.js). Sin
+// esto el test conectaría con el Redis del .env.
+const redisPath = require.resolve('../database/cacheMemoryConfig');
+const redisKeys = {};
+require.cache[redisPath] = {
+  id: redisPath, filename: redisPath, loaded: true,
+  exports: {
+    clientRedis: async () => ({
+      set: async (k, v) => { redisKeys[k] = v; return 'OK'; },
+      get: async (k) => redisKeys[k] ?? null,
+      del: async (k) => { delete redisKeys[k]; return 1; },
+    }),
   },
 };
 
@@ -136,7 +152,7 @@ function baseUserPayload(overrides = {}) {
     name:         'Ana',
     lastName:     'López',
     email:        'ana@test.com',
-    password:     'secret123',
+    password:     'secret123-long',
     phone:        '555-0001',
     imageProfile: '',
     ...overrides,
@@ -209,6 +225,18 @@ test('registerNewUserAndCompany: 400 si faltan campos requeridos del user', asyn
   assert.equal(res.body.ok, false);
 });
 
+test('registerNewUserAndCompany: 400 con una contraseña de menos de 12 caracteres (IA-5)', async () => {
+  resetState();
+
+  const req = { body: { user: baseUserPayload({ password: 'secret123' }), company: baseCompanyPayload() } };
+  const res = mockRes();
+  await registerNewUserAndCompany(req, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.match(res.body.msg, /12/);
+  assert.equal(sqlLog.length, 0, 'no toca MySQL');
+});
+
 test('registerNewUserAndCompany: 400 si faltan campos requeridos de company', async () => {
   resetState();
 
@@ -220,7 +248,7 @@ test('registerNewUserAndCompany: 400 si faltan campos requeridos de company', as
   assert.equal(res.body.ok, false);
 });
 
-test('registerNewUserAndCompany: 201 — flujo exitoso — retorna token + user + company', async () => {
+test('registerNewUserAndCompany: 201 — flujo exitoso — retorna enrolamiento de MFA (no sesión) + user + company', async () => {
   resetState();
 
   const req = { body: { user: baseUserPayload(), company: baseCompanyPayload() } };
@@ -229,7 +257,10 @@ test('registerNewUserAndCompany: 201 — flujo exitoso — retorna token + user 
 
   assert.equal(res.statusCode, 201);
   assert.equal(res.body.ok, true);
-  assert.ok(res.body.token,   'debe retornar token');
+  // MFA obligatoria: la cuenta nueva no tiene MFA, así que no recibe sesión.
+  assert.equal(res.body.token, undefined, 'no debe retornar token de sesión');
+  assert.equal(res.body.mfaSetupRequired, true);
+  assert.ok(res.body.mfaSetupToken, 'debe retornar el token de enrolamiento');
   assert.ok(res.body.user,    'debe retornar user');
   assert.ok(res.body.company, 'debe retornar company');
   assert.equal(res.body.user.email,         'ana@test.com');
@@ -301,15 +332,19 @@ test('registerNewUserAndCompany: flujo exitoso — sincroniza company_staff con 
   assert.equal(companyIdInserted, 42);
 });
 
-test('registerNewUserAndCompany: flujo exitoso — el token incluye sqlStaffId', async () => {
+test('registerNewUserAndCompany: con MFA_REQUIRED=false, el token incluye sqlStaffId', async () => {
   resetState();
+  process.env.MFA_REQUIRED = 'false';
+  try {
+    const req = { body: { user: baseUserPayload(), company: baseCompanyPayload() } };
+    const res = mockRes();
+    await registerNewUserAndCompany(req, res);
 
-  const req = { body: { user: baseUserPayload(), company: baseCompanyPayload() } };
-  const res = mockRes();
-  await registerNewUserAndCompany(req, res);
-
-  // El stub retorna `token::uid::sqlStaffId`
-  assert.ok(res.body.token.includes('99'), 'el token debe embeber el sqlStaffId del staff_member insertado');
+    // El stub retorna `token::uid::sqlStaffId`
+    assert.ok(res.body.token.includes('99'), 'el token debe embeber el sqlStaffId del staff_member insertado');
+  } finally {
+    delete process.env.MFA_REQUIRED;
+  }
 });
 
 test('registerNewUserAndCompany: NO inserta company_staff si company_info falla en SQL', async () => {

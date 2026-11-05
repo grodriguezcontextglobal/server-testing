@@ -1,4 +1,5 @@
 const getConnection = require("../mysql/database/config");
+const logger = require("../helpers/logger");
 
 /**
  * Middleware de autorización basado en el sistema SQL de role_permissions.
@@ -32,10 +33,48 @@ const readCompanyId = (req) =>
   req.query?.company_id ||
   (typeof req.header === "function" ? req.header("s-company-lq") : undefined);
 
+/**
+ * Compañía del body/params/query frente a la del header `s-company-lq`
+ * (2.7 del dashboard, 2026-11-04). Este middleware comprueba el permiso contra
+ * la del body, y los controladores que usan `resolveCompanyContext` actúan
+ * sobre la del header: si no coinciden, se podía tener permiso en una y
+ * escribir en la otra (la membresía se comprobaba en ambas, pero no el
+ * permiso). COMPANY_CONTEXT_MODE:
+ *   warn (por defecto): lo registra y sigue como antes;
+ *   enforce: 403;
+ *   off: no compara.
+ */
+const companyContextMode = () => String(process.env.COMPANY_CONTEXT_MODE || "warn").toLowerCase();
+
+const companyContextMismatch = (req) => {
+  const explicit = req.params?.company_id || req.body?.company_id || req.query?.company_id;
+  const header = typeof req.header === "function" ? req.header("s-company-lq") : undefined;
+  if (!explicit || !header || String(explicit) === String(header)) return null;
+  return { explicit: String(explicit), header: String(header) };
+};
+
 const authorizePermission = (resource, action) => async (req, res, next) => {
   try {
     const staffId = req.sqlStaffId;
     const companyId = readCompanyId(req);
+
+    const mode = companyContextMode();
+    const mismatch = mode === "off" ? null : companyContextMismatch(req);
+    if (mismatch) {
+      const detail = {
+        method: req.method,
+        path: req.originalUrl?.split("?")[0] ?? req.path,
+        origin: req.headers?.origin,
+        ip: req.ip,
+        reason: "body company differs from s-company-lq",
+        ...mismatch,
+      };
+      if (mode === "enforce") {
+        logger.warn("company context: body and header disagree, rejected", detail);
+        return res.status(403).json({ ok: false, msg: "Forbidden: company_id does not match the company context" });
+      }
+      logger.warn("company context: body and header disagree (COMPANY_CONTEXT_MODE=warn)", detail);
+    }
 
     if (!staffId || !companyId) {
       return res.status(401).json({ ok: false, msg: "Unauthorized: missing staff identity or company_id" });

@@ -4,11 +4,14 @@
  */
 
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const multer = require("multer");
 const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { authorizeMongoPermission } = require("../middlewares/authorizeMongoPermission");
 const { requireCompanyAuth } = require("../middlewares/companyAuth");
+const { optionalJWT } = require("../middlewares/optionalJWT");
+const { contractLinkGate } = require("../middlewares/contractLinkAuth");
 const path = require("path");
 const {
   createCompany,
@@ -18,6 +21,8 @@ const {
   searchingGetCompanyInfo,
   assignLocationToUser,
 } = require("../controller/company");
+const { linkStripeAccountAtRegistration } = require("../controller/companyRegistrationStripe");
+const { deactivateEventStaff } = require("../controller/eventStaffAccess");
 const {
   createProviderCompany,
   updateProviderCompany,
@@ -78,7 +83,14 @@ router.post("/new", createCompany);
 
 router.patch("/update-company/:id", validateJWT, checkTokenVersion, authorizeMongoPermission("company", "update"), updatingCompany);
 
-router.patch("/update-company/register-process/:id", updatingCompany);
+// Al cerrar un evento, el servidor decide quién pierde el acceso (AC-2, AC-6).
+// event:update y no company:update: quien cierra el evento es el event_manager.
+router.post("/event-staff/deactivate", validateJWT, checkTokenVersion, authorizeMongoPermission("event", "update"), deactivateEventStaff);
+
+// Sin sesión (alta de compañía): solo conecta la cuenta de Stripe, una vez y
+// en compañías recién creadas. Antes guardaba el body entero de cualquier
+// compañía. Ver controller/companyRegistrationStripe.js.
+router.patch("/update-company/register-process/:id", linkStripeAccountAtRegistration);
 
 router.post("/search-company", searchingCompany);
 
@@ -109,21 +121,56 @@ router.get("/provider-companies", getProviderCompanies);
 router.post("/signatures", collectingSignatures);
 
 //collecting signatures for consumer member
+// /display-contracts del consumidor: sesión de staff o token del enlace del
+// correo (middlewares/contractLinkAuth.js). optionalJWT, para reconocer al staff.
 router.post(
   "/signatures-for-consumer-member",
+  optionalJWT,
+  contractLinkGate({
+    subject: (req) => ({
+      company_id: req.body?.company_id,
+      consumer_member_id: req.body?.consumer_member_id,
+      verification_id: req.body?.verification_id,
+      contract_url: req.body?.contract_url,
+    }),
+  }),
   collectingSignaturesForConsumerMember
 );
 //consulting staff signatures
 router.post("/consulting-signatures", consultingSignaturesStaffMember);
 
 //get consumer signatures
-router.post("/consumer-signatures", getConsumerSignatures);
+router.post(
+  "/consumer-signatures",
+  optionalJWT,
+  contractLinkGate({
+    subject: (req) => ({
+      company_id: req.body?.company_id,
+      consumer_member_id: req.body?.consumer_member_id,
+      contract_url: req.body?.contract_url,
+    }),
+  }),
+  getConsumerSignatures
+);
 
 //event consumer signatures
-router.post("/event-consumer-signatures", stampEventConsumerSignatures);
+router.post(
+  "/event-consumer-signatures",
+  consumerTokenGate({
+    eventScoped: true,
+    subject: (req) => ({
+      consumerId: req.body?.consumer_id,
+      eventId: req.body?.event_id,
+      companyId: req.body?.company_id,
+    }),
+  }),
+  stampEventConsumerSignatures
+);
 
 //transaction id added to event consumer signatures
-router.patch("/update-signatures", updateStampEventConsumerSignatures);
+// App del consumidor: token válido (fase C). La firma no se compara con el
+// token: necesitaría buscarla (pendiente).
+router.patch("/update-signatures", consumerTokenGate(), updateStampEventConsumerSignatures);
 
 //get specific provider company
 router.post("/provider-company/:id", getSpecificProviderCompany);

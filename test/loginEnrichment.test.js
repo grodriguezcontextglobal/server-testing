@@ -38,7 +38,7 @@ const { generateJWT } = require('../helpers/jwt');
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 test('generateJWT: incluye sqlStaffId en el payload cuando se provee', async () => {
-  const token = await generateJWT('661d7f57b5dd5c170d866933', 'Gustavo', 1, false, 74);
+  const token = await generateJWT('661d7f57b5dd5c170d866933', 'Gustavo', 1, 74);
   const decoded = jwt.decode(token);
 
   assert.equal(decoded.uid,        '661d7f57b5dd5c170d866933');
@@ -56,7 +56,7 @@ test('generateJWT: funciona sin sqlStaffId (backwards-compat — token legado)',
 });
 
 test('generateJWT: sqlStaffId null cuando el staff_member no existe en SQL', async () => {
-  const token = await generateJWT('661d7f57b5dd5c170d866933', 'Ghost', 1, false, null);
+  const token = await generateJWT('661d7f57b5dd5c170d866933', 'Ghost', 1, null);
   const decoded = jwt.decode(token);
 
   assert.equal(decoded.sqlStaffId, null);

@@ -156,12 +156,30 @@ test('todo tipo de un grupo está registrado en queue/handlers (sin handler, el 
  * Grupo heavy: escrituras pesadas que nadie espera
  * ------------------------------------------------------------------ */
 
-test('heavy contiene los tres tipos que nadie espera', () => {
+test('heavy contiene los tipos que nadie espera, incluido el export', () => {
   assert.deepStrictEqual([...HEAVY_ASYNC_TYPES].sort(), [
     'event:bulk-update-item-shipping',
     'inventory:bulk-insert-alphanumeric',
+    'inventory:bulk-insert-from-spreadsheet',
     'inventory:bulk-update-alphanumeric',
+    'inventory:export',
   ]);
+});
+
+test('el export del inventario NO lo drena el server principal', () => {
+  // La razon de ser de POST /api/db_item/inventory-export es sacar la
+  // generacion del .xlsx del hilo que atiende peticiones. Encolar no basta:
+  // si el tipo no pertenece a ningun grupo, `dedicated` no lo cubre y el
+  // propio DevitrakServer lo reclama -- exceljs correria en los procesos que
+  // sirven login y pagos y el 202 no habria servido de nada.
+  const { excludeTypes } = resolveWorkerScope({ QUEUE_EXCLUDE_GROUPS: 'dedicated' });
+  assert.ok(excludeTypes.includes('inventory:export'));
+
+  // Y el worker que lo sirve en produccion es el de bulk con los dos grupos
+  // (DEPLOY.md, opcion (a)): si esta linea deja de pasar, el job se queda
+  // encolado para siempre y sin error.
+  const { includeTypes } = resolveWorkerScope({ QUEUE_GROUP: 'bulk,heavy' });
+  assert.ok(includeTypes.includes('inventory:export'));
 });
 
 test('los heavy NO estan en bulk, y ese es el punto', () => {

@@ -5,7 +5,7 @@ COPY go-worker/ .
 RUN CGO_ENABLED=0 go build -o worker .
 
 # Stage 2: Node production image
-FROM node:20.11.0-bookworm
+FROM node:22.23.2-bookworm
 WORKDIR /app
 
 # native deps for canvas + curl for HEALTHCHECK
@@ -34,6 +34,8 @@ RUN chown -R node:node /app
 USER node
 
 ENV PORT=34001
+# index.js defaults to loopback; a container must listen on all interfaces for -p 34001 to work
+ENV BIND_HOST=0.0.0.0
 EXPOSE 34001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

@@ -30,11 +30,11 @@ const router = Router();
 // ownership -- tracked as follow-up, see completion report.
 router.post("/container-items", validateJWT, checkTokenVersion, insertContainerItems);
 
-router.post("/check-item", validateJWT, checkingItem);
+router.post("/check-item", validateJWT, checkTokenVersion, checkingItem);
 
-router.get("/container-items/:container_item_id", getContainerItems);
+router.get("/container-items/:container_item_id", validateJWT, checkTokenVersion, getContainerItems);
 
-router.delete("/container/:container_item_id", deleteContainerItem);
+router.delete("/container/:container_item_id", validateJWT, checkTokenVersion, deleteContainerItem);
 
 router.put("/container/:container_item_id", validateJWT, checkTokenVersion, updateContainerItems);
 

@@ -26,13 +26,13 @@ test('resolveWorkerTarget: usa GO_WORKER_HOST/PORT cuando están seteados', () =
   }
 });
 
-test('resolveWorkerTarget: sin env vars, cae a localhost y al puerto default', () => {
+test('resolveWorkerTarget: sin env vars, cae a 127.0.0.1 y al puerto default', () => {
   const prevHost = process.env.GO_WORKER_HOST;
   const prevPort = process.env.GO_WORKER_PORT;
   try {
     delete process.env.GO_WORKER_HOST;
     delete process.env.GO_WORKER_PORT;
-    assert.deepEqual(resolveWorkerTarget(), { host: 'localhost', port: DEFAULT_GO_WORKER_PORT });
+    assert.deepEqual(resolveWorkerTarget(), { host: '127.0.0.1', port: DEFAULT_GO_WORKER_PORT });
   } finally {
     if (prevHost === undefined) delete process.env.GO_WORKER_HOST; else process.env.GO_WORKER_HOST = prevHost;
     if (prevPort === undefined) delete process.env.GO_WORKER_PORT; else process.env.GO_WORKER_PORT = prevPort;

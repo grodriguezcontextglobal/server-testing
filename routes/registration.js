@@ -1,5 +1,6 @@
 const { Router } = require("express");
 const { check } = require("express-validator");
+const { isAcceptablePassword, passwordPolicyMessage } = require("../helpers/passwordPolicy");
 const router = Router();
 
 const validateFields = require("../middlewares/validate-field");
@@ -17,8 +18,8 @@ router.post(
     check("user.name", "user.name es requerido").not().isEmpty(),
     check("user.lastName", "user.lastName es requerido").not().isEmpty(),
     check("user.email", "user.email debe ser un email válido").isEmail(),
-    check("user.password", "user.password debe tener al menos 6 caracteres").isLength({ min: 6 }),
-    check("company.company_name", "company.company_name es requerido").not().isEmpty(),
+    check("user.password", passwordPolicyMessage).custom(isAcceptablePassword),
+    check("company.company_name", "company.company_name es requerido").isString().not().isEmpty(),
     check("company.website", "company.website es requerido").not().isEmpty(),
     validateFields,
   ],
@@ -31,7 +32,7 @@ router.post(
   "/add-company",
   [
     check("user.userId", "user.userId es requerido").not().isEmpty(),
-    check("company.company_name", "company.company_name es requerido").not().isEmpty(),
+    check("company.company_name", "company.company_name es requerido").isString().not().isEmpty(),
     check("company.website", "company.website es requerido").not().isEmpty(),
     validateFields,
   ],
@@ -40,14 +41,8 @@ router.post(
 
 // POST /api/registration/accept-invitation
 // Acepta una invitación. Crea o reutiliza el usuario e inserta en company_staff.
-router.post(
-  "/accept-invitation",
-  [
-    check("user.email", "user.email debe ser un email válido").isEmail(),
-    check("company.company_name", "company.company_name es requerido").not().isEmpty(),
-    validateFields,
-  ],
-  acceptInvitation
-);
+// Sin sesión: la prueba es `invitationToken`, el token firmado del enlace del
+// correo. Email y compañía salen de él (ver acceptInvitation).
+router.post("/accept-invitation", acceptInvitation);
 
 module.exports = router;

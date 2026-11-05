@@ -22,12 +22,25 @@ const insertingCustomer = async (request, response) => {
   }
 };
 
+// Columnas reales de consumer_info (prod, 2026-10-19). Los nombres de columna
+// salían de las claves del body tal cual (inyección SQL): ahora, 400.
+const CONSUMER_INFO_COLUMNS = new Set([
+  "consumer_id", "first_name", "last_name", "email", "phone_number", "create_at", "update_at",
+]);
+
 const consultingConsumerInfo = async (request, response) => {
   try {
     const pool = await getConnection();
-    const formatting = Object.keys(request.body).map((item) => `${item}=?`);
-    const keys = formatting.join(" AND ");
-    const values = Object.values(request.body);
+    const fields = Object.keys(request.body ?? {});
+    if (fields.length === 0) {
+      return response.status(400).json({ ok: false, msg: "At least one filter is required." });
+    }
+    const invalid = fields.filter((k) => !CONSUMER_INFO_COLUMNS.has(k));
+    if (invalid.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalid.join(", ")}` });
+    }
+    const keys = fields.map((k) => `\`${k}\`=?`).join(" AND ");
+    const values = fields.map((k) => request.body[k]);
     const query = `SELECT * FROM consumer_info WHERE ${keys}`;
 
     const [result] = await pool.execute(query, values);

@@ -14,6 +14,20 @@ const logger = require("../helpers/logger");
 // runStripeMutation para que un Stripe caído falle rápido.
 const { stripe, runStripeMutation } = require("../helpers/stripeClient");
 
+// A qué cuenta se cobra. Ver helpers/stripeConnectedAccount.js: mientras
+// ninguna compañía tenga `acct_` guardado esto no cambia nada, y el día que lo
+// tenga es un cambio de dato y no de código.
+const Company = require("../models/Company");
+const { resolveCompanyContext } = require("../helpers/companyContext");
+const { isStaffOrigin, isStaffSession } = require("../helpers/consumerUserFilter");
+const { staffView, publicView, isRetrievableId } = require("../helpers/paymentIntentView");
+const {
+  persistConnectedAccountId,
+  resolveConnectedAccountId,
+  resolveStripeContextForRequest,
+  stripeOptionsFor,
+} = require("../helpers/stripeConnectedAccount");
+
 const stripeCustomer = async (request, response) => {
   const { email, name, phoneNumber } = request.body;
   try {
@@ -76,6 +90,24 @@ const stripeAccountCreate = async (request, response) => {
         },
       },
     });
+
+    // Guardar el mapa compañía → acct_. Hasta ahora el identificador se
+    // devolvía al cliente y NO se guardaba en ningún sitio, así que el servidor
+    // no sabía qué cuenta conectada era de quién — y sin ese mapa no se puede
+    // enrutar un cobro sin fiarse de lo que mande el cliente, que en rutas
+    // públicas sería cobrar contra la cuenta de cualquiera.
+    //
+    // Es best-effort a propósito: la cuenta YA existe en Stripe en este punto.
+    // Si no se puede guardar, se registra y se devuelve igual, porque un error
+    // aquí haría que el cliente creara una segunda cuenta.
+    const companyId = resolveCompanyContext(request);
+    if (companyId) {
+      await persistConnectedAccountId(Company, companyId, account.id, { logger });
+    } else {
+      logger.warn(
+        `stripe: cuenta conectada ${account.id} creada sin contexto de compañía; no se guardó el mapa`
+      );
+    }
 
     return response.status(201).json({
       ok: true,
@@ -276,6 +308,16 @@ const stripePaymentIntent = async (request, response) => {
   const idempotencyKey = request.idempotencyKey;
 
   try {
+    // A qué cuenta se cobra, resuelto en el SERVIDOR desde la compañía. Hoy
+    // devuelve `{}` para todo el mundo —ninguna compañía tiene `acct_` guardado
+    // todavía— así que el comportamiento es idéntico al de siempre: la cuenta
+    // madre. Ver helpers/stripeConnectedAccount.js.
+    const { options: accountOptions, companyId } = await resolveStripeContextForRequest(request, {
+      Company,
+      resolveCompany: resolveCompanyContext,
+      logger,
+    });
+
     const paymentIntent = await stripe.paymentIntents.create(
       {
         amount: total,
@@ -283,8 +325,12 @@ const stripePaymentIntent = async (request, response) => {
         payment_method_types: ["card"],
         capture_method: "manual",
         receipt_email: customerEmail,
+        // Mientras TODOS los cobros caigan en la misma cuenta, esto es lo único
+        // que permite saber después de quién era cada uno. Barato, y sirve
+        // aunque las cuentas conectadas no se activen nunca.
+        ...(companyId ? { metadata: { company_id: String(companyId) } } : {}),
       },
-      idempotencyKey ? { idempotencyKey } : undefined
+      { ...(idempotencyKey ? { idempotencyKey } : {}), ...accountOptions }
     );
 
     logger.info("public_payment_intent_created", {
@@ -326,12 +372,17 @@ const stripePaymentIntentCustomized = async (request, response) => {
   const customerEmail = receipt_email;
   const totalToCharge = parseInt(total) * 100;
   try {
+    // Fase 0.1b (2026-10-19): sin metadata, el pago quedaba sin dueño en Stripe y
+    // la comprobación de propiedad (requirePaymentOwnership) solo podía usar
+    // nuestros registros. Mismo criterio que stripePaymentIntent.
+    const companyId = resolveCompanyContext(request);
     const paymentIntentCustomized = await stripe.paymentIntents.create({
       amount: totalToCharge,
       currency: "usd",
       payment_method_types: ["card"],
       capture_method: "manual",
       receipt_email: customerEmail,
+      ...(companyId ? { metadata: { company_id: String(companyId) } } : {}),
     });
     return response.status(201).json({
       clientSecret: paymentIntentCustomized.client_secret,
@@ -350,6 +401,8 @@ const stripePaymentIntentCustomized = async (request, response) => {
 const stripePaymentIntentSubscription = async (request, response) => {
   const { total, customerEmail } = request.body;
   try {
+    // Fase 0.1b: la compañía en metadata, como en stripePaymentIntent.
+    const companyId = resolveCompanyContext(request);
     const paymentSubscription = await stripe.paymentIntents.create({
       amount: total,
       currency: "usd",
@@ -357,6 +410,7 @@ const stripePaymentIntentSubscription = async (request, response) => {
         enabled: true,
       },
       receipt_email: customerEmail,
+      ...(companyId ? { metadata: { company_id: String(companyId) } } : {}),
     });
     return response.status(201).json({
       clientSecret: paymentSubscription.client_secret,
@@ -540,14 +594,24 @@ const searchSubscriptions = async (request, response) => {
 const updateSubcriptionInCompanyAccount = async (request, response) => {
   try {
     const storedSubcriptionID = request.params.id;
-    const newInfo = request.body;
+    // Solo el historial de suscripción (lo único que manda el dashboard). Antes
+    // se escribía el body entero: stripeID, companyName u ownerEmail incluidos,
+    // y de ellos depende de qué compañía es este registro (A8b).
+    const { subscriptionHistory } = request.body || {};
+    if (!Array.isArray(subscriptionHistory)) {
+      return response.status(400).json({ ok: false, msg: "subscriptionHistory must be an array." });
+    }
+    const ignored_fields = Object.keys(request.body || {}).filter((k) => k !== "subscriptionHistory");
     const updatingStoredSubscriptionInfo =
-      await StripeCompany.findByIdAndUpdate(storedSubcriptionID, newInfo, {
-        new: true,
-      });
+      await StripeCompany.findByIdAndUpdate(
+        storedSubcriptionID,
+        { $set: { subscriptionHistory } },
+        { new: true }
+      );
     return response.status(201).json({
       ok: true,
       companyCustomer: updatingStoredSubscriptionInfo,
+      ...(ignored_fields.length ? { ignored_fields } : {}),
     });
   } catch (error) {
     return response.status(500).json({
@@ -683,8 +747,15 @@ const updateDefaultPaymentMethodInCustomer = async (request, response) => {
 
 const searchStripeTransaction = async (request, response) => {
   try {
+    // Una sola cuenta de Stripe para todas las compañías: sin filtrar, esto
+    // devolvía los depósitos pendientes de TODAS. La ruta deja la compañía en
+    // req.stripeSearchCompany (A8, 2026-10-27); es un ObjectId validado.
+    const company = request.stripeSearchCompany;
+    const scoped = /^[0-9a-f]{24}$/i.test(company ?? "")
+      ? ` AND metadata['company_id']:'${company}'`
+      : "";
     const paymentIntent = await stripe.paymentIntents.search({
-      query: "status:'requires_capture'",
+      query: `status:'requires_capture'${scoped}`,
     });
     return response.status(201).json({
       paymentIntent,
@@ -917,21 +988,31 @@ const removeDuplicateEntries = async (request, response) => {
   }
 };
 
+// La llaman la app del consumidor sin sesión y el dashboard con sesión. La forma
+// de la respuesta, y por qué, en helpers/paymentIntentView.js.
 const retrievePaymentIntent = async (request, response) => {
+  const { id } = request.params;
+  if (!isRetrievableId(id)) {
+    return response.status(400).json({ ok: false, msg: "Invalid payment intent id" });
+  }
   try {
-    if (request.params.id.length > 15) {
-      const paymentIntent = await stripe.paymentIntents.retrieve(
-        `${request.params.id}`
-      );
-      return response.status(201).json({
-        ok: true,
-        paymentIntent,
-      });
+    const staff = await isStaffSession(request);
+    if (!staff && isStaffOrigin(request)) {
+      return response.status(401).json({ ok: false, msg: "Staff session required" });
     }
-  } catch (error) {
-    return response.status(500).json({
-      error,
+    const paymentIntent = await stripe.paymentIntents.retrieve(id, {
+      expand: ["latest_charge"],
     });
+    return response.status(201).json({
+      ok: true,
+      paymentIntent: staff ? staffView(paymentIntent) : publicView(paymentIntent),
+    });
+  } catch (error) {
+    if (error?.code === "resource_missing" || error?.statusCode === 404) {
+      return response.status(404).json({ ok: false, msg: "Payment intent not found" });
+    }
+    logger.error("retrievePaymentIntent error:", error?.message);
+    return response.status(500).json({ ok: false, msg: "Could not retrieve the payment intent" });
   }
 };
 
@@ -964,8 +1045,10 @@ const retrieveSubscriptionID = async (request, response) => {
 
 const getListOfAllSavedStripeTransaction = async (request, response) => {
   try {
+    // sanitizeFilter: el filtro llega del cliente; un $where o un $ne no puede
+    // pasar como consulta (A8, 2026-10-27). La compañía la fija la ruta.
     const listOfStripeTransactionsSaved = await StripeTransaction.find(
-      request.body
+      mongoose.sanitizeFilter({ ...(request.body || {}) })
     ).populate("user");
     return response.status(201).json({
       ok: true,

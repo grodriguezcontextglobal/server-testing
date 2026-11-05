@@ -44,7 +44,9 @@ const DEFAULT_GO_WORKER_PORT = 7453;
  * runtime, en vez de recalcularlo por su cuenta y poder divergir.
  */
 const resolveWorkerTarget = () => ({
-  host: process.env.GO_WORKER_HOST || "localhost",
+  // 127.0.0.1 y no "localhost": el worker escucha solo en IPv4 loopback y
+  // "localhost" puede resolver primero a ::1 en Windows.
+  host: process.env.GO_WORKER_HOST || "127.0.0.1",
   port: process.env.GO_WORKER_PORT || DEFAULT_GO_WORKER_PORT,
 });
 

@@ -1,10 +1,40 @@
 const { Schema, model } = require("mongoose");
 
 const StaffActivityLogSchema = new Schema({
+  // Opcional desde el audit trail del servidor (middlewares/auditTrail.js):
+  // hay rutas de escritura sin auth, y una acción sin autor identificable se
+  // registra igual, con actor_type 'anonymous', en vez de perderse.
   staff_member_id: {
     type: Schema.Types.ObjectId,
     ref: "AdminUser",
-    required: true,
+    required: false,
+    default: null,
+  },
+  actor_type: {
+    type: String,
+    enum: ["staff", "anonymous"],
+    default: "staff",
+  },
+  // Quién era el autor EN ESE MOMENTO. staff_member_id se popula al leer, pero
+  // si la cuenta se borra o cambia de nombre, el registro tiene que seguir
+  // diciendo quién lo hizo.
+  actor: {
+    name: { type: String },
+    email: { type: String },
+  },
+  // La acción en una frase legible, sin el autor ("Returned device SN-100006
+  // from ana@x.com at event TEST _ 2"). Ver helpers/auditDescribe.js.
+  summary: {
+    type: String,
+  },
+  // Sobre qué o quién, en una palabra: el serial, el consumidor, la cuenta…
+  target_label: {
+    type: String,
+  },
+  // Desglose para pintar sin interpretar: who / what / how (con los campos del
+  // payload) / whom / where / when. Ver helpers/auditDisplay.js.
+  display: {
+    type: Object,
   },
   // Opcional a propósito: hay eventos que legítimamente no tienen compañía.
   // El LOGIN ocurre ANTES de que el usuario elija con qué compañía trabajar
@@ -12,6 +42,13 @@ const StaffActivityLogSchema = new Schema({
   // registro por no poder atribuirlo — con `required: true` el job terminaba
   // en dead-letter y el evento se perdía.
   company_id: {
+    type: String,
+    required: false,
+    default: null,
+  },
+  // id SQL de la compañía (header s-company-lq de las rutas /api/db_*). El
+  // worker lo traduce a company_id; se conserva por si la traducción falla.
+  company_sql_id: {
     type: String,
     required: false,
     default: null,
@@ -34,6 +71,25 @@ const StaffActivityLogSchema = new Schema({
     type: Object, // Flexible field for details like "Added 5 items", "Assigned iPad to John", etc.
     default: {},
   },
+  // Lo que permite filtrar el trail por evento o por dispositivo. Lo rellena el
+  // audit trail del servidor a partir de la petición.
+  context: {
+    event_id: { type: String },
+    event_name: { type: String },
+    member_id: { type: String },
+    consumer: { type: String },
+    serial_numbers: { type: [String], default: undefined },
+    item_ids: { type: [String], default: undefined },
+    // Destinatarios de un correo (acciones SEND Email).
+    recipients: { type: [String], default: undefined },
+    count: { type: Number },
+  },
+  // 'server' = middlewares/auditTrail.js; 'client' = POST /api/admin/activity-logs;
+  // sin valor = los registros explícitos de los controladores.
+  source: {
+    type: String,
+    required: false,
+  },
   ip_address: {
     type: String,
     default: "",
@@ -47,6 +103,12 @@ const StaffActivityLogSchema = new Schema({
     default: Date.now,
   },
 });
+
+StaffActivityLogSchema.index({ company_id: 1, timestamp: -1 });
+StaffActivityLogSchema.index({ "context.event_id": 1, timestamp: -1 });
+StaffActivityLogSchema.index({ "context.serial_numbers": 1, timestamp: -1 });
+StaffActivityLogSchema.index({ "context.item_ids": 1, timestamp: -1 });
+StaffActivityLogSchema.index({ "context.member_id": 1, timestamp: -1 });
 
 StaffActivityLogSchema.method("toJSON", function () {
   const { __v, _id, ...object } = this.toObject();

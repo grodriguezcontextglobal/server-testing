@@ -11,17 +11,9 @@ const { validateJWT } = require('../middlewares/validate-jwt');
 // función retornada por la factory. Usada para inspección del stack de rutas.
 const AUTHZ_SIGNATURE = 'insufficient permissions';
 
-// Inspecciona el stack de un Express Router y devuelve los handles de una
-// ruta concreta. Retorna null si la ruta no existe.
-function getRouteHandlers(router, method, routePath) {
-  const layer = router.stack.find(
-    l => l.route &&
-         l.route.path === routePath &&
-         l.route.methods[method.toLowerCase()],
-  );
-  if (!layer) return null;
-  return layer.route.stack.map(l => l.handle);
-}
+// Cadena EFECTIVA de la ruta (router.use previos + la ruta). Ver test/helpers/effectiveChain.js.
+const { effectiveChain } = require('./helpers/effectiveChain');
+const getRouteHandlers = (router, method, routePath) => effectiveChain(router, method, routePath);
 
 // Recarga un módulo de ruta limpiando su entrada en require.cache.
 function loadRouter(relativePath) {
@@ -37,17 +29,27 @@ function hasAuthzPermission(handlers) {
 
 // ════════════════════════════════════════════════════════════════════════════
 // BLOQUE A — routes/auth.js
-// RED: las rutas GET /:id y GET /all-consumers-… no tienen validateJWT todavía.
 // ════════════════════════════════════════════════════════════════════════════
 
-test('routes/auth.js: GET /:id tiene validateJWT en su cadena', () => {
+// GET /:id NO puede llevar validateJWT (2026-10-15, regla del usuario): la app
+// del consumidor (app.devitrak.net) la llama sin sesión. Desde el dashboard sí
+// se exige sesión de staff o el token del enlace del correo (/display-contracts),
+// y eso lo hace contractLinkGate. Este test antes exigía validateJWT y era el
+// único fallo de la suite desde julio. El comportamiento de los dos carriles lo
+// prueba contractLinkAuth.test.js ("ruta compartida — la app del consumidor
+// pasa sin token, el dashboard sin sesión no").
+test('routes/auth.js: GET /:id va por dos carriles (optionalJWT + contractLinkGate, sin validateJWT)', () => {
+  const { optionalJWT } = require('../middlewares/optionalJWT');
   const router = loadRouter('../routes/auth');
   const handlers = getRouteHandlers(router, 'GET', '/:id');
   assert.ok(handlers !== null, 'La ruta GET /:id debe existir');
+  assert.ok(!handlers.includes(validateJWT), 'validateJWT rompería la app del consumidor');
+  assert.equal(handlers[0], optionalJWT, 'optionalJWT primero: sin él no se reconoce la sesión de staff');
   assert.ok(
-    handlers.includes(validateJWT),
-    'validateJWT debe estar en la cadena de GET /:id',
+    handlers.slice(1, -1).some((h) => h.toString().includes('contract link')),
+    'contractLinkGate debe estar entre optionalJWT y el controlador',
   );
+  assert.equal(handlers.at(-1).name, 'getUser');
 });
 
 test('routes/auth.js: GET /all-consumers-based-on-all-events-per-company/:companyID tiene validateJWT', () => {
@@ -180,8 +182,12 @@ test('routes/staff.js: PATCH /edit-admin/:id tiene authorizeMongoPermission', ()
   const router = loadRouter('../routes/staff');
   const handlers = getRouteHandlers(router, 'PATCH', '/edit-admin/:id');
   assert.ok(handlers !== null, 'La ruta PATCH /edit-admin/:id debe existir');
+  // Desde 2026-10-12 el permiso va dentro de `selfOrStaffUpdate`: el propio
+  // perfil con campos personales no lo necesita, todo lo demás sí. El
+  // comportamiento lo prueban docsStaffAuthzRoutes.test.js (edit-admin: ...).
   assert.ok(
-    hasAuthzMongoPermission(handlers),
+    hasAuthzMongoPermission(handlers) ||
+      handlers.some((h) => h.name === 'selfOrStaffUpdate' && h.toString().includes('canUpdateStaff')),
     'authorizeMongoPermission debe estar en PATCH /edit-admin/:id',
   );
 });
@@ -570,6 +576,48 @@ for (const [method, routePath] of LOCATION_ROUTES) {
       hasAuthzPermission(handlers),
       `authorizePermission debe estar en la cadena de ${method} ${routePath}`,
     );
+  });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BLOQUE — routes/transaction.js (2026-10-15)
+// El router entero iba sin un solo middleware. Se cierran las seis rutas que no
+// llama la app del consumidor (app.devitrak.net, sin sesión). Las otras cuatro
+// siguen sin token a propósito: tres las usa la app y GET /transaction la usa la
+// página pública /receipt del dashboard. Si una de esas cuatro gana validateJWT,
+// se rompe un flujo real: el test lo fija en los dos sentidos.
+// ════════════════════════════════════════════════════════════════════════════
+
+const TRANSACTION_STAFF_ONLY = [
+  ['POST',  '/save-transaction-admin-dashboard'],
+  ['POST',  '/save-transaction-template-no-regular-user'],
+  ['PATCH', '/update-transaction/:id'],
+  ['GET',   '/subscriptions/:id'],
+  ['POST',  '/update-multiple-documents'],
+  ['POST',  '/check-and-release-deposit-transactions'],
+];
+
+for (const [method, routePath] of TRANSACTION_STAFF_ONLY) {
+  test(`routes/transaction.js: ${method} ${routePath} lleva validateJWT y checkTokenVersion`, () => {
+    const handlers = getRouteHandlers(loadRouter('../routes/transaction'), method, routePath);
+    assert.ok(handlers !== null, `La ruta ${method} ${routePath} debe existir`);
+    assert.ok(handlers.includes(validateJWT), `validateJWT debe estar en ${method} ${routePath}`);
+    assert.ok(handlers.includes(checkTokenVersion), `checkTokenVersion debe estar en ${method} ${routePath}`);
+  });
+}
+
+const TRANSACTION_CONSUMER_APP = [
+  ['POST',   '/transaction'],
+  ['POST',   '/save-transaction'],
+  ['DELETE', '/remove-duplicate-transaction/:id'],
+  ['GET',    '/transaction'],
+];
+
+for (const [method, routePath] of TRANSACTION_CONSUMER_APP) {
+  test(`routes/transaction.js: ${method} ${routePath} NO exige sesión (app del consumidor / recibo público)`, () => {
+    const handlers = getRouteHandlers(loadRouter('../routes/transaction'), method, routePath);
+    assert.ok(handlers !== null, `La ruta ${method} ${routePath} debe existir`);
+    assert.ok(!handlers.includes(validateJWT), `${method} ${routePath} no puede exigir validateJWT`);
   });
 }
 

@@ -210,12 +210,13 @@ test('requireNotificationAuth: an authenticated request passes', () => {
   assert.equal(nexted, true);
 });
 
-test('the pre-login routes are exactly the four that cannot hold a token', () => {
+test('the pre-login routes are exactly the five that cannot hold a token', () => {
   assert.deepEqual([...PUBLIC_ROUTES.keys()].sort(), [
     '/confirmation-account',
     '/forcing-revoking-active-session',
     '/login-existing-consumer',
     '/reset-admin-password',
+    '/terms-and-conditions-acceptance',
   ]);
   assert.equal(isPublicRoute(makeRequest({ path: '/reset-admin-password' })), true);
   assert.equal(isPublicRoute(makeRequest({ path: '/reset-admin-password/' })), true);
@@ -263,6 +264,7 @@ test('enforce: the pre-login routes still answer — locking these breaks sign-i
     '/forcing-revoking-active-session',
     '/confirmation-account',
     '/login-existing-consumer',
+    '/terms-and-conditions-acceptance',
   ]) {
     const response = makeResponse();
     let nexted = false;
@@ -324,8 +326,8 @@ const runLimiter = (request) =>
     if (result && typeof result.then === 'function') result.then(() => { if (response.blocked) done(); });
   });
 
-test('las dos rutas de asistente están marcadas, las de staff no', () => {
-  assert.equal(CONSUMER_PUBLIC_ROUTES.size, 2);
+test('las rutas de asistente están marcadas, las de staff no', () => {
+  assert.equal(CONSUMER_PUBLIC_ROUTES.size, 3);
   assert.equal(isConsumerPublicRoute({ path: '/confirmation-account' }), true);
   assert.equal(isConsumerPublicRoute({ path: '/login-existing-consumer' }), true);
   assert.equal(isConsumerPublicRoute({ path: '/reset-admin-password' }), false);

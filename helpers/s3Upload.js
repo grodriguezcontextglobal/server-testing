@@ -182,6 +182,160 @@ const uploadNotificationAttachment = async ({ content, filename, contentType }) 
   return { key };
 };
 
+/**
+ * Sube el .xlsx ya generado del export de inventario y devuelve su key.
+ *
+ * Toma una RUTA en disco, no un buffer, porque el handler escribe el libro con
+ * el writer en streaming de exceljs: un inventario de 50.000 ítems nunca llega
+ * a estar entero en memoria del worker, que es justo el problema que el export
+ * en cola viene a resolver. `uploadExcelToS3` no sirve aquí — espera el objeto
+ * `file` de multer (un fichero que SUBE el usuario), y este lo generamos
+ * nosotros.
+ *
+ * El fichero temporal se borra siempre, también si la subida falla: son unas
+ * decenas de MB por export y el worker es un proceso de vida larga.
+ *
+ * @param {Object} params
+ * @param {string} params.filePath - Ruta del .xlsx generado.
+ * @param {string} params.companyId
+ * @param {string} params.fileName - Nombre con el que se descargará.
+ * @returns {Promise<{key: string}>}
+ */
+const UPLOAD_MAX_ATTEMPTS = Number(process.env.S3_EXPORT_UPLOAD_ATTEMPTS || 3);
+
+/**
+ * Bucket de los exports de inventario.
+ *
+ * Va aparte del de documentos porque su ciclo de vida es el contrario: un
+ * documento que sube un cliente se guarda, y un export es un fichero de usar y
+ * tirar -- la URL prefirmada dura 15 minutos y el objeto no le sirve a nadie
+ * despues. `devitrak-inventory-exports` (us-east-2) tiene una regla que los
+ * borra al dia; sin ella, cada pulsacion del boton Export dejaba en el bucket de
+ * documentos, para siempre, el inventario completo de una compania.
+ *
+ * SE LEE EN CADA LLAMADA, no al cargar el modulo: nssm y dotenv definen el
+ * entorno antes de que arranque el proceso, pero las pruebas lo cambian entre
+ * casos, y un valor congelado al `require` haria pasar pruebas que mienten.
+ *
+ * Cae a `AWS_S3_BUCKET_NAME` si no esta definida, para que este codigo se pueda
+ * desplegar ANTES de configurar la variable sin cambiar el comportamiento.
+ */
+const exportsBucket = () =>
+  process.env.AWS_S3_EXPORTS_BUCKET || process.env.AWS_S3_BUCKET_NAME;
+
+/**
+ * Errores de subida que merecen otro intento: cortes de red y fallos del lado
+ * de S3. Un 403 (credenciales) o un 404 (bucket) NO se reintentan — repetirlos
+ * solo retrasa el error de verdad y lo entierra bajo tres trazas iguales.
+ */
+const RETRIABLE_UPLOAD_CODES = new Set([
+  "ECONNRESET",
+  "EPIPE",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "EAI_AGAIN",
+  "ERR_STREAM_PREMATURE_CLOSE",
+  "RequestTimeout",
+  "InternalError",
+  "SlowDown",
+  "TimeoutError",
+]);
+
+const isRetriableUploadError = (error) => {
+  if (!error) return false;
+  const status = error.$metadata && error.$metadata.httpStatusCode;
+  if (status && (status >= 500 || status === 429)) return true;
+  return RETRIABLE_UPLOAD_CODES.has(error.code) || RETRIABLE_UPLOAD_CODES.has(error.name);
+};
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Envía el comando reintentando, y CONSTRUYÉNDOLO DE NUEVO en cada intento.
+ *
+ * Por qué existe esto y no basta el reintento del SDK: el SDK v3 reintenta solo
+ * (`standard`, 3 intentos) y ECONNRESET entra en lo que reintentaría, pero **no
+ * puede reintentar una petición cuyo cuerpo es un stream** — ya se consumió y no
+ * se rebobina. Las otras subidas de este fichero pasan un Buffer, que sí es
+ * replayable, así que se curan solas; el export es la única que no, y es la que
+ * falló en producción el 22-sep (job `inventory:export`, `read ECONNRESET`).
+ *
+ * La cola acabó reintentando el job entero, que con 1.625 filas costó dos
+ * segundos — pero con 200.000 son minutos de releer MySQL y regenerar el .xlsx
+ * por un corte de un segundo al subir. Por eso el reintento va aquí, pegado a
+ * lo que falló, y no en el job.
+ *
+ * `buildCommand` es una función, no un comando: cada intento necesita un stream
+ * nuevo. Pasar el mismo objeto reintentaría con un stream ya agotado y fallaría
+ * igual, solo que más lento.
+ */
+const sendWithRetry = async ({
+  send,
+  buildCommand,
+  attempts = UPLOAD_MAX_ATTEMPTS,
+  onRetry,
+  delayFn = wait,
+}) => {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await send(buildCommand());
+    } catch (error) {
+      if (attempt >= attempts || !isRetriableUploadError(error)) throw error;
+      if (onRetry) onRetry(error, attempt);
+      await delayFn(attempt * 500);
+    }
+  }
+};
+
+const uploadInventoryExportToS3 = async ({ filePath, companyId, fileName }) => {
+  if (!filePath || !companyId || !fileName) {
+    throw new Error("Missing required parameters: filePath, companyId, fileName");
+  }
+
+  // La clave se calcula UNA vez, fuera del bucle: un reintento tiene que
+  // sobrescribir el mismo objeto, no dejar uno huérfano por intento.
+  const key = `companies/${companyId}/inventory-exports/${Date.now()}-${fileName}`;
+  // El bucket se resuelve UNA vez y se devuelve con la clave: quien firme la URL
+  // tiene que firmar contra el mismo sitio donde se subio. Leerlo dos veces del
+  // entorno invita a que subida y firma discrepen -- y eso no falla, produce una
+  // URL que da error de S3 mientras el job dice `done`.
+  const bucket = exportsBucket();
+
+  try {
+    await sendWithRetry({
+      send: (command) => s3Client.send(command),
+      buildCommand: () =>
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: fs.createReadStream(filePath),
+          ContentType:
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          // Sin esto el navegador abre la URL prefirmada en una pestaña en vez de
+          // descargar, y el usuario acaba con un .xlsx renderizado como basura.
+          ContentDisposition: `attachment; filename="${fileName}"`,
+          Metadata: {
+            companyId: String(companyId),
+            documentType: "inventory-export",
+            generatedAt: new Date().toISOString(),
+          },
+        }),
+      onRetry: (error, attempt) =>
+        logger.warn(
+          `Export ${key}: intento ${attempt} de subida falló (${error.code || error.name}), reintentando`
+        ),
+    });
+
+    return { key, bucket };
+  } finally {
+    // Una sola vez, después del último intento: borrarlo entre intentos dejaría
+    // al siguiente sin fichero que subir.
+    await unlinkFile(filePath).catch((error) =>
+      logger.warn(`No se pudo borrar el export temporal ${filePath}: ${error.message}`)
+    );
+  }
+};
+
 const streamToBuffer = (stream) =>
   new Promise((resolve, reject) => {
     const chunks = [];
@@ -218,11 +372,18 @@ function extractS3Key(fullUrl) {
  * Generates a temporary download URL for an S3 object
  * @param {string} key - The S3 object key
  * @param {number} expirationMinutes - URL expiration time in minutes (default: 5)
+ * @param {Object} [options]
+ * @param {string} [options.bucket] - Bucket donde vive el objeto. Sin esto, la
+ *   firma iba SIEMPRE contra `AWS_S3_BUCKET_NAME`, así que un objeto subido a
+ *   otro bucket —los exports, desde que tienen el suyo— producía una URL
+ *   perfectamente válida apuntando a donde el fichero no está: error de S3 en la
+ *   cara del usuario con el job en `done`. Quien sube devuelve su bucket; quien
+ *   firma lo usa.
  * @returns {Promise<string>} - The temporary download URL
  */
-const getTemporaryDownloadUrl = async (key, expirationMinutes = 5) => {
+const getTemporaryDownloadUrl = async (key, expirationMinutes = 5, { bucket } = {}) => {
   let sanitazedKey = key;
-  const bucketName = process.env.AWS_S3_BUCKET_NAME;
+  const bucketName = bucket || process.env.AWS_S3_BUCKET_NAME;
 
   // Only sanitize if it looks like a URL or starts with the bucket name
   if (
@@ -235,7 +396,7 @@ const getTemporaryDownloadUrl = async (key, expirationMinutes = 5) => {
   try {
     logger.info(`Generating download URL for key: ${sanitazedKey}`);
     const command = new GetObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Bucket: bucketName,
       Key: sanitazedKey,
     });
 
@@ -275,6 +436,10 @@ const deleteDocumentFromS3 = async (key) => {
 module.exports = {
   uploadPdfToS3,
   uploadExcelToS3,
+  uploadInventoryExportToS3,
+  exportsBucket,
+  sendWithRetry,
+  isRetriableUploadError,
   uploadNotificationAttachment,
   fetchAttachmentAsBase64,
   getTemporaryDownloadUrl,

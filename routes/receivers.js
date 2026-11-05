@@ -4,7 +4,13 @@
  */
 
 const { Router } = require("express");
+const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
 const router = Router();
+const { validateJWT } = require("../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../middlewares/checkValidateToken");
+const { optionalJWT } = require("../middlewares/optionalJWT");
+const { requireBodyCompanyMembership } = require("../middlewares/requireBodyCompanyMembership");
+const { isStaffOrigin, isStaffSession } = require("../helpers/consumerUserFilter");
 
 const {
   addReceiverToTransaction,
@@ -32,17 +38,64 @@ const {
   getAllTransactionByEventAndConsumer,
 } = require("../controller/receiver");
 
+// ─── Denegar por defecto (FedRAMP P1.1 · AC-3, 2026-10-21) ───────────────────
+//
+// Todo este router exige sesión de staff, salvo las rutas de PUBLIC_ROUTES, que
+// se registran ANTES del `router.use` de abajo. Una ruta nueva añadida en este
+// fichero nace cerrada. test/receiverRouterGuards.test.js lo comprueba.
+//
+// Única ruta pública: la app del consumidor (app.devitrak.net, sin login) lee
+// sus equipos asignados con { user, eventSelected }. El dashboard la llama
+// siempre con sesión.
+const PUBLIC_ROUTES = ["POST /receiver-assigned-list"];
+
+// Dos carriles. Con sesión de staff, como siempre. Desde el dashboard sin
+// sesión, 401. Sin sesión desde otro origen (la app del consumidor), solo un
+// consumidor y un evento, como texto: antes era `Receivers.find(body)` y un body
+// vacío devolvía los equipos asignados de todas las compañías.
+const assignedListLanes = async (req, res, next) => {
+  try {
+    if (await isStaffSession(req)) return next();
+  } catch {
+    // sin poder comprobar la sesión, se trata como anónima
+  }
+  if (isStaffOrigin(req)) {
+    return res.status(401).json({ ok: false, msg: "Authentication is required for this endpoint." });
+  }
+  const { user, eventSelected } = req.body ?? {};
+  if (typeof user !== "string" || !user.trim() || typeof eventSelected !== "string" || !eventSelected.trim()) {
+    return res.status(400).json({ ok: false, msg: "user and eventSelected are required." });
+  }
+  req.body = { user, eventSelected };
+  return next();
+};
+
+router.post(
+  "/receiver-assigned-list",
+  optionalJWT,
+  assignedListLanes,
+  consumerTokenGate({
+    eventScoped: true,
+    subject: (req) => ({ email: req.body?.user, eventName: req.body?.eventSelected }),
+  }),
+  listOfAssignedReceiver
+);
+
+router.use(validateJWT, checkTokenVersion);
+
 //post receivers per user per transaction
 router.post("/receiver-assignation", addReceiverToTransaction);
 
 //check paymentIntent was used for receivers
 router.post("/receiver-assigned", checkingReceiversAssigned);
 
+// Escriben en el pool de la compañía del body: quien llama tiene que ser
+// empleado activo de ella (AC-3, 2026-11-04).
 //add receivers to pool
-router.post("/receivers-pool", poolReceivers);
+router.post("/receivers-pool", requireBodyCompanyMembership("company"), poolReceivers);
 
-//add multiple receivers to pool
-router.post("/receivers-pool-bulk", poolReceiversBulk);
+//add multiple receivers to pool (sin duplicados por evento + dispositivo)
+router.post("/receivers-pool-bulk", requireBodyCompanyMembership("company"), poolReceiversBulk);
 
 //track receiver returned by issue
 router.post("/receiver-returned-issue", trackReturnedReceiverWithIssue);
@@ -69,9 +122,6 @@ router.post("/receiver-pool-list", receiverPoolList);
 router.get("/receiver-pool-list", getListOfItemsInEventPool);
 
 //render list of all assigned receiver
-router.post("/receiver-assigned-list", listOfAssignedReceiver);
-
-//render list of all assigned receiver
 router.post(
   "/receiver-assigned-users-list",
   listOfAssignedReceiverPlusUserInformation
@@ -82,18 +132,6 @@ router.get("/list-receiver-returned-issue", getListOfReceiverReturnedByIssue);
 
 //render all receiver returned by issue
 router.post("/list-receiver-returned-issue", getListOfReceiverReturnedByIssue);
-
-//update entire data of an assigned receiver
-router.put("/receiver-update/:id", udpateReceiverStatus);
-
-//update specific value of receiver assigned data
-router.patch("/receiver-update/:id", udpateReceiverStatus);
-
-// //update specific value of receiver data in pool
-// router.patch("/receivers-pool-update/:id", updatePoolReceivers);
-
-//update specific value of an issue receiver data
-router.patch("/receiver-returned-issue/:id", updateIssueDevice);
 
 //find and delete device from pool document
 router.delete("/delete-device-pool/:id", receiverPoolFoundAndDelete);
@@ -132,4 +170,6 @@ router.patch(
 );
 
 router.post('/all-transaction-by-event-and-consumer', getAllTransactionByEventAndConsumer)
+
 module.exports = router;
+module.exports.PUBLIC_ROUTES = PUBLIC_ROUTES;

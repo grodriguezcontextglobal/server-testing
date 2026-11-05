@@ -720,15 +720,29 @@ const consultingItemTable = async (request, response) => {
 const consultingItemInWarehouseTable = async (request, response) => {
   try {
     const connection = getConnection();
-    const { role: _role, preference: _pref, ...filters } = request.body;
+    const { role: _role, preference: _pref, ...filters } = request.body ?? {};
     const { company_id } = filters;
+
+    // Las claves del body van al SQL como nombres de columna: solo columnas
+    // conocidas de item_inv, y solo valores escalares (SI-10, 2026-11-04).
+    // Antes cualquier clave se interpolaba tal cual.
+    const invalidCols = Object.keys(filters).filter((k) => !ITEM_INV_COLUMNS.has(k));
+    if (invalidCols.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    }
+    const nonScalar = Object.entries(filters)
+      .filter(([, v]) => v !== null && typeof v === "object")
+      .map(([k]) => k);
+    if (nonScalar.length > 0) {
+      return response.status(400).json({ ok: false, msg: `Invalid value for: ${nonScalar.join(", ")}` });
+    }
 
     const userAccess = await getStaffCompanyAccess(request.sqlStaffId, company_id);
     if (!userAccess) {
       return response.status(403).json({ ok: false, msg: "Staff record not found for this company" });
     }
     // Base query construction
-    let formatting = Object.keys(filters).map((item) => `${item}=?`).join(" AND ");
+    let formatting = Object.keys(filters).map((item) => `\`${item}\`=?`).join(" AND ");
     const values = Object.values(filters);
 
     // Full-access roles: no restriction. Location/category-scoped roles: restricted
@@ -2665,6 +2679,9 @@ const updateAllItemsInInventory = async (request, response) => {
       originalTemplate.category_name,
       originalTemplate.item_group,
     ];
+    // Usaba una `connection` de módulo que se quitó el 2026-01-20 (1878c1d):
+    // desde entonces toda llamada fallaba con "connection is not defined".
+    const connection = getConnection();
     const [result] = await connection.execute(query, values);
     const itemIds = result.map((item) => item.item_id);
     const queryToUpdateParams = {
@@ -2740,6 +2757,11 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
       warehouse,
       originalTemplate,
       supplier_info,
+      // Los usaba sin leerlos del body: toda llamada fallaba con ReferenceError.
+      min_serial_number,
+      max_serial_number,
+      company_id,
+      update_at,
     } = request.body;
     if (!min_serial_number || !max_serial_number) {
       return response.status(400).json({
@@ -2943,8 +2965,9 @@ const getContainerItems = async (request, response) => {
     let childIds;
     try {
       const rawChildIds = containerResults[0].child_ids;
-      //     // Remove any BOM or extra characters that might be present
-      //     const cleanJson = rawChildIds?.replace(/^\ufeff/g, '').trim();
+      // Remove any BOM or extra characters that might be present. Estaba
+      // comentado y la l\u00ednea de abajo lo usaba: un child_ids en texto fallaba.
+      const cleanJson = rawChildIds?.replace(/^\ufeff/g, '').trim();
       childIds =
         typeof rawChildIds === "string" ? JSON.parse(cleanJson) : rawChildIds;
 
@@ -4205,6 +4228,7 @@ const retrieveCompanyInventoryBasedOnParams = async (request, response) => {
 }
 
 module.exports = {
+  ITEM_INV_COLUMNS,
   checkingIfCompanyHasInventory,
   checkingInventoryCurrentState,
   checkingItem,

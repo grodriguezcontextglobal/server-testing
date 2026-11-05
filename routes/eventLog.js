@@ -4,6 +4,8 @@
  */
 
 const { Router } = require("express");
+const { validateJWT } = require("../middlewares/validate-jwt");
+const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const router = Router();
 
 const {
@@ -12,8 +14,8 @@ renderActivity
 } = require("../controller/eventLog");
 
 // feed event log
-router.post("/feed-event-log", feedEventLog)
+router.post("/feed-event-log", validateJWT, checkTokenVersion, feedEventLog)
 
 //display event
-router.get("/activity", renderActivity)
+router.get("/activity", validateJWT, checkTokenVersion, renderActivity)
 module.exports = router;

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"time"
@@ -90,8 +91,17 @@ func startServer() {
 		// "Go Worker Connection Failed / circuit breaker open" outages in prod.
 		port = "7453"
 	}
-	fmt.Printf("Go worker server listening on port %s\n", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	bind := os.Getenv("GO_WORKER_BIND")
+	if bind == "" {
+		// Loopback only: Node is the sole caller and runs on the same host. An
+		// empty host listened on every interface, so the worker (no auth) was
+		// reachable from the network whenever the firewall let 7453 through.
+		// Set GO_WORKER_BIND=0.0.0.0 only when Node runs on another host/container.
+		bind = "127.0.0.1"
+	}
+	addr := net.JoinHostPort(bind, port)
+	fmt.Printf("Go worker server listening on %s\n", addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
 func recoverMiddleware(next http.HandlerFunc) http.HandlerFunc {

@@ -216,6 +216,12 @@ Invoke-RestMethod "http://localhost:34001/api/metrics?hours=1" -Headers @{ "x-to
 Las tres tienen que responder. **`/ready` y `/api/metrics` daban 404 antes de
 esta fase: que respondan es la prueba de que el despliegue entró.**
 
+> ⚠️ **Que `/api/metrics` responda NO significa que se pueda leer.** Con un token
+> válido responde **403 `platform observability requires platform_observer`**
+> mientras nadie tenga el flag. La fase parece cerrada, la Fase 2 parece estar
+> midiendo, y no se está guardando nada legible. Ver el paso **1.5**, que es
+> obligatorio y no estaba en la primera versión de este documento.
+
 Y comprobar que el grupo `heavy` tiene quien lo drene:
 
 ```powershell
@@ -605,4 +611,83 @@ no solo añadir `QUEUE_GROUP`.
 1.3  git checkout release/... + restart ← y esto además desarma el
                                           despliegue accidental
 1.4  Verificar /health, /ready, /api/metrics
+1.5  Dar platform_observer a alguien ← SIN ESTO LA FASE 2 NO MIDE NADA
 ```
+
+---
+
+# Fase 1.5 · Dar de alta al primer `platform_observer`
+
+**Añadido el 2026-09-18.** No estaba en la primera versión de este documento, y
+su ausencia es la razón de que la Fase 1 se diera por cerrada el 17-sep mientras
+la Fase 2 llevaba horas sin recoger nada legible.
+
+**Bloquea a:** la Fase 2, y por tanto a las Fases 4 y 5.
+
+## El problema
+
+`/api/metrics` y `/api/jobs/stats` pasan por `requirePlatformRead`, que exige
+`AdminUser.platform_observer` o `AdminUser.super_user`
+(`middlewares/requirePlatformRead.js:53`).
+
+**Nadie tiene ninguno de los dos, y nada en el repositorio los concede.**
+Verificado el 2026-09-18 buscando `platform_observer` en todo el árbol, `.js` y
+`.md` incluidos: aparece en tres sitios —el esquema, que lo declara
+`default: false`; el middleware, que lo exige; y su test—. **Ni un script, ni
+una migración, ni una línea de runbook lo pone a `true`.** `super_user` está
+igual: `controller/admin.js:36` bloquea a propósito que se siembre desde el
+registro.
+
+## Por qué el runbook no lo detectaba
+
+El paso 1.4 da la fase por buena cuando `/api/metrics` responde. **Y responde.**
+Sin token da 401; con token válido da **403**. En los dos casos «responde», así
+que la comprobación pasa, la Fase 1 se marca cerrada y la Fase 2 arranca
+midiendo contra una ventana que nadie puede leer.
+
+Y la ventana **son 3 horas** (§2.1). No es que falten datos por recoger: los que
+caen fuera de la ventana **ya se descartaron**, en silencio, a razón de una hora
+por hora. Esto no se recupera hacia atrás.
+
+## Qué hacer
+
+Es un cambio **de datos, no de código**: un flag booleano en un documento de
+Mongo. No requiere desplegar, ni reiniciar, ni tocar el repositorio.
+
+```javascript
+// En la base de Mongo de producción, sobre el AdminUser que vaya a leer el panel.
+db.adminusers.updateOne(
+  { email: "<el correo del operador>" },
+  { $set: { platform_observer: true } }
+)
+```
+
+Conceder `platform_observer`, **no `super_user`**: `AdminUser.super_user` es el
+bypass TOTAL de `authorizeMongoPermission`, o sea escritura en todas las
+compañías, para que alguien lea un panel. Esa distinción es justamente la razón
+de que el flag exista (`0e15bdc`).
+
+## Verificar
+
+```powershell
+Invoke-RestMethod "http://localhost:34001/api/metrics?hours=3" -Headers @{ "x-token" = $token }
+```
+
+Tiene que devolver datos. Si devuelve
+`Forbidden: platform observability requires platform_observer`, el flag no está
+puesto en el usuario de ese token.
+
+## Vuelta atrás
+
+`{ $set: { platform_observer: false } }`. El flag no concede escritura, así que
+el riesgo de dejarlo puesto es de lectura de datos agregados entre compañías —
+concederlo a quien no deba, no un riesgo de integridad.
+
+## Y a partir de aquí, muestrear
+
+Con el flag puesto, la Fase 2 empieza **de verdad**. Por la ventana de 3 h hay
+que muestrear **varias veces al día y guardar la salida** (§2.1): una ruta poco
+llamada puede dar cero en una sola muestra y parecer que no la usa nadie.
+
+El reloj de los «3 días mínimo» de la Fase 2 cuenta desde que este paso esté
+hecho, **no desde el despliegue del 17-sep**.
