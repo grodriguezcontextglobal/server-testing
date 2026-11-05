@@ -5,7 +5,7 @@
 // Uso:
 //   node mysql/scripts/migrate-staff-id.js --dry-run
 //   node mysql/scripts/migrate-staff-id.js
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') })
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'), quiet: true })
 const { MongoClient } = require('mongodb')
 const mysql = require('mysql2/promise')
 

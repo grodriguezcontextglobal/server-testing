@@ -1,5 +1,5 @@
 // redisClient.js
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 const { createClient } = require("redis");
 
 // Create a Redis client instance

@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 const { response } = require("express");
 const getConnection = require("../database/config");
 const { chunkArray } = require("../../helpers/chunkArray");

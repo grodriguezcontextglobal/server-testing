@@ -35,7 +35,7 @@
  */
 'use strict';
 
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'), quiet: true });
 const crypto = require('crypto');
 
 const LOCATION_SCOPED_LEVELS = new Set([6, 7]);

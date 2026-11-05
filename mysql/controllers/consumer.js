@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 const { createPool } = require("mysql2");
 const getConnection = require("../database/config");
 const { resolveCompanyContext } = require("../helpers/companyContext");

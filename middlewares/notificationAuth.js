@@ -41,6 +41,7 @@
 
 const jwt = require("jsonwebtoken");
 const rateLimit = require("express-rate-limit");
+const { clientIpKey } = require("../helpers/rateLimitKey");
 const AdminUser = require("../models/AdminUser");
 const Company = require("../models/Company");
 const logger = require("../helpers/logger");
@@ -109,7 +110,7 @@ const consumerRateLimitKey = (request) => {
   const email = request.body?.consumer?.email;
   return typeof email === "string" && email.trim()
     ? `email:${email.trim().toLowerCase()}`
-    : `ip:${request.ip}`;
+    : `ip:${clientIpKey(request)}`;
 };
 
 /**
@@ -241,7 +242,7 @@ const notificationRateLimit = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (request) =>
-    request.notificationSession?.uid ? `uid:${request.notificationSession.uid}` : `ip:${request.ip}`,
+    request.notificationSession?.uid ? `uid:${request.notificationSession.uid}` : `ip:${clientIpKey(request)}`,
   message: { ok: false, msg: "Too many notification requests. Please try again shortly." },
 });
 
@@ -254,7 +255,7 @@ const publicNotificationRateLimit = rateLimit({
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (request) => `ip:${request.ip}`,
+  keyGenerator: (request) => `ip:${clientIpKey(request)}`,
   message: { ok: false, msg: "Too many requests. Please try again shortly." },
 });
 

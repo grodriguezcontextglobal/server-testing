@@ -32,7 +32,7 @@
  */
 'use strict';
 
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'), quiet: true });
 const fs = require('fs');
 const path = require('path');
 const { groupDuplicates } = require('./diagnose-duplicate-locations');

@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const logger = require("../helpers/logger");
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 let isConnected = false;
 // dbConnection

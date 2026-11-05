@@ -13,7 +13,7 @@
 // Uso:
 //   node mysql/scripts/backfill-company-item-categories.js --dry-run
 //   node mysql/scripts/backfill-company-item-categories.js
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') })
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'), quiet: true })
 const mysql = require('mysql2/promise')
 
 async function backfill(dryRun = true) {

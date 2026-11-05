@@ -18,7 +18,7 @@
  *
  * Los jobs `done` se borran a los 7 dias (TTL de models/Job.js): mas atras no hay datos.
  */
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 const mongoose = require("mongoose");
 const getConnection = require("../mysql/database/config");
 const { dbConnection } = require("../database/config");

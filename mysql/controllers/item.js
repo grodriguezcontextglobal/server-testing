@@ -24,7 +24,7 @@ const { createQueuedJobController, waitForJobOutcome } = require("../../helpers/
 const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
 const { chunkArray } = require("../../helpers/chunkArray");
 const crypto = require("node:crypto");
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 
 // Rows per INSERT statement for bulk writes -- see insertBulkItem.
 const BULK_INSERT_BATCH_SIZE = 500;

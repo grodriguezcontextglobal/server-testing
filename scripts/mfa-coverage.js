@@ -61,7 +61,7 @@ function byCompany(companies, users) {
 const pct = (n, d) => (d ? `${Math.round((n / d) * 100)}%` : '-');
 
 async function main() {
-  require('dotenv').config();
+  require('dotenv').config({ quiet: true });
   const mongoose = require('mongoose');
   const { dbConnection } = require('../database/config');
   await dbConnection();

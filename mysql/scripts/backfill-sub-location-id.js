@@ -11,7 +11,7 @@
 // Uso:
 //   node mysql/scripts/backfill-sub-location-id.js --dry-run
 //   node mysql/scripts/backfill-sub-location-id.js
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') })
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'), quiet: true })
 const mysql = require('mysql2/promise')
 const { processSubLocationPath } = require('../controllers/sub_location')
 

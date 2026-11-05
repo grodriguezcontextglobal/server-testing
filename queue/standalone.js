@@ -20,7 +20,7 @@
  * double-processing across the two workers. The open Mongo connection keeps the
  * process alive even though the worker's poll timer is unref'd.
  */
-require("dotenv").config();
+require("dotenv").config({ quiet: true });
 const logger = require("../helpers/logger");
 const { dbConnection } = require("../database/config");
 const worker = require("./worker");
