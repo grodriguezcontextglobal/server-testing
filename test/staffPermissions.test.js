@@ -194,6 +194,7 @@ test('addCompanyStaff: 400 con role_type fuera de los 6 valores válidos', async
 test('addCompanyStaff: 201 inserta en company_staff con role_type válido', async () => {
   pushResults(
     [[{ id: 'role-uuid-123' }]], // SELECT id FROM roles
+    [[]],                        // SELECT is_active (tope del plan): no estaba
     [{ affectedRows: 1 }],       // INSERT IGNORE INTO company_staff
   );
   const req = { body: { company_id: 'c1', staff_id: 's1', role_type: 'sale_manager' } };
@@ -415,6 +416,7 @@ test('updateCompanyStaff: 200 actualiza solo role_type', async () => {
 test('updateCompanyStaff: 200 actualiza role_type e is_active simultáneamente', async () => {
   pushResults(
     [[{ id: 2 }]],       // SELECT id FROM roles
+    [[{ is_active: 0 }]], // SELECT is_active (tope del plan): reactivación
     [{ affectedRows: 1 }], // UPDATE
   );
   const req = { body: { company_id: 'c1', staff_id: 's1', role_type: 'sale_manager', is_active: 1 } };

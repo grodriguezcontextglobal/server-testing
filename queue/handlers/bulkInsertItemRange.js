@@ -12,6 +12,7 @@
  */
 
 const { chunkArray } = require("../../helpers/chunkArray");
+const planLimits = require("../../helpers/planLimits");
 
 const INSERT_QUERY = `
   INSERT INTO item_inv (
@@ -59,35 +60,53 @@ function buildRowValues(payload, serialNumbers) {
  * @param {Function} opts.getConnection - mysql/database/config.js (devuelve el Pool).
  * @param {number} [opts.batchSize=500]
  */
-function createBulkInsertItemRangeHandler({ getConnection, batchSize = 500 }) {
-  return async function bulkInsertItemRangeHandler(payload) {
+function createBulkInsertItemRangeHandler({
+  getConnection,
+  batchSize = 500,
+  withPlanCapacity = planLimits.withPlanCapacity,
+}) {
+  return async function bulkInsertItemRangeHandler(payload, job) {
     const serialNumbers = generateSerialNumbers(payload.min_serial_number, payload.max_serial_number);
     if (serialNumbers.length === 0) {
       throw new Error("No serial numbers generated.");
     }
     const values = buildRowValues(payload, serialNumbers);
 
-    const pool = getConnection();
-    const connection = await pool.getConnection();
-    let affectedRows = 0;
-    let insertId = null;
+    // Tope del plan (2026-11-06): todo o nada, bajo el candado de la compañía.
+    // Un rechazo es el RESULTADO del job (no un error): reintentarlo no cambia
+    // nada, y el controlador lo convierte en 403.
+    const capacity = await withPlanCapacity(
+      {
+        resource: "items",
+        sqlCompanyId: payload.company_id,
+        requested: serialNumbers.length,
+        context: planLimits.planContextFromJob(job, "inventory:bulk-insert-range"),
+        lockOptions: planLimits.BULK_LOCK_OPTIONS,
+      },
+      async () => {
+        const pool = getConnection();
+        const connection = await pool.getConnection();
+        let affectedRows = 0;
+        let insertId = null;
 
-    try {
-      await connection.beginTransaction();
-      for (const batch of chunkArray(values, batchSize)) {
-        const [result] = await connection.query(INSERT_QUERY, [batch]);
-        affectedRows += result.affectedRows || 0;
-        if (insertId === null) insertId = result.insertId || null;
+        try {
+          await connection.beginTransaction();
+          for (const batch of chunkArray(values, batchSize)) {
+            const [result] = await connection.query(INSERT_QUERY, [batch]);
+            affectedRows += result.affectedRows || 0;
+            if (insertId === null) insertId = result.insertId || null;
+          }
+          await connection.commit();
+        } catch (error) {
+          await connection.rollback();
+          throw error;
+        } finally {
+          connection.release();
+        }
+        return { affectedRows, insertId, total: serialNumbers.length };
       }
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
-
-    return { affectedRows, insertId, total: serialNumbers.length };
+    );
+    return capacity.refusal || capacity.result;
   };
 }
 

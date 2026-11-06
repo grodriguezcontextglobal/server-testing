@@ -322,6 +322,9 @@ const initializeApp = () => {
   // Buzón de violaciones de CSP del dashboard: mismo motivo, fuera del
   // limitador global y del audit trail. El porqué en routes/cspReport.js.
   app.use(require("./routes/cspReport"));
+  // Webhook de Stripe (planes de suscripción): cuerpo crudo para la firma,
+  // sin sesión ni limitador global. El porqué en routes/stripeWebhook.js.
+  app.use(require("./routes/stripeWebhook"));
 
   configureMiddleware(app);
   configureRoutes(app);
