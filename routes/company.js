@@ -24,6 +24,11 @@ const {
 const { linkStripeAccountAtRegistration } = require("../controller/companyRegistrationStripe");
 const { deactivateEventStaff } = require("../controller/eventStaffAccess");
 const {
+  getCompanySubscription,
+  createCheckout,
+  createPortal,
+} = require("../controller/companySubscription");
+const {
   createProviderCompany,
   updateProviderCompany,
   uploadProviderDocument,
@@ -86,6 +91,14 @@ router.patch("/update-company/:id", validateJWT, checkTokenVersion, authorizeMon
 // Al cerrar un evento, el servidor decide quién pierde el acceso (AC-2, AC-6).
 // event:update y no company:update: quien cierra el evento es el event_manager.
 router.post("/event-staff/deactivate", validateJWT, checkTokenVersion, authorizeMongoPermission("event", "update"), deactivateEventStaff);
+
+// Plan de suscripción (2026-11-06). Leerlo: cualquier staff activo de la
+// compañía (el controlador comprueba la membresía). Pagar o gestionar el pago:
+// billing:update. El plan solo lo cambia el webhook de Stripe
+// (routes/stripeWebhook.js). Ver controller/companySubscription.js.
+router.get("/subscription", validateJWT, checkTokenVersion, getCompanySubscription);
+router.post("/subscription/checkout", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), createCheckout);
+router.post("/subscription/portal", validateJWT, checkTokenVersion, authorizeMongoPermission("billing", "update"), createPortal);
 
 // Sin sesión (alta de compañía): solo conecta la cuenta de Stripe, una vez y
 // en compañías recién creadas. Antes guardaba el body entero de cualquier

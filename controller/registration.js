@@ -12,6 +12,7 @@ const { clientRedis } = require("../database/cacheMemoryConfig");
 const { isAcceptablePassword, passwordPolicyMessage } = require("../helpers/passwordPolicy");
 const { generateInvitationToken, readInvitationToken } = require("../helpers/invitationToken");
 const logger = require("../helpers/logger");
+const { reservePlanCapacity } = require("../helpers/planLimits");
 
 const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
 
@@ -536,6 +537,7 @@ const acceptInvitation = async (request, response) => {
     });
   }
   const { email } = invitation;
+  let planReservation = null;
 
   try {
     // ── Buscar empresa en MongoDB ──────────────────────────────────────────────
@@ -574,6 +576,47 @@ const acceptInvitation = async (request, response) => {
       : "assistant";
 
     const sqlConn = getConnection();
+
+    // ── SQL: obtener company_id de company_info ───────────────────────────────
+    let sqlCompanyId = null;
+    try {
+      const [[companyRow]] = await sqlConn.execute(
+        "SELECT company_id FROM company_info WHERE company_name = ? LIMIT 1",
+        [companyDoc.company_name]
+      );
+      sqlCompanyId = companyRow?.company_id ?? null;
+    } catch (sqlErr) {
+      logger.warn("company_info lookup falló para invitación", {
+        company_name: companyDoc.company_name,
+        err: sqlErr.message,
+      });
+    }
+
+    // ── Tope de staff del plan (2026-11-06) ────────────────────────────────────
+    // Aceptar convierte al invitado en staff activo. Si la compañía ya está en
+    // su tope, se rechaza AQUÍ, antes de crear la cuenta o confirmar nada. El
+    // candado se mantiene hasta el INSERT de company_staff (finally de abajo).
+    let alreadyActive = false;
+    if (sqlCompanyId) {
+      try {
+        const [activeRows] = await sqlConn.execute(
+          "SELECT cs.is_active FROM company_staff cs JOIN staff_member sm ON sm.staff_id = cs.staff_id WHERE cs.company_id = ? AND sm.email = ? AND cs.is_active = 1 LIMIT 1",
+          [sqlCompanyId, email]
+        );
+        alreadyActive = activeRows.length > 0;
+      } catch (sqlErr) {
+        logger.warn("company_staff lookup falló para invitación", { err: sqlErr.message });
+      }
+    }
+    planReservation = await reservePlanCapacity({
+      resource: "staff",
+      sqlCompanyId,
+      requested: alreadyActive ? 0 : 1,
+      context: { route: "POST /api/registration/accept-invitation", ip: request.ip },
+    });
+    if (planReservation.refusal) {
+      return response.status(403).json(planReservation.refusal);
+    }
 
     // ── Usuario: nuevo o existente ─────────────────────────────────────────────
     let adminUser = await AdminUser.findOne({ email });
@@ -640,21 +683,6 @@ const acceptInvitation = async (request, response) => {
       });
     }
 
-    // ── SQL: obtener company_id de company_info ───────────────────────────────
-    let sqlCompanyId = null;
-    try {
-      const [[companyRow]] = await sqlConn.execute(
-        "SELECT company_id FROM company_info WHERE company_name = ? LIMIT 1",
-        [companyDoc.company_name]
-      );
-      sqlCompanyId = companyRow?.company_id ?? null;
-    } catch (sqlErr) {
-      logger.warn("company_info lookup falló para invitación", {
-        company_name: companyDoc.company_name,
-        err: sqlErr.message,
-      });
-    }
-
     // ── SQL: insertar company_staff ────────────────────────────────────────────
     if (sqlCompanyId && sqlStaffId) {
       try {
@@ -696,6 +724,8 @@ const acceptInvitation = async (request, response) => {
       msg: "La aceptación de la invitación falló.",
       err: error.message,
     });
+  } finally {
+    if (planReservation) await planReservation.release();
   }
 };
 

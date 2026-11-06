@@ -15,6 +15,8 @@
  * los batches corren dentro de una sola transacción.
  */
 
+const planLimits = require('../../helpers/planLimits');
+
 const INSERT_QUERY = `
   INSERT INTO item_inv (
     category_name, item_group, cost, brand, descript_item, ownership,
@@ -76,8 +78,12 @@ function buildBatchValues(batch, payload, extraInfoMap) {
  * @param {Function} opts.getConnection - mysql/database/config.js (devuelve el Pool).
  * @param {number} [opts.batchSize=1000]
  */
-function createInventoryBulkInsertHandler({ getConnection, batchSize = 1000 }) {
-  return async function inventoryBulkInsertHandler(payload) {
+function createInventoryBulkInsertHandler({
+  getConnection,
+  batchSize = 1000,
+  withPlanCapacity = planLimits.withPlanCapacity,
+}) {
+  return async function inventoryBulkInsertHandler(payload, job) {
     const { list } = payload;
     if (!list || list.length === 0) {
       throw new Error('no serial numbers provided');
@@ -85,29 +91,43 @@ function createInventoryBulkInsertHandler({ getConnection, batchSize = 1000 }) {
 
     const extraInfoMap = buildExtraInfoMap(payload.extra_serial_number);
 
-    const pool = getConnection();
-    const connection = await pool.getConnection();
-    let inserted = 0;
+    // Tope del plan (2026-11-06): todo o nada, bajo el candado de la compañía.
+    // El rechazo es el resultado del job, no un error (no se reintenta).
+    const capacity = await withPlanCapacity(
+      {
+        resource: 'items',
+        sqlCompanyId: payload.company_id,
+        requested: list.length,
+        context: planLimits.planContextFromJob(job, 'inventory:bulk-insert-alphanumeric'),
+        lockOptions: planLimits.BULK_LOCK_OPTIONS,
+      },
+      async () => {
+        const pool = getConnection();
+        const connection = await pool.getConnection();
+        let inserted = 0;
 
-    try {
-      await connection.beginTransaction();
+        try {
+          await connection.beginTransaction();
 
-      for (let i = 0; i < list.length; i += batchSize) {
-        const batch = list.slice(i, i + batchSize);
-        const values = buildBatchValues(batch, payload, extraInfoMap);
-        const [result] = await connection.query(INSERT_QUERY, [values]);
-        inserted += result.affectedRows;
+          for (let i = 0; i < list.length; i += batchSize) {
+            const batch = list.slice(i, i + batchSize);
+            const values = buildBatchValues(batch, payload, extraInfoMap);
+            const [result] = await connection.query(INSERT_QUERY, [values]);
+            inserted += result.affectedRows;
+          }
+
+          await connection.commit();
+        } catch (error) {
+          await connection.rollback();
+          throw error;
+        } finally {
+          connection.release();
+        }
+
+        return { inserted, total: list.length };
       }
-
-      await connection.commit();
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
-
-    return { inserted, total: list.length };
+    );
+    return capacity.refusal || capacity.result;
   };
 }
 
