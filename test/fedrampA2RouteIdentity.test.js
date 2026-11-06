@@ -99,6 +99,7 @@ const PUBLIC_ROUTES = {
   'routes/health.js GET /health': 'public: monitoreo',
   'routes/health.js GET /ready': 'public: monitoreo',
   'routes/cspReport.js POST /api/csp-report': 'public: informes de CSP que manda el navegador; solo escribe campos fijos, 16 kb, limite por IP, siempre 204',
+  'routes/stripeWebhook.js POST /api/webhooks/stripe': 'public: webhook de Stripe; lo autentica la firma (STRIPE_WEBHOOK_SECRET sobre el cuerpo crudo), no una sesion',
   'routes/status.js GET /status': 'public: página de estado',
   'routes/status.js GET /health': 'public: monitoreo',
   'routes/registration.js POST /new': 'public: alta de compañía (validación + rate limit)',

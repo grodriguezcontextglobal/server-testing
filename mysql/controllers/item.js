@@ -24,6 +24,12 @@ const { createQueuedJobController, waitForJobOutcome } = require("../../helpers/
 const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
 const { chunkArray } = require("../../helpers/chunkArray");
 const crypto = require("node:crypto");
+const {
+  withPlanCapacity,
+  precheckPlanCapacity,
+  isPlanRefusal,
+  planContextFromRequest,
+} = require("../../helpers/planLimits");
 require("dotenv").config({ quiet: true });
 
 // Rows per INSERT statement for bulk writes -- see insertBulkItem.
@@ -382,10 +388,21 @@ const insertingItem = async (request, response) => {
       return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
     }
 
-    console.log(values);
-    const [result] = await connection.execute(query, values);
-
-    await connection.commit();
+    // Tope del plan (2026-11-06): contar e insertar bajo el candado de la
+    // compañía, para que dos altas a la vez no pasen con el mismo conteo.
+    const capacity = await withPlanCapacity(
+      { resource: "items", sqlCompanyId: company_id, requested: 1, context: planContextFromRequest(request) },
+      async () => {
+        const [inserted] = await connection.execute(query, values);
+        await connection.commit();
+        return inserted;
+      },
+    );
+    if (capacity.refusal) {
+      await connection.rollback();
+      return response.status(403).json(capacity.refusal);
+    }
+    const result = capacity.result;
 
     return response.status(201).json({
       item: {
@@ -428,6 +445,7 @@ function createInsertBulkItemRange({
   getStaffCompanyAccessFn = getStaffCompanyAccess,
   canWriteInScopeFn = canWriteInScope,
   waitForJobOutcomeFn = waitForJobOutcome,
+  precheckPlanCapacityFn = precheckPlanCapacity,
   maxWaitMs = 4000,
 } = {}) {
   return async function insertBulkItem(request, response) {
@@ -469,6 +487,19 @@ function createInsertBulkItemRange({
         });
       }
 
+      // Tope del plan: aviso inmediato; la comprobación real (con candado) la
+      // hace el handler del job antes de insertar.
+      const requestedRows = Number.parseInt(max_serial_number, 10) - Number.parseInt(min_serial_number, 10) + 1;
+      if (Number.isInteger(requestedRows) && requestedRows > 0) {
+        const refusal = await precheckPlanCapacityFn({
+          resource: "items",
+          sqlCompanyId: company_id,
+          requested: requestedRows,
+          context: planContextFromRequest(request),
+        });
+        if (refusal) return response.status(403).json(refusal);
+      }
+
       const payload = { ...request.body, location: locName, location_id: locationId };
       const job = await enqueueFn("inventory:bulk-insert-range", payload, {
         context: extractContextFn(request),
@@ -476,6 +507,7 @@ function createInsertBulkItemRange({
 
       const outcome = await waitForJobOutcomeFn(job, { maxWaitMs });
       if (outcome.outcome === "done") {
+        if (isPlanRefusal(outcome.result)) return response.status(403).json(outcome.result);
         return response.status(201).json({ item: outcome.result, ok: true });
       }
       if (outcome.outcome === "failed") {
@@ -514,6 +546,7 @@ function createInsertBulkItemAlphanumeric({
   connectionFn = getConnection,
   getStaffCompanyAccessFn = getStaffCompanyAccess,
   canWriteInScopeFn = canWriteInScope,
+  precheckPlanCapacityFn = precheckPlanCapacity,
 } = {}) {
   return async function insertBulkItemAlhpanumericFormat(request, response) {
     try {
@@ -545,6 +578,19 @@ function createInsertBulkItemAlphanumeric({
       }
       if (!(await canWriteInScopeFn(access, "create", { locationId, categoryName: category_name }))) {
         return response.status(403).json({ ok: false, msg: "Not allowed to create items in this location/category" });
+      }
+
+      // Tope del plan: aviso inmediato, todo o nada; el handler lo vuelve a
+      // comprobar con candado antes de insertar.
+      const requestedRows = Array.isArray(request.body.list) ? request.body.list.length : 0;
+      if (requestedRows > 0) {
+        const refusal = await precheckPlanCapacityFn({
+          resource: "items",
+          sqlCompanyId: company_id,
+          requested: requestedRows,
+          context: planContextFromRequest(request),
+        });
+        if (refusal) return response.status(403).json(refusal);
       }
 
       const payload = { ...request.body, location_id: locationId };

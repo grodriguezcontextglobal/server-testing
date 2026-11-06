@@ -6,6 +6,18 @@ const connection = getConnection();
 
 const { VALID_ROLE_TYPES } = require('../constants/roles');
 const { LOCATION_SCOPED_ROLES, CATEGORY_SCOPED_ROLES } = require('../helpers/staffAccess');
+const { withPlanCapacity, planContextFromRequest } = require('../../helpers/planLimits');
+
+// Tope de staff del plan (2026-11-06): solo cuenta como alta lo que deja a
+// alguien ACTIVO que no lo estaba. Un INSERT IGNORE de alguien que ya está, o
+// reactivar a quien ya está activo, no suma.
+const findCompanyStaffRow = async (company_id, staff_id) => {
+  const [rows] = await connection.query(
+    "SELECT is_active FROM company_staff WHERE company_id = ? AND staff_id = ? LIMIT 1",
+    [company_id, staff_id]
+  );
+  return rows[0] || null;
+};
 
 // Whitelist for consultingStaffMemberInformation column filter
 const STAFF_MEMBER_COLUMNS = new Set(['id', 'first_name', 'last_name', 'email', 'phone_number']);
@@ -184,10 +196,24 @@ const addCompanyStaff = async (request, response) => {
       return response.status(400).json({ ok: false, msg: "Role not found" });
     }
 
-    const [result] = await connection.query(
-      "INSERT IGNORE INTO company_staff (id, company_id, company_name, staff_id, role_id, is_active, assigned_by) VALUES (?,?,?,?,?,1,?)",
-      [uuid(), company_id, company_name || null, staff_id, roleRows[0].id, assigned_by || null]
+    const existing = await findCompanyStaffRow(company_id, staff_id);
+    const capacity = await withPlanCapacity(
+      {
+        resource: "staff",
+        sqlCompanyId: company_id,
+        requested: existing ? 0 : 1,
+        context: planContextFromRequest(request),
+      },
+      async () => {
+        const [inserted] = await connection.query(
+          "INSERT IGNORE INTO company_staff (id, company_id, company_name, staff_id, role_id, is_active, assigned_by) VALUES (?,?,?,?,?,1,?)",
+          [uuid(), company_id, company_name || null, staff_id, roleRows[0].id, assigned_by || null]
+        );
+        return inserted;
+      }
     );
+    if (capacity.refusal) return response.status(403).json(capacity.refusal);
+    const result = capacity.result;
 
     return response.status(201).json({ ok: true, inserted: result.affectedRows });
   } catch (error) {
@@ -334,10 +360,29 @@ const updateCompanyStaff = async (request, response) => {
 
     values.push(company_id, staff_id);
 
-    const [result] = await connection.query(
-      `UPDATE company_staff SET ${setClauses.join(", ")} WHERE company_id = ? AND staff_id = ?`,
-      values
+    // Reactivar a alguien inactivo es un alta a efectos del plan.
+    let reactivates = false;
+    if (is_active === 1) {
+      const existing = await findCompanyStaffRow(company_id, staff_id);
+      reactivates = Boolean(existing) && Number(existing.is_active) !== 1;
+    }
+    const capacity = await withPlanCapacity(
+      {
+        resource: "staff",
+        sqlCompanyId: company_id,
+        requested: reactivates ? 1 : 0,
+        context: planContextFromRequest(request),
+      },
+      async () => {
+        const [updated] = await connection.query(
+          `UPDATE company_staff SET ${setClauses.join(", ")} WHERE company_id = ? AND staff_id = ?`,
+          values
+        );
+        return updated;
+      }
     );
+    if (capacity.refusal) return response.status(403).json(capacity.refusal);
+    const result = capacity.result;
 
     if (!result.affectedRows) {
       return response.status(404).json({ ok: false, msg: "Staff member not found in company" });

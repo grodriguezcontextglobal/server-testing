@@ -39,6 +39,7 @@ const MODES = [
   { mode: 'STRIPE_OWNERSHIP_MODE', match: /^stripe ownership: (\S+) \(STRIPE_OWNERSHIP_MODE=warn/ },
   { mode: 'COMPANY_CONTEXT_MODE', match: /^company context: body and header disagree \(COMPANY_CONTEXT_MODE=warn/ },
   { mode: 'NOSQL_INPUT_MODE', match: /^nosql input: (operator in \S+) allowed \(NOSQL_INPUT_MODE=warn/ },
+  { mode: 'PLAN_LIMITS_MODE', match: /^plan limits: would refuse (\S+) \(PLAN_LIMITS_MODE=warn/ },
 ];
 
 // ─── lectura de los logs ────────────────────────────────────────────────────

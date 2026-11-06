@@ -493,6 +493,10 @@ const LOGGED_ELSEWHERE = new Set([
   'POST /api/db_event/new_event',
   'POST /api/db_event/update-event/:event_id',
   'DELETE /api/db_event/:id',
+  // Planes de suscripción (2026-11-06): controller/companySubscription.js
+  // registra la sesión de Checkout y la del Billing Portal con sus detalles.
+  'POST /api/company/subscription/checkout',
+  'POST /api/company/subscription/portal',
   // son registros en sí: auditarlos sería registrar el registro
   'POST /api/admin/activity-logs',
   'POST /api/error_log/error_log',

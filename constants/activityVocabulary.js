@@ -58,6 +58,10 @@ const ACTIVITY_ACTIONS = [
   // 2026-11-03, FedRAMP A5: tras el reset, el re-enrolamiento pasa por el correo.
   'MFA_RESET_EMAIL_SENT',
   'MFA_RESET_COMPLETED',
+  // 2026-11-06, planes de suscripción: cambio de plan (webhook de Stripe o
+  // super_user) y escritura rechazada por el tope del plan (helpers/planLimits.js).
+  'PLAN_CHANGE',
+  'PLAN_LIMIT_REACHED',
 ];
 
 const ACTIVITY_TARGET_MODELS = [

@@ -149,8 +149,9 @@ function createInventoryImportHandler({
   processLocation,
   processSubLocationPath,
   batchSize = IMPORT_BATCH_SIZE,
+  withPlanCapacity = require('../../helpers/planLimits').withPlanCapacity,
 }) {
-  return async function inventoryImportHandler(payload) {
+  return async function inventoryImportHandler(payload, job) {
     const { companyId, company, units, defaults, locationIds = {}, skipped = [] } = payload;
     if (!Array.isArray(units) || units.length === 0) {
       throw new Error('no units provided');
@@ -164,6 +165,8 @@ function createInventoryImportHandler({
 
     let inserted = 0;
     let locationsCreated = 0;
+    let planRefusal = null;
+    let insertable = [];
 
     try {
       // ── 1. Locaciones ──────────────────────────────────────────────────
@@ -230,7 +233,7 @@ function createInventoryImportHandler({
       }
 
       // ── 4. Qué se inserta y qué no ─────────────────────────────────────
-      const insertable = [];
+      insertable = [];
       for (const unit of units) {
         if (existing.has(unit.serial_number.toLowerCase())) {
           failures.push({
@@ -263,7 +266,45 @@ function createInventoryImportHandler({
         });
       }
 
-      // ── 5. Inserción por lotes ─────────────────────────────────────────
+      // ── 5. Tope del plan ───────────────────────────────────────────────
+      // Sobre las filas que de verdad se insertarían (sin las repetidas), todo
+      // o nada: un import a medias no le sirve a nadie (2026-11-06). Se
+      // comprueba aquí y no en el controlador porque solo aquí se sabe cuántas
+      // son. Las locaciones nuevas del paso 1 sí quedan creadas.
+      const planLimits = require('../../helpers/planLimits');
+      const capacity = await withPlanCapacity(
+        {
+          resource: 'items',
+          sqlCompanyId: companyId,
+          requested: insertable.length,
+          context: planLimits.planContextFromJob(job, 'inventory:bulk-insert-from-spreadsheet'),
+          lockOptions: planLimits.BULK_LOCK_OPTIONS,
+        },
+        () => insertBatches()
+      );
+      if (capacity.refusal) {
+        planRefusal = capacity.refusal;
+      }
+    } finally {
+      connection.release();
+    }
+
+    if (planRefusal) {
+      return { ...planRefusal, inserted: 0, total: units.length, locationsCreated };
+    }
+
+    return {
+      inserted,
+      total: units.length,
+      locationsCreated,
+      failedCount: failures.length,
+      failed: failures.slice(0, MAX_REPORTED_FAILURES),
+      failedTruncated: failures.length > MAX_REPORTED_FAILURES,
+    };
+
+    // ── 6. Inserción por lotes (dentro del candado del paso 5) ───────────
+    async function insertBatches() {
+      if (insertable.length === 0) return;
       for (const batch of chunk(insertable, batchSize)) {
         try {
           await connection.beginTransaction();
@@ -292,18 +333,7 @@ function createInventoryImportHandler({
           }
         }
       }
-    } finally {
-      connection.release();
     }
-
-    return {
-      inserted,
-      total: units.length,
-      locationsCreated,
-      failedCount: failures.length,
-      failed: failures.slice(0, MAX_REPORTED_FAILURES),
-      failedTruncated: failures.length > MAX_REPORTED_FAILURES,
-    };
   };
 }
 
