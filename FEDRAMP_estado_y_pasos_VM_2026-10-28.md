@@ -1,30 +1,30 @@
 # FedRAMP: estado y pasos en la VM
 
-> **Actualizado 2026-11-04 (tarde):** **Prod:** `cb03ab9`. Trae sobre `fdd5de2`
-> los lotes 1-5 de los bloqueos del dashboard: login con `companies`/`sqlCompanyId`
-> y `recoveryCodesRemaining`, logout sin token 401, warehouse-items con lista
-> blanca de columnas, enum de roleType con 10 tipos, `POST /api/csp-report`
-> (SI-4), `POST /api/company/event-staff/deactivate` (AC-2), company-staff con
-> permiso (AC-3/AC-6), receivers-pool con membresía y sin duplicados, y
-> `COMPANY_CONTEXT_MODE=warn`. Verificado en la VM: 6 servicios, `/health` 200,
-> 34001/7453 en 127.0.0.1, csp-report 204. `COMPANY_CONTEXT_MODE` se suma al paso 4.
+> **Actualizado 2026-11-06:** **Prod:** `ac66423` desde el 2026-11-05 ~19:29 UTC.
+> `main` y `release/observabilidad` tienen el mismo árbol: no queda código sin
+> desplegar. Sobre `cb03ab9` trae solo dependencias (SI-2, RA-5): `qs` 6.17.1,
+> `dotenv` 17 sin log al arrancar, `express-rate-limit` 8 con IPv6 agrupada por
+> /56 (AC-7), y en Go `mysql` 1.10.1, `mongo-driver` 1.17.10, `edwards25519`
+> 1.2.0 y `compress` 1.18.7. Verificado en la VM: `npm ci` sin errores, 5
+> servicios Node en marcha, `/health` operational, Go worker recompilado y 7453
+> `{"status":"ok"}`. Además: ruleset de `main` versionado y `main-guard.yml`
+> (CM-3/CM-5) y POA&M de dependencias en `docs/POAM_dependencias.md`.
 >
-> **Antes, 2026-11-04:** **Prod:** `fdd5de2` (Go 1.27.1 en la VM). Trae
-> sobre `2d220f3`: IP del cliente sin puerto y desde `X-Real-IP` (`1cfe516`,
-> `02cc992`), inyección NoSQL global con `NOSQL_INPUT_MODE=warn` (`b0ba8a1`),
-> compañía del contexto (`96ffee4`, AC-3/AC-6), regex sin ReDoS (`6dd97d9`),
-> Go 1.26.10 (`9af7c7f`, SI-2) y re-enrolamiento de MFA por correo (`fdd5de2`,
-> IA-2/IA-12). Verificado en la VM: 6 servicios en marcha, `/health` 200 y
-> 34001/7453 solo en 127.0.0.1. `NOSQL_INPUT_MODE` se suma a la tabla del paso 4.
+> **Ojo con las ramas:** las PRs, el CI y Dependabot van a `main`, pero la VM
+> despliega `release/observabilidad`. Lo mergeado en `main` no llega a prod
+> hasta que se lleva a release (como en la PR #39). Está pendiente decidir si
+> la VM pasa a desplegar desde `main`.
 >
-> **Fecha:** 2026-10-28 · **Rama:** `release/observabilidad` · **Prod:** `2d220f3`
-> desde el 2026-10-28 ~20:09 UTC, con Node 22.23.4 (antes `12ecf78`). La
-> Parte 1 se escribió antes de ese deploy: lo que dice "sin desplegar" ya está
-> en producción.
+> **Historial de deploys:** `cb03ab9` (11-04 tarde, lotes 1-5 del dashboard,
+> `COMPANY_CONTEXT_MODE=warn`) · `fdd5de2` (11-04, NoSQL global con
+> `NOSQL_INPUT_MODE=warn`, IP del cliente desde `X-Real-IP`, regex sin ReDoS,
+> Go 1.26.10, re-enrolamiento de MFA) · `2d220f3` (10-28, Node 22.23.4, los 38
+> commits de la tabla de abajo) · `12ecf78` (10-20).
 >
 > Parte 1: qué está hecho y qué falta. Parte 2: los comandos para pegar en la
-> VM, en orden. Todo se corre en una consola de PowerShell **de administrador**.
-> El detalle del grupo B está en `RUNBOOK_vm_fedramp_grupo_B.md`.
+> VM, en orden; los pasos 0-2 ya se corrieron y quedan como referencia. Todo se
+> corre en una consola de PowerShell **de administrador**. El detalle del grupo
+> B está en `RUNBOOK_vm_fedramp_grupo_B.md`.
 
 ---
 
@@ -32,17 +32,12 @@
 
 ### Hecho y en producción
 
-| Commit | Qué cierra |
-|---|---|
-| `e871d1b` | S0.1: inyección SQL y rutas anónimas |
-| `ef317c1` | transaction-audit-log sin escritura externa; lectura solo `super_user` |
-| `dcff2e3` | Sesión obligatoria en consulting-item, new_stripe e `/image` |
-| (VM) | Puertos 34001, WinRM y SMB cerrados en el firewall (2026-10-26) |
-
-### Hecho en código, en `origin/release/observabilidad`, SIN desplegar (38 commits)
-
 | Commit | Tarea | Control |
 |---|---|---|
+| `e871d1b` | S0.1: inyección SQL y rutas anónimas | SI-10, AC-3 |
+| `ef317c1` | transaction-audit-log sin escritura externa; lectura solo `super_user` | AU-9 |
+| `dcff2e3` | Sesión obligatoria en consulting-item, new_stripe e `/image` | AC-3 |
+| (VM) | Puertos 34001, WinRM y SMB cerrados en el firewall (2026-10-26) | SC-7 |
 | `603cf66` | Bloqueo por intentos fallidos, login fallido auditado, contraseña de 12 | AC-7, AU-2, IA-5 |
 | `fc6bf34`, `31ade10` | CI: tests, `npm audit` desde *high*, govulncheck, Semgrep, SBOM | SA-11, RA-5 |
 | `de3c5a2` | Fuera 3 handlers SQL sin montar | CM-7 |
@@ -57,14 +52,20 @@
 | `b7058e0`...`90fa6e5` | A8: Stripe y `/api/transaction` solo de la propia compañía | AC-3 |
 | `19d1dd9` | A9: Node 22.12.0 como mínimo | SI-2 |
 | `3ed0c58` | A10: logs JSON de una línea y medición de RAM | AU-3 |
-| `0247ae0` | Grupo B: scripts de la VM y runbook | - |
+| `0247ae0` | Grupo B: scripts de la VM y runbook (los scripts, no su ejecución) | - |
+| `b0ba8a1`, `96ffee4`, `6dd97d9` | NoSQL global, compañía del contexto, regex sin ReDoS (todo en *warn* donde aplica) | SI-10, AC-3, AC-6 |
+| `fdd5de2` | Re-enrolamiento de MFA por correo | IA-2, IA-12 |
+| `cb03ab9` | Lotes 1-5 del dashboard: csp-report, event-staff/deactivate, company-staff y receivers-pool con permiso | SI-4, AC-2, AC-3, AC-6 |
+| `ac66423` | Dependencias al día (Node y Go); rate limit por /56 en IPv6 | SI-2, RA-5, AC-7 |
+| `d21ff9c`, `b5e8c84` | Ruleset de `main` (solo PR + checks `test`/`audit`/`go`) y `main-guard.yml` | CM-3, CM-5 |
+| `b022a03` | POA&M de dependencias: DEP-2026-001 a 003 | RA-5, CA-5 |
 
 Documentación (grupo C): borrador en el *Documentation Package* (Claude Doc),
 con los `[confirm]` por rellenar.
 
 ### Pendiente
 
-**Decisiones del equipo (Fase 0)**
+**Decisiones del equipo (Fase 0) — es lo que más frena**
 - [ ] Hosting: AWS, Oracle o seguir en IT Masters
 - [ ] Ruta: GovRAMP Core, luego Ready; SOC 2 opcional
 - [ ] Responsable de cumplimiento (ISSO) y responsable técnico
@@ -75,22 +76,30 @@ con los `[confirm]` por rellenar.
 - [ ] Estado FedRAMP / SOC 2 de Mongo Atlas, Redis, PlanetScale y AWS (el riesgo mayor)
 
 **VM (Parte 2 de este documento)**
-- [ ] Desplegar los 38 commits, con Node 22 (paso 2)
-- [ ] B4 cuentas personales · B3 backups · B2 certificado IIS · B1 parches (paso 3)
+- [x] Desplegar los 38 commits, con Node 22 (paso 2; 2026-10-28) y todo lo posterior hasta `ac66423` (2026-11-05)
+- [ ] B4 cuentas personales · B3 backups · B2 certificado IIS · B1 parches (paso 3; sin constancia de que se hayan corrido)
 - [ ] RDP solo por VPN o bastión (AC-17)
 - [ ] Quitar credenciales de prueba del `.env` y rotar las demás (IA-5)
+- [ ] Segmentar la red: VLAN o DMZ para los servidores (SC-7; ver la topología abajo)
 - [ ] Si nos quedamos en IT Masters: cuenta de servicio, sacar la app del perfil
       de CGAdmin, BitLocker, logs centralizados, línea base CIS (ver runbook)
 
 **Aplicación (Fase 2)**
-- [ ] Pasar los modos de *warn* a *enforce* después de leer los logs (paso 4)
+- [ ] Pasar los modos de *warn* a *enforce* después de leer los logs (paso 4).
+      Siguiente acción: `node scripts\summarize-warn-logs.js --since 2026-11-04 --top 15 --ips` en la VM
 - [ ] Medir la cobertura de MFA en prod (el 2026-10-05, 41 de 47 sin MFA)
 - [ ] Stripe: dueño del pago (Fase 0.1) e idempotencia en Stripe (Fase 1)
-- [ ] Protección de la rama `main` verificada por un admin de la org (CM-3)
+- [ ] Frontend: EndEventButton a `/event-staff/deactivate`; después, update-company rechaza `employees`; cookie HttpOnly fase 1
+- [ ] Protección de la rama `main` aplicada (CM-3): el ruleset está en
+      `.github/rulesets/protect-main.json` y se aplica con
+      `scripts\apply-branch-protection.ps1`, pero un repo privado en plan Free
+      responde 403. Requiere GitHub Pro o una organización. Mientras tanto,
+      `main-guard.yml` solo detecta pushes directos, no los impide
+- [ ] Decidir si la VM despliega desde `main` en lugar de `release/observabilidad`
 - [ ] Registro de releases: fecha, commit y quién lo aprobó
 
 **ConMon y documentación (Fases 3-4)**
-- [ ] Primer escaneo base y POA&M con los hallazgos reales
+- [ ] Primer escaneo base y POA&M con los hallazgos reales (hoy solo cubre dependencias: `docs/POAM_dependencias.md`)
 - [ ] Alertas: logins fallidos, bloqueos, cambios de admin, picos de 5xx
 - [ ] Paquete mensual de ConMon
 - [ ] Cerrar los `[confirm]` del Documentation Package
