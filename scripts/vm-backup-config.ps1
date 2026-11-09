@@ -19,6 +19,7 @@
     env-keys.txt      NAMES of the variables in .env, and which of
                       .env.example are missing; never the values
     repo.txt          git commit and local changes of the repo
+    releases.jsonl    the release registry (logs\releases.jsonl, CM-3)
     MANIFEST.txt      SHA-256 of every file above
 
   .env itself is NOT copied: it holds every credential. Keep it in a password
@@ -185,6 +186,9 @@ if ($git) {
         'local changes:', (Run-Native 'git' @('-C', $repoRoot, 'status', '--short')))
     Set-Content -Path (Join-Path $out 'repo.txt') -Value $repoInfo -Encoding ascii
 }
+# Release registry (CM-3): logs\ is not in git, so this is its only copy off the box.
+$releases = Join-Path $repoRoot 'logs\releases.jsonl'
+if (Test-Path $releases) { Copy-Item $releases (Join-Path $out 'releases.jsonl') }
 
 Step "Manifest"
 $files = Get-ChildItem $out -Recurse -File | Where-Object { $_.Name -ne 'MANIFEST.txt' }
