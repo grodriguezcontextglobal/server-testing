@@ -20,6 +20,7 @@ const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const speakeasy = require('speakeasy');
+const { totpNow } = require('./helpers/totp');
 
 const U = '111111111111111111111111';
 const SECRET = speakeasy.generateSecret().base32;
@@ -104,7 +105,7 @@ function res() {
   return r;
 }
 const login = async (body) => { const r = res(); await loginUser(req(body), r); return r; };
-const totp = () => speakeasy.totp({ secret: SECRET, encoding: 'base32' });
+const totp = () => totpNow(SECRET);
 
 test('tras 3 contraseñas incorrectas la cuenta da 429 aunque la contraseña sea buena', async () => {
   assert.equal((await login({ email: 'ana@x.com', password: 'mal' })).code, 400);

@@ -9,6 +9,7 @@ const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const speakeasy = require('speakeasy');
+const { totpNow } = require('./helpers/totp');
 
 const U = '333333333333333333333333';
 const N = '444444444444444444444444';
@@ -70,7 +71,7 @@ const res = () => {
   return r;
 };
 const call = async (body) => { const r = res(); await updatePassword({ body }, r); return r; };
-const code = () => speakeasy.totp({ secret: SECRET, encoding: 'base32' });
+const code = () => totpNow(SECRET);
 
 beforeEach(reset);
 

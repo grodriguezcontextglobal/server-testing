@@ -18,6 +18,7 @@ const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const speakeasy = require('speakeasy');
+const { totpNow } = require('./helpers/totp');
 
 const U_TARGET = '222222222222222222222222';
 const U_ADMIN = '555555555555555555555555';
@@ -173,7 +174,7 @@ test('update-password correcto con el enlace limpia la marca y lo registra', asy
   const secret = speakeasy.generateSecret().base32;
   Object.assign(users[U_TARGET], { mfaEnabled: true, mfaSecret: { base32: secret } });
   const resetToken = await generatePasswordResetToken(users[U_TARGET]);
-  const mfaCode = speakeasy.totp({ secret, encoding: 'base32' });
+  const mfaCode = totpNow(secret);
 
   const r = res();
   await updatePassword({ body: { resetToken, password: 'A-new-passw0rd!', mfaCode }, headers: {}, ip: '1.1.1.1' }, r);
