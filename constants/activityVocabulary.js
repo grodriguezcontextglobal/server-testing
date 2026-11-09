@@ -62,6 +62,10 @@ const ACTIVITY_ACTIONS = [
   // super_user) y escritura rechazada por el tope del plan (helpers/planLimits.js).
   'PLAN_CHANGE',
   'PLAN_LIMIT_REACHED',
+  // 2026-11-09, AC-2(3): cuenta de staff desactivada por inactividad
+  // (scheduler/staffInactivity.js) y reactivada (scripts/staff-inactivity.js).
+  'DEACTIVATE',
+  'REACTIVATE',
 ];
 
 const ACTIVITY_TARGET_MODELS = [

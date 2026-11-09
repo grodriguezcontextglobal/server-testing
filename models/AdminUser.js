@@ -52,10 +52,27 @@ const AdminUserSchema = new Schema({
     ],
     default: null,
   },
+  // false = la cuenta no puede entrar (el login responde 403 accountDisabled).
   active: {
     type: Boolean,
     default: true,
   },
+  // Uso de la cuenta (2026-11-09; helpers/accountActivity.js). lastLoginAt es
+  // la fecha de la desactivación por inactividad (AC-2(3),
+  // scheduler/staffInactivity.js). IP y navegador ocultos por defecto: el
+  // modelo se devuelve entero en varias respuestas y otro admin no tiene por qué
+  // ver desde dónde entra alguien. Se leen con .select("+lastLoginIp ...").
+  lastLoginAt: { type: Date, default: null },
+  lastLoginIp: { type: String, default: null, select: false },
+  lastLoginUserAgent: { type: String, default: null, select: false },
+  loginCount: { type: Number, default: 0 },
+  // Último login fallido de esta cuenta (contraseña o MFA incorrectas), AC-7.
+  lastFailedLoginAt: { type: Date, default: null },
+  // Lo pone el hook de abajo en cualquier escritura de `password` (IA-5).
+  passwordChangedAt: { type: Date, default: null },
+  deactivatedAt: { type: Date, default: null },
+  deactivatedReason: { type: String, default: null },
+  reactivatedAt: { type: Date, default: null },
   // `company` se eliminó: un AdminUser pertenece a N compañías, así que un
   // único campo no podía representar el contexto. La compañía la elige el
   // cliente al loguearse y viaja por request (header `x-company-id`, ver
@@ -167,6 +184,23 @@ const AdminUserSchema = new Schema({
     default: false
   }
 });
+
+// passwordChangedAt (IA-5): en el modelo y no en cada controlador, para que
+// ningún camino que escriba la contraseña (alta, registro, invitación, reset)
+// se lo salte. Cubre save() y los update por query.
+AdminUserSchema.pre("save", function (next) {
+  if (this.isModified("password")) this.passwordChangedAt = new Date();
+  next();
+});
+function stampPasswordChange(next) {
+  const update = this.getUpdate() || {};
+  const writesPassword =
+    Object.prototype.hasOwnProperty.call(update, "password") ||
+    Object.prototype.hasOwnProperty.call(update.$set || {}, "password");
+  if (writesPassword) this.set({ passwordChangedAt: new Date() });
+  next();
+}
+AdminUserSchema.pre(["findOneAndUpdate", "updateOne", "updateMany"], stampPasswordChange);
 
 AdminUserSchema.method("toJSON", function () {
   // password/mfaSecret/mfaRecoveryCodes nunca se serializan, aunque se hayan

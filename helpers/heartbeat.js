@@ -28,6 +28,7 @@
  *   HEARTBEAT_URL_QUEUE_API      → el worker en proceso de DevitrakServer
  *   HEARTBEAT_URL_SCHEDULER_OVERDUE  → recordatorios diarios
  *   HEARTBEAT_URL_SCHEDULER_CONSENT  → barrido diario de consentimientos
+ *   HEARTBEAT_URL_SCHEDULER_INACTIVITY → barrido diario de staff inactivo (AC-2(3))
  *
  * **Sin variable, no hace nada.** Ni una petición, ni un log, ni un error. Eso
  * mantiene intactos los tests y el entorno de desarrollo, y permite desplegar
