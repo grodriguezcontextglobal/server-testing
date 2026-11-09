@@ -40,6 +40,7 @@ const {
 } = require("../helpers/passwordResetToken");
 const { logStaffActivity } = require("./staffActivityLog");
 const { resolveCompanyContext } = require("../helpers/companyContext");
+const { recordSuccessfulLogin, recordFailedLogin } = require("../helpers/accountActivity");
 const { findCompanyMembership } = require("../helpers/companyMembership");
 const { hasPermission } = require("../constants/rolePermissions");
 const { isValidObjectId } = require("mongoose");
@@ -144,6 +145,7 @@ const loginUser = async (request, response) => {
     const failLogin = async (reason, user, status, body) => {
       const { attempts, locked, retryAfter } = await recordLoginFailure(attemptsStore, email);
       logger.warn("Admin login failed", { email, reason, ip: request.ip, locked });
+      if (user) recordFailedLogin(AdminUser, user.id);
       await logStaffActivity({
         staff_member_id: user?.id ?? null,
         actor_type: user ? "staff" : "anonymous",
@@ -183,6 +185,27 @@ const loginUser = async (request, response) => {
       return failLogin("invalid_password", adminUser, 400, {
         ok: false,
         msg: "You have entered an invalid username or password",
+      });
+    }
+
+    // Cuenta desactivada (AC-2(3): inactividad, scheduler/staffInactivity.js).
+    // Va DESPUÉS de la contraseña, así la respuesta no dice qué emails existen.
+    // No suma al bloqueo por intentos: la contraseña era correcta.
+    if (adminUser.active === false) {
+      logger.warn("Admin login failed", { email, reason: "account_disabled", ip: request.ip });
+      await logStaffActivity({
+        staff_member_id: adminUser.id,
+        action: "LOGIN_FAILED",
+        target_model: "AdminUser",
+        target_id: adminUser.id,
+        details: { email, reason: "account_disabled", deactivatedReason: adminUser.deactivatedReason ?? null },
+        ip_address: request.ip,
+        device_info: request.headers["user-agent"],
+      });
+      return response.status(403).json({
+        ok: false,
+        msg: "This account is disabled. Ask your administrator to reactivate it.",
+        accountDisabled: true,
       });
     }
 
@@ -450,6 +473,13 @@ const loginUser = async (request, response) => {
       email: adminUser.email,
       loginInfo,
       requestId: loginInfo.requestId,
+    });
+
+    // lastLoginAt (desactivación por inactividad, AC-2(3)), IP, navegador y
+    // número de logins. No espera ni puede fallar.
+    recordSuccessfulLogin(AdminUser, adminUser.id, {
+      ip: request.ip,
+      userAgent: request.headers["user-agent"],
     });
 
     // Sin compañía: el login es previo a que el usuario elija con cuál trabajar.

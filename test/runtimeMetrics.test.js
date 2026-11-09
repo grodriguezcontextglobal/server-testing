@@ -78,7 +78,11 @@ test('start escribe cada intervalo, una sola vez, y 0 lo apaga', async () => {
   assert.equal(rm.start(0), false);
   assert.equal(rm.start(10), true);
   assert.equal(rm.start(10), false, 'una sola vez');
-  await new Promise((r) => setTimeout(r, 35));
+  // Hasta 2 escrituras o 1 s: una ventana fija de 35 ms fallaba con la suite
+  // entera en paralelo (los timers llegan tarde con la máquina cargada).
+  for (const deadline = Date.now() + 1000; written.length < 2 && Date.now() < deadline; ) {
+    await new Promise((r) => setTimeout(r, 10));
+  }
   rm.stop();
   assert.ok(written.length >= 2);
   assert.equal(loop.on, false);
