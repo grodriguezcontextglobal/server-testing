@@ -11,6 +11,7 @@ const schedule = require("node-schedule");
 const logger = require("../helpers/logger");
 const { runOverdueReminders } = require("./overdueReminders");
 const { runExpireConsents } = require("./consentExpiry");
+const { runStaffInactivity } = require("./staffInactivity");
 const { sendHeartbeat } = require("../helpers/heartbeat");
 
 /**
@@ -60,7 +61,15 @@ const initScheduledJobs = () => {
     )
   );
 
-  logger.info("[scheduler] initialized: overdue-reminders (daily 08:00 America/New_York), consent-expiry (daily 00:05)");
+  // Cuentas de staff inactivas (AC-2(3)) — 03:15 hora del servidor.
+  // STAFF_INACTIVITY_MODE decide si solo avisa (warn) o desactiva (enforce).
+  jobs.push(
+    schedule.scheduleJob("15 3 * * *", () =>
+      runWithHeartbeat("scheduler_inactivity", "staff-inactivity", () => runStaffInactivity())
+    )
+  );
+
+  logger.info("[scheduler] initialized: overdue-reminders (daily 08:00 America/New_York), consent-expiry (daily 00:05), staff-inactivity (daily 03:15)");
   return jobs;
 };
 

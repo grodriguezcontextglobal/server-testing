@@ -40,6 +40,7 @@ const MODES = [
   { mode: 'COMPANY_CONTEXT_MODE', match: /^company context: body and header disagree \(COMPANY_CONTEXT_MODE=warn/ },
   { mode: 'NOSQL_INPUT_MODE', match: /^nosql input: (operator in \S+) allowed \(NOSQL_INPUT_MODE=warn/ },
   { mode: 'PLAN_LIMITS_MODE', match: /^plan limits: would refuse (\S+) \(PLAN_LIMITS_MODE=warn/ },
+  { mode: 'STAFF_INACTIVITY_MODE', match: /^staff inactivity: would disable account \(STAFF_INACTIVITY_MODE=warn/ },
 ];
 
 // ─── lectura de los logs ────────────────────────────────────────────────────

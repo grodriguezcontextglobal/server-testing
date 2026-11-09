@@ -20,6 +20,7 @@ const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const speakeasy = require('speakeasy');
+const { totpNow } = require('./helpers/totp');
 
 const U = '111111111111111111111111';
 const SECRET = speakeasy.generateSecret().base32;
@@ -104,7 +105,7 @@ function res() {
   return r;
 }
 const login = async (body) => { const r = res(); await loginUser(req(body), r); return r; };
-const totp = () => speakeasy.totp({ secret: SECRET, encoding: 'base32' });
+const totp = () => totpNow(SECRET);
 
 test('tras 3 contraseñas incorrectas la cuenta da 429 aunque la contraseña sea buena', async () => {
   assert.equal((await login({ email: 'ana@x.com', password: 'mal' })).code, 400);
@@ -179,4 +180,39 @@ test('sin Redis no se bloquea el login (fail-open)', async () => {
   for (let i = 0; i < 4; i++) {
     assert.equal((await login({ email: 'ana@x.com', password: 'mal' })).code, 400);
   }
+});
+
+// AC-2(3), 2026-11-09: cuenta desactivada (por inactividad o a mano).
+test('cuenta desactivada: con la contraseña correcta, 403 accountDisabled y sin token', async () => {
+  users[U].active = false;
+  users[U].deactivatedReason = 'inactivity';
+  const r = await login({ email: 'ana@x.com', password: 'buena', mfaCode: totp() });
+  assert.equal(r.code, 403);
+  assert.equal(r.body.accountDisabled, true);
+  assert.equal(r.body.token, undefined);
+  const row = activity.find((a) => a.action === 'LOGIN_FAILED');
+  assert.equal(row.details.reason, 'account_disabled');
+  assert.equal(row.details.deactivatedReason, 'inactivity');
+});
+
+test('cuenta desactivada: con contraseña incorrecta responde como siempre (no revela el estado)', async () => {
+  users[U].active = false;
+  const r = await login({ email: 'ana@x.com', password: 'mal' });
+  assert.equal(r.code, 400);
+  assert.equal(r.body.accountDisabled, undefined);
+});
+
+test('el login no espera ni falla por los datos de uso de la cuenta (Mongo sin conectar en el test)', async () => {
+  // AdminUserStub no tiene updateOne: helpers/accountActivity no hace nada y el login sigue.
+  const r = await login({ email: 'ana@x.com', password: 'buena', mfaCode: totp() });
+  assert.equal(r.code, 200);
+  assert.equal((await login({ email: 'ana@x.com', password: 'mal' })).code, 400);
+});
+
+test('cuenta desactivada: los intentos con la contraseña correcta no suman al bloqueo', async () => {
+  users[U].active = false;
+  for (let i = 0; i < 4; i++) {
+    assert.equal((await login({ email: 'ana@x.com', password: 'buena' })).code, 403);
+  }
+  assert.equal([...store.keys()].some((k) => /attempt|lock/i.test(k)), false);
 });

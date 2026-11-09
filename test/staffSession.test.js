@@ -21,6 +21,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const jwt = require('jsonwebtoken');
 const speakeasy = require('speakeasy');
+const { totpNow } = require('./helpers/totp');
 
 const UID = '222222222222222222222222';
 let users, store, ttls, redisDown, warnings;
@@ -103,7 +104,7 @@ function res() {
   r.set = noop;
   return r;
 }
-const totp = () => speakeasy.totp({ secret: users[UID].mfaSecret.base32, encoding: 'base32' });
+const totp = () => totpNow(users[UID].mfaSecret.base32);
 
 async function login(extra = {}) {
   const r = res();
