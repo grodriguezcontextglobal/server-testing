@@ -8,6 +8,8 @@ const getConnection = require("../mysql/database/config");
 const { randomUUID: uuid } = require("crypto");
 
 const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
+const { resolveCompanyContext } = require("../helpers/companyContext");
+const { pickCompanyUpdate } = require("../helpers/companyUpdateFields");
 
 const createCompany = async (request, response = express.response) => {
   try {
@@ -116,24 +118,68 @@ const createCompany = async (request, response = express.response) => {
   }
 };
 
-const updatingCompany = async (request, response = express.response) => {
+/**
+ * PATCH /api/company/update-company/:id (AC-3, AC-6; 2026-11-09).
+ *
+ * authorizeMongoPermission("company", "update") comprueba el rol en la compañía
+ * de `x-company-id`, pero esto escribía en la del `:id` de la URL: un admin de
+ * la compañía A podía editar la B. Ahora las dos tienen que ser la misma, salvo
+ * para un super_user de la plataforma.
+ *
+ * Y solo se escriben los campos de helpers/companyUpdateFields.js; antes el body
+ * entero iba a findByIdAndUpdate.
+ */
+function createUpdatingCompany({
+  CompanyModel = Company,
+  AdminUserModel = AdminUser,
+  invalidate = invalidateBrandingCache,
+  log = logger,
+} = {}) {
+  return async function updatingCompany(request, response = express.response) {
   try {
-    // const cache_connection = await clientRedis();
-    // await cache_connection.del(`company_id=${request.params.id}`);
-    const paramsId = request.params.id;
-    let companyInfo = await Company.findById(paramsId);
+    const paramsId = String(request.params.id);
+
+    const contextId = resolveCompanyContext(request);
+    if (!contextId || String(contextId) !== paramsId) {
+      const caller = request.uid
+        ? await AdminUserModel.findById(request.uid).select("super_user").lean()
+        : null;
+      if (!caller?.super_user) {
+        log.warn("update-company: company in the URL is not the caller's company context", {
+          uid: request.uid,
+          url_company: paramsId,
+          context_company: contextId ? String(contextId) : null,
+        });
+        return response.status(403).json({
+          ok: false,
+          msg: "Forbidden: you can only update the company you are working in.",
+        });
+      }
+    }
+
+    const companyInfo = await CompanyModel.findById(paramsId);
     if (!companyInfo) {
-      return response.status(500).json({
+      return response.status(404).json({
         ok: false,
         msg: "No company in record.",
       });
     }
-    let newData = {
-      ...request.body,
-    };
-    const companyInfoUpdated = await Company.findByIdAndUpdate(
+
+    const { update, ignored } = pickCompanyUpdate(request.body, companyInfo);
+    if (ignored.length) {
+      log.warn("update-company: fields ignored", { company: paramsId, uid: request.uid, ignored });
+    }
+    if (Object.keys(update).length === 0) {
+      return response.status(400).json({
+        ok: false,
+        msg: "No editable fields in the request.",
+        ignored_fields: ignored,
+      });
+    }
+
+    const companyInfoUpdated = await CompanyModel.findByIdAndUpdate(
       paramsId,
-      newData,
+      { $set: update },
       {
         new: true,
       }
@@ -142,22 +188,26 @@ const updatingCompany = async (request, response = express.response) => {
     // does not re-read Mongo. A client who just saved a new logo would
     // otherwise keep receiving the old one for the rest of that window, while
     // the settings-page preview already showed the new one.
-    invalidateBrandingCache(paramsId);
-    invalidateBrandingCache(companyInfo.company_name);
-    invalidateBrandingCache(companyInfoUpdated?.company_name);
+    invalidate(paramsId);
+    invalidate(companyInfo.company_name);
+    invalidate(companyInfoUpdated?.company_name);
     return response.status(201).json({
       ok: true,
       company: companyInfoUpdated,
+      ...(ignored.length ? { ignored_fields: ignored } : {}),
     });
   } catch (error) {
-    logger.error(error);
+    log.error(error);
     return response.status(500).json({
       ok: false,
       msg: "Please contact Administrator",
       err: JSON.stringify(error),
     });
   }
-};
+  };
+}
+
+const updatingCompany = createUpdatingCompany();
 
 const searchingCompany = async (request, response = express.response) => {
   try {
@@ -299,6 +349,7 @@ const assignLocationToUser = async (request, response = express.response) => {
 module.exports = {
   createCompany,
   updatingCompany,
+  createUpdatingCompany,
   searchingCompany,
   getCompanyList,
   searchingGetCompanyInfo,
