@@ -21,9 +21,18 @@
   Usage, from anywhere:
       powershell -ExecutionPolicy Bypass -File scripts\restart-go-worker.ps1
 
+  Every run past the elevation check is recorded in logs\releases.jsonl, and a
+  run that ends with the service up tags the commit locally as
+  deploy-go-worker-<yyyyMMdd-HHmmss> (CM-3; see release-registry.ps1). Pass
+  -PushTag to also push the tag to origin (a failed push is only a warning).
+
   This file is deliberately pure ASCII: Windows PowerShell 5.1 reads .ps1 as
   ANSI without a BOM, and mangled non-ASCII punctuation breaks the parser.
 #>
+
+param(
+    [switch] $PushTag
+)
 
 $ErrorActionPreference = 'Stop'
 
@@ -33,8 +42,14 @@ $buildScript = Join-Path $PSScriptRoot 'build-go-worker.ps1'
 $buildLog    = Join-Path $repoRoot 'logs\go-worker-build.log'
 $port        = if ($env:GO_WORKER_PORT) { $env:GO_WORKER_PORT } else { '7453' }
 
+. (Join-Path $PSScriptRoot 'release-registry.ps1')
+$recordRelease = $false
+
 function Fail([string]$Message) {
     Write-Host "FAILED: $Message" -ForegroundColor Red
+    if ($script:recordRelease) {
+        Write-ReleaseRecord -RepoRoot $repoRoot -Component 'go-worker' -Result 'FAILED' -Mode 'rebuild' -Note $Message
+    }
     exit 1
 }
 
@@ -51,6 +66,7 @@ if (-not (Test-Path $buildScript)) {
     Fail "build script not found at $buildScript"
 }
 
+$recordRelease = $true
 Write-Host "==> Stopping $service" -ForegroundColor Cyan
 & nssm stop $service
 # A stopped-but-already-stopped service is fine; only a hard failure matters,
@@ -118,11 +134,19 @@ if ($health) {
     Write-Host "    health check failed after ~30s: $lastError" -ForegroundColor Red
     Write-Host "    Check logs\go-worker-err.log and confirm GO_WORKER_PORT matches on BOTH services." -ForegroundColor Red
     Write-Host "    Current service status: $((& nssm status $service) -join '')" -ForegroundColor Red
+    Write-ReleaseRecord -RepoRoot $repoRoot -Component 'go-worker' -Result 'FAILED' -Mode 'rebuild' `
+        -Note "health check failed: $lastError (build: $resultText)"
     exit 1
 }
 
 if ($resultText -like 'BUILT*' -and $status -match 'SERVICE_RUNNING') {
+    Write-ReleaseRecord -RepoRoot $repoRoot -Component 'go-worker' -Result 'OK' -Mode 'rebuild' `
+        -Note $resultText -PushTag:$PushTag
     Write-Host "==> Done: rebuilt and running." -ForegroundColor Green
 } else {
+    # With a failed build the service runs the PREVIOUS binary, so the commit on
+    # disk is not what is running: recorded as WARNINGS with the build result.
+    Write-ReleaseRecord -RepoRoot $repoRoot -Component 'go-worker' -Result 'WARNINGS' -Mode 'rebuild' `
+        -Note "build: $resultText; status: $status" -NoTag:(-not ($resultText -like 'BUILT*')) -PushTag:$PushTag
     Write-Host "==> Finished with warnings (see above)." -ForegroundColor Yellow
 }
