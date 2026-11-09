@@ -19,6 +19,7 @@ const { test, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const speakeasy = require('speakeasy');
+const { totpNow } = require('./helpers/totp');
 
 const U_ON = '222222222222222222222222';
 const U_ADMIN = '555555555555555555555555';
@@ -141,7 +142,7 @@ function res() {
   r.set = noop;
   return r;
 }
-const totp = (u) => speakeasy.totp({ secret: u.mfaSecret.base32, encoding: 'base32' });
+const totp = (u) => totpNow(u.mfaSecret.base32);
 function giveCodes(uid) {
   const { codes, hashes } = generateRecoveryCodes(uid);
   users[uid].mfaRecoveryCodes = hashes;

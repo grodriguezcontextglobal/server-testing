@@ -18,6 +18,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const jwt = require('jsonwebtoken');
 const speakeasy = require('speakeasy');
+const { totpNow } = require('./helpers/totp');
 
 // ── stubs ───────────────────────────────────────────────────────────────────
 const U_OFF = '111111111111111111111111';
@@ -115,7 +116,7 @@ function res() {
   r.cookie = (n, v) => { r.cookies[n] = v; return r; };
   return r;
 }
-const totp = (u) => speakeasy.totp({ secret: u.mfaSecret.base32, encoding: 'base32' });
+const totp = (u) => totpNow(u.mfaSecret.base32);
 
 // ═══ login ══════════════════════════════════════════════════════════════════
 
