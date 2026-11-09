@@ -54,8 +54,15 @@
       powershell -ExecutionPolicy Bypass -File scripts\deploy-node.ps1
       powershell -ExecutionPolicy Bypass -File scripts\deploy-node.ps1 -SkipInstall
 
-  Pull first: this script never runs git, so what it installs is whatever is on
-  disk right now.
+  Pull first: this script never pulls or fetches, so what it installs is
+  whatever is on disk right now.
+
+  Every run past preflight is recorded in logs\releases.jsonl, and a deploy
+  that ends OK or WARNINGS tags the deployed commit locally as
+  deploy-node-<yyyyMMdd-HHmmss> (CM-3; see release-registry.ps1).
+
+.PARAMETER PushTag
+  Also push that tag to origin. A failed push is a warning, never a failure.
 
   This file is deliberately pure ASCII: Windows PowerShell 5.1 reads .ps1 as
   ANSI without a BOM, and mangled non-ASCII punctuation breaks the parser.
@@ -64,7 +71,8 @@
 [CmdletBinding()]
 param(
     [switch] $SkipInstall,
-    [switch] $KeepGoing
+    [switch] $KeepGoing,
+    [switch] $PushTag
 )
 
 $ErrorActionPreference = 'Stop'
@@ -90,9 +98,18 @@ function Write-DeployLog([string]$Message) {
     Add-Content -Path $deployLog -Value $line -Encoding utf8
 }
 
+# Release registry (CM-3): every run that gets past preflight leaves one record
+# in logs\releases.jsonl, failed ones included. See release-registry.ps1.
+. (Join-Path $PSScriptRoot 'release-registry.ps1')
+$deployMode = if ($SkipInstall) { 'skip-install' } else { 'full' }
+$recordRelease = $false
+
 function Fail([string]$Message) {
     Write-Host "FAILED: $Message" -ForegroundColor Red
     Write-DeployLog "FAILED: $Message"
+    if ($script:recordRelease) {
+        Write-ReleaseRecord -RepoRoot $repoRoot -Component 'node' -Result 'FAILED' -Mode $deployMode -Note $Message
+    }
     exit 1
 }
 
@@ -190,6 +207,7 @@ if (-not $SkipInstall) {
     }
 }
 
+$recordRelease = $true
 Step "Stopping Node services"
 foreach ($svc in $services) {
     $status = Get-NssmStatus $svc
@@ -368,10 +386,13 @@ Write-DeployLog "health OK: $($health.Content)"
 Write-DeployLog "services: $($statuses -join '  ')"
 
 if ($statuses -join ' ' -match 'SERVICE_STOPPED|SERVICE_PAUSED') {
+    Write-ReleaseRecord -RepoRoot $repoRoot -Component 'node' -Result 'WARNINGS' -Mode $deployMode `
+        -Note "a service is not running: $($statuses -join '  ')" -PushTag:$PushTag
     Write-Host "==> Finished, but a service is not running (see above)." -ForegroundColor Yellow
     Write-DeployLog "--- deploy-node.ps1 end: WARNINGS ---"
     exit 1
 }
 
+Write-ReleaseRecord -RepoRoot $repoRoot -Component 'node' -Result 'OK' -Mode $deployMode -PushTag:$PushTag
 Write-Host "==> Done: dependencies installed and the API is answering." -ForegroundColor Green
 Write-DeployLog "--- deploy-node.ps1 end: OK ---"

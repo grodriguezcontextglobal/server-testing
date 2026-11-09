@@ -159,7 +159,14 @@ Replaces the old `pm2-pull-run` script from `package.json`. From PowerShell **as
 ```powershell
 cd "C:\Users\CGAdmin\Documents\Github\server-testing"
 git pull
-nssm restart DevitrakServer
+powershell -ExecutionPolicy Bypass -File scripts\deploy-node.ps1 -SkipInstall
+```
+
+Use the script even for a code-only deploy instead of a bare `nssm restart`: it is what records
+the release (see **Release registry** below). If you do restart by hand, record it right after:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\release-registry.ps1 -Component node -Result OK -Note "manual nssm restart"
 ```
 
 **If the pull changed `package-lock.json`**, use the script — it is the supported path and it
@@ -173,8 +180,30 @@ It stops the four Node services, kills the pm2 daemon (which `nssm stop` does no
 `node_modules` outright, installs, checks that no direct dependency is ESM-only, starts everything
 back in reverse order and polls the health endpoint for ~30s. On a failed install it leaves the
 services **stopped on purpose** rather than bringing the cluster up on a half-installed tree. Pass
-`-SkipInstall` for a code-only deploy. It logs to `logs\deploy-node.log`, and it never runs `git`,
-so pull first.
+`-SkipInstall` for a code-only deploy. It logs to `logs\deploy-node.log`, and it never pulls or
+fetches, so pull first.
+
+### Release registry (CM-3)
+
+`deploy-node.ps1` and `restart-go-worker.ps1` append one JSON line per run to
+`logs\releases.jsonl` (failed runs included): UTC time, host, operator, component, mode, result,
+deployed commit and subject, branch, how far HEAD is from `origin` as of the last pull
+(`ahead_of_origin` > 0 means commits that never went through a PR), tracked files modified on disk,
+the previous deployed commit, the commits in between and their PR numbers. A run that ends OK or
+WARNINGS also creates a local annotated tag `deploy-node-<yyyyMMdd-HHmmss>` /
+`deploy-go-worker-...` (UTC) on that commit; a failed Go build records the run without tagging,
+because the old binary is still the one running. `-PushTag` pushes the tag to `origin` too; a
+failed push is only a warning. Nothing in the registry can fail a deploy.
+
+```powershell
+# the last deploys
+Get-Content logs\releases.jsonl | ConvertFrom-Json | Select-Object -Last 10 when, component, result, @{n='commit';e={$_.commit.Substring(0,7)}}, @{n='prs';e={$_.prs -join ','}}, operator, tag | Format-Table -AutoSize
+# what is running, and since when
+git tag -l "deploy-*" --sort=-creatordate -n1 | Select-Object -First 5
+```
+
+`logs\` is not in git: the registry lives on the box, and `vm-backup-config.ps1` copies it into
+each backup (`releases.jsonl`), which `-CopyTo` takes off the machine.
 
 The rest of this section is what the script does and why, kept because the deploy of 2026-09-09
 hit four of these in a row. `npm ci` deletes `node_modules`, and every Node service holds files
