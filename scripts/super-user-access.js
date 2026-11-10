@@ -31,6 +31,13 @@
  *       super_user lo configura quien administra la cuenta del cliente.
  *       --domain es obligatorio y todas las de la lista tienen que ser de él;
  *       --by tiene que estar en la lista.
+ *
+ *   node scripts/super-user-access.js --only a@x.com,b@y.com --all-domains --by <super_user email> [--dry-run]
+ *       Igual, pero en TODAS las cuentas: solo las de la lista quedan con el
+ *       bypass de plataforma (2026-11-10: AdminUser.super_user da acceso a
+ *       todas las compañías). No toca Company.employees[].super_user: quien
+ *       administra una compañía sigue siéndolo dentro de ella. Cada revoke
+ *       muestra el rol que la cuenta conserva en sus compañías.
  */
 
 const arg = (name) => {
@@ -91,8 +98,8 @@ function grantPlan(accounts, requested, byEmail, superUsers) {
  */
 function onlyPlan(accounts, keepList, byEmail, superUsers, domain) {
   const dom = normalize(domain).replace(/^@/, '');
-  if (!dom) throw new Error('--only needs --domain <domain> (accounts of other domains are never touched)');
-  const inDomain = (e) => normalize(e).endsWith(`@${dom}`);
+  if (!dom) throw new Error('--only needs --domain <domain> or --all-domains');
+  const inDomain = (e) => dom === '*' || normalize(e).endsWith(`@${dom}`);
   const keep = [...new Set(keepList.map(normalize).filter(Boolean))];
   if (!keep.length) throw new Error('--only needs at least one email');
   const outside = keep.filter((e) => !inDomain(e));
@@ -107,6 +114,27 @@ function onlyPlan(accounts, keepList, byEmail, superUsers, domain) {
   }
   const revoke = superUsers.filter((u) => inDomain(u.email) && !keep.includes(normalize(u.email)));
   return { grant: g.grant, revoke, missing: g.missing, inactive: g.inactive };
+}
+
+/**
+ * El rol que una cuenta tiene en cada compañía (Company.employees), que NO
+ * cambia al quitarle el super_user de plataforma (testeable).
+ * @param companies [{ company_name, employees: [{ user, userId, super_user, roleType, active }] }]
+ * @returns string[] p. ej. ['Invoxia: super_user', 'Acme: manager (inactive)']
+ */
+function companyRolesOf(companies, user) {
+  const uid = String(user._id ?? '');
+  const email = normalize(user.email);
+  const out = [];
+  for (const c of companies) {
+    for (const e of c.employees || []) {
+      const match = (e.userId != null && String(e.userId) === uid) || normalize(e.user) === email;
+      if (!match) continue;
+      const role = e.super_user ? 'super_user' : e.roleType || 'no role';
+      out.push(`${c.company_name || c._id}: ${role}${e.active === false ? ' (inactive)' : ''}`);
+    }
+  }
+  return out;
 }
 
 async function main() {
@@ -199,13 +227,30 @@ async function main() {
         for (const e of plan.inactive) console.log(`  skip ${e}: account is disabled (reactivate it first)`);
         grant = plan.grant;
       } else {
-        const plan = onlyPlan(await accountsFor(emails), emails, byEmail, superUsers, arg('--domain'));
+        const domain = process.argv.includes('--all-domains') ? '*' : arg('--domain');
+        const plan = onlyPlan(await accountsFor(emails), emails, byEmail, superUsers, domain);
         grant = plan.grant;
         revoke = plan.revoke;
-        console.log(`  keep (@${normalize(arg('--domain')).replace(/^@/, '')} only): ${emails.join(', ')}`);
+        const scope = domain === '*' ? 'all domains' : `@${normalize(domain).replace(/^@/, '')} only`;
+        console.log(`  keep (${scope}): ${emails.join(', ')}`);
       }
       for (const u of grant) console.log(`  grant  ${u.email}`);
-      for (const u of revoke) console.log(`  revoke ${u.email}`);
+      if (revoke.length) {
+        // Lo que cada cuenta conserva: su rol dentro de sus compañías.
+        const Company = require('../models/Company');
+        const companies = await Company.find({
+          $or: [
+            { 'employees.userId': { $in: revoke.map((u) => u._id) } },
+            { 'employees.user': { $in: revoke.map((u) => u.email) } },
+          ],
+        })
+          .select('company_name employees.user employees.userId employees.super_user employees.roleType employees.active')
+          .lean();
+        for (const u of revoke) {
+          const roles = companyRolesOf(companies, u);
+          console.log(`  revoke ${u.email}  -> keeps: ${roles.join('; ') || 'NO company membership'}`);
+        }
+      }
       summary(grant, revoke);
       if (dryRun || (!grant.length && !revoke.length)) return;
       await apply({ grant, revoke });
@@ -213,7 +258,7 @@ async function main() {
     }
 
     console.log(
-      'usage: --list | --only a@x.com,b@y.com --domain x.com | --grant a@x.com,... | --revoke a@x.com,...  ' +
+      'usage: --list | --only a@x.com,b@y.com --domain x.com|--all-domains | --grant a@x.com,... | --revoke a@x.com,...  ' +
         '(all but --list need --by <super_user email>; add --dry-run to preview)'
     );
     process.exitCode = 2;
@@ -229,4 +274,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { revokePlan, grantPlan, onlyPlan };
+module.exports = { revokePlan, grantPlan, onlyPlan, companyRolesOf };

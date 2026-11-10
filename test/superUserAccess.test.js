@@ -7,7 +7,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { revokePlan, grantPlan, onlyPlan } = require('../scripts/super-user-access');
+const { revokePlan, grantPlan, onlyPlan, companyRolesOf } = require('../scripts/super-user-access');
 
 const su = [
   { _id: '1', email: 'ops@contextglobal.com' },
@@ -95,4 +95,32 @@ test('only: --by tiene que estar en la lista y todas las cuentas tienen que exis
   assert.throws(() => onlyPlan(accounts, ['ops@contextglobal.com', 'typo@contextglobal.com'], 'ops@contextglobal.com', current, 'contextglobal.com'), /missing: typo@contextglobal.com/);
   const withOff = [...accounts, { _id: '2', email: 'off@contextglobal.com', super_user: false, active: false }];
   assert.throws(() => onlyPlan(withOff, ['ops@contextglobal.com', 'off@contextglobal.com'], 'ops@contextglobal.com', current, 'contextglobal.com'), /disabled: off@contextglobal.com/);
+});
+
+test('only --all-domains: solo la lista conserva el bypass de plataforma, en cualquier dominio', () => {
+  const current = [
+    { _id: '1', email: 'fstarmark@contextglobal.com' },
+    { _id: '2', email: 'mlkanka@contextglobal.com' },
+    { _id: '3', email: 'info@invoxia.cc' },
+    { _id: '4', email: 'gars.software.dev@gmail.com' },
+    { _id: '5', email: 'otro@gmail.com' },
+  ];
+  const accounts = [
+    { _id: '1', email: 'fstarmark@contextglobal.com', super_user: true, active: true },
+    { _id: '4', email: 'gars.software.dev@gmail.com', super_user: true, active: true },
+    { _id: '10', email: 'grodriguez@contextglobal.com', super_user: false, active: true },
+  ];
+  const keep = ['fstarmark@contextglobal.com', 'grodriguez@contextglobal.com', 'gars.software.dev@gmail.com'];
+  const plan = onlyPlan(accounts, keep, 'fstarmark@contextglobal.com', current, '*');
+  assert.deepEqual(plan.grant.map((u) => u.email), ['grodriguez@contextglobal.com']);
+  assert.deepEqual(plan.revoke.map((u) => u.email), ['mlkanka@contextglobal.com', 'info@invoxia.cc', 'otro@gmail.com']);
+});
+
+test('companyRolesOf: el rol que la cuenta conserva en cada compañía (por userId o email)', () => {
+  const companies = [
+    { company_name: 'Invoxia', employees: [{ user: 'INFO@invoxia.cc', super_user: true }, { user: 'x@y.com', super_user: true }] },
+    { company_name: 'Acme', employees: [{ user: 'old@mail.com', userId: '3', super_user: false, roleType: 'manager', active: false }] },
+  ];
+  assert.deepEqual(companyRolesOf(companies, { _id: '3', email: 'info@invoxia.cc' }), ['Invoxia: super_user', 'Acme: manager (inactive)']);
+  assert.deepEqual(companyRolesOf(companies, { _id: '9', email: 'nadie@x.com' }), []);
 });
