@@ -99,7 +99,7 @@ async function main() {
       const active = rows.filter((r) => r.active).length;
       const flagged = rows.filter((r) => r.would_disable).length;
       const noLogin = rows.filter((r) => r.active && r.last_login === '-').length;
-      console.log(`${rows.length} accounts, ${active} active; ${flagged} would be disabled; ${noLogin} active without lastLoginAt (run --backfill)`);
+      console.log(`${rows.length} accounts, ${active} active; ${flagged} would be disabled; ${noLogin} active without a login since ${day(cfg.since)} (optional: --backfill for older logins)`);
       return;
     }
 
