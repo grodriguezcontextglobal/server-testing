@@ -66,6 +66,10 @@ const ACTIVITY_ACTIONS = [
   // (scheduler/staffInactivity.js) y reactivada (scripts/staff-inactivity.js).
   'DEACTIVATE',
   'REACTIVATE',
+  // 2026-11-10, AC-6: dar o quitar un privilegio (super_user de plataforma,
+  // scripts/super-user-access.js).
+  'GRANT',
+  'REVOKE',
 ];
 
 const ACTIVITY_TARGET_MODELS = [
