@@ -111,3 +111,71 @@ test('normalizeRoute: ObjectId, números y uuid; sin query', () => {
   assert.equal(normalizeRoute('/a/123e4567-e89b-12d3-a456-426614174000'), '/a/:uuid');
   assert.equal(normalizeRoute(undefined), '(sin ruta)');
 });
+
+// Mensajes de enforce copiados de los middlewares (y los que NO son rechazos).
+const ENFORCE_SAMPLE = [
+  { message: 'nosql input: rejected operator in query', method: 'GET', path: '/api/health', origin: 'https://admin.devitrak.net', ip: '10.0.0.9', reason: 'operator in query' },
+  { message: 'nosql input: rejected operator in body', method: 'POST', path: '/api/auth/login', ip: '10.0.0.9', reason: 'operator in body' },
+  { message: 'contract link: token ya usado', route: '/api/document/66f1a2b3c4d5e6f7a8b9c0d1/sign' },
+  { message: 'contract link: Redis no disponible, no se pudo marcar el token como usado' },
+  { message: 'contract link: correo sin token (sin verification_id)' },
+  { message: 'consumer token: sin token', route: '/api/transaction/5', method: 'GET' },
+  { message: 'stripe ownership: not_owner', reason: 'not_owner' },
+  { message: 'stripe ownership check failed' },
+  { message: 'plan limits: refused staff' },
+  { message: 'company: refused an unauthenticated request' },
+].map((r, i) => ({ level: 'warn', timestamp: `2026-11-1${i % 3} 10:00:0${i}`, ...r }));
+
+test('summarize cuenta los rechazos de enforce aparte de los avisos de warn', () => {
+  const { modes, rejected } = summarize(ENFORCE_SAMPLE);
+  for (const s of modes.values()) assert.equal(s, null, 'un rechazo no cuenta como aviso de warn');
+
+  const nosql = rejected.get('NOSQL_INPUT_MODE');
+  assert.equal(nosql.count, 2);
+  assert.deepEqual([...nosql.reasons], [['operator in query', 1], ['operator in body', 1]]);
+  assert.deepEqual([...nosql.origins], [['https://admin.devitrak.net', 1], ['(sin origin)', 1]]);
+
+  assert.equal(rejected.get('CONTRACT_LINK_MODE').count, 1, 'los fallos de Redis/correo no son rechazos');
+  assert.deepEqual([...rejected.get('CONTRACT_LINK_MODE').reasons], [['token ya usado', 1]]);
+  assert.equal(rejected.get('CONSUMER_TOKEN_MODE').count, 1);
+  assert.equal(rejected.get('STRIPE_OWNERSHIP_MODE').count, 1, '"check failed" no es un rechazo');
+  assert.deepEqual([...rejected.get('PLAN_LIMITS_MODE').reasons], [['staff', 1]]);
+  assert.equal(rejected.get('COMPANY_AUTH_MODE').count, 1);
+  assert.equal(rejected.get('ATTENDANCE_LINK_MODE'), null);
+  assert.equal(rejected.get('SESSION_MODE'), undefined, 'SESSION no registra en enforce');
+});
+
+test('los avisos de warn no cuentan como rechazos', () => {
+  const { rejected } = summarize(parseRecords(SAMPLE));
+  for (const s of rejected.values()) assert.ok(!s);
+});
+
+test('toJSON y render incluyen los rechazos de enforce', () => {
+  const summary = summarize(ENFORCE_SAMPLE);
+  const json = toJSON(summary, 10);
+  assert.deepEqual(Object.keys(json.rejected), MODES.map((m) => m.mode));
+  assert.equal(json.rejected.NOSQL_INPUT_MODE.count, 2);
+  assert.equal(json.rejected.ATTENDANCE_LINK_MODE.count, 0);
+  assert.deepEqual(json.rejected.DB_COMPANY_PUBLIC_MODE, { count: null, logged: false });
+
+  const text = render(summary);
+  assert.match(text, /Rechazos en enforce:\n[^]*\n {2}NOSQL_INPUT_MODE: 2 eventos/);
+  assert.match(text, /no registran rechazos en enforce: RECEIPT_PUBLIC_READ_MODE, DB_COMPANY_PUBLIC_MODE, SESSION_MODE/);
+  assert.match(render(summarize(parseRecords(SAMPLE))), /Rechazos en enforce:\n {2}ninguno en la ventana/);
+});
+
+test('los mensajes de enforce coinciden con lo que registran los middlewares', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+  assert.match(src('middlewares/rejectMongoOperators.js'), /`nosql input: rejected operator in \$\{source\}`/);
+  assert.match(src('middlewares/companyAuth.js'), /'company: refused an unauthenticated request'/);
+  assert.match(src('middlewares/notificationAuth.js'), /"nodemailer: refused an unauthenticated notification"/);
+  assert.match(src('middlewares/attendanceLinkAuth.js'), /'attendance link: refused a dashboard call without session'/);
+  assert.match(src('middlewares/authorizePermission.js'), /"company context: body and header disagree, rejected"/);
+  assert.match(src('helpers/planLimits.js'), /`plan limits: refused \$\{resource\}`/);
+  assert.match(src('scheduler/staffInactivity.js'), /'staff inactivity: account disabled'/);
+  for (const reason of ['sin token o token inválido', 'el token no coincide con la petición', 'token ya usado']) {
+    assert.ok(src('middlewares/contractLinkAuth.js').includes(`'${reason}'`), reason);
+  }
+});
