@@ -2,6 +2,8 @@ module go-worker
 
 go 1.26.11
 
+toolchain go1.27.4
+
 require (
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/joho/godotenv v1.5.1
