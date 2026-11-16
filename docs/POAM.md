@@ -11,11 +11,12 @@
 > - Respuestas de IT Masters al cuestionario, 2026-11-13.
 > - Verificación propia de los certificados públicos, 2026-11-13.
 > - Ejecución de los informes de cuentas y modos en la VM, 2026-11-16.
-> - Informes de endurecimiento de las dos VMs, 2026-11-16: DEVITRACKDB con
->   `scripts/vm-hardening-report.ps1` (11 en `OK` y 17 en `REVIEW` de 28) y DEVITRACKAPP
->   con `deploy/it/endurecimiento-vm.ps1` del repo del dashboard (9 en `OK` y 21 en
->   `REVIEW` de 30; las dos comprobaciones de más son `IA5-02` y `AU2-02`, añadidas
->   después de medir la primera VM).
+> - Informes de endurecimiento de las dos VMs, 2026-11-16, con las mismas 30
+>   comprobaciones: DEVITRACKDB con `scripts/vm-hardening-report.ps1` (11 en `OK` y 19
+>   en `REVIEW`) y DEVITRACKAPP con `deploy/it/endurecimiento-vm.ps1` del repo del
+>   dashboard (9 y 21). La primera pasada de DEVITRACKDB midió solo 28: `IA5-02` y
+>   `AU2-02` se añadieron después, al ver que la caducidad de contraseña declarada no
+>   se aplicaba, y se repitió la medición.
 >   **Las dos máquinas salen idénticas salvo en tres puntos**, lo que confirma que
 >   la configuración es del proveedor y no de una máquina: DEVITRACKAPP tiene un
 >   certificado vencido todavía atado a un binding, cinco componentes ajenos a
@@ -170,12 +171,13 @@ los plazos de abajo siguen corriendo: nada de lo que se haga se pierde en una mu
 |---|---|
 | **Debilidad** | El TLS termina en el NGINX del proveedor. De ahí a IIS el tráfico va en HTTP por el puerto 80, a través de la red compartida de IM-2026-005. En las VMs, IIS solo tiene bindings HTTP salvo `admin.devitrak.net`, que conserva uno en 443 con un certificado vencido. Los certificados `*.devitrak.net` de los almacenes están todos vencidos, el último el 2026-04-03 |
 | **Detectado por** | Inventario del 2026-11-13. Los certificados públicos sí son válidos: Let's Encrypt hasta el 2027-01-26 en los tres dominios |
-| **Dato nuevo (2026-11-16)** | Las dos VMs tienen **los mismos 4 certificados vencidos**, con idénticas fechas: tres `*.devitrak.net` (2024-02-19, 2025-03-25, 2026-04-03) y uno `*.itmastersltd.com` vencido el 2023-02-10. En DEVITRACKDB ninguno está en uso, así que los 4 se pueden retirar. En DEVITRACKAPP, **el `*.devitrak.net` que venció el 2026-04-03 sigue atado a un binding de IIS** (huella `D48486BA…`): lleva siete meses sirviendo un certificado caducado, y por eso no lo retira el script. Dos cosas que preguntar a IT Masters: cómo llegó su comodín `*.itmastersltd.com` al almacén de nuestras dos máquinas, y por qué el comodín `*.devitrak.net` está duplicado en ambas, lo que significa que su clave privada vive en dos sitios |
+| **Dato nuevo (2026-11-16)** | Las dos VMs tenían **los mismos 4 certificados vencidos**, con idénticas huellas y fechas: tres `*.devitrak.net` (2024-02-19, 2025-03-25, 2026-04-03) y uno `*.itmastersltd.com` vencido el 2023-02-10. Dos cosas que preguntar a IT Masters: cómo llegó su comodín `*.itmastersltd.com` al almacén de nuestras dos máquinas, y por qué el comodín `*.devitrak.net` está duplicado en ambas, lo que significa que su clave privada vive en dos sitios |
+| **Avance (2026-11-16)** | **Siete certificados vencidos retirados**, cada uno exportado antes de borrarlo. En DEVITRACKDB los 4, a las 15:39, con copia en `logs\evidence\cert-My-<huella>.cer`, carpeta que el `.gitignore` ya excluye. En DEVITRACKAPP los 3 que no estaban en uso, a las 15:44, con copia en el Escritorio de `CGAdmin`. **Queda uno:** el `*.devitrak.net` vencido el 2026-04-03 (huella `D48486BA…`) sigue atado a un binding de IIS en DEVITRACKAPP, donde lleva siete meses sirviendo un certificado caducado. El script no lo retira a propósito, porque borrarlo dejaría el binding sin certificado |
 | **Activo** | NGINX del proveedor e IIS de las dos VMs |
 | **Riesgo** | Moderado. Las sesiones del dashboard y los datos de los eventos viajan en claro por un segmento donde hay equipos de usuario |
 | **Responsable** | Compartido. El proxy es de IT Masters, IIS es nuestro |
-| **Plan** | 1) Coordinar el paso del tramo a HTTPS y confirmar a qué puerto reenvía el NGINX. Esa respuesta decide lo demás: si reenvía al 443, el proxy lleva siete meses aceptando un certificado vencido, y entonces hay que renovar el binding; si reenvía al 80, el binding es residual y se retira. 2) En DEVITRACKDB, retirar ya los 4 certificados vencidos: ninguno está en uso, y `vm-hardening-report.ps1 -RemoveExpiredCerts -Apply` exporta cada uno antes de borrarlo. 3) En DEVITRACKAPP, retirar los 3 que no están en uso; el cuarto espera a la respuesta del punto 1 |
-| **Hitos** | 2026-11-30: certificados sin usar retirados en las dos VMs, y pregunta del destino del proxy enviada. 2026-12-16: confirmación del destino del proxy. 2027-01-15: binding de DEVITRACKAPP renovado o retirado. 2027-02-14: tramo en HTTPS |
+| **Plan** | 1) Confirmar a qué puerto reenvía el NGINX del proveedor. Esa respuesta decide el certificado que queda: si reenvía al 443, el proxy lleva siete meses aceptando un certificado vencido y hay que renovar el binding; si reenvía al 80, el binding es residual y se retira entero. 2) Coordinar el paso del tramo a HTTPS. 3) Identificar qué sitio usa ese binding con `Get-Website` y sus `bindingInformation`, para saber qué se renueva |
+| **Hitos** | ~~2026-11-30: certificados sin usar retirados en las dos VMs~~ (hecho el 2026-11-16: 7 de 8). 2026-11-30: pregunta del destino del proxy enviada. 2026-12-16: confirmación del destino del proxy. 2027-01-15: binding de DEVITRACKAPP renovado o retirado. 2027-02-14: tramo en HTTPS |
 | **Fecha programada** | 2027-02-14 (90 días) |
 | **Estado** | Abierto |
 
@@ -328,7 +330,7 @@ los plazos de abajo siguen corriendo: nada de lo que se haga se pierde en una mu
 
 | Campo | Valor |
 |---|---|
-| **Debilidad** | No hay línea base de configuración segura documentada en Windows Server 2019. Medidas las dos VMs: **11 en `OK` y 17 en `REVIEW`** en DEVITRACKDB, **9 y 21** en DEVITRACKAPP. Aparte de la cadena de APP-2026-012 y de lo que ya recogen IM-2026-002 y APP-2026-002, quedan, **idénticos en las dos máquinas**: cifrado de RDP en nivel 2 "compatible con el cliente" en vez de 3 (`CIS-16`), protección de LSA desactivada (`CIS-08`) y `LmCompatibilityLevel` sin fijar (`CIS-05`). La enumeración anónima de cuentas SAM (`CIS-07`) sí está bloqueada en las dos |
+| **Debilidad** | No hay línea base de configuración segura documentada en Windows Server 2019. Medidas las dos VMs sobre 30 comprobaciones: **11 en `OK` y 19 en `REVIEW`** en DEVITRACKDB, **9 y 21** en DEVITRACKAPP. Tras retirar los certificados vencidos ese mismo día, `CERT-02` pasa a `OK` en las dos, pendiente de confirmar en la siguiente pasada. Aparte de la cadena de APP-2026-012 y de lo que ya recogen IM-2026-002 y APP-2026-002, quedan, **idénticos en las dos máquinas**: cifrado de RDP en nivel 2 "compatible con el cliente" en vez de 3 (`CIS-16`), protección de LSA desactivada (`CIS-08`) y `LmCompatibilityLevel` sin fijar (`CIS-05`). La enumeración anónima de cuentas SAM (`CIS-07`) sí está bloqueada en las dos |
 | **Detectado por** | Informes de endurecimiento del 2026-11-16 en las dos VMs |
 | **Activo** | Las dos VMs |
 | **Riesgo** | Moderado, no bajo como se estimó antes de medir. Dos razones concretas: el nivel 2 de cifrado de RDP está en el servicio que IM-2026-001 tiene publicado a internet, y la protección de LSA apagada es lo que convierte un acceso de administrador puntual en robo de credenciales y acceso permanente |
@@ -412,7 +414,8 @@ los plazos de abajo siguen corriendo: nada de lo que se haga se pierde en una mu
 
 - Inventario de las dos VMs, 2026-11-13: `scripts/inventario-red-vm.ps1`. Contiene cuentas e IPs, así que no se adjunta sin depurar.
 - Informes de cuentas y modos, 2026-11-16: `logs\evidence\warn-modes-*.txt` y `.json`, `mfa-coverage-*.txt`, `staff-inactivity-*.txt`, `super-user-*.txt` y `super-user-cleanup-*.txt` en la VM de la API.
-- Informes de endurecimiento de las dos VMs, 2026-11-16: `logs\evidence\hardening-DEVITRACKDB-*.txt`, de `scripts/vm-hardening-report.ps1` (PR #63), y `hardening-DEVITRACKAPP-20261116-1406.txt` en el Escritorio de DEVITRACKAPP, de `deploy/it/endurecimiento-vm.ps1` del repo del dashboard (entregado en `reports/BACKEND_vm_hardening_app_2026-11-16.md`). Los dos nombran cuentas e IPs: no se adjuntan sin depurar.
+- Informes de endurecimiento de las dos VMs, 2026-11-16: `logs\evidence\hardening-DEVITRACKDB-20261116-1536.txt` y `-1539.txt`, de `scripts/vm-hardening-report.ps1` (PRs #63 y #64), y `hardening-DEVITRACKAPP-20261116-1406.txt` y `-1544.txt` en el Escritorio de DEVITRACKAPP, de `deploy/it/endurecimiento-vm.ps1` del repo del dashboard (entregado en `reports/BACKEND_vm_hardening_app_2026-11-16.md`). Los informes de las 15:39 y las 15:44 registran el borrado de los certificados. Todos nombran cuentas e IPs: no se adjuntan sin depurar.
+- Copias de los 7 certificados retirados, 2026-11-16: `cert-My-<huella>.cer`, cuatro en `logs\evidence\` de DEVITRACKDB y tres en el Escritorio de DEVITRACKAPP. Solo la parte pública, suficiente para acreditar qué se borró.
 - Respuestas de IT Masters, 2026-11-13, y el correo de seguimiento al Sr. Caminero, pendiente de enviar.
 - Registro de cambios desplegados: `logs/releases.jsonl` y las etiquetas `deploy-*`.
 - Revisión de pendientes que originó este documento: https://claude.ai/artifact/K675pDaLTsC2peegp9cgA8
