@@ -13,7 +13,8 @@
     2. Components       software that does not belong on a production server:
                         Memurai, Figma agent, WSL, Docker, Hyper-V adapters
                         (CM-7, POA&M APP-2026-009).
-    3. Accounts         net accounts policy, local administrators, and the
+    3. Accounts         net accounts policy, local administrators, which
+                        accounts carry a password that never expires, and the
                         Windows audit policy (AC-7, IA-5, AU-2).
     4. CIS L1           about twenty key settings of the CIS Windows Server
                         2019 Level 1 benchmark, each OK or REVIEW. This is NOT
@@ -220,12 +221,19 @@ try {
     Get-LocalGroupMember -Group Administrators -ErrorAction SilentlyContinue |
         ForEach-Object { Write-Host ("        {0}  ({1})" -f $_.Name, $_.PrincipalSource) }
 
-    Write-Host "    Local accounts and password age:"
+    Write-Host "    Local accounts, password age and expiry:"
     Get-LocalUser | Sort-Object Name | ForEach-Object {
         $age = '(never set)'
         if ($_.PasswordLastSet) { $age = "{0:yyyy-MM-dd} ({1} days)" -f $_.PasswordLastSet, [int]($now - $_.PasswordLastSet).TotalDays }
-        Write-Host ("        {0,-20} enabled={1,-5} password {2}" -f $_.Name, $_.Enabled, $age)
+        $expires = '(never expires)'
+        if ($_.PasswordExpires) { $expires = "{0:yyyy-MM-dd}" -f $_.PasswordExpires }
+        Write-Host ("        {0,-20} enabled={1,-5} password {2}  expires {3}" -f $_.Name, $_.Enabled, $age, $expires)
     }
+    # A maximum password age in "net accounts" means nothing while the accounts
+    # are flagged to never expire: the policy reads as met and is not applied.
+    # DEVITRACKDB reports 42 days and has passwords 1551 days old.
+    $neverExpire = @(Get-LocalUser | Where-Object { $_.Enabled -and -not $_.PasswordExpires })
+    Add-Check 'IA5-02' 'No enabled account with a password that never expires' ($neverExpire.Count -eq 0) "$($neverExpire.Count) account(s)" '0'
     $guest = Get-LocalUser -Name 'Guest' -ErrorAction SilentlyContinue
     Add-Check 'AC2-01' 'Guest account disabled' ($guest -and -not $guest.Enabled) $(if ($guest) { "enabled=$($guest.Enabled)" } else { 'not present' }) 'disabled'
 
@@ -234,6 +242,10 @@ try {
     Write-Host $audit
     $logonAudited = ($audit -match 'Logon\s+Success and Failure')
     Add-Check 'AU2-01' 'Logon events audited for success and failure' $logonAudited $(if ($logonAudited) { 'Success and Failure' } else { 'incomplete' }) 'Success and Failure'
+    # Without 4688 there is no record of what ran on the machine, so an incident
+    # cannot be reconstructed even when the logon that started it was audited.
+    $procAudited = ($audit -match 'Process Creation\s+(Success|Success and Failure)')
+    Add-Check 'AU2-02' 'Process creation audited (event 4688)' $procAudited $(if ($procAudited) { 'Success' } else { 'No Auditing' }) 'Success'
 
     # ------------------------------------------------------------------ 4. CIS L1
     Write-Host "==> 4. CIS Windows Server 2019 Level 1: key settings" -ForegroundColor Cyan
