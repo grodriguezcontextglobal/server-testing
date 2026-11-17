@@ -2,6 +2,8 @@ const { response, request } = require("express");
 const { createConnection } = require("mysql2");
 const getConnection = require("../database/config");
 const { readCompanyId } = require("../../middlewares/authorizePermission");
+const { buildEqualityFilter } = require("../../helpers/sqlEqualityFilter");
+const { respondInternalError } = require("../../helpers/internalError");
 require("dotenv").config({ quiet: true });
 const connection = getConnection();
 
@@ -145,66 +147,44 @@ const updateEventInfo = async (request, response) => {
 
 const consultingEventInformation = async (request, response) => {
   try {
-    const invalidCols = Object.keys(request.body).filter((k) => !EVENT_INFO_COLUMNS.has(k));
-    if (invalidCols.length > 0) {
-      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    // Validar ANTES de consultar (SI-11, APP-2026-013): con un cuerpo vacío
+    // la consulta salía `where ;` y el error del motor iba al cliente.
+    const filter = buildEqualityFilter(request.body, EVENT_INFO_COLUMNS, { subject: "event_info" });
+    if (!filter.ok) {
+      return response.status(filter.status).json({ ok: false, msg: filter.msg });
     }
-    const formatting = Object.keys(request.body).map((item) => `\`${item}\`=?`);
-    const keys = formatting.join(" AND ");
-    const values = Object.values(request.body);
-
-    const query = `select * from event_info where ${keys}`;
-    const [result] = await connection.execute(query, values);
-    // , function (err, result, fields) {
-    //   if (err)
-    //     return response.status(500).json({
-    //       ok: false,
-    //       msg: `${err.message}`,
-    //     });
-
-      return response.status(201).json({
-        ok: true,
-        event: result,
-      });
-    // });
+    const query = `select * from event_info where ${filter.where}`;
+    const [result] = await connection.execute(query, filter.values);
+    return response.status(201).json({
+      ok: true,
+      event: result,
+    });
   } catch (error) {
-    console.error("Error:", error.message);
-    response.status(500).json({
-      ok: false,
-      msg: `${error.message}`,
+    return respondInternalError(response, request, error, {
+      operation: "consultingEventInformation",
+      table: "event_info",
     });
   }
 };
 
 const consultingEventTable = async (request, response) => {
   try {
-    const invalidCols = Object.keys(request.body).filter((k) => !EVENT_INFO_COLUMNS.has(k));
-    if (invalidCols.length > 0) {
-      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    // Mismo caso que consultingEventInformation: son el mismo código
+    // duplicado, y por eso el dashboard midió el mismo "position 31" en los dos.
+    const filter = buildEqualityFilter(request.body, EVENT_INFO_COLUMNS, { subject: "event_info" });
+    if (!filter.ok) {
+      return response.status(filter.status).json({ ok: false, msg: filter.msg });
     }
-    const formatting = Object.keys(request.body).map((item) => `\`${item}\`=?`);
-    const keys = formatting.join(" AND ");
-    const values = Object.values(request.body);
-    const query = `select * from event_info where ${keys};`;
-    // const valu es = [event_name, zip_address];
-    const [result] = await connection.execute(query, values);
-    // , function (err, result, fields) {
-    //   if (err)
-    //     return response.status(500).json({
-    //       ok: false,
-    //       msg: `${err.message}`,
-    //     });
-
-      return response?.status(201)?.json({
-        ok: true,
-        events: result,
-      });
-    // });
+    const query = `select * from event_info where ${filter.where};`;
+    const [result] = await connection.execute(query, filter.values);
+    return response.status(201).json({
+      ok: true,
+      events: result,
+    });
   } catch (error) {
-    console.error("Error:", error.message);
-    response.status(500).json({
-      ok: false,
-      msg: `${error.message}`,
+    return respondInternalError(response, request, error, {
+      operation: "consultingEventTable",
+      table: "event_info",
     });
   }
 };
