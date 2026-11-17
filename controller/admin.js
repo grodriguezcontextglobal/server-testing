@@ -27,6 +27,7 @@ const {
   newCsrfToken,
   issueSessionCookie,
   clearSessionCookie,
+  expiresAtOf,
 } = require("../helpers/sessionCookie");
 const {
   generateRecoveryCodes,
@@ -531,6 +532,12 @@ const loginUser = async (request, response) => {
       // Se manda en `X-CSRF-Token` en cada escritura cuando la sesión va por
       // cookie. El dashboard lo guarda en memoria, nunca en localStorage.
       csrfToken: csrf,
+      // Los dos únicos datos que el dashboard saca hoy decodificando el token
+      // (`exp` y `sqlStaffId`; con ellos App.jsx decide si la sesión sigue
+      // abierta). Servidos aparte desde la fase 1 para que la fase 3, cuando el
+      // token deje de viajar en el cuerpo, no les quite la única fuente.
+      sqlStaffId,
+      sessionExpiresAt: expiresAtOf(token),
       // Número con MFA activa; null sin ella (MFA_REQUIRED=false).
       recoveryCodesRemaining,
       // Solo al entrar con un código de recuperación.
@@ -1029,6 +1036,8 @@ const renewToken = async (request, response = express.response) => {
     uid,
     token,
     csrfToken: csrf,
+    sqlStaffId,
+    sessionExpiresAt: expiresAtOf(token),
   });
 };
 

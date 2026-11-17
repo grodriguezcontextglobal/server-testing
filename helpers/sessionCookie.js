@@ -31,13 +31,21 @@
  *   - la cookie es `HttpOnly`: el claim no se puede leer desde JavaScript.
  * Solo se exige en métodos que escriben. Un GET no cambia estado.
  *
- * SameSite. En producción la cookie va `Secure` + `SameSite=None`, porque el
- * dashboard (admin.devitrak.net) y la API (db.devitrak.net) se sirven desde
- * hosts distintos y hay entornos de prueba en otro dominio. Fuera de
- * producción, `Lax` sin `Secure`, o el navegador la descarta en `http://localhost`.
+ * SameSite. Por defecto `None` cuando la cookie va `Secure`, y `Lax` cuando no
+ * (sin `Secure` el navegador descarta una cookie `None`, así que en
+ * `http://localhost` no habría sesión).
+ *
+ * `SESSION_COOKIE_SAMESITE` fuerza el valor, y existe por algo que señaló el
+ * dashboard el 2026-11-17: `admin.devitrak.net` y `db.devitrak.net` son el
+ * MISMO sitio (`devitrak.net`), así que en producción `Lax` basta y es lo que
+ * conviene dejar. `None` solo hace falta mientras se prueba desde un build
+ * local (`localhost` → `devitrak.net` sí es cross-site), y es además el valor
+ * que los navegadores están restringiendo. Plan: `None` durante la prueba,
+ * `Lax` en el encendido de producción.
  */
 
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { SESSION_MAX_SECONDS } = require('./jwt');
 
 const COOKIE_NAME = 'dvk_session';
@@ -53,13 +61,24 @@ const useSecure = () =>
   process.env.NODE_ENV === 'production' ||
   String(process.env.SESSION_COOKIE_SECURE || '').toLowerCase() === 'true';
 
+const VALID_SAMESITE = new Set(['none', 'lax', 'strict']);
+
+/** `SESSION_COOKIE_SAMESITE` si es un valor válido; si no, el de por defecto. */
+const sameSiteFor = (secure) => {
+  const forced = String(process.env.SESSION_COOKIE_SAMESITE || '').toLowerCase();
+  // `None` sin `Secure` es una cookie que el navegador tira: pedirlo así no
+  // puede dejar la sesión sin funcionar, se degrada a `Lax`.
+  if (VALID_SAMESITE.has(forced) && !(forced === 'none' && !secure)) return forced;
+  return secure ? 'none' : 'lax';
+};
+
 /** Las opciones de la cookie de sesión. `maxAge` en ms, como pide Express. */
 const sessionCookieOptions = () => {
   const secure = useSecure();
   return {
     httpOnly: true,
     secure,
-    sameSite: secure ? 'none' : 'lax',
+    sameSite: sameSiteFor(secure),
     path: '/',
     maxAge: SESSION_MAX_SECONDS * 1000,
   };
@@ -106,6 +125,29 @@ const clearSessionCookie = (response) => {
   return true;
 };
 
+/**
+ * Cuándo caduca la sesión de un token, en ISO UTC, o `null` si el valor no es
+ * un JWT legible.
+ *
+ * El dashboard necesita ese instante y hoy lo saca decodificando el token; en
+ * la fase 3 el token deja de viajar en el cuerpo, asi que se lo damos aparte.
+ *
+ * Vive aquí y no en helpers/jwt.js por una razón concreta: media docena de
+ * suites sustituyen ese módulo entero por un doble que solo exporta
+ * `generateJWT`, así que cualquier función nueva alli llega `undefined` al
+ * controlador y convierte el login en un 500. Lo descubrió el CI de la PR #73.
+ * Por lo mismo devuelve `null` en vez de lanzar: un campo informativo de la
+ * respuesta del login no puede tumbar el login.
+ */
+const expiresAtOf = (token) => {
+  try {
+    const exp = jwt.decode(token)?.exp;
+    return Number.isFinite(exp) ? new Date(exp * 1000).toISOString() : null;
+  } catch {
+    return null;
+  }
+};
+
 /** Comparación en tiempo constante de dos valores hex de la misma longitud. */
 const csrfMatches = (sent, claim) => {
   if (typeof sent !== 'string' || typeof claim !== 'string') return false;
@@ -124,4 +166,5 @@ module.exports = {
   issueSessionCookie,
   clearSessionCookie,
   csrfMatches,
+  expiresAtOf,
 };
