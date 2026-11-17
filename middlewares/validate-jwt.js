@@ -13,7 +13,7 @@ const validateJWT = (request, response = response, next) => {
   }
 
   try {
-    const { uid, name, tokenVersion, sqlStaffId, authTime, iat, sid } = jwt.verify(
+    const { uid, name, tokenVersion, sqlStaffId, authTime, iat, sid, csrf } = jwt.verify(
       token,
       process.env.SECRET_JWT_SEED
     );
@@ -31,6 +31,9 @@ const validateJWT = (request, response = response, next) => {
     request.authTime = authTime ?? iat;
     // Sesión del servidor (helpers/staffSession.js); la comprueba checkTokenVersion.
     request.sid = sid;
+    // Par del csrfToken de la sesión por cookie (fase 1). Lo conserva la
+    // renovación del token para que el valor del cliente siga valiendo.
+    request.csrf = csrf ?? null;
 
   } catch (error) {
     return response.status(401).json({

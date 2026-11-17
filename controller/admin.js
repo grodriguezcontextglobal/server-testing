@@ -21,6 +21,13 @@ const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
 const { newSessionId, touchIdle, openStaffSession } = require("../helpers/staffSession");
+// Sesión por cookie, fase 1 (SC-23). El `csrfToken` se devuelve siempre; la
+// cookie solo cuando COOKIE_SESSION_MODE=dual.
+const {
+  newCsrfToken,
+  issueSessionCookie,
+  clearSessionCookie,
+} = require("../helpers/sessionCookie");
 const {
   generateRecoveryCodes,
   hashRecoveryCode,
@@ -79,16 +86,24 @@ const createAdminUser = async (request, response = express.response) => {
 
     // Una cuenta recién creada no tiene MFA, y MFA es obligatoria: en vez de
     // sesión recibe el token de enrolamiento (ver loginUser).
+    // Esta ruta también abre sesión: emite el mismo par cookie + csrfToken que
+    // el login (sesión por cookie, fase 1).
+    const signupCsrf = newCsrfToken();
     const auth = isMfaRequired()
       ? { mfaSetupRequired: true, mfaSetupToken: await generateMfaSetupToken(adminUser.id) }
       : {
           token: await generateJWT(adminUser.id, adminUser.name, adminUser.tokenVersion, undefined, {
             sid: await openStaffSession(clientRedis, adminUser.id),
+            csrf: signupCsrf,
           }),
+          csrfToken: signupCsrf,
         };
 
     if (auth.token) {
-      // Store JWT in a cookie
+      issueSessionCookie(response, auth.token);
+      // Cookie `token` heredada: nada del servidor la lee (logoutUser lo intenta
+      // vía request.cookies, y cookie-parser no está montado). Se deja como
+      // estaba; retirarla es trabajo de la fase 3.
       response.cookie("token", auth.token, {
         httpOnly: true, // Prevent client-side JavaScript from accessing the cookie
         secure: process.env.NODE_ENV === "production", // Ensure cookies are only sent over HTTPS in production
@@ -366,6 +381,9 @@ const loginUser = async (request, response) => {
     //generate jwt (json web token)
     // Cada login abre una sesión nueva: el sid anterior deja de valer.
     const sid = newSessionId();
+    // Par del `csrfToken` de la respuesta: viaja firmado dentro del token para
+    // que la sesión por cookie lo compruebe sin consultar nada.
+    const csrf = newCsrfToken();
     let token;
     try {
       token = await generateJWT(
@@ -373,7 +391,7 @@ const loginUser = async (request, response) => {
         adminUser.name,
         adminUser.tokenVersion,
         sqlStaffId,
-        { sid }
+        { sid, csrf }
       );
     } catch (e) {
       // Rollback the claim if token generation fails
@@ -495,6 +513,11 @@ const loginUser = async (request, response) => {
       device_info: request.headers["user-agent"],
     });
 
+    // Fase 1 de la sesión por cookie: la cookie solo sale con
+    // COOKIE_SESSION_MODE=dual, y el `token` del cuerpo se sigue devolviendo
+    // en los dos modos.
+    issueSessionCookie(response, token);
+
     return response.status(200).json({
       ok: true,
       entire: adminUser,
@@ -505,6 +528,9 @@ const loginUser = async (request, response) => {
       phone: adminUser.phone,
       role: adminUser.role,
       token,
+      // Se manda en `X-CSRF-Token` en cada escritura cuando la sesión va por
+      // cookie. El dashboard lo guarda en memoria, nunca en localStorage.
+      csrfToken: csrf,
       // Número con MFA activa; null sin ella (MFA_REQUIRED=false).
       recoveryCodesRemaining,
       // Solo al entrar con un código de recuperación.
@@ -558,6 +584,8 @@ const logoutUser = async (request, response) => {
         sameSite: "none",
         secure: true,
       });
+      // Y la de la fase 1, que es la que de verdad abre sesión.
+      clearSessionCookie(response);
 
       return response.status(201).json({
         ok: true,
@@ -594,6 +622,7 @@ const manuallyLogoutUser = async (request, response) => {
       sameSite: "none",
       secure: true,
     });
+    clearSessionCookie(response);
 
     return response.status(201).json({
       ok: true,
@@ -977,21 +1006,29 @@ const renewToken = async (request, response = express.response) => {
   }
 
   // Conserva la hora del login: renovar no alarga la sesión más allá de 12 h.
+  // Y conserva el `csrf` del login: el dashboard guarda ese valor en memoria y
+  // renovar no debería obligarle a releerlo. Un token viejo sin claim recibe uno.
+  const csrf = request.csrf || newCsrfToken();
   let token;
   try {
     token = await generateJWT(uid, name, request.tokenVersion, sqlStaffId, {
       authTime: request.authTime,
       sid: request.sid,
+      csrf,
     });
   } catch {
     return response.status(401).json({ ok: false, msg: "Session expired. Log in again." });
   }
+
+  // La cookie se reemite con el token nuevo; si no, caducaría antes que la sesión.
+  issueSessionCookie(response, token);
 
   return response.json({
     ok: true,
     name,
     uid,
     token,
+    csrfToken: csrf,
   });
 };
 

@@ -31,8 +31,14 @@ const corsOptions = {
         // Token de sesión de la app del consumidor (app.devitrak.net).
         // Ver helpers/consumerToken.js y middlewares/consumerTokenGate.js.
         "x-consumer-token",
+        // Token anti-CSRF de la sesión por cookie (fase 1, SC-23/AC-12). El
+        // dashboard ya lo manda detrás de su flag VITE_APP_COOKIE_SESSION; sin
+        // esta línea el preflight lo rechaza y el navegador lo reporta como un
+        // error `{}` vacío, que no dice nada a nadie.
+        "X-CSRF-Token",
         "token",
-        "s-token-lq",
+        // `s-token-lq` retirado el 2026-11-17: el dashboard dejó de mandarlo en
+        // su #56 y nada del servidor lo lee (ver middlewares/validate-jwt.js).
         "sqlStaffId",
         "s-company-lq",
         "s-company-id",

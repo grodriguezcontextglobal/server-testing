@@ -8,7 +8,7 @@ const { corsOptions, ACCEPTED_ORIGINS } = require('../config/cors');
 // o el navegador bloquea el request en el preflight (cross-origin).
 const REQUIRED_HEADERS = [
   'x-token',
-  's-token-lq',
+  'x-csrf-token',   // sesión por cookie, fase 1 (SC-23, AC-12)
   'x-company-id',   // company_id Mongo (authorizeMongoPermission)
   's-company-lq',   // company_id SQL (rutas /api/db_*)
   'x-request-id',
@@ -25,6 +25,17 @@ test('cors: allowedHeaders incluye todos los headers del contrato (case-insensit
       `Falta "${h}" en corsOptions.allowedHeaders → el preflight lo bloqueará`,
     );
   }
+});
+
+// CM-7: una cabecera que ya nadie manda es superficie que sigue abierta. El
+// dashboard dejó de enviar `s-token-lq` en su #56 y lo guarda con su propio
+// test; aquí se guarda el otro extremo, para que no vuelva por copiar y pegar.
+test('cors: s-token-lq ya no está en el contrato', () => {
+  const allowed = corsOptions.allowedHeaders.map((h) => h.toLowerCase());
+  assert.ok(
+    !allowed.includes('s-token-lq'),
+    's-token-lq volvió a corsOptions.allowedHeaders: nada del servidor lo lee',
+  );
 });
 
 test('cors: el origin del frontend local está permitido', () => {

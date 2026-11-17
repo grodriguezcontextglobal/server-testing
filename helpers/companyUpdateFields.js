@@ -13,8 +13,12 @@
  * de la sesión más el campo que cambia, y rechazar la petición la rompería.
  * Lo ignorado se devuelve en `ignored_fields` y queda en el log.
  *
- * `employees` sigue en la lista solo hasta que el dashboard deje de escribir la
- * plantilla por aquí (cerrar eventos ya va por /event-staff/deactivate).
+ * `employees` SALIÓ de la lista el 2026-11-17 (AC-2). Era el último hueco por el
+ * que se podía reescribir la plantilla entera de staff —roles y `super_user`
+ * incluidos— desde una ruta de edición de datos de compañía. El dashboard
+ * confirmó que desde su #86 el cierre de evento va por
+ * POST /api/company/event-staff/deactivate y que la ruta vieja solo era un
+ * fallback. Las altas y bajas de staff tienen sus propias rutas; esta no.
  *
  * `stripe_connected_account` es especial: la cuenta la crea y la guarda el
  * servidor (controller/stripe.js → persistConnectedAccountId). El dashboard
@@ -34,7 +38,6 @@ const COMPANY_EDITABLE_FIELDS = Object.freeze(new Set([
   'email_branding',
   'structure',
   'roleLabels',
-  'employees', // temporal: ver la cabecera
 ]));
 
 const ENVIRONMENTS = ['test', 'live'];
