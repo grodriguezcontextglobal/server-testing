@@ -4,6 +4,8 @@ const { clientRedis } = require("../../database/cacheMemoryConfig");
 const logger = require("../../helpers/logger");
 const runGoWorker = require("../../helpers/goWorker");
 const { describeSqlShape } = require("../../helpers/sqlShape");
+const { buildEqualityFilter } = require("../../helpers/sqlEqualityFilter");
+const { respondInternalError } = require("../../helpers/internalError");
 const {
   buildNamedQuery,
   QueryParamError,
@@ -630,25 +632,22 @@ const insertBulkItemAlhpanumericFormat = createInsertBulkItemAlphanumeric();
 const consultingItem = async (request, response) => {
   try {
     const connection = getConnection();
-    const invalidCols = Object.keys(request.body).filter((k) => !ITEM_INV_COLUMNS.has(k));
-    if (invalidCols.length > 0) {
-      return response.status(400).json({ ok: false, msg: `Invalid field(s): ${invalidCols.join(", ")}` });
+    // Validar ANTES de consultar (SI-11, APP-2026-013): con un cuerpo vacío
+    // esta ruta armaba `WHERE ;` y le devolvía al cliente el error del motor.
+    const filter = buildEqualityFilter(request.body, ITEM_INV_COLUMNS, { subject: "item_inv" });
+    if (!filter.ok) {
+      return response.status(filter.status).json({ ok: false, msg: filter.msg });
     }
-    const formatting = Object.keys(request.body)
-      .map((item) => `\`${item}\`=?`)
-      .join(" AND ");
-    const values = Object.values(request.body);
-    const query = `SELECT * FROM item_inv WHERE ${formatting};`;
-    const [result] = await connection.execute(query, values);
+    const query = `SELECT * FROM item_inv WHERE ${filter.where};`;
+    const [result] = await connection.execute(query, filter.values);
     return response.status(201).json({
       items: result,
       ok: true,
     });
   } catch (error) {
-    logger.error("Error:", error.message);
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
+    return respondInternalError(response, request, error, {
+      operation: "consultingItem",
+      table: "item_inv",
     });
   }
 };
