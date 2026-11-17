@@ -5,6 +5,12 @@
 > **Controles:** RA-5 (escaneo de vulnerabilidades), SI-2 (corrección de fallos), CM-8, SR-3
 > **Fuentes de detección:** GitHub Dependabot, `npm audit --omit=dev` (job `audit` del CI), `govulncheck` (job `go`)
 
+> **Actualización 2026-11-17:** se añade DEP-2026-004 (`picomatch`, alta, sin versión corregida
+> en ninguna rama publicada). Es la primera entrada que el job `audit` no puede dejar pasar por
+> gravedad, así que desde hoy ese job corre `scripts/audit-check.js`: mismo `npm audit`, más una
+> lista de excepciones con motivo y **fecha de caducidad**. Un check permanentemente rojo no avisa
+> de nada; uno que vuelve a ponerse rojo en una fecha, sí.
+
 Estas son las vulnerabilidades de dependencias que siguen abiertas después de la ronda del
 2026-11-04/05. En esa ronda se cerraron estas:
 - `qs` 6.17.1 (`5482111`);
@@ -70,11 +76,30 @@ versión corregida, porque Dependabot y el job `audit` lo avisan solos.
 | **Fecha programada** | 2027-02-02 (revisión) |
 | **Estado** | Abierto: falso positivo en producción, depende del proveedor |
 
+## DEP-2026-004 · `picomatch` (transitiva de `pm2`)
+
+| Campo | Valor |
+|---|---|
+| **Debilidad** | ReDoS: un patrón glob con extglobs repetidos de una sola rama dispara el tiempo de compilación del patrón (CWE-1333) |
+| **Identificador** | [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf) |
+| **Detectado por** | `npm audit --omit=dev`, 2026-11-17. Puso el job `audit` en rojo el mismo día, en todas las PRs abiertas |
+| **Activo** | `picomatch` 2.3.2, traído por `pm2` 7.1.1 → `anymatch` 3.1.3 y `readdirp` 3.6.0 |
+| **Riesgo original** | **Alto** (CVSS 3.1: 7.5, `AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H`; solo disponibilidad) |
+| **Riesgo ajustado** | **Bajo** |
+| **Por qué se ajusta** | El único consumidor de `picomatch` en el árbol es el vigilante de ficheros de `pm2`. La VM corre `pm2-runtime` **sin `watch`**, y ningún patrón glob del sistema sale de una petición: este ReDoS necesita que el patrón lo elija quien ataca. No hay camino desde una petición HTTP hasta esa librería |
+| **Dependencia de proveedor** | Sí, y además **no hay versión corregida**: el rango afectado es `<=4.0.7` y la última publicada es la 4.0.7 |
+| **La corrección que sugiere npm no corrige** | `npm audit fix --force` propone bajar a `pm2` 7.0.4. Comprobado: 7.0.4 depende de `chokidar` 3.6.0, que arrastra el mismo `anymatch`/`readdirp` y el mismo `picomatch`. Es un downgrade a cambio de nada. **No ejecutar ese comando** |
+| **Por qué tampoco vale un override** | La salida real es `chokidar` 4, que ya no usa `picomatch` (solo `readdirp` ^4). Pero `readdirp` ≥ 4 es **ESM puro** (`"type": "module"`) y `pm2` lo carga con `require()`: forzarlo reproduce el `ERR_REQUIRE_ESM` que tumbó producción con `uuid`, el mismo que `scripts/deploy-node.ps1` comprueba desde entonces. `anymatch` tampoco tiene salida: su última versión sigue pidiendo `picomatch ^2` |
+| **Plan** | 1) Esperar a que `pm2` suba a `chokidar` 4; Dependabot y el job `audit` lo avisan solos. 2) Mientras tanto, excepción explícita y con fecha en `scripts/audit-check.js`, para que el check siga sirviendo para el siguiente aviso alto. 3) Si en la fecha de revisión sigue sin haber versión, reevaluar: `pm2` es el supervisor del clúster (`DEPLOY.md`), así que quitarlo no es una línea, es cambiar cómo arranca el servicio |
+| **Hitos** | 2026-12-15: revisión de proveedor. 2027-02-15: caduca la excepción del CI y se reevalúa |
+| **Fecha programada** | 2027-02-15 |
+| **Estado** | Abierto: riesgo ajustado, aceptado con fecha, sin corrección publicada |
+
 ---
 
 ## Evidencia
 
 - `npm audit --omit=dev` en `5482111`: 0 críticas, 0 altas, 2 moderadas (`uuid`/`exceljs`) y 4 bajas (`deepmerge`/`@sendgrid/*`).
-- El job `audit` del CI bloquea el merge desde `high`, con `npm audit --omit=dev --audit-level=high`. Si alguna de estas sube de gravedad, el CI falla.
+- El job `audit` del CI bloquea el merge desde `high`. Desde el 2026-11-17 lo hace con `node scripts/audit-check.js`, que es el mismo `npm audit --omit=dev` más las excepciones con fecha: solo pasan los avisos de su lista `ACCEPTED`, y cuando una fecha vence el check vuelve a fallar solo. Si alguna de estas entradas sube de gravedad, el CI falla.
 - CI verde en `5482111`, `56a7561` y `bae3a26` (`test`, `audit`, `go`).
 - Dependabot revisa `main`. Hasta que se mergee el PR #31, sus alertas no reflejan producción.

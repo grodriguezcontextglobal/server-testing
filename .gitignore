@@ -24,6 +24,15 @@ payload.json
 # never commit real secrets
 .env
 .env.backup
+# Copias con fecha, que es como se hacen de verdad antes de tocar el archivo.
+# El 2026-11-17 la VM de producción tenía un `.env.bak-20261116-0927` sin
+# seguimiento en la carpeta del repo: `.env.backup` no lo cubría, así que un
+# `git add .` lo habría commiteado con las credenciales dentro.
+.env.bak*
+.env.*.bak
+.env.old
+.env.save
+.env.local
 
 # pnpm is not used in production (npm/pm2-runtime is) — don't let a stray
 # `pnpm install`/`pnpm test` reintroduce these
