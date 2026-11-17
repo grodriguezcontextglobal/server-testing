@@ -69,7 +69,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm audit --omit=dev --audit-level=high
+      # Equivale a `npm audit --omit=dev --audit-level=high`, pero con las
+      # excepciones con fecha de scripts/audit-check.js: un aviso alto sin
+      # corrección publicada y sin exposición se acepta hasta su fecha de
+      # revisión, y pasada esa fecha el check vuelve a ponerse rojo solo.
+      # Cada excepción tiene su ficha en docs/POAM_dependencias.md.
+      - run: node scripts/audit-check.js
 
   go:
     runs-on: ubuntu-latest
