@@ -59,8 +59,10 @@ las VMs y la red. Para esos, nuestro hito es obtener su compromiso con una fecha
 | APP-2026-010 | `/health` sin sonda real: el monitor no detecta degradación | SI-4 | Bajo | Devitrak | 2027-05-15 | Abierto |
 | APP-2026-011 | Protección de la rama `main` no aplicada | CM-3, CM-5 | Bajo | Devitrak | 2027-05-15 | Abierto |
 | APP-2026-012 | Retransmisión NTLM posible en la red plana | SC-8, IA-2, CM-6 | Moderado | Compartido | 2027-02-14 | Abierto |
+| APP-2026-013 | Los errores internos se devuelven al cliente (~351 sitios) | SI-11 | Moderado | Devitrak | 2027-02-15 | Abierto |
+| APP-2026-014 | CORS de producción acepta `localhost` con credenciales | AC-4, SC-7 | Moderado | Devitrak | 2027-02-15 | Abierto |
 
-Cuatro altos, dieciséis moderados y dos bajos. Los tres altos de infraestructura son el
+Cuatro altos, dieciocho moderados y dos bajos. Los tres altos de infraestructura son el
 mismo problema visto desde tres lados: cualquiera en internet puede intentar entrar a
 las VMs, nada lo frena y la capa de virtualización no recibe parches.
 
@@ -396,6 +398,34 @@ los plazos de abajo siguen corriendo: nada de lo que se haga se pierde en una mu
 | **Hitos** | 2026-11-30: aviso enviado a IT Masters. 2026-12-15: firma SMB obligatoria y enumeración anónima bloqueada. 2027-02-14: LLMNR desactivado y medición de cierre |
 | **Fecha programada** | 2027-02-14 (90 días) |
 | **Estado** | Abierto |
+
+### APP-2026-013 · Los errores internos se devuelven al cliente
+
+| Campo | Valor |
+|---|---|
+| **Debilidad** | Los controladores responden con el texto del error de la capa inferior. `POST /api/db_item/consulting-item` con un cuerpo vacío devuelve `{"msg":"syntax error at position 29","ok":false}`: el mensaje del motor SQL, al cliente. Medido con grep: **~351 sitios de respuesta en 52 archivos** (172 en `controller/`, 171 en `mysql/controllers/`, 8 entre `routes/` y `helpers/`), de los cuales **19 devuelven `JSON.stringify(error)`**, que puede arrastrar el objeto entero y no solo el mensaje. Solo `mysql/controllers/item.js` tiene 41 |
+| **Detectado por** | El agente del dashboard, 2026-11-17, mientras probaba la sesión por cookie con cuerpos malformados a propósito. Recuento propio el mismo día |
+| **Activo** | La API en las dos VMs |
+| **Riesgo** | Moderado. No es ejecución ni acceso: es divulgación. El texto del motor revela nombres de tabla y de columna, posiciones del SQL y, en los 19 casos con `JSON.stringify`, a veces la consulta. Es material de reconocimiento, y un evaluador lo encuentra en diez minutos porque basta con mandar un cuerpo vacío |
+| **Responsable** | Devitrak |
+| **Plan** | No son 351 ediciones: un respondedor de errores común que registre el detalle con el id de petición y devuelva al cliente un mensaje genérico más ese id, aplicado por carpetas y apoyado en los tests que ya cubren esas rutas. Primero las rutas que el dashboard puede nombrar desde fuera, que son las que un evaluador prueba. El recuento es de grep: cada sitio hay que mirarlo para confirmar qué expone |
+| **Hitos** | 2026-12-05: respondedor común y las rutas que liste el dashboard. 2027-01-15: `mysql/controllers/` entero. 2027-02-15: el resto y medición de cierre |
+| **Fecha programada** | 2027-02-15 (90 días) |
+| **Estado** | Abierto |
+
+### APP-2026-014 · CORS de producción acepta orígenes `localhost` con credenciales
+
+| Campo | Valor |
+|---|---|
+| **Debilidad** | `config/cors.js` incluye `http://localhost:5522` y `:5523` en la lista de orígenes aceptados, con `credentials: true`. Es una concesión de desarrollo viviendo en producción |
+| **Detectado por** | El agente del dashboard, 2026-11-17, al descubrirlo porque su primer intento usó el puerto 5524 y fue rechazado |
+| **Activo** | API en DEVITRACKDB (`db.devitrak.net`) |
+| **Riesgo** | Bajo hasta el 2026-11-17; **moderado desde que existe la cookie de sesión**. Con `SameSite=None`, el navegador adjunta la sesión a las peticiones que salgan de cualquier página servida en esos dos orígenes: el servidor de desarrollo de otro proyecto, una herramienta local, un paquete comprometido que abra un puerto. El `X-CSRF-Token` frena las **escrituras**, porque esa página no puede leerlo; no frena las **lecturas**, que están exentas a propósito |
+| **Responsable** | Devitrak (configuración nuestra), con el dashboard en la decisión de fecha |
+| **Plan** | Quitar los dos orígenes en el **mismo despliegue** en que `SESSION_COOKIE_SAMESITE` pase a `lax`, que es el día del encendido en producción de la cookie: así la ventana no llega a existir sin vigilancia. Antes no, porque hoy es el único camino que tiene el dashboard para probar `dual`. Arreglo de fondo, aparte: un host de staging para el dashboard con su propio origen de API, que además quita del SSP la frase "se prueba producción desde un portátil" |
+| **Hitos** | Día del encendido (fecha del dashboard): `lax` y los dos orígenes fuera, en el mismo despliegue. 2027-01-15: decidir si hay host de staging |
+| **Fecha programada** | 2027-02-15 |
+| **Estado** | Abierto, con fecha propuesta al dashboard |
 
 ---
 
