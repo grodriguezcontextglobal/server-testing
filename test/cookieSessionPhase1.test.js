@@ -314,6 +314,67 @@ describe('helpers/sessionCookie', () => {
   });
 });
 
+// El dashboard no puede enseñar los atributos de la cookie: una página no lee
+// cabeceras de respuesta y con HttpOnly tampoco la ve desde JavaScript. Esta
+// prueba los fija desde el otro lado, con Express de verdad, para que la
+// evidencia de scripts/session-cookie-evidence.js no se quede obsoleta en
+// silencio si alguien cambia las opciones.
+describe('Set-Cookie: lo que sale por el cable', () => {
+  const headerFor = async (env) => {
+    const before = { ...process.env };
+    Object.assign(process.env, env);
+    const express = require('express');
+    const app = express();
+    app.get('/evidence', (_req, res) => {
+      issueSessionCookie(res, 'token-de-prueba');
+      res.status(200).end();
+    });
+    const server = await new Promise((resolve) => {
+      const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+    });
+    try {
+      const answer = await fetch(`http://127.0.0.1:${server.address().port}/evidence`);
+      return answer.headers.getSetCookie?.()[0] ?? answer.headers.get('set-cookie');
+    } finally {
+      server.close();
+      for (const key of Object.keys(env)) {
+        if (before[key] === undefined) delete process.env[key];
+        else process.env[key] = before[key];
+      }
+    }
+  };
+
+  test('producción: HttpOnly, Secure, SameSite=None y el techo de 12 h', async () => {
+    const header = await headerFor({
+      COOKIE_SESSION_MODE: 'dual',
+      SESSION_COOKIE_SECURE: 'true',
+      SESSION_COOKIE_SAMESITE: 'none',
+    });
+    assert.match(header, new RegExp(`^${COOKIE_NAME}=`));
+    assert.match(header, /HttpOnly/);
+    assert.match(header, /Secure/);
+    assert.match(header, /SameSite=None/);
+    assert.match(header, /Max-Age=43200/);
+    assert.match(header, /Path=\//);
+  });
+
+  test('el día del encendido: SameSite=Lax, el resto igual', async () => {
+    const header = await headerFor({
+      COOKIE_SESSION_MODE: 'dual',
+      SESSION_COOKIE_SECURE: 'true',
+      SESSION_COOKIE_SAMESITE: 'lax',
+    });
+    assert.match(header, /SameSite=Lax/);
+    assert.match(header, /HttpOnly/);
+    assert.match(header, /Secure/);
+  });
+
+  test('con el modo apagado no sale ninguna cookie', async () => {
+    const header = await headerFor({ COOKIE_SESSION_MODE: 'off' });
+    assert.ok(!header, `no debería haber Set-Cookie y salió: ${header}`);
+  });
+});
+
 describe('helpers/jwt: claim csrf', () => {
   test('el claim solo existe cuando se pide', async () => {
     const withCsrf = await generateJWT(UID, 'Ana', 1, null, { csrf: CSRF });
