@@ -22,6 +22,7 @@ const {
 const { requestMetrics } = require("./middlewares/requestMetrics");
 const { consumerTokenGate } = require("./middlewares/consumerTokenGate");
 const { auditTrail } = require("./middlewares/auditTrail");
+const { sessionCookieBridge } = require("./middlewares/sessionCookieBridge");
 const metrics = require("./helpers/metrics");
 const logger = require("./helpers/logger");
 
@@ -155,6 +156,12 @@ const configureMiddleware = (app) => {
   // app.use(sqlInjectionDetector);
 
   app.use(express.static("public"));
+
+  // Sesión por cookie, fase 1 (SC-23, AC-12). Va ANTES del audit trail y de
+  // todos los routers porque lo único que hace es copiar el token de la cookie
+  // a `x-token` cuando la cabecera no viene; de ahí en adelante nada del
+  // servidor nota la diferencia. Con COOKIE_SESSION_MODE=off no hace nada.
+  app.use(sessionCookieBridge);
 
   // Audit trail del servidor: registra cada acción de la lista de
   // constants/auditedRoutes.js con su autor. Va después del parseo del body
