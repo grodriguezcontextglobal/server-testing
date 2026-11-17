@@ -257,6 +257,46 @@ describe('helpers/sessionCookie', () => {
     });
   });
 
+  // El dashboard y la API son el MISMO sitio en producción (devitrak.net), así
+  // que allí basta Lax; None solo hace falta para probar desde un build local.
+  test('SESSION_COOKIE_SAMESITE fuerza el valor', () => {
+    const beforeSecure = process.env.SESSION_COOKIE_SECURE;
+    const beforeSameSite = process.env.SESSION_COOKIE_SAMESITE;
+    process.env.SESSION_COOKIE_SECURE = 'true';
+    try {
+      process.env.SESSION_COOKIE_SAMESITE = 'lax';
+      assert.equal(sessionCookieOptions().sameSite, 'lax');
+      process.env.SESSION_COOKIE_SAMESITE = 'strict';
+      assert.equal(sessionCookieOptions().sameSite, 'strict');
+      // Un valor que no existe se ignora, no rompe la cookie.
+      process.env.SESSION_COOKIE_SAMESITE = 'sideways';
+      assert.equal(sessionCookieOptions().sameSite, 'none');
+    } finally {
+      if (beforeSecure === undefined) delete process.env.SESSION_COOKIE_SECURE;
+      else process.env.SESSION_COOKIE_SECURE = beforeSecure;
+      if (beforeSameSite === undefined) delete process.env.SESSION_COOKIE_SAMESITE;
+      else process.env.SESSION_COOKIE_SAMESITE = beforeSameSite;
+    }
+  });
+
+  // None sin Secure es una cookie que el navegador tira: se degrada a Lax en
+  // vez de dejar la sesión sin funcionar.
+  test('SameSite=None pedido sin Secure se degrada a Lax', () => {
+    const beforeSecure = process.env.SESSION_COOKIE_SECURE;
+    const beforeSameSite = process.env.SESSION_COOKIE_SAMESITE;
+    delete process.env.SESSION_COOKIE_SECURE;
+    process.env.SESSION_COOKIE_SAMESITE = 'none';
+    try {
+      const options = sessionCookieOptions();
+      assert.equal(options.secure, false);
+      assert.equal(options.sameSite, 'lax');
+    } finally {
+      if (beforeSecure !== undefined) process.env.SESSION_COOKIE_SECURE = beforeSecure;
+      if (beforeSameSite === undefined) delete process.env.SESSION_COOKIE_SAMESITE;
+      else process.env.SESSION_COOKIE_SAMESITE = beforeSameSite;
+    }
+  });
+
   test('csrfMatches rechaza vacíos, longitudes distintas y no-cadenas', () => {
     assert.equal(csrfMatches(CSRF, CSRF), true);
     assert.equal(csrfMatches('', ''), false);

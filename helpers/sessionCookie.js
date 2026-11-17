@@ -31,10 +31,17 @@
  *   - la cookie es `HttpOnly`: el claim no se puede leer desde JavaScript.
  * Solo se exige en métodos que escriben. Un GET no cambia estado.
  *
- * SameSite. En producción la cookie va `Secure` + `SameSite=None`, porque el
- * dashboard (admin.devitrak.net) y la API (db.devitrak.net) se sirven desde
- * hosts distintos y hay entornos de prueba en otro dominio. Fuera de
- * producción, `Lax` sin `Secure`, o el navegador la descarta en `http://localhost`.
+ * SameSite. Por defecto `None` cuando la cookie va `Secure`, y `Lax` cuando no
+ * (sin `Secure` el navegador descarta una cookie `None`, así que en
+ * `http://localhost` no habría sesión).
+ *
+ * `SESSION_COOKIE_SAMESITE` fuerza el valor, y existe por algo que señaló el
+ * dashboard el 2026-11-17: `admin.devitrak.net` y `db.devitrak.net` son el
+ * MISMO sitio (`devitrak.net`), así que en producción `Lax` basta y es lo que
+ * conviene dejar. `None` solo hace falta mientras se prueba desde un build
+ * local (`localhost` → `devitrak.net` sí es cross-site), y es además el valor
+ * que los navegadores están restringiendo. Plan: `None` durante la prueba,
+ * `Lax` en el encendido de producción.
  */
 
 const crypto = require('crypto');
@@ -53,13 +60,24 @@ const useSecure = () =>
   process.env.NODE_ENV === 'production' ||
   String(process.env.SESSION_COOKIE_SECURE || '').toLowerCase() === 'true';
 
+const VALID_SAMESITE = new Set(['none', 'lax', 'strict']);
+
+/** `SESSION_COOKIE_SAMESITE` si es un valor válido; si no, el de por defecto. */
+const sameSiteFor = (secure) => {
+  const forced = String(process.env.SESSION_COOKIE_SAMESITE || '').toLowerCase();
+  // `None` sin `Secure` es una cookie que el navegador tira: pedirlo así no
+  // puede dejar la sesión sin funcionar, se degrada a `Lax`.
+  if (VALID_SAMESITE.has(forced) && !(forced === 'none' && !secure)) return forced;
+  return secure ? 'none' : 'lax';
+};
+
 /** Las opciones de la cookie de sesión. `maxAge` en ms, como pide Express. */
 const sessionCookieOptions = () => {
   const secure = useSecure();
   return {
     httpOnly: true,
     secure,
-    sameSite: secure ? 'none' : 'lax',
+    sameSite: sameSiteFor(secure),
     path: '/',
     maxAge: SESSION_MAX_SECONDS * 1000,
   };
