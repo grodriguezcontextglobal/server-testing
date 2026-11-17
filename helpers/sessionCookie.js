@@ -45,6 +45,7 @@
  */
 
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { SESSION_MAX_SECONDS } = require('./jwt');
 
 const COOKIE_NAME = 'dvk_session';
@@ -124,6 +125,29 @@ const clearSessionCookie = (response) => {
   return true;
 };
 
+/**
+ * Cuándo caduca la sesión de un token, en ISO UTC, o `null` si el valor no es
+ * un JWT legible.
+ *
+ * El dashboard necesita ese instante y hoy lo saca decodificando el token; en
+ * la fase 3 el token deja de viajar en el cuerpo, asi que se lo damos aparte.
+ *
+ * Vive aquí y no en helpers/jwt.js por una razón concreta: media docena de
+ * suites sustituyen ese módulo entero por un doble que solo exporta
+ * `generateJWT`, así que cualquier función nueva alli llega `undefined` al
+ * controlador y convierte el login en un 500. Lo descubrió el CI de la PR #73.
+ * Por lo mismo devuelve `null` en vez de lanzar: un campo informativo de la
+ * respuesta del login no puede tumbar el login.
+ */
+const expiresAtOf = (token) => {
+  try {
+    const exp = jwt.decode(token)?.exp;
+    return Number.isFinite(exp) ? new Date(exp * 1000).toISOString() : null;
+  } catch {
+    return null;
+  }
+};
+
 /** Comparación en tiempo constante de dos valores hex de la misma longitud. */
 const csrfMatches = (sent, claim) => {
   if (typeof sent !== 'string' || typeof claim !== 'string') return false;
@@ -142,4 +166,5 @@ module.exports = {
   issueSessionCookie,
   clearSessionCookie,
   csrfMatches,
+  expiresAtOf,
 };

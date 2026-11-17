@@ -27,6 +27,7 @@ const {
   newCsrfToken,
   issueSessionCookie,
   clearSessionCookie,
+  expiresAtOf,
 } = require("../helpers/sessionCookie");
 const {
   generateRecoveryCodes,
@@ -536,7 +537,7 @@ const loginUser = async (request, response) => {
       // abierta). Servidos aparte desde la fase 1 para que la fase 3, cuando el
       // token deje de viajar en el cuerpo, no les quite la única fuente.
       sqlStaffId,
-      sessionExpiresAt: new Date(jwt.decode(token).exp * 1000).toISOString(),
+      sessionExpiresAt: expiresAtOf(token),
       // Número con MFA activa; null sin ella (MFA_REQUIRED=false).
       recoveryCodesRemaining,
       // Solo al entrar con un código de recuperación.
@@ -1036,7 +1037,7 @@ const renewToken = async (request, response = express.response) => {
     token,
     csrfToken: csrf,
     sqlStaffId,
-    sessionExpiresAt: new Date(jwt.decode(token).exp * 1000).toISOString(),
+    sessionExpiresAt: expiresAtOf(token),
   });
 };
 

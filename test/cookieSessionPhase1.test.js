@@ -29,6 +29,7 @@ const {
   clearSessionCookie,
   sessionCookieOptions,
   csrfMatches,
+  expiresAtOf,
 } = require('../helpers/sessionCookie');
 const { createSessionCookieBridge } = require('../middlewares/sessionCookieBridge');
 const { generateJWT } = require('../helpers/jwt');
@@ -319,5 +320,16 @@ describe('helpers/jwt: claim csrf', () => {
     const without = await generateJWT(UID, 'Ana', 1, null, {});
     assert.equal(jwt.decode(withCsrf).csrf, CSRF);
     assert.equal(jwt.decode(without).csrf, undefined);
+  });
+
+  // Varias suites inyectan un generateJWT falso que devuelve una cadena
+  // cualquiera. Un campo informativo del login no puede dar un 500 por eso.
+  test('expiresAtOf: ISO con un token real, null con cualquier otra cosa', async () => {
+    const token = await generateJWT(UID, 'Ana', 1, null, {});
+    assert.match(expiresAtOf(token), /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(new Date(expiresAtOf(token)) > new Date(), true);
+    for (const value of ['token-de-prueba', '', null, undefined, {}, 123]) {
+      assert.equal(expiresAtOf(value), null);
+    }
   });
 });
