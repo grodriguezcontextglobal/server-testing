@@ -6,6 +6,7 @@ const AdminUser = require("../models/AdminUser");
 const Company = require("../models/Company");
 const getConnection = require("../mysql/database/config");
 const { generateJWT } = require("../helpers/jwt");
+const { newCsrfToken, issueSessionCookie } = require("../helpers/sessionCookie");
 const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
 const { openStaffSession } = require("../helpers/staffSession");
 const { clientRedis } = require("../database/cacheMemoryConfig");
@@ -261,13 +262,22 @@ const registerNewUserAndCompany = async (request, response) => {
     // --- Sesión o enrolamiento de MFA ---
     // La cuenta es nueva, así que no tiene MFA, y MFA es obligatoria: recibe
     // el token de enrolamiento en vez de sesión (ver admin.js § loginUser).
+    // Sesión por cookie, fase 1: esta ruta también abre sesión, así que tiene
+    // que emitir la cookie y el csrfToken igual que el login. Si no, con el
+    // flag del dashboard encendido la invitación aceptada se quedaría sin
+    // sesión utilizable.
+    const csrf = newCsrfToken();
     const auth = isMfaRequired()
       ? { mfaSetupRequired: true, mfaSetupToken: await generateMfaSetupToken(adminUser.id) }
       : {
           token: await generateJWT(adminUser.id, adminUser.name, adminUser.tokenVersion, sqlStaffId, {
             sid: await openStaffSession(clientRedis, adminUser.id),
+            csrf,
           }),
+          csrfToken: csrf,
         };
+
+    if (auth.token) issueSessionCookie(response, auth.token);
 
     return response.status(201).json({
       ok: true,

@@ -13,8 +13,13 @@ const SESSION_MAX_SECONDS = 12 * 60 * 60;
  *
  * `sid` ata el token a la sesión abierta en Redis: cerrarla lo anula aunque
  * no haya caducado.
+ *
+ * `csrf` es el par del `csrfToken` que el login devuelve en el cuerpo: viaja
+ * firmado aquí dentro para que la sesión por cookie pueda comprobarlo sin
+ * consultar nada (ver helpers/sessionCookie.js). Un token renovado conserva el
+ * del login, para que el valor que el dashboard tiene en memoria siga valiendo.
  */
-const generateJWT = (uid, name, tokenVersion, sqlStaffId = undefined, { authTime, sid } = {}) => {
+const generateJWT = (uid, name, tokenVersion, sqlStaffId = undefined, { authTime, sid, csrf } = {}) => {
   return new Promise((resolve, reject) => {
     const now = Math.floor(Date.now() / 1000);
     const start = Number.isFinite(authTime) && authTime <= now ? authTime : now;
@@ -26,6 +31,8 @@ const generateJWT = (uid, name, tokenVersion, sqlStaffId = undefined, { authTime
     // Id de la sesión en el servidor (helpers/staffSession.js). Un token
     // renovado conserva el del login.
     if (sid) payload.sid = sid;
+    // Par del csrfToken de la respuesta del login (sesión por cookie, fase 1).
+    if (csrf) payload.csrf = csrf;
     jwt.sign(
       payload,
       process.env.SECRET_JWT_SEED,
