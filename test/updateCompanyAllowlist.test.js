@@ -72,10 +72,26 @@ describe('helpers/companyUpdateFields', () => {
       { stripe_connected_account: { test: null, live: null } }
     );
     assert.deepEqual(Object.keys(update).sort(), [
-      'address', 'company_logo', 'company_name', 'email_branding', 'employees', 'industry',
+      'address', 'company_logo', 'company_name', 'email_branding', 'industry',
       'main_email', 'phone', 'roleLabels', 'structure', 'website',
     ]);
-    assert.deepEqual(ignored.sort(), ['_id', 'id', 'location', 'owner', 'stripe_customer_id']);
+    assert.deepEqual(ignored.sort(), ['_id', 'employees', 'id', 'location', 'owner', 'stripe_customer_id']);
+  });
+
+  // AC-2, 2026-11-17: la plantilla de staff no se edita por esta ruta. El cierre
+  // de evento va por POST /api/company/event-staff/deactivate desde el #86 del
+  // dashboard. Se IGNORA, no se rechaza: la pantalla de inventario manda la
+  // compañía entera de la sesión y un 400 la rompería.
+  test('employees no se puede escribir por update-company', () => {
+    const { update, ignored } = pickCompanyUpdate(
+      {
+        company_name: 'Acme',
+        employees: [{ user: 'evil@x.com', super_user: true, active: true }],
+      },
+      {}
+    );
+    assert.deepEqual(Object.keys(update), ['company_name']);
+    assert.ok(ignored.includes('employees'));
   });
 
   test('cuenta conectada: el mismo acct_ con otra forma se acepta (lo que hace el dashboard)', () => {
