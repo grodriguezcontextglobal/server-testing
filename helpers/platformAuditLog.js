@@ -26,6 +26,10 @@ const DENY_REASONS = Object.freeze({
   INACTIVE_ACCOUNT: 'inactive_account',
   NOT_PLATFORM_OBSERVER: 'not_platform_observer',
   WRONG_DOMAIN: 'wrong_domain',
+  // Tiene el flag y el dominio, pero no esta en la lista cerrada de operadores
+  // (helpers/platformAccess.js). Se distingue de `wrong_domain` a proposito:
+  // son dos decisiones distintas y conviene poder contarlas por separado.
+  NOT_ON_ALLOWLIST: 'not_on_allowlist',
   MFA_REQUIRED: 'mfa_required',
 });
 

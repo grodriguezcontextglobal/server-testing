@@ -18,9 +18,12 @@ const { createAuditPlatformAccess } = require('../middlewares/auditPlatformAcces
 const { planRetention, retentionMode, retentionDays } = require('../scheduler/platformAuditRetention');
 const { grantPlan, revokePlan, blockedBy } = require('../scripts/platform-observer-access');
 
+// Un operador real de la lista cerrada: desde el 2026-11-18 el dominio por si
+// solo ya no abre nada, asi que un correo inventado @devitrak.com no sirve ni
+// para el camino feliz.
 const OPERATOR = Object.freeze({
   _id: '507f1f77bcf86cd799439011',
-  email: 'ops@devitrak.com',
+  email: 'grodriguez@devitrak.com',
   active: true,
   mfaEnabled: true,
   platform_observer: true,
@@ -66,11 +69,11 @@ const runGate = async (user, requestOverrides = {}) => {
 };
 
 describe('requirePlatformConsole (DC1)', () => {
-  test('una cuenta que cumple las cuatro condiciones pasa', async () => {
+  test('una cuenta que cumple las cinco condiciones pasa', async () => {
     const { passed, request } = await runGate({ ...OPERATOR });
     assert.equal(passed, true);
     assert.equal(request.platformDeny, undefined);
-    assert.equal(request.platformActor.email, 'ops@devitrak.com');
+    assert.equal(request.platformActor.email, OPERATOR.email);
   });
 
   // B5 caso 1. La trampa: al registrar una compañia, su dueño queda con
@@ -418,21 +421,126 @@ describe('routes/platform: la cadena entera y en orden', () => {
   });
 });
 
+// APP-2026-015: en PlanetScale no se puede dar "solo INSERT y SELECT" sobre una
+// tabla, asi que la propiedad de solo-insercion no la impone la base. La impone
+// esto. Es mas debil que un permiso y por eso el POA&M sigue abierto, pero al
+// menos reintroducir una escritura falla el CI en vez de pasar desapercibida.
+describe('platform_audit_log es de solo insercion (control compensatorio)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+
+  const ROOT = path.join(__dirname, '..');
+  const SKIP = new Set(['node_modules', '.git', 'logs', 'graphify-out', 'test', 'coverage']);
+  // El unico sitio que puede borrar, y borra por antiguedad.
+  const ALLOWED = path.join('scheduler', 'platformAuditRetention.js');
+
+  const walk = (dir, out = []) => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      if (SKIP.has(entry.name)) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(full, out);
+      else if (/\.(js|sql)$/.test(entry.name)) out.push(full);
+    }
+    return out;
+  };
+
+  test('nadie salvo el job de retencion escribe sobre la tabla', () => {
+    const offenders = [];
+    for (const file of walk(ROOT)) {
+      const relative = path.relative(ROOT, file);
+      if (relative === ALLOWED) continue;
+      const source = fs.readFileSync(file, 'utf8');
+      // Se mira la sentencia, no la mencion: los comentarios que explican POR
+      // QUE no se puede hacer no deben fallar el test.
+      const statements = source.match(
+        /\b(UPDATE\s+platform_audit_log|DELETE\s+FROM\s+platform_audit_log)\b/gi
+      );
+      if (!statements) continue;
+      // El fichero de migracion nombra los dos verbos dentro de comentarios SQL.
+      const real = statements.filter((s) => {
+        const at = source.indexOf(s);
+        const lineStart = source.lastIndexOf('\n', at) + 1;
+        const line = source.slice(lineStart, at);
+        return !/^\s*(--|\*|\/\/|\/\*)/.test(line);
+      });
+      if (real.length) offenders.push(`${relative}: ${real.join(', ')}`);
+    }
+    assert.deepEqual(offenders, [], `escrituras no permitidas:\n${offenders.join('\n')}`);
+  });
+});
+
+describe('la lista cerrada de operadores', () => {
+  const { PLATFORM_CONSOLE_ALLOWLIST, isAllowedOperator } = require('../helpers/platformAccess');
+
+  test('tener el flag y el dominio no basta: hay que estar en la lista', () => {
+    const outsider = {
+      ...OPERATOR, email: 'otro@devitrak.com', platform_observer: true, mfaEnabled: true,
+    };
+    const verdict = evaluatePlatformAccess(outsider);
+    assert.equal(verdict.ok, false);
+    assert.equal(verdict.reason, 'not_on_allowlist');
+  });
+
+  test('un operador de la lista con todo lo demas en regla entra', () => {
+    const verdict = evaluatePlatformAccess({
+      ...OPERATOR, email: PLATFORM_CONSOLE_ALLOWLIST[0],
+    });
+    assert.equal(verdict.ok, true);
+  });
+
+  // La guardia de la lista: si alguien añade aqui un correo de otro dominio, no
+  // entra igualmente. La edicion falla en cerrado en vez de abrir una puerta.
+  test('toda entrada de la lista es del dominio de plataforma', () => {
+    for (const email of PLATFORM_CONSOLE_ALLOWLIST) {
+      assert.equal(isPlatformDomain(email), true, email);
+    }
+  });
+
+  test('se compara normalizado, no por igualdad de cadena', () => {
+    assert.equal(isAllowedOperator(`  ${PLATFORM_CONSOLE_ALLOWLIST[0].toUpperCase()} `), true);
+    assert.equal(isAllowedOperator('grodriguez@contextglobal.com'), false);
+    assert.equal(isAllowedOperator('gars.software.dev@gmail.com'), false);
+  });
+
+  // Las dos cuentas que ya tenian platform_observer el 2026-11-18, concedido
+  // para /api/metrics. Quedan fuera del console y conservan las metricas.
+  test('las dos cuentas con el flag previo no entran al console', () => {
+    for (const email of ['grodriguez@contextglobal.com', 'gars.software.dev@gmail.com']) {
+      const verdict = evaluatePlatformAccess({ ...OPERATOR, email });
+      assert.equal(verdict.ok, false, email);
+      assert.equal(verdict.reason, 'wrong_domain', email);
+    }
+  });
+
+  test('--grant se niega a conceder fuera de la lista', () => {
+    const plan = grantPlan(
+      [{ _id: '1', email: 'otro@devitrak.com', active: true, mfaEnabled: true, platform_observer: false }],
+      ['otro@devitrak.com']
+    );
+    assert.equal(plan.grant.length, 0);
+    assert.deepEqual(plan.notOperator, ['otro@devitrak.com']);
+  });
+});
+
 describe('scripts/platform-observer-access', () => {
-  test('solo concede a cuentas @devitrak.com activas que no lo tengan ya', () => {
+  const [OP1, OP2, OP3] = require('../helpers/platformAccess').PLATFORM_CONSOLE_ALLOWLIST;
+
+  test('solo concede a operadores de la lista, activos y que no lo tengan ya', () => {
     const accounts = [
-      { _id: '1', email: 'a@devitrak.com', active: true, mfaEnabled: true, platform_observer: false },
+      { _id: '1', email: OP1, active: true, mfaEnabled: true, platform_observer: false },
       { _id: '2', email: 'b@clientco.com', active: true, mfaEnabled: true, platform_observer: false },
-      { _id: '3', email: 'c@devitrak.com', active: false, mfaEnabled: true, platform_observer: false },
-      { _id: '4', email: 'd@devitrak.com', active: true, mfaEnabled: true, platform_observer: true },
+      { _id: '3', email: OP2, active: false, mfaEnabled: true, platform_observer: false },
+      { _id: '4', email: OP3, active: true, mfaEnabled: true, platform_observer: true },
+      { _id: '5', email: 'otro@devitrak.com', active: true, mfaEnabled: true, platform_observer: false },
     ];
     const plan = grantPlan(accounts, [
-      'a@devitrak.com', 'b@clientco.com', 'c@devitrak.com', 'd@devitrak.com', 'nadie@devitrak.com',
+      OP1, 'b@clientco.com', OP2, OP3, 'otro@devitrak.com', 'nadie@devitrak.com',
     ]);
-    assert.deepEqual(plan.grant.map((u) => u.email), ['a@devitrak.com']);
+    assert.deepEqual(plan.grant.map((u) => u.email), [OP1]);
     assert.deepEqual(plan.wrongDomain, ['b@clientco.com']);
-    assert.deepEqual(plan.inactive, ['c@devitrak.com']);
-    assert.deepEqual(plan.already, ['d@devitrak.com']);
+    assert.deepEqual(plan.notOperator, ['otro@devitrak.com']);
+    assert.deepEqual(plan.inactive, [OP2]);
+    assert.deepEqual(plan.already, [OP3]);
     assert.deepEqual(plan.missing, ['nadie@devitrak.com']);
   });
 
@@ -440,25 +548,25 @@ describe('scripts/platform-observer-access', () => {
   // operativa en cualquier listado y el gate seguira rechazandola.
   test('sin MFA se concede, pero queda señalado', () => {
     const plan = grantPlan(
-      [{ _id: '1', email: 'a@devitrak.com', active: true, mfaEnabled: false, platform_observer: false }],
-      ['a@devitrak.com']
+      [{ _id: '1', email: OP1, active: true, mfaEnabled: false, platform_observer: false }],
+      [OP1]
     );
     assert.equal(plan.grant.length, 1);
-    assert.deepEqual(plan.noMfa.map((u) => u.email), ['a@devitrak.com']);
+    assert.deepEqual(plan.noMfa.map((u) => u.email), [OP1]);
     assert.equal(blockedBy(plan.grant[0]), 'not_platform_observer');
   });
 
   test('revocar solo toca a quien lo tiene', () => {
-    const observers = [{ _id: '1', email: 'a@devitrak.com' }];
-    const plan = revokePlan(observers, ['a@devitrak.com', 'otro@devitrak.com']);
-    assert.deepEqual(plan.revoke.map((u) => u.email), ['a@devitrak.com']);
-    assert.deepEqual(plan.notObserver, ['otro@devitrak.com']);
+    const observers = [{ _id: '1', email: OP1 }];
+    const plan = revokePlan(observers, [OP1, OP2]);
+    assert.deepEqual(plan.revoke.map((u) => u.email), [OP1]);
+    assert.deepEqual(plan.notObserver, [OP2]);
   });
 
   // No hay regla de "no te quedes sin ninguno", al reves que con super_user:
   // cero operadores es el estado de hoy y es el estado seguro.
   test('se puede revocar al ultimo operador', () => {
-    const plan = revokePlan([{ _id: '1', email: 'a@devitrak.com' }], ['a@devitrak.com']);
+    const plan = revokePlan([{ _id: '1', email: OP1 }], [OP1]);
     assert.equal(plan.revoke.length, 1);
   });
 });
