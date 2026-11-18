@@ -12,6 +12,7 @@ const logger = require("../helpers/logger");
 const { runOverdueReminders } = require("./overdueReminders");
 const { runExpireConsents } = require("./consentExpiry");
 const { runStaffInactivity } = require("./staffInactivity");
+const { runPlatformAuditRetention } = require("./platformAuditRetention");
 const { sendHeartbeat } = require("../helpers/heartbeat");
 
 /**
@@ -69,7 +70,18 @@ const initScheduledJobs = () => {
     )
   );
 
-  logger.info("[scheduler] initialized: overdue-reminders (daily 08:00 America/New_York), consent-expiry (daily 00:05), staff-inactivity (daily 03:15)");
+  // Retención del log del console de plataforma (AU-11) — 03:40 hora del
+  // servidor, después del barrido de cuentas. PLATFORM_AUDIT_RETENTION_MODE
+  // decide si solo cuenta lo que borraría (warn) o borra (enforce).
+  jobs.push(
+    schedule.scheduleJob("40 3 * * *", () =>
+      runWithHeartbeat("scheduler_platform_audit", "platform-audit-retention", () =>
+        runPlatformAuditRetention()
+      )
+    )
+  );
+
+  logger.info("[scheduler] initialized: overdue-reminders (daily 08:00 America/New_York), consent-expiry (daily 00:05), staff-inactivity (daily 03:15), platform-audit-retention (daily 03:40)");
   return jobs;
 };
 
