@@ -251,6 +251,16 @@ const configureRoutes = (app) => {
   // Mount school (education) namespace — gated per-route by company.industry='Education'
   app.use("/api/school", require("./mysql/routes/school"));
 
+  // Console de plataforma (DC1/DC2). Se monta aparte, y no en el bucle de
+  // mongoRoutes, porque no es un router de CRUD de una colección: toda la
+  // cadena (validateJWT, checkTokenVersion, auditPlatformAccess,
+  // requirePlatformConsole) vive dentro del propio router para que una ruta
+  // nueva no pueda nacer sin puerta ni sin registro. Ver routes/platform.js.
+  //
+  // Hasta que alguien tenga `platform_observer`, esto responde 403 a todo el
+  // mundo, que es el estado en el que se despliega a propósito.
+  app.use("/api/platform", require("./routes/platform"));
+
   app.use("/api", require("./routes/status"));
 
   // Vista agregada del CLUSTER, no de este proceso: sale de Redis, donde los
