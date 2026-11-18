@@ -12,6 +12,12 @@ const {
  * Gate de TODAS las rutas de `/api/platform/*` — el console de plataforma
  * (DC1; AC-2, AC-3, AC-6, IA-2).
  *
+ * CINCO comprobaciones, no cuatro: flag, cuenta activa, dominio, **lista
+ * cerrada de operadores** y MFA. La lista se añadio el 2026-11-18, al desplegar
+ * M1 y descubrir que `platform_observer` ya estaba concedido a dos cuentas para
+ * leer `/api/metrics` — o sea, que el flag no identificaba a un operador del
+ * console. Ver helpers/platformAccess.js.
+ *
  * POR QUE NO VALE `requirePlatformRead`, que ya existe
  * ---------------------------------------------------
  * `requirePlatformRead` admite `super_user` ademas de `platform_observer`, y ahi
@@ -62,6 +68,10 @@ const DENIALS = Object.freeze({
     'Forbidden: the platform console requires platform_observer',
   [DENY_REASONS.WRONG_DOMAIN]:
     `Forbidden: the platform console requires a ${PLATFORM_DOMAIN} account`,
+  // No dice quien SI esta en la lista, ni cuantos son: eso es inventario de
+  // cuentas privilegiadas y no se le cuenta a quien acaba de ser rechazado.
+  [DENY_REASONS.NOT_ON_ALLOWLIST]:
+    'Forbidden: this account is not a platform console operator',
   [DENY_REASONS.MFA_REQUIRED]:
     'Forbidden: the platform console requires MFA on your account',
 });

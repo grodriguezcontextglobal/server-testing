@@ -431,15 +431,15 @@ los plazos de abajo siguen corriendo: nada de lo que se haga se pierde en una mu
 
 | Campo | Valor |
 |---|---|
-| **Debilidad** | La tabla de auditoría del console de plataforma no tiene ninguna ruta que la actualice ni la borre, y el job de retención borra solo por antigüedad. Pero el usuario de base de datos de la aplicación conserva `UPDATE` y `DELETE` sobre ella, igual que sobre el resto del esquema. La propiedad real hoy es "la aplicación no lo hace", no "la base no lo permite" |
+| **Debilidad** | La tabla de auditoría del console de plataforma no tiene ninguna ruta que la actualice ni la borre, y el job de retención borra solo por antigüedad. Pero eso es una propiedad del código, no de la base: el usuario de la aplicación puede escribir sobre ella como sobre cualquier otra tabla. La propiedad real es "la aplicación no lo hace", no "la base no lo permite" |
 | **Detectado por** | Nosotros, 2026-11-18, al escribir la migración de M1. DC2 lo pedía explícitamente ("If the database allows it, the app's database user gets insert and select only") |
-| **Activo** | Base de datos MySQL de producción |
-| **Riesgo** | Moderado. Para un evaluador, un registro de auditoría que el propio servicio auditado puede reescribir no es evidencia, es un fichero. No hay indicio de que nadie lo haya hecho —la tabla aún no existe en producción—, y por eso se arregla antes de que tenga filas |
+| **Activo** | Base de datos MySQL de producción (PlanetScale) |
+| **Riesgo** | Moderado. Para un evaluador, un registro de auditoría que el propio servicio auditado puede reescribir no es evidencia, es un fichero |
 | **Responsable** | Devitrak |
-| **Plan** | Al aplicar la migración en producción, y en la misma sesión: `REVOKE UPDATE, DELETE ON <db>.platform_audit_log FROM '<usuario de la app>'`; un usuario aparte, solo para el job de retención, con `DELETE` sobre esa tabla y nada más; y guardar ambos `SHOW GRANTS` como evidencia. Los comandos están en la cabecera de `mysql/migrations/create_platform_audit_log.sql` |
-| **Hitos** | 2026-11-24 (despliegue de M1): permisos aplicados y `SHOW GRANTS` guardado en `logs\evidence\` |
-| **Fecha programada** | 2026-11-24 |
-| **Estado** | Abierto |
+| **Plan** | **El permiso por tabla no es posible en esta base, verificado en producción el 2026-11-18**: el motor es `8.4.11-Vitess` (PlanetScale) y `SHOW GRANTS FOR CURRENT_USER()` devuelve `vt_app@localhost`, el usuario interno de Vitess y no la identidad de la aplicación. PlanetScale concede permisos por contraseña con roles de ámbito, no por tabla, así que "solo INSERT y SELECT sobre `platform_audit_log`" no es expresable. Plan en dos tiempos: (1) control compensatorio ya en vigor — `test/platformConsoleM1.test.js` prohíbe que aparezca un `UPDATE` o un `DELETE` sobre esa tabla fuera del job de retención, así que reintroducirlo falla el CI; (2) decidir si el log de auditoría se mueve a un almacén que sí pueda imponerlo (una base aparte con su propia credencial de solo-inserción, o un destino append-only), que es la única forma de cerrar esto de verdad |
+| **Hitos** | 2026-11-18: control compensatorio en vigor (hecho). 2027-01-15: decidir destino definitivo del log. 2027-02-15: implementado o justificado en el SSP como limitación aceptada de la plataforma |
+| **Fecha programada** | 2027-02-15 (90 días) |
+| **Estado** | Abierto. Reclasificado el 2026-11-18: no es una tarea de despliegue, es una limitación del proveedor de base de datos |
 
 ### APP-2026-016 · No hay fecha de baja de cliente, así que los 120 días de retención no se cuentan desde ella
 
