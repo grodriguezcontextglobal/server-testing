@@ -44,6 +44,17 @@ test('cors: el origin del frontend local está permitido', () => {
   assert.equal(allowed, true);
 });
 
+// El console de plataforma (2026-11-19). Entrada propia a proposito: es la
+// unica pantalla que lee datos de todos los clientes, asi que quitarle el acceso
+// no puede obligar a tocar el origen del dashboard.
+test('cors: el origin del console de plataforma esta permitido', () => {
+  let allowed = false;
+  corsOptions.origin('https://ops.devitrak.net', (err, ok) => { allowed = !err && ok; });
+  assert.equal(allowed, true);
+  // Y sigue siendo una entrada distinta de la del dashboard.
+  assert.ok(ACCEPTED_ORIGINS.includes('https://admin.devitrak.net'));
+});
+
 test('cors: un origin no listado es rechazado', () => {
   let errored = false;
   corsOptions.origin('http://evil.example.com', (err) => { errored = !!err; });

@@ -25,9 +25,25 @@
  * todo lo anterior a hace 120 dias, que es exactamente la evidencia que la regla
  * quiere conservar.
  *
- * FILAS SIN COMPAÑIA (`company_id IS NULL`) — las busquedas que cruzan clientes
- * y `/me` — NO SE TOCAN. Su retencion es la pregunta O3, todavia sin respuesta.
- * El job las cuenta y lo dice en cada vuelta para que no se olviden.
+ * FILAS SIN COMPAÑIA (`company_id IS NULL`) — las busquedas que cruzan clientes,
+ * `/me` y los `signin` — se anclan al OPERADOR en vez de a la compañia: cuenta
+ * activa, mas 120 dias. Es la respuesta del dashboard a O3 (2026-11-19) y tiene
+ * a proposito la MISMA forma que la regla de cliente, con otro sujeto, para que
+ * la retencion de la tabla entera se explique en una sola frase:
+ *
+ *   5. Operador activo               -> no se borra nada suyo, nunca.
+ *   6. Inactivo o borrado, visto
+ *      por primera vez               -> se anota en `platform_audit_actor_retention`.
+ *   7. Asi desde hace >= 120 d       -> se borran sus filas SIN COMPAÑIA.
+ *   8. Vuelve a estar activo         -> se borra su anotacion; el contador a cero.
+ *
+ * Las filas CON compañia de ese mismo operador no las toca este paso: sobre los
+ * datos de un cliente manda la regla del cliente.
+ *
+ * FILAS SIN COMPAÑIA Y SIN OPERADOR no tienen ancla posible: no se borran y el
+ * job las cuenta aparte en cada vuelta. Hoy deberian ser cero — el gate no
+ * escribe fila para una peticion sin sesion, justamente para que un anonimo no
+ * pueda llenar la tabla—, asi que si el contador sube es que hay algo que mirar.
  *
  * PLATFORM_AUDIT_RETENTION_MODE (lazy, como el resto de modos):
  *   warn (por defecto)  calcula y registra lo que borraria; NO BORRA.
@@ -66,33 +82,59 @@ const retentionDays = (env = process.env) => {
  * @param {number} days
  * @returns {{mark: string[], clear: string[], purge: {companyId: string, absentSince: Date, days: number}[]}}
  */
-const planRetention = ({ companiesInLog, presentCompanies, absentSince, now, days }) => {
+const planSubjectRetention = ({ subjectsInLog, present, absentSince, now, days }) => {
   const mark = [];
   const clear = [];
   const purge = [];
 
-  for (const companyId of companiesInLog) {
-    if (presentCompanies.has(companyId)) {
-      // Sigue siendo cliente: no se borra nada suyo. Y si estaba anotada como
-      // ausente (volvio, o hubo un fallo de lectura en una vuelta anterior), se
-      // le quita la anotacion para que el contador no siga corriendo.
-      if (absentSince.has(companyId)) clear.push(companyId);
+  for (const subjectId of subjectsInLog) {
+    if (present.has(subjectId)) {
+      // Sigue vigente: no se borra nada suyo. Y si estaba anotado como ausente
+      // (volvio, o hubo un fallo de lectura en una vuelta anterior), se le quita
+      // la anotacion para que el contador no siga corriendo.
+      if (absentSince.has(subjectId)) clear.push(subjectId);
       continue;
     }
 
-    const since = absentSince.get(companyId);
+    const since = absentSince.get(subjectId);
     if (!since) {
-      mark.push(companyId);
+      mark.push(subjectId);
       continue;
     }
 
     const elapsedDays = Math.floor((now.getTime() - since.getTime()) / DAY_MS);
     if (elapsedDays >= days) {
-      purge.push({ companyId, absentSince: since, days: elapsedDays });
+      purge.push({ subjectId, absentSince: since, days: elapsedDays });
     }
   }
 
   return { mark, clear, purge };
+};
+
+const planRetention = ({ companiesInLog, presentCompanies, absentSince, now, days }) => {
+  const plan = planSubjectRetention({
+    subjectsInLog: companiesInLog, present: presentCompanies, absentSince, now, days,
+  });
+  return {
+    ...plan,
+    purge: plan.purge.map(({ subjectId, ...rest }) => ({ companyId: subjectId, ...rest })),
+  };
+};
+
+/**
+ * La misma regla con el OPERADOR como ancla, para las filas sin compañia (O3).
+ * `activeOperators` son los ids de cuenta que siguen existiendo Y activas: una
+ * cuenta desactivada cuenta como ausente, porque a diferencia de una compañia si
+ * tenemos la bandera y seria absurdo no usarla.
+ */
+const planActorRetention = ({ actorsInLog, activeOperators, absentSince, now, days }) => {
+  const plan = planSubjectRetention({
+    subjectsInLog: actorsInLog, present: activeOperators, absentSince, now, days,
+  });
+  return {
+    ...plan,
+    purge: plan.purge.map(({ subjectId, ...rest }) => ({ actorUserId: subjectId, ...rest })),
+  };
 };
 
 const utcStamp = (date) => date.toISOString().replace('T', ' ').replace('Z', '');
@@ -105,6 +147,7 @@ const runPlatformAuditRetention = async ({
   now = new Date(),
   getConnectionFn,
   listExistingCompanies,
+  listActiveOperators,
   logger: log,
 } = {}) => {
   const mode = retentionMode(env);
@@ -112,7 +155,10 @@ const runPlatformAuditRetention = async ({
   const logging = log || require('../helpers/logger');
 
   if (mode === 'off') {
-    return { mode, days, scanned: 0, marked: 0, cleared: 0, purgedCompanies: 0, deletedRows: 0, orphanRows: 0 };
+    return {
+      mode, days, scanned: 0, marked: 0, cleared: 0, purgedCompanies: 0, deletedRows: 0,
+      orphanRows: 0, orphanActors: 0, purgedActors: 0, deletedOrphanRows: 0, unanchorableRows: 0,
+    };
   }
 
   const getConn = getConnectionFn || require('../mysql/database/config');
@@ -127,6 +173,19 @@ const runPlatformAuditRetention = async ({
     'SELECT COUNT(*) AS n FROM platform_audit_log WHERE company_id IS NULL'
   );
   const orphanRows = Number(orphan?.n || 0);
+
+  // O3: las filas sin compañia se anclan al operador que las produjo.
+  const [logActors] = await connection.execute(
+    'SELECT DISTINCT actor_user_id FROM platform_audit_log WHERE company_id IS NULL AND actor_user_id IS NOT NULL'
+  );
+  const actorsInLog = logActors.map((row) => String(row.actor_user_id));
+
+  // Sin compañia Y sin operador: no hay ancla. Se cuentan y se dicen; no se
+  // borran. Hoy deberia ser cero.
+  const [[unanchorable]] = await connection.execute(
+    'SELECT COUNT(*) AS n FROM platform_audit_log WHERE company_id IS NULL AND actor_user_id IS NULL'
+  );
+  const unanchorableRows = Number(unanchorable?.n || 0);
 
   const [absentRows] = await connection.execute(
     'SELECT company_id, first_absent_at FROM platform_audit_retention'
@@ -156,11 +215,48 @@ const runPlatformAuditRetention = async ({
     days,
   });
 
+  // --- O3: el mismo plan, con el operador como ancla -----------------------
+  const [actorAbsentRows] = await connection.execute(
+    'SELECT actor_user_id, first_absent_at FROM platform_audit_actor_retention'
+  );
+  const actorAbsentSince = new Map(
+    actorAbsentRows.map((row) => [String(row.actor_user_id), new Date(row.first_absent_at)])
+  );
+
+  const operatorLookup = listActiveOperators || (async (ids) => {
+    const { Types } = require('mongoose');
+    const AdminUser = require('../models/AdminUser');
+    const valid = ids.filter((id) => Types.ObjectId.isValid(id));
+    if (!valid.length) return [];
+    // `active: { $ne: false }` y no `active: true`: una cuenta antigua sin el
+    // campo sigue siendo una cuenta en uso, y tratarla como baja le borraria el
+    // historial a alguien que entra todos los dias.
+    const found = await AdminUser.find({ _id: { $in: valid }, active: { $ne: false } })
+      .select('_id').lean();
+    return found.map((doc) => String(doc._id));
+  });
+
+  const activeOperators = new Set(await operatorLookup(actorsInLog));
+
+  const actorPlan = planActorRetention({
+    actorsInLog,
+    activeOperators,
+    absentSince: actorAbsentSince,
+    now,
+    days,
+  });
+
   if (mode === 'warn') {
     if (purge.length) {
       logging.warn(
         'platform audit retention: would delete rows (PLATFORM_AUDIT_RETENTION_MODE=warn)',
         { companies: purge.map((p) => p.companyId), days }
+      );
+    }
+    if (actorPlan.purge.length) {
+      logging.warn(
+        'platform audit retention: would delete company-less rows (PLATFORM_AUDIT_RETENTION_MODE=warn)',
+        { operators: actorPlan.purge.map((p) => p.actorUserId), days }
       );
     }
     logging.info('[scheduler] platform-audit-retention (warn)', {
@@ -169,6 +265,11 @@ const runPlatformAuditRetention = async ({
       wouldClear: clear.length,
       wouldPurge: purge.length,
       orphanRows,
+      orphanActors: actorsInLog.length,
+      wouldMarkActors: actorPlan.mark.length,
+      wouldClearActors: actorPlan.clear.length,
+      wouldPurgeActors: actorPlan.purge.length,
+      unanchorableRows,
     });
     return {
       mode, days,
@@ -177,6 +278,12 @@ const runPlatformAuditRetention = async ({
       purgedCompanies: 0, deletedRows: 0,
       wouldMark: mark.length, wouldClear: clear.length, wouldPurge: purge.length,
       orphanRows,
+      orphanActors: actorsInLog.length,
+      purgedActors: 0, deletedOrphanRows: 0,
+      wouldMarkActors: actorPlan.mark.length,
+      wouldClearActors: actorPlan.clear.length,
+      wouldPurgeActors: actorPlan.purge.length,
+      unanchorableRows,
     };
   }
 
@@ -209,11 +316,49 @@ const runPlatformAuditRetention = async ({
     });
   }
 
-  if (orphanRows) {
-    // Recordatorio deliberado en cada vuelta: estas filas no caducan porque
-    // nadie ha dicho todavia cuanto deben durar (pregunta O3).
-    logging.info('platform audit retention: rows with no company are kept (O3 unanswered)', {
-      rows: orphanRows,
+  // --- O3: las filas sin compañia, ancladas al operador --------------------
+  for (const actorUserId of actorPlan.mark) {
+    await connection.execute(
+      `INSERT INTO platform_audit_actor_retention (actor_user_id, first_absent_at, updated_at)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)`,
+      [actorUserId, stamp, stamp]
+    );
+  }
+  for (const actorUserId of actorPlan.clear) {
+    await connection.execute(
+      'DELETE FROM platform_audit_actor_retention WHERE actor_user_id = ?',
+      [actorUserId]
+    );
+  }
+
+  let deletedOrphanRows = 0;
+  for (const item of actorPlan.purge) {
+    // `company_id IS NULL` en el WHERE no es una optimizacion: es el limite del
+    // permiso. Las filas CON compañia de este mismo operador son datos del
+    // cliente y las borra —o no— la regla del cliente.
+    const [outcome] = await connection.execute(
+      'DELETE FROM platform_audit_log WHERE company_id IS NULL AND actor_user_id = ?',
+      [item.actorUserId]
+    );
+    deletedOrphanRows += Number(outcome?.affectedRows || 0);
+    await connection.execute(
+      'DELETE FROM platform_audit_actor_retention WHERE actor_user_id = ?',
+      [item.actorUserId]
+    );
+    logging.info('platform audit retention: deleted a former operator company-less rows', {
+      actorUserId: item.actorUserId,
+      inactiveForDays: item.days,
+      rows: outcome?.affectedRows || 0,
+    });
+  }
+
+  if (unanchorableRows) {
+    // Sin compañia y sin operador: no hay nada a lo que anclar la retencion, asi
+    // que se quedan. Deberian ser cero; si no lo son, hay algo escribiendo filas
+    // sin identidad y eso se mira antes que la retencion.
+    logging.warn('platform audit retention: rows with neither company nor actor are kept', {
+      rows: unanchorableRows,
     });
   }
 
@@ -225,12 +370,19 @@ const runPlatformAuditRetention = async ({
     purgedCompanies: purge.length,
     deletedRows,
     orphanRows,
+    orphanActors: actorsInLog.length,
+    markedActors: actorPlan.mark.length,
+    clearedActors: actorPlan.clear.length,
+    purgedActors: actorPlan.purge.length,
+    deletedOrphanRows,
+    unanchorableRows,
   };
 };
 
 module.exports = {
   runPlatformAuditRetention,
   planRetention,
+  planActorRetention,
   retentionMode,
   retentionDays,
 };
