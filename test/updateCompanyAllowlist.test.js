@@ -75,14 +75,14 @@ describe('helpers/companyUpdateFields', () => {
       'address', 'company_logo', 'company_name', 'email_branding', 'industry',
       'main_email', 'phone', 'roleLabels', 'structure', 'website',
     ]);
-    assert.deepEqual(ignored.sort(), ['_id', 'employees', 'id', 'location', 'owner', 'stripe_customer_id']);
+    // `employees: []` no pide nada, así que no se ignora nada: no aparece aquí.
+    assert.deepEqual(ignored.sort(), ['_id', 'id', 'location', 'owner', 'stripe_customer_id']);
   });
 
-  // AC-2, 2026-11-17: la plantilla de staff no se edita por esta ruta. El cierre
-  // de evento va por POST /api/company/event-staff/deactivate desde el #86 del
-  // dashboard. Se IGNORA, no se rechaza: la pantalla de inventario manda la
-  // compañía entera de la sesión y un 400 la rompería.
-  test('employees no se puede escribir por update-company', () => {
+  // AC-2, 2026-11-17: la plantilla de staff no se REESCRIBE por esta ruta.
+  // Desde el 2026-11-18 sí se puede AÑADIR a alguien, porque el alta de staff
+  // no tenía otra puerta y quitarla rompió producción — ver el bloque de abajo.
+  test('un alta sin roleType válido no entra', () => {
     const { update, ignored } = pickCompanyUpdate(
       {
         company_name: 'Acme',
@@ -92,6 +92,96 @@ describe('helpers/companyUpdateFields', () => {
     );
     assert.deepEqual(Object.keys(update), ['company_name']);
     assert.ok(ignored.includes('employees'));
+  });
+
+  // 2026-11-18. El alta de staff es crear la entrada `Pending` en `employees`,
+  // y es el primer paso obligatorio: sin ella,
+  // POST /api/nodemailer/new_invitation responde "There is no pending
+  // invitation" (controller/registration.js:498). Quitar `employees` de la
+  // lista el 11-17 dejó el alta sin ninguna puerta.
+  describe('alta de staff por update-company (sólo añadir)', () => {
+    const { sanitizeEmployees } = require('../helpers/companyUpdateFields');
+
+    const OWNER = {
+      user: 'owner@acme.com', firstName: 'O', lastName: 'Wner',
+      roleType: 'root_admin', super_user: true, status: 'active', active: true,
+    };
+
+    test('el cuerpo del dashboard —plantilla entera más uno nuevo— añade sólo el nuevo', () => {
+      const { value, rejected, added } = sanitizeEmployees(
+        [OWNER, { user: 'nuevo@devitrak.com', firstName: 'G', lastName: 'R', roleType: 'admin' }],
+        [OWNER]
+      );
+      assert.equal(rejected, false);
+      assert.deepEqual(added, ['nuevo@devitrak.com']);
+      assert.equal(value.length, 2);
+      // El que ya estaba se copia del documento, no del cuerpo.
+      assert.deepEqual(value[0], OWNER);
+      assert.equal(value[1].user, 'nuevo@devitrak.com');
+    });
+
+    test('al nuevo lo decide el servidor: Pending, sin super_user y activo', () => {
+      const { value } = sanitizeEmployees(
+        [{
+          user: 'nuevo@devitrak.com', roleType: 'admin',
+          // Todo esto viene del cuerpo y no debe sobrevivir.
+          super_user: true, status: 'Confirmed', active: false,
+          userId: '66cdf26906fd8fd5e9b13eed', _id: 'x',
+        }],
+        []
+      );
+      assert.equal(value[0].super_user, false);
+      assert.equal(value[0].status, 'Pending');
+      assert.equal(value[0].active, true);
+      assert.equal(value[0].userId, undefined, 'el userId lo pone acceptInvitation');
+      assert.equal(value[0]._id, undefined);
+    });
+
+    // El agujero de AC-2 que motivó quitar el campo.
+    test('no se puede ascender ni cambiar de rol a quien ya está', () => {
+      const { value, rejected } = sanitizeEmployees(
+        [{ ...OWNER, roleType: 'admin' },
+         { user: 'staff@acme.com', roleType: 'assistant', super_user: true }],
+        [OWNER, { user: 'staff@acme.com', roleType: 'assistant', super_user: false, active: true }]
+      );
+      assert.equal(rejected, true);
+      assert.equal(value, null, 'nada que añadir, así que no se escribe nada');
+    });
+
+    test('tampoco se puede dar de baja a nadie omitiéndolo', () => {
+      const { value, rejected, added } = sanitizeEmployees(
+        [{ user: 'nuevo@devitrak.com', roleType: 'admin' }],
+        [OWNER]
+      );
+      assert.equal(rejected, false);
+      assert.deepEqual(added, ['nuevo@devitrak.com']);
+      assert.equal(value.length, 2, 'el que no venía en el cuerpo sigue ahí');
+      assert.equal(value[0].user, OWNER.user);
+    });
+
+    test('un rol inventado no entra', () => {
+      const { value, rejected } = sanitizeEmployees(
+        [{ user: 'nuevo@devitrak.com', roleType: 'god_mode' }], []
+      );
+      assert.equal(value, null);
+      assert.equal(rejected, true);
+    });
+
+    test('el email se compara normalizado, así que no se duplica a nadie', () => {
+      const { value, rejected } = sanitizeEmployees(
+        [{ user: '  OWNER@Acme.com ', roleType: 'admin' }], [OWNER]
+      );
+      assert.equal(value, null, 'ya está: no se añade otra vez');
+      assert.equal(rejected, true, 'y además pedía cambiarle el rol');
+    });
+
+    test('lo que no es un array no toca nada', () => {
+      for (const sent of [null, undefined, 'x', 42, {}]) {
+        const { value, rejected } = sanitizeEmployees(sent, [OWNER]);
+        assert.equal(value, null, String(sent));
+        assert.equal(rejected, true, String(sent));
+      }
+    });
   });
 
   test('cuenta conectada: el mismo acct_ con otra forma se acepta (lo que hace el dashboard)', () => {

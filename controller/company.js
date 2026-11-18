@@ -165,9 +165,21 @@ function createUpdatingCompany({
       });
     }
 
-    const { update, ignored } = pickCompanyUpdate(request.body, companyInfo);
+    const { update, ignored, addedEmployees } = pickCompanyUpdate(request.body, companyInfo);
     if (ignored.length) {
       log.warn("update-company: fields ignored", { company: paramsId, uid: request.uid, ignored });
+    }
+    // Un alta de staff se nombra en el log aparte del registro genérico de
+    // escrituras: es el primer paso de dar acceso a alguien (AC-2), y leerlo
+    // como "se actualizó la compañía" lo esconde. Sale el email invitado, no
+    // nada más: por esta ruta el servidor fija status, rol permitido y
+    // super_user: false.
+    if (addedEmployees.length) {
+      log.info("update-company: staff invited (Pending)", {
+        company: paramsId,
+        uid: request.uid,
+        invited: addedEmployees,
+      });
     }
     if (Object.keys(update).length === 0) {
       return response.status(400).json({
