@@ -47,6 +47,16 @@ const PLATFORM_DOMAIN = 'devitrak.com';
  * Quitarle a alguien el acceso al console es borrar su linea de aqui. No le
  * toca `platform_observer`, asi que no pierde `/api/metrics`: son dos accesos
  * distintos y ahora se revocan por separado.
+ *
+ * ANTES DE AÑADIR AQUI UN CORREO QUE NO SEA @devitrak.com: no basta con esta
+ * lista. El dashboard tiene su propia comprobacion de dominio en el cliente
+ * (`src/config/roles.js`), que es una segunda cerradura deliberada. Hoy no puede
+ * desincronizarse —la comprobacion de dominio de abajo rechaza igual al que no
+ * sea @devitrak.com, asi que haria falta cambiar TAMBIEN `PLATFORM_DOMAIN`—,
+ * pero ese cambio hay que acordarlo con ellos y soltarlo en la misma release, o
+ * el operador entra por el servidor y su propio cliente lo manda a `/` sin decir
+ * nada. El test `toda entrada de la lista es del dominio de plataforma` lo
+ * recuerda en el momento del merge.
  */
 const PLATFORM_CONSOLE_ALLOWLIST = Object.freeze([
   'fstarmark@devitrak.com',

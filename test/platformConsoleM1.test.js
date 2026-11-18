@@ -15,7 +15,9 @@ const { EventEmitter } = require('node:events');
 const { evaluatePlatformAccess, isPlatformDomain } = require('../helpers/platformAccess');
 const { createRequirePlatformConsole } = require('../middlewares/requirePlatformConsole');
 const { createAuditPlatformAccess } = require('../middlewares/auditPlatformAccess');
-const { planRetention, retentionMode, retentionDays } = require('../scheduler/platformAuditRetention');
+const {
+  planRetention, planActorRetention, runPlatformAuditRetention, retentionMode, retentionDays,
+} = require('../scheduler/platformAuditRetention');
 const { grantPlan, revokePlan, blockedBy } = require('../scripts/platform-observer-access');
 
 // Un operador real de la lista cerrada: desde el 2026-11-18 el dominio por si
@@ -383,6 +385,173 @@ describe('retencion de platform_audit_log (AU-11)', () => {
   });
 });
 
+// O3, respondida por el dashboard el 2026-11-19: las filas sin compañia se
+// anclan al OPERADOR —cuenta activa mas 120 dias— en vez de no caducar nunca.
+describe('retencion de las filas sin compañia (O3)', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const now = new Date('2026-11-19T03:40:00Z');
+  const OP_A = '507f1f77bcf86cd799439011';
+  const OP_B = '507f1f77bcf86cd799439022';
+
+  test('un operador activo no pierde ninguna fila', () => {
+    const plan = planActorRetention({
+      actorsInLog: [OP_A],
+      activeOperators: new Set([OP_A]),
+      absentSince: new Map(),
+      now, days: 120,
+    });
+    assert.deepEqual(plan, { mark: [], clear: [], purge: [] });
+  });
+
+  // Una cuenta desactivada cuenta como ausente sin esperar a que la borren:
+  // aqui si existe la bandera que falta en Company.
+  test('la primera vuelta con la cuenta inactiva solo anota la fecha', () => {
+    const plan = planActorRetention({
+      actorsInLog: [OP_A],
+      activeOperators: new Set(),
+      absentSince: new Map(),
+      now, days: 120,
+    });
+    assert.deepEqual(plan.mark, [OP_A]);
+    assert.equal(plan.purge.length, 0);
+  });
+
+  test('a los 119 dias no; a los 120, si', () => {
+    const at119 = planActorRetention({
+      actorsInLog: [OP_A],
+      activeOperators: new Set(),
+      absentSince: new Map([[OP_A, new Date(now.getTime() - 119 * DAY)]]),
+      now, days: 120,
+    });
+    assert.equal(at119.purge.length, 0);
+
+    const at120 = planActorRetention({
+      actorsInLog: [OP_A],
+      activeOperators: new Set(),
+      absentSince: new Map([[OP_A, new Date(now.getTime() - 120 * DAY)]]),
+      now, days: 120,
+    });
+    assert.deepEqual(at120.purge.map((p) => p.actorUserId), [OP_A]);
+  });
+
+  test('si la cuenta se reactiva, el contador se reinicia', () => {
+    const plan = planActorRetention({
+      actorsInLog: [OP_A],
+      activeOperators: new Set([OP_A]),
+      absentSince: new Map([[OP_A, new Date(now.getTime() - 200 * DAY)]]),
+      now, days: 120,
+    });
+    assert.deepEqual(plan.clear, [OP_A]);
+    assert.equal(plan.purge.length, 0);
+  });
+
+  // Lo que de verdad importa de este paso: que el borrado no se lleve por
+  // delante las filas CON compañia del mismo operador, que son datos del
+  // cliente y las gobierna la regla del cliente.
+  describe('el job en enforce', () => {
+    const fakeConnection = ({ companies = [], actors = [], absent = [], actorAbsent = [],
+      orphanRows = 0, unanchorable = 0, deleted = 0 } = {}) => {
+      const executed = [];
+      return {
+        executed,
+        execute: async (sql, params = []) => {
+          const flat = sql.replace(/\s+/g, ' ').trim();
+          executed.push({ sql: flat, params });
+          if (flat.startsWith('SELECT DISTINCT actor_user_id')) return [actors];
+          if (flat.startsWith('SELECT DISTINCT company_id')) return [companies];
+          if (flat.includes('COUNT(*)') && flat.includes('actor_user_id IS NULL')) {
+            return [[{ n: unanchorable }]];
+          }
+          if (flat.includes('COUNT(*)')) return [[{ n: orphanRows }]];
+          if (flat.includes('FROM platform_audit_actor_retention')) return [actorAbsent];
+          if (flat.includes('FROM platform_audit_retention')) return [absent];
+          return [{ affectedRows: deleted }];
+        },
+      };
+    };
+
+    test('borra las filas sin compañia del operador caido y solo esas', async () => {
+      const connection = fakeConnection({
+        companies: [{ company_id: 'c1' }],
+        actors: [{ actor_user_id: OP_A }, { actor_user_id: OP_B }],
+        absent: [],
+        actorAbsent: [{ actor_user_id: OP_A, first_absent_at: new Date(now.getTime() - 130 * DAY) }],
+        orphanRows: 9,
+        deleted: 3,
+      });
+
+      const outcome = await runPlatformAuditRetention({
+        env: { PLATFORM_AUDIT_RETENTION_MODE: 'enforce' },
+        now,
+        getConnectionFn: () => connection,
+        listExistingCompanies: async () => ['c1'],
+        listActiveOperators: async () => [OP_B],
+        logger: { info: () => {}, warn: () => {}, error: () => {} },
+      });
+
+      assert.equal(outcome.purgedActors, 1);
+      assert.equal(outcome.deletedOrphanRows, 3);
+      assert.equal(outcome.purgedCompanies, 0, 'c1 sigue siendo cliente');
+
+      const deletes = connection.executed.filter(
+        (q) => /^DELETE FROM platform_audit_log/.test(q.sql)
+      );
+      assert.equal(deletes.length, 1);
+      assert.ok(
+        deletes[0].sql.includes('company_id IS NULL'),
+        `el DELETE tiene que acotarse a las filas sin compañia: ${deletes[0].sql}`
+      );
+      assert.deepEqual(deletes[0].params, [OP_A]);
+    });
+
+    test('las filas sin compañia Y sin operador no se borran', async () => {
+      const connection = fakeConnection({ actors: [], unanchorable: 4, orphanRows: 4 });
+      const warnings = [];
+
+      const outcome = await runPlatformAuditRetention({
+        env: { PLATFORM_AUDIT_RETENTION_MODE: 'enforce' },
+        now,
+        getConnectionFn: () => connection,
+        listExistingCompanies: async () => [],
+        listActiveOperators: async () => [],
+        logger: { info: () => {}, warn: (msg) => warnings.push(msg), error: () => {} },
+      });
+
+      assert.equal(outcome.unanchorableRows, 4);
+      assert.equal(outcome.deletedOrphanRows, 0);
+      assert.equal(
+        connection.executed.filter((q) => /^DELETE FROM platform_audit_log/.test(q.sql)).length,
+        0
+      );
+      assert.ok(warnings.some((m) => /neither company nor actor/.test(m)));
+    });
+
+    // El defecto sigue siendo warn, tambien para este paso: borrar evidencia de
+    // auditoria no empieza solo porque la regla este escrita.
+    test('en warn calcula el borrado y no borra', async () => {
+      const connection = fakeConnection({
+        actors: [{ actor_user_id: OP_A }],
+        actorAbsent: [{ actor_user_id: OP_A, first_absent_at: new Date(now.getTime() - 130 * DAY) }],
+        orphanRows: 9,
+      });
+
+      const outcome = await runPlatformAuditRetention({
+        env: {},
+        now,
+        getConnectionFn: () => connection,
+        listExistingCompanies: async () => [],
+        listActiveOperators: async () => [],
+        logger: { info: () => {}, warn: () => {}, error: () => {} },
+      });
+
+      assert.equal(outcome.mode, 'warn');
+      assert.equal(outcome.wouldPurgeActors, 1);
+      assert.equal(outcome.deletedOrphanRows, 0);
+      assert.equal(connection.executed.filter((q) => /^DELETE/.test(q.sql)).length, 0);
+    });
+  });
+});
+
 // La cadena se monta con router.use para que una ruta nueva de DC3 no pueda
 // nacer sin puerta ni sin registro. Esto lo comprueba, porque "acordamos el
 // orden" no sobrevive a veinte rutas mas.
@@ -490,9 +659,20 @@ describe('la lista cerrada de operadores', () => {
 
   // La guardia de la lista: si alguien añade aqui un correo de otro dominio, no
   // entra igualmente. La edicion falla en cerrado en vez de abrir una puerta.
+  //
+  // Y ademas es el aviso que pidio el dashboard el 2026-11-19 (§1): su cliente
+  // compara el dominio, asi que el dia que la lista deje de ser de un solo
+  // dominio tienen que cambiar su comprobacion en la MISMA release. Este test es
+  // lo que hace que esa conversacion ocurra antes del merge y no despues del
+  // "a mi el console no me hace nada".
   test('toda entrada de la lista es del dominio de plataforma', () => {
     for (const email of PLATFORM_CONSOLE_ALLOWLIST) {
-      assert.equal(isPlatformDomain(email), true, email);
+      assert.equal(
+        isPlatformDomain(email), true,
+        `${email} no es @devitrak.com. Si la lista va a dejar de ser de un solo ` +
+        'dominio, AVISA AL DASHBOARD ANTES DE MERGEAR: su cliente compara el ' +
+        'dominio y mandaria al operador a / sin decir nada.'
+      );
     }
   });
 

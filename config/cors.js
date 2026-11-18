@@ -5,6 +5,12 @@ const ACCEPTED_ORIGINS = [
     "http://localhost:3791",
     "https://admin.devitrak.net",
     "https://app.devitrak.net",
+    // Console de plataforma (2026-11-19, confirmado por el dashboard). Entrada
+    // propia y no heredada de `admin.devitrak.net`: es la unica pantalla que lee
+    // datos de TODOS los clientes, asi que su origen tiene que poder quitarse
+    // sin tocar el del dashboard. Colgarlo de un `localhost` tampoco servia:
+    // esos dos se van el dia de la cookie en produccion.
+    "https://ops.devitrak.net",
     "https://admin-testing-dev.netlify.app",
     "https://login.microsoftonline.com/"
 ];
