@@ -21,6 +21,11 @@ const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const { generateMfaSetupToken, isMfaRequired } = require("../helpers/mfaSetupToken");
 const { newSessionId, touchIdle, openStaffSession } = require("../helpers/staffSession");
+// Console de plataforma (DC1): el mismo criterio que usa el gate de
+// /api/platform/*, para que el cliente no enseñe una puerta que el servidor
+// va a cerrarle. Ver helpers/platformAccess.js.
+const { evaluatePlatformAccess } = require("../helpers/platformAccess");
+const { writePlatformAuditRow } = require("../helpers/platformAuditLog");
 // Sesión por cookie, fase 1 (SC-23). El `csrfToken` se devuelve siempre; la
 // cookie solo cuando COOKIE_SESSION_MODE=dual.
 const {
@@ -519,6 +524,38 @@ const loginUser = async (request, response) => {
     // en los dos modos.
     issueSessionCookie(response, token);
 
+    // Console de plataforma: el cliente deja de deducir si puede entrar. Se
+    // evalúa con la MISMA función que el gate de /api/platform/*, así que un
+    // `true` aquí y un 403 allí solo pueden venir de que el flag haya cambiado
+    // entre las dos peticiones, que es el comportamiento buscado.
+    const platformAccess = evaluatePlatformAccess(adminUser).ok;
+
+    if (platformAccess) {
+      // DC2 pide una fila por inicio de sesión del console. Esta es la ÚNICA
+      // escritura del log de plataforma que NO es fail-closed, y la asimetría es
+      // deliberada: en /api/platform/* no registrar significa no servir la
+      // lectura, pero aquí significaría tumbar el login de todos los clientes
+      // porque una tabla del console no responde. Un inicio de sesión sin fila
+      // tampoco pasa inadvertido: lo primero que hace el console después de
+      // entrar es GET /api/platform/me, que sí deja la suya o devuelve 503.
+      writePlatformAuditRow({
+        actorUserId: adminUser.id,
+        actorEmail: adminUser.email,
+        action: "signin",
+        companyId: null,
+        resource: "POST /api/admin/login",
+        details: { requestId: request.headers["x-request-id"] || null },
+        ip: request.ip,
+        userAgent: request.headers["user-agent"],
+        result: "allowed",
+      }).catch((error) => {
+        logger.error("platform console sign-in was not recorded", {
+          email: adminUser.email,
+          error: error?.message,
+        });
+      });
+    }
+
     return response.status(200).json({
       ok: true,
       entire: adminUser,
@@ -547,6 +584,12 @@ const loginUser = async (request, response) => {
       // elige de `companies`.
       companies,
       sqlCompanyId: companies.length === 1 ? companies[0].sqlCompanyId : null,
+      // Console de plataforma: true solo con platform_observer + cuenta activa +
+      // correo @devitrak.com + MFA. Es informativo, NO es la puerta: la puerta
+      // es requirePlatformConsole, que lo vuelve a leer de la base en cada
+      // petición. Un cliente que se lo ponga a mano en false no se protege de
+      // nada, y uno que se lo ponga a true no entra.
+      platformAccess,
     });
   } catch (error) {
     logger.error("Admin login error", {

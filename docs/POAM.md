@@ -427,6 +427,34 @@ los plazos de abajo siguen corriendo: nada de lo que se haga se pierde en una mu
 | **Fecha programada** | 2027-02-15 |
 | **Estado** | Abierto, con fecha propuesta al dashboard |
 
+### APP-2026-015 · `platform_audit_log` es de solo-inserción por convención, no por permisos
+
+| Campo | Valor |
+|---|---|
+| **Debilidad** | La tabla de auditoría del console de plataforma no tiene ninguna ruta que la actualice ni la borre, y el job de retención borra solo por antigüedad. Pero el usuario de base de datos de la aplicación conserva `UPDATE` y `DELETE` sobre ella, igual que sobre el resto del esquema. La propiedad real hoy es "la aplicación no lo hace", no "la base no lo permite" |
+| **Detectado por** | Nosotros, 2026-11-18, al escribir la migración de M1. DC2 lo pedía explícitamente ("If the database allows it, the app's database user gets insert and select only") |
+| **Activo** | Base de datos MySQL de producción |
+| **Riesgo** | Moderado. Para un evaluador, un registro de auditoría que el propio servicio auditado puede reescribir no es evidencia, es un fichero. No hay indicio de que nadie lo haya hecho —la tabla aún no existe en producción—, y por eso se arregla antes de que tenga filas |
+| **Responsable** | Devitrak |
+| **Plan** | Al aplicar la migración en producción, y en la misma sesión: `REVOKE UPDATE, DELETE ON <db>.platform_audit_log FROM '<usuario de la app>'`; un usuario aparte, solo para el job de retención, con `DELETE` sobre esa tabla y nada más; y guardar ambos `SHOW GRANTS` como evidencia. Los comandos están en la cabecera de `mysql/migrations/create_platform_audit_log.sql` |
+| **Hitos** | 2026-11-24 (despliegue de M1): permisos aplicados y `SHOW GRANTS` guardado en `logs\evidence\` |
+| **Fecha programada** | 2026-11-24 |
+| **Estado** | Abierto |
+
+### APP-2026-016 · No hay fecha de baja de cliente, así que los 120 días de retención no se cuentan desde ella
+
+| Campo | Valor |
+|---|---|
+| **Debilidad** | La retención acordada para el log del console es "mientras el cliente está activo, más 120 días". El modelo `Company` no tiene ni bandera de activo ni fecha de baja **a nivel de compañía** — `active` existe dentro de cada empleado de `employees[]`, que es otra cosa —, así que no hay ningún instante desde el que contar. El job cuenta desde el día en que observa por primera vez que la compañía ya no está (`platform_audit_retention`), que es lo único observable hoy |
+| **Detectado por** | Nosotros, 2026-11-18, al implementar el job de retención de M1 |
+| **Activo** | `models/Company.js`, `scheduler/platformAuditRetention.js` |
+| **Riesgo** | Bajo, y conservador por diseño: la aproximación **retiene de más**, nunca de menos, porque el contador arranca al detectar la ausencia y no antes. El coste no es de seguridad sino de precisión: no se puede responder "¿cuándo dejó de ser cliente esta compañía?" con un dato, solo con "la dejamos de ver tal día". Afecta a cualquier otra retención por cliente que se defina más adelante |
+| **Responsable** | Devitrak |
+| **Plan** | Dar de alta la baja de cliente como un hecho con fecha (un `offboardedAt` en `Company`, escrito por el flujo que dé de baja a un cliente, que hoy tampoco existe como tal) y que el job cuente desde ahí. Con eso, `platform_audit_retention` sobra y se retira. Mientras tanto el job se queda en `warn`: calcula y registra lo que borraría, y no borra |
+| **Hitos** | 2026-12-15: decidir si la baja de cliente se modela ahora o al construir DC3. 2027-02-15: contar desde la fecha real y retirar la tabla auxiliar |
+| **Fecha programada** | 2027-02-15 (90 días) |
+| **Estado** | Abierto |
+
 ---
 
 ## Cerrados en esta ronda
