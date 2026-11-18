@@ -26,6 +26,39 @@ const { DENY_REASONS } = require('./platformAuditLog');
 const PLATFORM_DOMAIN = 'devitrak.com';
 
 /**
+ * LISTA CERRADA de operadores del console (decision de Gustavo, 2026-11-18).
+ *
+ * Por que una lista y no solo el dominio: el 2026-11-18, al desplegar M1, la VM
+ * enseño dos cosas a la vez. Primera, que **no existe ninguna cuenta
+ * @devitrak.com**: el equipo entero esta en @contextglobal.com, asi que la regla
+ * de dominio que pidio el dashboard no admitia a nadie. Segunda, que **dos
+ * cuentas ya tenian `platform_observer`** —una de ContextGlobal y una de
+ * gmail—, concedido para leer `/api/metrics`, que usa el mismo flag a traves de
+ * `requirePlatformRead`.
+ *
+ * Es decir: el flag no identifica a un operador del console, porque ya estaba
+ * repartido para otra cosa. La lista si.
+ *
+ * Y por eso se queda TAMBIEN la comprobacion de dominio, que con una lista
+ * explicita podria parecer redundante: es la guardia de la lista. Si alguien
+ * añade aqui un correo que no sea @devitrak.com, no entra — la edicion falla en
+ * cerrado en vez de abrir una puerta en silencio.
+ *
+ * Quitarle a alguien el acceso al console es borrar su linea de aqui. No le
+ * toca `platform_observer`, asi que no pierde `/api/metrics`: son dos accesos
+ * distintos y ahora se revocan por separado.
+ */
+const PLATFORM_CONSOLE_ALLOWLIST = Object.freeze([
+  'fstarmark@devitrak.com',
+  'grodriguez@devitrak.com',
+  'cacaminero@devitrak.com',
+]);
+
+const ALLOWLIST = new Set(PLATFORM_CONSOLE_ALLOWLIST.map((e) => e.trim().toLowerCase()));
+
+const isAllowedOperator = (email) => ALLOWLIST.has(String(email || '').trim().toLowerCase());
+
+/**
  * Dominio EXACTO, no sufijo. Asi no pasan `x@devitrak.com.evil.io`,
  * `x@devitrak.co` ni `x@sub.devitrak.com`.
  *
@@ -68,6 +101,9 @@ const evaluatePlatformAccess = (adminUser) => {
   if (!isPlatformDomain(adminUser.email)) {
     return { ok: false, reason: DENY_REASONS.WRONG_DOMAIN };
   }
+  if (!isAllowedOperator(adminUser.email)) {
+    return { ok: false, reason: DENY_REASONS.NOT_ON_ALLOWLIST };
+  }
   if (adminUser.mfaEnabled !== true) return { ok: false, reason: DENY_REASONS.MFA_REQUIRED };
   return { ok: true, reason: null };
 };
@@ -78,6 +114,8 @@ const PLATFORM_ACCESS_FIELDS = 'email active mfaEnabled platform_observer';
 module.exports = {
   evaluatePlatformAccess,
   isPlatformDomain,
+  isAllowedOperator,
   PLATFORM_DOMAIN,
+  PLATFORM_CONSOLE_ALLOWLIST,
   PLATFORM_ACCESS_FIELDS,
 };

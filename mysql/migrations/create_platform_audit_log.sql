@@ -9,21 +9,28 @@
 -- que es FAIL-CLOSED: si no se puede dejar constancia de la lectura, la lectura
 -- no se sirve. Los dos comportamientos no caben en el mismo camino de codigo.
 --
--- SOLO INSERT
--- -----------
+-- SOLO INSERT, Y POR QUE NO SE PUEDE IMPONER EN ESTA BASE
+-- -------------------------------------------------------
 -- Ninguna ruta de la aplicacion actualiza ni borra filas de aqui. El unico
 -- proceso que borra es el job de retencion (scheduler/platformAuditRetention.js),
 -- y borra por antiguedad, nunca por contenido.
 --
--- En la VM hay que acotar tambien los permisos del usuario de la aplicacion, que
--- es lo que convierte "ninguna ruta lo hace" en "la base no lo permite":
+-- DC2 pedia ademas acotar los permisos del usuario de la aplicacion a INSERT y
+-- SELECT sobre esta tabla, que es lo que convertiria "ninguna ruta lo hace" en
+-- "la base no lo permite". **Aqui no se puede.** Comprobado en produccion el
+-- 2026-11-18: el motor es `8.4.11-Vitess` (PlanetScale), y
+-- `SHOW GRANTS FOR CURRENT_USER()` devuelve `vt_app@localhost`, el usuario
+-- interno de Vitess y no la identidad real de la aplicacion. Los permisos de
+-- PlanetScale se dan por contraseña con roles de ambito (lectura / escritura /
+-- admin), no por tabla: "solo INSERT y SELECT sobre platform_audit_log" no es
+-- expresable.
 --
---   REVOKE UPDATE, DELETE ON <db>.platform_audit_log FROM '<app_user>'@'%';
---   GRANT  INSERT, SELECT ON <db>.platform_audit_log TO '<app_user>'@'%';
---
--- y un usuario aparte, solo para el job de retencion, con DELETE sobre esta
--- tabla. Mientras eso no este hecho, la propiedad es "la aplicacion no lo hace",
--- que es mas debil: queda anotado en el POA&M.
+-- El control compensatorio, mientras tanto, es de codigo y esta probado:
+-- test/platformConsoleM1.test.js prohibe que aparezca un UPDATE o un DELETE
+-- sobre esta tabla en cualquier sitio que no sea el job de retencion. Es mas
+-- debil que un permiso —un permiso lo impone la base, un test lo impone la
+-- revision— y por eso APP-2026-015 se queda ABIERTA en vez de cerrarse el dia
+-- del despliegue.
 
 CREATE TABLE IF NOT EXISTS platform_audit_log (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,

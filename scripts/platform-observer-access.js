@@ -8,22 +8,30 @@
  * pantalla a proposito: una pantalla para repartir este flag es una pantalla que
  * alguien usa sin pensarlo.
  *
- * El gate (middlewares/requirePlatformConsole.js) pide CUATRO cosas a la vez, y
+ * El gate (middlewares/requirePlatformConsole.js) pide CINCO cosas a la vez, y
  * este script las enseña todas porque tener el flag no es lo mismo que poder
  * entrar:
  *
  *     platform_observer === true
  *     active !== false
  *     correo @devitrak.com exacto
+ *     estar en PLATFORM_CONSOLE_ALLOWLIST (helpers/platformAccess.js)
  *     mfaEnabled === true
+ *
+ * DOS FORMAS DE QUITAR EL ACCESO, y hacen cosas distintas:
+ *
+ *   - Borrar la linea de PLATFORM_CONSOLE_ALLOWLIST: pierde el console y
+ *     conserva `/api/metrics`. Es lo que se hizo el 2026-11-18 con las dos
+ *     cuentas que tenian el flag desde antes.
+ *   - `--revoke`: pierde las dos, porque quita el flag.
  *
  *   node scripts/platform-observer-access.js --list
  *       Quien tiene el flag hoy, y si de verdad entraria o que le falta.
  *
  *   node scripts/platform-observer-access.js --candidates
- *       Las cuentas @devitrak.com que PODRIAN ser operadoras: estado, MFA y si
- *       ademas son empleadas de alguna compañia cliente. Es la lista con la que
- *       se decide quienes son los primeros operadores. Solo lee.
+ *       Los operadores de PLATFORM_CONSOLE_ALLOWLIST y que le falta a cada uno
+ *       para poder entrar — empezando por si la cuenta existe. Al final, las
+ *       cuentas @devitrak.com que NO estan en la lista. Solo lee.
  *
  *   node scripts/platform-observer-access.js --grant a@devitrak.com,... --by <super_user email> [--dry-run]
  *   node scripts/platform-observer-access.js --revoke a@devitrak.com,... --by <super_user email> [--dry-run]
@@ -47,7 +55,13 @@ const arg = (name) => {
 };
 const normalize = (e) => String(e || '').trim().toLowerCase();
 
-const { evaluatePlatformAccess, isPlatformDomain, PLATFORM_DOMAIN } = require('../helpers/platformAccess');
+const {
+  evaluatePlatformAccess,
+  isPlatformDomain,
+  isAllowedOperator,
+  PLATFORM_DOMAIN,
+  PLATFORM_CONSOLE_ALLOWLIST,
+} = require('../helpers/platformAccess');
 
 /**
  * Que le falta a una cuenta para entrar, en una palabra. '-' cuando no le falta
@@ -67,18 +81,28 @@ const blockedBy = (user) => {
  * distintas y quien administra cuentas puede querer dejar el flag puesto
  * mientras el operador configura su MFA. Pero se avisa en voz alta, porque una
  * cuenta con flag y sin MFA parece operativa en cualquier listado y no lo es.
+ *
+ * `notOperator` SI impide la concesion. Este script existe para dar de alta
+ * operadores del console, y a quien no esta en la lista cerrada el flag no le
+ * sirve para eso: solo le daria `/api/metrics`, que es una concesion distinta y
+ * merece hacerse a sabiendas y no de paso. Para eso, primero su linea en
+ * PLATFORM_CONSOLE_ALLOWLIST.
  */
 function grantPlan(accounts, requested) {
   const wanted = [...new Set(requested.map(normalize).filter(Boolean))];
   if (!wanted.length) throw new Error('--grant needs at least one email');
 
   const byEmail = new Map(accounts.map((a) => [normalize(a.email), a]));
-  const out = { grant: [], missing: [], already: [], inactive: [], wrongDomain: [], noMfa: [] };
+  const out = {
+    grant: [], missing: [], already: [], inactive: [],
+    wrongDomain: [], notOperator: [], noMfa: [],
+  };
 
   for (const email of wanted) {
     const account = byEmail.get(email);
     if (!account) { out.missing.push(email); continue; }
     if (!isPlatformDomain(account.email)) { out.wrongDomain.push(email); continue; }
+    if (!isAllowedOperator(account.email)) { out.notOperator.push(email); continue; }
     if (account.active === false) { out.inactive.push(email); continue; }
     if (account.platform_observer === true) { out.already.push(email); continue; }
     if (account.mfaEnabled !== true) out.noMfa.push(account);
@@ -129,6 +153,7 @@ async function main() {
   const Company = require('../models/Company');
 
   const SELECT = 'email name lastName active mfaEnabled platform_observer super_user lastLoginAt';
+  const ALLOWLIST_EMAILS = PLATFORM_CONSOLE_ALLOWLIST.map(normalize);
 
   const withCompanies = async (users) => {
     if (!users.length) return new Map();
@@ -166,34 +191,58 @@ async function main() {
     }
 
     if (process.argv.includes('--candidates')) {
-      // Todas las @devitrak.com: la lista con la que se eligen los operadores.
-      // El filtro va en JS y no en la consulta porque el criterio de dominio es
-      // "texto tras la ULTIMA arroba", no un sufijo, y debe ser el MISMO que
-      // aplica el gate — si aqui se usara un $regex parecido pero no igual, la
-      // lista mentiria.
-      const all = await AdminUser.find({}).select(SELECT).lean();
-      const candidates = all.filter((u) => isPlatformDomain(u.email));
-      const memberships = await withCompanies(candidates);
+      // La lista cerrada manda, asi que esto ya no es "quien podria ser
+      // operador" sino "que le falta a cada operador de la lista para poder
+      // entrar". Suele faltar algo: la cuenta misma.
+      const listed = await AdminUser.find({ email: { $in: [...ALLOWLIST_EMAILS] } })
+        .select(SELECT).lean();
+      const byEmail = new Map(listed.map((u) => [normalize(u.email), u]));
+      const memberships = await withCompanies(listed);
+
       console.table(
-        candidates
-          .map((u) => ({
-            email: u.email,
-            name: `${u.name || ''} ${u.lastName || ''}`.trim(),
+        PLATFORM_CONSOLE_ALLOWLIST.map((email) => {
+          const u = byEmail.get(normalize(email));
+          if (!u) {
+            return {
+              email, account: false, active: '-', mfa: '-', observer: '-',
+              would_enter: false, missing: 'the AdminUser account does not exist',
+              client_companies: '-',
+            };
+          }
+          const verdict = evaluatePlatformAccess(u);
+          return {
+            email,
+            account: true,
             active: u.active !== false,
             mfa: u.mfaEnabled === true,
             observer: u.platform_observer === true,
-            last_login: u.lastLoginAt ? new Date(u.lastLoginAt).toISOString().slice(0, 10) : '-',
+            would_enter: verdict.ok,
+            missing: verdict.ok ? '-' : verdict.reason,
             client_companies: (memberships.get(String(u._id)) || []).join(', ') || '-',
-          }))
-          .sort((a, b) => a.email.localeCompare(b.email))
+          };
+        })
       );
-      const noMfa = candidates.filter((u) => u.mfaEnabled !== true).length;
+
+      const ready = PLATFORM_CONSOLE_ALLOWLIST.filter((email) => {
+        const u = byEmail.get(normalize(email));
+        return u && evaluatePlatformAccess(u).ok;
+      }).length;
       console.log(
-        `${candidates.length} @${PLATFORM_DOMAIN} account(s); ${noMfa} without MFA (those cannot enter the console until they set it up)`
+        `${PLATFORM_CONSOLE_ALLOWLIST.length} operator(s) on the allow-list; ${ready} can enter the console today`
       );
       console.log(
         'client_companies matters: an operator who is also a client employee mixes two identities in the audit trail.'
       );
+
+      // Una cuenta @devitrak.com que NO esta en la lista no entra, pero conviene
+      // verla: o sobra la cuenta, o falta su linea en la lista.
+      const all = await AdminUser.find({}).select('email active').lean();
+      const strays = all
+        .filter((u) => isPlatformDomain(u.email) && !isAllowedOperator(u.email))
+        .map((u) => u.email);
+      if (strays.length) {
+        console.log(`\n@${PLATFORM_DOMAIN} accounts NOT on the allow-list (they cannot enter): ${strays.join(', ')}`);
+      }
       return;
     }
 
@@ -220,6 +269,9 @@ async function main() {
         const plan = grantPlan(accounts, emails);
         for (const e of plan.missing) console.log(`  skip ${e}: no such account`);
         for (const e of plan.wrongDomain) console.log(`  skip ${e}: not an @${PLATFORM_DOMAIN} account`);
+        for (const e of plan.notOperator) {
+          console.log(`  skip ${e}: not in PLATFORM_CONSOLE_ALLOWLIST (helpers/platformAccess.js) — add the line first`);
+        }
         for (const e of plan.inactive) console.log(`  skip ${e}: account is disabled (reactivate it first)`);
         for (const e of plan.already) console.log(`  skip ${e}: already a platform_observer`);
         for (const u of plan.noMfa) {
