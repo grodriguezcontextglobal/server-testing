@@ -61,7 +61,12 @@ const PLATFORM_DOMAIN = 'devitrak.com';
 const PLATFORM_CONSOLE_ALLOWLIST = Object.freeze([
   'fstarmark@devitrak.com',
   'grodriguez@devitrak.com',
-  'cacaminero@devitrak.com',
+  // OJO con este: en @contextglobal.com la cuenta de la misma persona se
+  // escribe `cacaminero@` (ver la lista de super_user en scripts/
+  // super-user-access.js), y en @devitrak.com es `ccaminero@`. No son la misma
+  // direccion y aqui vale solo la de devitrak. Corregido el 2026-11-19; hasta
+  // entonces la lista tenia la grafia de contextglobal, que no admitia a nadie.
+  'ccaminero@devitrak.com',
 ]);
 
 const ALLOWLIST = new Set(PLATFORM_CONSOLE_ALLOWLIST.map((e) => e.trim().toLowerCase()));
