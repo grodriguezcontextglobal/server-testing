@@ -61,12 +61,70 @@ const PLATFORM_DOMAIN = 'devitrak.com';
 const PLATFORM_CONSOLE_ALLOWLIST = Object.freeze([
   'fstarmark@devitrak.com',
   'grodriguez@devitrak.com',
-  'cacaminero@devitrak.com',
+  // OJO con este: en @contextglobal.com la cuenta de la misma persona se
+  // escribe `cacaminero@` (ver la lista de super_user en scripts/
+  // super-user-access.js), y en @devitrak.com es `ccaminero@`. No son la misma
+  // direccion y aqui vale solo la de devitrak. Corregido el 2026-11-19; hasta
+  // entonces la lista tenia la grafia de contextglobal, que no admitia a nadie.
+  'ccaminero@devitrak.com',
 ]);
 
 const ALLOWLIST = new Set(PLATFORM_CONSOLE_ALLOWLIST.map((e) => e.trim().toLowerCase()));
 
 const isAllowedOperator = (email) => ALLOWLIST.has(String(email || '').trim().toLowerCase());
+
+/**
+ * COMPAÑIAS INTERNAS — las unicas en las que puede figurar un operador.
+ *
+ * De donde sale: el dashboard retiro su requisito de que los operadores no
+ * tuvieran compañia (no se puede: dar de alta a alguien ES crearle una
+ * membresia) y lo cambio por uno que si se puede cumplir — que la compañia sea
+ * **interna**, nunca la de un cliente real. Eso quita el peligro de verdad, que
+ * nunca fue "un operador tiene compañia" sino "un operador tiene la de un
+ * cliente".
+ *
+ * POR QUE UNA LISTA DE IDS Y NO UNA REGLA: no hay ningun campo que diga que una
+ * compañia es interna, y deducirlo del nombre —que empiece por "Test", que
+ * contenga "ContextGlobal"— es una regla que deja de ser cierta el dia que
+ * alguien registra un cliente que se llama parecido, y deja de serlo en
+ * silencio. Una lista explicita es honesta sobre lo que es: algo que alguien
+ * mantiene. Lo que cambia es que mantenerla se puede revisar.
+ *
+ * Y va AQUI, al lado de la lista de operadores, porque las dos se editan juntas:
+ * dar de alta a un operador nuevo suele traer su compañia.
+ *
+ * LO QUE ESTA LISTA NO HACE: no la mira el gate. Comprobar la membresia en cada
+ * peticion costaria una consulta a Mongo por request para proteger de algo que
+ * no ocurre dentro de una sesion, y dejaria fuera a un operador en activo
+ * porque alguien edito una compañia. Se mira al CONCEDER el flag, que es cuando
+ * se decide. El precio de esa eleccion esta escrito: si a un operador ya
+ * concedido lo meten despues en la compañia de un cliente, nada lo vuelve a
+ * comprobar solo. `--candidates` lo enseña, y por eso hay que mirarlo.
+ *
+ * Vacia, no se puede conceder a nadie. Es deliberado: falla en cerrado, y la
+ * primera concesion obliga a escribir aqui la compañia con su id delante.
+ */
+const PLATFORM_INTERNAL_COMPANIES = Object.freeze([
+  // "Test Company 8/13/2023" — la compañia de pruebas interna. Leida de la base
+  // el 2026-11-19: es la UNICA en la que figuran los dos operadores que existen
+  // hoy (grodriguez@ y ccaminero@), y no figuran en ninguna otra. El nombre va
+  // en el comentario porque se lee; lo que se compara es el id, que no cambia.
+  '6a7d9ef28f33f83745aa54e2',
+]);
+
+const INTERNAL_COMPANIES = new Set(PLATFORM_INTERNAL_COMPANIES.map((id) => String(id).trim()));
+
+const isInternalCompany = (companyId) => INTERNAL_COMPANIES.has(String(companyId || '').trim());
+
+/**
+ * Motivos por los que se RECHAZA UNA CONCESION. Deliberadamente separado de
+ * `DENY_REASONS`, que es el vocabulario del gate: son dos decisiones distintas,
+ * en dos momentos distintos, y mezclarlas dejaria poner en una fila del log un
+ * motivo que el gate no puede producir.
+ */
+const GRANT_DENY_REASONS = Object.freeze({
+  COMPANY_NOT_INTERNAL: 'company_not_internal',
+});
 
 /**
  * Dominio EXACTO, no sufijo. Asi no pasan `x@devitrak.com.evil.io`,
@@ -125,7 +183,10 @@ module.exports = {
   evaluatePlatformAccess,
   isPlatformDomain,
   isAllowedOperator,
+  isInternalCompany,
   PLATFORM_DOMAIN,
   PLATFORM_CONSOLE_ALLOWLIST,
+  PLATFORM_INTERNAL_COMPANIES,
+  GRANT_DENY_REASONS,
   PLATFORM_ACCESS_FIELDS,
 };

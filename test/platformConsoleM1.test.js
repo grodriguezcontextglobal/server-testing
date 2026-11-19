@@ -31,6 +31,11 @@ const OPERATOR = Object.freeze({
   platform_observer: true,
 });
 
+// Una cuenta sin ninguna membresia: el caso que la regla de compañia interna
+// permite. `grantPlan` EXIGE el mapa, asi que no hay forma de llamarlo sin
+// contestar a la pregunta.
+const NO_COMPANIES = new Map();
+
 const makeResponse = () => {
   const response = new EventEmitter();
   response.statusCode = 200;
@@ -695,7 +700,8 @@ describe('la lista cerrada de operadores', () => {
   test('--grant se niega a conceder fuera de la lista', () => {
     const plan = grantPlan(
       [{ _id: '1', email: 'otro@devitrak.com', active: true, mfaEnabled: true, platform_observer: false }],
-      ['otro@devitrak.com']
+      ['otro@devitrak.com'],
+      NO_COMPANIES
     );
     assert.equal(plan.grant.length, 0);
     assert.deepEqual(plan.notOperator, ['otro@devitrak.com']);
@@ -715,7 +721,7 @@ describe('scripts/platform-observer-access', () => {
     ];
     const plan = grantPlan(accounts, [
       OP1, 'b@clientco.com', OP2, OP3, 'otro@devitrak.com', 'nadie@devitrak.com',
-    ]);
+    ], NO_COMPANIES);
     assert.deepEqual(plan.grant.map((u) => u.email), [OP1]);
     assert.deepEqual(plan.wrongDomain, ['b@clientco.com']);
     assert.deepEqual(plan.notOperator, ['otro@devitrak.com']);
@@ -729,7 +735,8 @@ describe('scripts/platform-observer-access', () => {
   test('sin MFA se concede, pero queda señalado', () => {
     const plan = grantPlan(
       [{ _id: '1', email: OP1, active: true, mfaEnabled: false, platform_observer: false }],
-      [OP1]
+      [OP1],
+      NO_COMPANIES
     );
     assert.equal(plan.grant.length, 1);
     assert.deepEqual(plan.noMfa.map((u) => u.email), [OP1]);
@@ -741,6 +748,89 @@ describe('scripts/platform-observer-access', () => {
     const plan = revokePlan(observers, [OP1, OP2]);
     assert.deepEqual(plan.revoke.map((u) => u.email), [OP1]);
     assert.deepEqual(plan.notObserver, [OP2]);
+  });
+
+  // 2026-11-19: condicion 1 del dashboard. Un operador puede tener compañia
+  // —no hay forma de crear una cuenta sin ella— pero nunca la de un cliente.
+  describe('la compañia del operador tiene que ser interna', () => {
+    const {
+      PLATFORM_INTERNAL_COMPANIES, isInternalCompany, GRANT_DENY_REASONS,
+    } = require('../helpers/platformAccess');
+    const INTERNAL = PLATFORM_INTERNAL_COMPANIES[0];
+    const CLIENT = '64b000000000000000000999';
+    const account = { _id: 'u1', email: OP1, active: true, mfaEnabled: true, platform_observer: false };
+
+    test('pertenecer a la compañia de un cliente impide la concesion', () => {
+      const plan = grantPlan([account], [OP1], new Map([
+        ['u1', [{ id: CLIENT, name: 'Acme Corp' }]],
+      ]));
+      assert.equal(plan.grant.length, 0);
+      assert.deepEqual(plan.notInternalCompany, [{ email: OP1, companies: ['Acme Corp'] }]);
+    });
+
+    // Lo que se rechaza es pertenecer a una externa, no pertenecer a alguna.
+    test('cero compañias se concede', () => {
+      const plan = grantPlan([account], [OP1], NO_COMPANIES);
+      assert.deepEqual(plan.grant.map((u) => u.email), [OP1]);
+      assert.deepEqual(plan.notInternalCompany, []);
+    });
+
+    test('una interna de mas no salva a la externa', () => {
+      if (!INTERNAL) return; // sin lista poblada no hay nada que mezclar
+      const plan = grantPlan([account], [OP1], new Map([
+        ['u1', [{ id: INTERNAL, name: 'Test Company' }, { id: CLIENT, name: 'Acme Corp' }]],
+      ]));
+      assert.equal(plan.grant.length, 0);
+      assert.deepEqual(plan.notInternalCompany[0].companies, ['Acme Corp']);
+    });
+
+    // Sin el mapa no se puede comprobar la regla. Una comprobacion que se salta
+    // sola cuando falta un dato no es una comprobacion: se lanza.
+    test('sin las membresias, grantPlan se niega a opinar', () => {
+      assert.throws(() => grantPlan([account], [OP1]), /company memberships/i);
+      assert.throws(() => grantPlan([account], [OP1], {}), /company memberships/i);
+    });
+
+    // Una lista vacia no es "sin restricciones": es "no se puede conceder a
+    // nadie", y ademas dejaria vacios los dos tests de abajo, que pasarian sin
+    // comprobar nada. Un control que pasa sin mirar es el peor de los tres
+    // estados posibles, asi que esto lo impide.
+    test('la lista no esta vacia', () => {
+      assert.ok(
+        PLATFORM_INTERNAL_COMPANIES.length > 0,
+        'PLATFORM_INTERNAL_COMPANIES esta vacia: ninguna concesion puede salir adelante, ' +
+        'y los tests de formato de esta misma lista no comprueban nada. Pon el id de la ' +
+        'compañia interna en helpers/platformAccess.js.'
+      );
+    });
+
+    // La lista es de IDS, no de nombres: comparar por nombre es justo la regla
+    // fragil que esto existe para evitar.
+    test('todo id de la lista es un ObjectId, no un nombre', () => {
+      for (const id of PLATFORM_INTERNAL_COMPANIES) {
+        assert.match(
+          String(id), /^[0-9a-fA-F]{24}$/,
+          `PLATFORM_INTERNAL_COMPANIES: "${id}" no es un ObjectId. La lista es de ids ` +
+          'porque el nombre de una compañia cambia y se repite; el id no.'
+        );
+      }
+    });
+
+    test('la comparacion es exacta y normaliza espacios', () => {
+      assert.equal(isInternalCompany(CLIENT), false);
+      assert.equal(isInternalCompany(''), false);
+      assert.equal(isInternalCompany(null), false);
+      if (INTERNAL) assert.equal(isInternalCompany(`  ${INTERNAL} `), true);
+    });
+
+    test('el motivo tiene nombre propio y no se mezcla con los del gate', () => {
+      const { DENY_REASONS } = require('../helpers/platformAuditLog');
+      assert.equal(GRANT_DENY_REASONS.COMPANY_NOT_INTERNAL, 'company_not_internal');
+      assert.ok(
+        !Object.values(DENY_REASONS).includes('company_not_internal'),
+        'el gate no puede producir este motivo: se decide al conceder, no al entrar'
+      );
+    });
   });
 
   // No hay regla de "no te quedes sin ninguno", al reves que con super_user:
