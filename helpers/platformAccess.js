@@ -105,7 +105,11 @@ const isAllowedOperator = (email) => ALLOWLIST.has(String(email || '').trim().to
  * primera concesion obliga a escribir aqui la compañia con su id delante.
  */
 const PLATFORM_INTERNAL_COMPANIES = Object.freeze([
-  // '<ObjectId>',  // Test Company 8/13/2023
+  // "Test Company 8/13/2023" — la compañia de pruebas interna. Leida de la base
+  // el 2026-11-19: es la UNICA en la que figuran los dos operadores que existen
+  // hoy (grodriguez@ y ccaminero@), y no figuran en ninguna otra. El nombre va
+  // en el comentario porque se lee; lo que se compara es el id, que no cambia.
+  '6a7d9ef28f33f83745aa54e2',
 ]);
 
 const INTERNAL_COMPANIES = new Set(PLATFORM_INTERNAL_COMPANIES.map((id) => String(id).trim()));
