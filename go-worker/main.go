@@ -13,7 +13,6 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 )
 
@@ -31,13 +30,15 @@ type Response struct {
 }
 
 func main() {
-	// Load environment variables ONCE
-	if err := godotenv.Load("../.env"); err != nil {
-		_ = godotenv.Load(".env")
-	}
-
-	// Initialize Logger
+	// El logger PRIMERO: no depende de ninguna variable de entorno, y LoadEnv
+	// tiene que poder dejar escrito de donde cargo y cuantas claves leyo. Antes
+	// era al reves, y por eso un arranque con el entorno vacio no dejaba ni una
+	// linea. Ver env.go.
 	InitLogger()
+
+	// Carga el .env (quitando el BOM), lo registra, y se niega a arrancar si
+	// falta algo sin lo que este proceso no puede trabajar.
+	LoadEnv()
 
 	// Initialize Databases (Lazy or immediate)
 	// For robustness, we can try to connect, but maybe not fail hard if DB is down initially?

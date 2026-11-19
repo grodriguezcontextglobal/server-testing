@@ -9,23 +9,30 @@ import (
 	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
-	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-// ConnectDB establishes a connection to the PlanetScale MySQL database
+// ConnectDB establishes a connection to the PlanetScale MySQL database.
+//
+// NO carga el .env: eso lo hace LoadEnv() una vez en main(), antes que nada.
+// Antes se cargaba aqui tambien, tirando el error, y el resultado fue que un
+// fichero ilegible se veia como un fallo de red en tiempo de peticion. Ver
+// env.go.
 func ConnectDB() (*sql.DB, error) {
-	// Load .env file from parent directory (since worker is in ./go-worker)
-	if err := godotenv.Load("../.env"); err != nil {
-		// Fallback: try loading from current dir if running locally
-		_ = godotenv.Load(".env")
-	}
-
 	host := os.Getenv("PLANETSCALE_DATABASE_HOST")
 	user := os.Getenv("PLANETSCALE_DATABASE_USERNAME")
 	password := os.Getenv("PLANETSCALE_DATABASE_PASSWORD")
 	dbName := os.Getenv("PLANETSCALE_DATABASE_NAME")
+
+	// Cinturon y tirantes: LoadEnv ya se niega a arrancar sin estas, pero si
+	// algun dia aparece otra via de entrada al binario, mas vale un error que
+	// diga que falta la configuracion que un `tcp(:3306)` acusando a la red.
+	if host == "" || user == "" || dbName == "" {
+		return nil, fmt.Errorf(
+			"MySQL is not configured: PLANETSCALE_DATABASE_HOST/USERNAME/NAME are empty " +
+				"(the .env was not loaded; see logs/go-worker.log at startup)")
+	}
 
 	// DSN format: user:password@tcp(host:3306)/dbname?tls=true
 	// PlanetScale requires TLS, but a local MySQL uses plaintext — set
@@ -49,11 +56,8 @@ func ConnectDB() (*sql.DB, error) {
 	return db, nil
 }
 
+// ConnectMongoDB — tampoco carga el .env, por el mismo motivo que ConnectDB.
 func ConnectMongoDB() (*mongo.Database, error) {
-	if err := godotenv.Load("../.env"); err != nil {
-		_ = godotenv.Load(".env")
-	}
-
 	uri := os.Getenv("DB_CNN")
 	if uri == "" {
 		return nil, fmt.Errorf("DB_CNN environment variable not set")
