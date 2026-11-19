@@ -30,8 +30,20 @@
  *
  *   node scripts/platform-observer-access.js --candidates
  *       Los operadores de PLATFORM_CONSOLE_ALLOWLIST y que le falta a cada uno
- *       para poder entrar — empezando por si la cuenta existe. Al final, las
- *       cuentas @devitrak.com que NO estan en la lista. Solo lee.
+ *       para poder entrar — empezando por si la cuenta existe. Marca con
+ *       (EXTERNAL) toda compañia suya que no este en PLATFORM_INTERNAL_COMPANIES
+ *       y las lista aparte. Al final, las cuentas @devitrak.com que NO estan en
+ *       la lista. Solo lee.
+ *
+ * UNA SEXTA COSA, que el gate no mira: para CONCEDER el flag, todas las
+ * compañias del operador tienen que estar en PLATFORM_INTERNAL_COMPANIES. Un
+ * operador puede tener compañia —no hay forma de crear una cuenta sin ella— pero
+ * nunca la de un cliente real. Se comprueba al conceder y no en cada peticion;
+ * la deriva posterior la enseña `--candidates`.
+ *
+ *   node scripts/platform-observer-access.js --company-ids
+ *       Los ids de las compañias en las que figuran los operadores, para poblar
+ *       PLATFORM_INTERNAL_COMPANIES. Solo lee.
  *
  *   node scripts/platform-observer-access.js --grant a@devitrak.com,... --by <super_user email> [--dry-run]
  *   node scripts/platform-observer-access.js --revoke a@devitrak.com,... --by <super_user email> [--dry-run]
@@ -59,8 +71,11 @@ const {
   evaluatePlatformAccess,
   isPlatformDomain,
   isAllowedOperator,
+  isInternalCompany,
   PLATFORM_DOMAIN,
   PLATFORM_CONSOLE_ALLOWLIST,
+  PLATFORM_INTERNAL_COMPANIES,
+  GRANT_DENY_REASONS,
 } = require('../helpers/platformAccess');
 
 /**
@@ -87,15 +102,28 @@ const blockedBy = (user) => {
  * sirve para eso: solo le daria `/api/metrics`, que es una concesion distinta y
  * merece hacerse a sabiendas y no de paso. Para eso, primero su linea en
  * PLATFORM_CONSOLE_ALLOWLIST.
+ *
+ * `notInternalCompany` TAMBIEN impide la concesion (peticion del dashboard,
+ * 2026-11-19). Un operador puede pertenecer a una compañia —no hay forma de
+ * crear una cuenta sin ella— pero nunca a la de un cliente real, porque entonces
+ * la misma persona aparece en el rastro de auditoria con dos identidades. Que
+ * una compañia sea interna lo dice PLATFORM_INTERNAL_COMPANIES y nada mas.
+ *
+ * @param companiesByUserId Map(String(_id) -> [{id, name}]). OBLIGATORIO: sin el
+ *   no se puede comprobar la regla, y una comprobacion que se salta sola cuando
+ *   falta un dato no es una comprobacion. Se lanza en vez de pasar de largo.
  */
-function grantPlan(accounts, requested) {
+function grantPlan(accounts, requested, companiesByUserId) {
   const wanted = [...new Set(requested.map(normalize).filter(Boolean))];
   if (!wanted.length) throw new Error('--grant needs at least one email');
+  if (!(companiesByUserId instanceof Map)) {
+    throw new Error('grantPlan needs the company memberships to check PLATFORM_INTERNAL_COMPANIES');
+  }
 
   const byEmail = new Map(accounts.map((a) => [normalize(a.email), a]));
   const out = {
     grant: [], missing: [], already: [], inactive: [],
-    wrongDomain: [], notOperator: [], noMfa: [],
+    wrongDomain: [], notOperator: [], notInternalCompany: [], noMfa: [],
   };
 
   for (const email of wanted) {
@@ -103,6 +131,17 @@ function grantPlan(accounts, requested) {
     if (!account) { out.missing.push(email); continue; }
     if (!isPlatformDomain(account.email)) { out.wrongDomain.push(email); continue; }
     if (!isAllowedOperator(account.email)) { out.notOperator.push(email); continue; }
+
+    // Cero compañias se permite: es el caso que el dashboard preferia y que hoy
+    // no se puede crear. Lo que se rechaza es pertenecer a una que no sea
+    // interna, no pertenecer a alguna.
+    const memberships = companiesByUserId.get(String(account._id)) || [];
+    const external = memberships.filter((c) => !isInternalCompany(c.id));
+    if (external.length) {
+      out.notInternalCompany.push({ email, companies: external.map((c) => c.name) });
+      continue;
+    }
+
     if (account.active === false) { out.inactive.push(email); continue; }
     if (account.platform_observer === true) { out.already.push(email); continue; }
     if (account.mfaEnabled !== true) out.noMfa.push(account);
@@ -130,19 +169,27 @@ function revokePlan(observers, requested) {
   return out;
 }
 
-/** En que compañias cliente figura esta cuenta como empleada. */
+/**
+ * En que compañias figura esta cuenta como empleada. Devuelve `{id, name}` y no
+ * solo el nombre: el nombre es para que lo lea una persona, el id es con lo que
+ * se compara contra PLATFORM_INTERNAL_COMPANIES. Comparar por nombre seria
+ * exactamente la regla fragil que la lista de ids existe para evitar.
+ */
 function clientCompaniesOf(companies, user) {
   const uid = String(user._id ?? '');
   const email = normalize(user.email);
-  const out = [];
+  const out = new Map();
   for (const c of companies) {
     for (const e of c.employees || []) {
       const match = (e.userId != null && String(e.userId) === uid) || normalize(e.user) === email;
-      if (match) out.push(c.company_name || String(c._id));
+      if (match) out.set(String(c._id), { id: String(c._id), name: c.company_name || String(c._id) });
     }
   }
-  return [...new Set(out)];
+  return [...out.values()];
 }
+
+/** Como se enseña una compañia en las tablas: nombre, y si cuenta como interna. */
+const describeCompany = (c) => `${c.name}${isInternalCompany(c.id) ? '' : ' (EXTERNAL)'}`;
 
 async function main() {
   require('dotenv').config({ quiet: true });
@@ -181,12 +228,47 @@ async function main() {
             mfa: u.mfaEnabled === true,
             would_enter: blockedBy(u) === '-',
             blocked_by: blockedBy(u),
-            client_companies: (memberships.get(String(u._id)) || []).join(', ') || '-',
+            client_companies:
+              (memberships.get(String(u._id)) || []).map(describeCompany).join(', ') || '-',
           }))
           .sort((a, b) => a.email.localeCompare(b.email))
       );
       const able = observers.filter((u) => blockedBy(u) === '-').length;
       console.log(`${observers.length} platform_observer account(s); ${able} can actually enter the console`);
+      return;
+    }
+
+    // Para poblar PLATFORM_INTERNAL_COMPANIES: los ids de las compañias en las
+    // que figuran los operadores de la lista. Es lo unico que hace falta copiar,
+    // y se mira una vez: la lista no se descubre sola a proposito.
+    if (process.argv.includes('--company-ids')) {
+      const listed = await AdminUser.find({ email: { $in: [...ALLOWLIST_EMAILS] } })
+        .select(SELECT).lean();
+      const memberships = await withCompanies(listed);
+      const seen = new Map();
+      for (const u of listed) {
+        for (const c of memberships.get(String(u._id)) || []) {
+          if (!seen.has(c.id)) seen.set(c.id, { ...c, members: [] });
+          seen.get(c.id).members.push(u.email);
+        }
+      }
+      if (!seen.size) {
+        console.log('no operator belongs to any company');
+        return;
+      }
+      console.table(
+        [...seen.values()].map((c) => ({
+          company_id: c.id,
+          company_name: c.name,
+          internal: isInternalCompany(c.id),
+          operators: c.members.join(', '),
+        }))
+      );
+      console.log(
+        'Copy the id of each INTERNAL company into PLATFORM_INTERNAL_COMPANIES ' +
+          '(helpers/platformAccess.js). A company that is a real client does NOT go in: ' +
+          'that operator should not be one.'
+      );
       return;
     }
 
@@ -218,7 +300,8 @@ async function main() {
             observer: u.platform_observer === true,
             would_enter: verdict.ok,
             missing: verdict.ok ? '-' : verdict.reason,
-            client_companies: (memberships.get(String(u._id)) || []).join(', ') || '-',
+            client_companies:
+              (memberships.get(String(u._id)) || []).map(describeCompany).join(', ') || '-',
           };
         })
       );
@@ -233,6 +316,28 @@ async function main() {
       console.log(
         'client_companies matters: an operator who is also a client employee mixes two identities in the audit trail.'
       );
+
+      // La deriva que la comprobacion al conceder no puede cubrir: a un operador
+      // ya concedido lo meten despues en la compañia de un cliente. Nada lo
+      // vuelve a mirar solo, asi que se mira aqui.
+      const drifted = listed
+        .map((u) => ({
+          email: u.email,
+          external: (memberships.get(String(u._id)) || []).filter((c) => !isInternalCompany(c.id)),
+        }))
+        .filter((x) => x.external.length);
+      if (drifted.length) {
+        console.log(
+          `\nOPERATORS IN A COMPANY THAT IS NOT INTERNAL (${PLATFORM_INTERNAL_COMPANIES.length} id(s) listed):`
+        );
+        for (const x of drifted) {
+          console.log(`  ${x.email}: ${x.external.map((c) => c.name).join(', ')}`);
+        }
+        console.log(
+          '  Either the company belongs in PLATFORM_INTERNAL_COMPANIES (helpers/platformAccess.js),\n' +
+            '  or this operator should not be one. A grant would be refused today; an existing one is not undone by itself.'
+        );
+      }
 
       // Una cuenta @devitrak.com que NO esta en la lista no entra, pero conviene
       // verla: o sobra la cuenta, o falta su linea en la lista.
@@ -266,11 +371,19 @@ async function main() {
 
       if (mode === '--grant') {
         const accounts = await AdminUser.find({ email: { $in: emails } }).select(SELECT).lean();
-        const plan = grantPlan(accounts, emails);
+        const plan = grantPlan(accounts, emails, await withCompanies(accounts));
         for (const e of plan.missing) console.log(`  skip ${e}: no such account`);
         for (const e of plan.wrongDomain) console.log(`  skip ${e}: not an @${PLATFORM_DOMAIN} account`);
         for (const e of plan.notOperator) {
           console.log(`  skip ${e}: not in PLATFORM_CONSOLE_ALLOWLIST (helpers/platformAccess.js) — add the line first`);
+        }
+        for (const x of plan.notInternalCompany) {
+          console.log(
+            `  skip ${x.email}: ${GRANT_DENY_REASONS.COMPANY_NOT_INTERNAL} — ` +
+              `member of ${x.companies.join(', ')}. ` +
+              'An operator may belong to an internal company, never to a client\'s. Add the id to ' +
+              'PLATFORM_INTERNAL_COMPANIES (helpers/platformAccess.js) if it is internal.'
+          );
         }
         for (const e of plan.inactive) console.log(`  skip ${e}: account is disabled (reactivate it first)`);
         for (const e of plan.already) console.log(`  skip ${e}: already a platform_observer`);
@@ -349,7 +462,7 @@ async function main() {
     }
 
     console.log(
-      'usage: --list | --candidates | --grant a@devitrak.com,... | --revoke a@devitrak.com,...  ' +
+      'usage: --list | --candidates | --company-ids | --grant a@devitrak.com,... | --revoke a@devitrak.com,...  ' +
         '(grant/revoke need --by <super_user email>; add --dry-run to preview)'
     );
     process.exitCode = 2;
