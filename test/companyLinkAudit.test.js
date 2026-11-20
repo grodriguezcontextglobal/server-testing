@@ -150,7 +150,52 @@ describe('auditCompanyLinks', () => {
       subscriptions: [],
     });
     assert.equal(report.summary.orphanSqlRows, 1);
-    assert.deepEqual(report.orphanSqlRows, [{ sqlCompanyId: 8, companyName: 'Huerfana SL' }]);
+    assert.deepEqual(report.orphanSqlRows, [{ sqlCompanyId: 8, companyName: "Huerfana SL", activeStaff: null }]);
+  });
+
+  // EL HUECO QUE TENIA LA PRIMERA VERSION. Una compañia que solo existe en SQL
+  // no tiene documento en Mongo, asi que no tiene `employees`: contar solo el
+  // personal de Mongo daba "0 afectados" sin haber mirado a los unicos que
+  // podian estarlo — y es justo el sentido por el que falla el inicio de
+  // sesion (SQL -> Mongo).
+  test('cuenta el personal de las compañias que solo existen en SQL', () => {
+    const report = auditCompanyLinks({
+      companies: [company('m1', 'Sana')],
+      sqlRows: [sql(1, 'Sana'), sql(56, 'Solo en SQL')],
+      subscriptions: [],
+      staffBySqlCompany: new Map([[1, 9], [56, 4]]),
+    });
+    assert.equal(report.summary.staffBehindBrokenLinks, 0);
+    assert.equal(report.summary.staffInSqlOnlyCompanies, 4);
+    assert.deepEqual(report.orphanSqlRows, [
+      { sqlCompanyId: 56, companyName: 'Solo en SQL', activeStaff: 4 },
+    ]);
+  });
+
+  // Sin dato no se inventa un cero: un cero en la columna tranquila es lo que
+  // hace que nadie vuelva a mirar.
+  test('sin dato de personal, una compañia solo-SQL queda como desconocida, no como cero', () => {
+    const report = auditCompanyLinks({
+      companies: [],
+      sqlRows: [sql(56, 'Solo en SQL')],
+      subscriptions: [],
+    });
+    assert.equal(report.orphanSqlRows[0].activeStaff, null);
+    assert.equal(report.summary.sqlOnlyCompaniesWithUnknownStaff, 1);
+    assert.equal(report.summary.staffInSqlOnlyCompanies, 0);
+  });
+
+  // Las dos cifras no se suman: cada una dice por que SENTIDO esta roto el
+  // cruce, y juntarlas esconderia cual de los dos.
+  test('el personal de los dos lados se cuenta por separado', () => {
+    const report = auditCompanyLinks({
+      companies: [company('m1', 'Rota en Mongo', 3)],
+      sqlRows: [sql(56, 'Solo en SQL')],
+      subscriptions: [],
+      staffBySqlCompany: new Map([[56, 7]]),
+    });
+    assert.equal(report.summary.staffBehindBrokenLinks, 3);
+    assert.equal(report.summary.staffInSqlOnlyCompanies, 7);
   });
 
   test('sin compañias no revienta', () => {
