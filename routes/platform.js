@@ -27,7 +27,11 @@ const { validateJWT } = require("../middlewares/validate-jwt");
 const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { auditPlatformAccess } = require("../middlewares/auditPlatformAccess");
 const { requirePlatformConsole } = require("../middlewares/requirePlatformConsole");
-const { platformMe } = require("../controller/platform");
+const {
+  platformMe,
+  platformCompanies,
+  platformSummary,
+} = require("../controller/platform");
 
 const router = Router();
 
@@ -36,7 +40,12 @@ router.use(checkTokenVersion);
 router.use(auditPlatformAccess);
 router.use(requirePlatformConsole);
 
-// M1: solo esta. Las 20 de lectura y POST /exports son DC3 y cuelgan de aqui.
 router.get("/me", platformMe);
+
+// DC3, primera tanda. Estas dos y no otras porque son las que el dashboard
+// dijo que cablearia primero al apagar sus datos de muestra. Las demas cuelgan
+// de esta misma cadena, sin tocarla.
+router.get("/summary", platformSummary());
+router.get("/companies", platformCompanies());
 
 module.exports = router;
