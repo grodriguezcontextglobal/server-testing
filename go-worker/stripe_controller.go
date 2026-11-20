@@ -5,7 +5,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/joho/godotenv"
 	"github.com/stripe/stripe-go/v79"
 	"github.com/stripe/stripe-go/v79/paymentintent"
 )
@@ -18,13 +17,10 @@ type CheckStripePaymentIntentsResponse struct {
 	RequiresCapture []*stripe.PaymentIntent `json:"requires_capture"`
 }
 
+// InitStripe — el .env ya lo cargo LoadEnv() en main(). STRIPE_SECRET_KEY no
+// esta en requiredEnv a proposito: sin ella fallan los comandos de Stripe y
+// solo esos, asi que se comprueba aqui y el resto del worker sigue sirviendo.
 func InitStripe() error {
-	// Load .env file from parent directory (since worker is in ./go-worker)
-	if err := godotenv.Load("../.env"); err != nil {
-		// Fallback: try loading from current dir if running locally
-		_ = godotenv.Load(".env")
-	}
-
 	key := os.Getenv("STRIPE_SECRET_KEY")
 	if key == "" {
 		return fmt.Errorf("STRIPE_SECRET_KEY not set in environment")
