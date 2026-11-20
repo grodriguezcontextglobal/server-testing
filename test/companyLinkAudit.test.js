@@ -172,9 +172,11 @@ describe('auditCompanyLinks', () => {
     ]);
   });
 
-  // Sin dato no se inventa un cero: un cero en la columna tranquila es lo que
-  // hace que nadie vuelva a mirar.
-  test('sin dato de personal, una compañia solo-SQL queda como desconocida, no como cero', () => {
+  // LOS DOS LADOS DE LA MISMA MONEDA, y los dos se equivocaron una vez.
+  //
+  // Sin mapa, no se inventa un cero: un cero falso en la columna tranquila hace
+  // que nadie vuelva a mirar.
+  test('sin consultar el personal, una compañia solo-SQL queda como desconocida', () => {
     const report = auditCompanyLinks({
       companies: [],
       sqlRows: [sql(56, 'Solo en SQL')],
@@ -182,7 +184,35 @@ describe('auditCompanyLinks', () => {
     });
     assert.equal(report.orphanSqlRows[0].activeStaff, null);
     assert.equal(report.summary.sqlOnlyCompaniesWithUnknownStaff, 1);
-    assert.equal(report.summary.staffInSqlOnlyCompanies, 0);
+    assert.equal(report.summary.sqlCompaniesWithStaff, null);
+  });
+
+  // Y con el mapa, tampoco se inventa un "desconocido": ausente de un
+  // `GROUP BY ... WHERE is_active = 1` es CERO, que es un dato. Decir "no se
+  // sabe" de algo medido manda a alguien a mirar lo que ya estaba contestado.
+  test('con el personal consultado, no aparecer en el mapa es CERO, no desconocido', () => {
+    const report = auditCompanyLinks({
+      companies: [],
+      sqlRows: [sql(56, 'Solo en SQL')],
+      subscriptions: [],
+      staffBySqlCompany: new Map([[99, 3]]),
+    });
+    assert.equal(report.orphanSqlRows[0].activeStaff, 0);
+    assert.equal(report.summary.sqlOnlyCompaniesWithUnknownStaff, 0);
+  });
+
+  // Un mapa vacio sigue siendo una consulta hecha: ceros, no desconocidos. Y
+  // `sqlCompaniesWithStaff: 0` es lo que permite dudar de esos ceros si la
+  // tabla resulta estar vacia por otra razon.
+  test('un mapa vacio da ceros medidos, y lo señala', () => {
+    const report = auditCompanyLinks({
+      companies: [],
+      sqlRows: [sql(56, 'Solo en SQL')],
+      subscriptions: [],
+      staffBySqlCompany: new Map(),
+    });
+    assert.equal(report.orphanSqlRows[0].activeStaff, 0);
+    assert.equal(report.summary.sqlCompaniesWithStaff, 0);
   });
 
   // Las dos cifras no se suman: cada una dice por que SENTIDO esta roto el

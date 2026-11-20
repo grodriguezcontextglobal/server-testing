@@ -75,12 +75,20 @@ const REASONS = Object.freeze({
  * @param companies          [{_id, company_name, employees}]  de Mongo
  * @param sqlRows            [{company_id, company_name}]      de company_info
  * @param subscriptions      [{company, sql_company_id}]       de CompanySubscription
- * @param staffBySqlCompany  Map(company_id -> empleados activos) de company_staff.
- *                           Opcional: sin el, el personal de las compañias que
- *                           solo existen en SQL sale como `null` —desconocido—
- *                           y no como 0, que seria mentir en el lado tranquilo.
+ * @param staffBySqlCompany  Map(company_id -> empleados activos) de company_staff,
+ *                           o `null` si no se consulto.
+ *
+ *   LA DISTINCION ES EL MAPA MISMO, no si tiene la clave. Si se consulto, una
+ *   compañia que NO aparece en el `GROUP BY ... WHERE is_active = 1` tiene CERO
+ *   personal activo — eso es un dato, no una ausencia de dato. Solo cuando no
+ *   hay mapa el personal es desconocido.
+ *
+ *   La primera version trataba "sin clave" como desconocido y, con la consulta
+ *   hecha, imprimio `desconocido` para cinco compañias cuyo cero estaba
+ *   medido. Un "no se sabe" falso cuesta lo mismo que un cero falso: manda a
+ *   alguien a volver a mirar algo que ya estaba contestado.
  */
-function auditCompanyLinks({ companies, sqlRows, subscriptions, staffBySqlCompany = new Map() }) {
+function auditCompanyLinks({ companies, sqlRows, subscriptions, staffBySqlCompany = null }) {
   // Índice exacto: el MISMO cruce que hace resolveSqlCompanyId. Si un nombre
   // está repetido en SQL, se guardan los dos: `LIMIT 1` elige uno en silencio,
   // y eso es un hallazgo por si solo.
@@ -171,7 +179,9 @@ function auditCompanyLinks({ companies, sqlRows, subscriptions, staffBySqlCompan
     .map((r) => ({
       sqlCompanyId: Number(r.company_id),
       companyName: String(r.company_name ?? ''),
-      activeStaff: staffBySqlCompany.get(Number(r.company_id)) ?? null,
+      activeStaff: staffBySqlCompany
+        ? staffBySqlCompany.get(Number(r.company_id)) ?? 0
+        : null,
     }));
 
   const by = (reason) => findings.filter((f) => f.reason === reason);
@@ -201,6 +211,11 @@ function auditCompanyLinks({ companies, sqlRows, subscriptions, staffBySqlCompan
       staffBehindBrokenLinks: broken.reduce((n, f) => n + f.activeStaff, 0),
       staffInSqlOnlyCompanies: orphanSqlRows.reduce((n, r) => n + (r.activeStaff ?? 0), 0),
       sqlOnlyCompaniesWithUnknownStaff: orphanSqlRows.filter((r) => r.activeStaff === null).length,
+      // Cuantas compañias de SQL tienen ALGUN empleado activo. Esta aqui para
+      // que un 0 en la columna de personal se pueda distinguir de una consulta
+      // que no devolvio nada por otra razon —tabla vacia, columna renombrada—:
+      // si esto es 0 con 26 compañias, no te creas los ceros de arriba.
+      sqlCompaniesWithStaff: staffBySqlCompany ? staffBySqlCompany.size : null,
       cachedOrphans: findings.filter((f) => f.cachedOrphan).length,
     },
   };
@@ -255,11 +270,17 @@ async function main() {
       { metrica: 'id cacheado que ya no existe', valor: s.cachedOrphans },
       { metrica: 'PERSONAL ACTIVO en compañia rota (Mongo)', valor: s.staffBehindBrokenLinks },
       { metrica: 'PERSONAL ACTIVO en compañia solo-SQL', valor: s.staffInSqlOnlyCompanies },
+      { metrica: 'compañias SQL con algun empleado activo', valor: s.sqlCompaniesWithStaff ?? '-' },
     ]);
+    if (s.sqlCompaniesWithStaff === 0) {
+      console.log(
+        '  AVISO: ninguna compañia de SQL tiene empleados activos, lo cual no es\n' +
+          '  creible con 26 compañias. Mira company_staff antes de fiarte de los ceros.'
+      );
+    }
     if (s.sqlOnlyCompaniesWithUnknownStaff) {
       console.log(
-        `  (${s.sqlOnlyCompaniesWithUnknownStaff} compañia(s) solo-SQL sin dato de personal: ` +
-          'cuentan como desconocido, no como cero.)'
+        `  (${s.sqlOnlyCompaniesWithUnknownStaff} compañia(s) solo-SQL sin consultar: desconocido.)`
       );
     }
 
