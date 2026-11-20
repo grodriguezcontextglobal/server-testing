@@ -1,0 +1,182 @@
+'use strict';
+
+const test = require('node:test');
+const { describe } = require('node:test');
+const assert = require('node:assert/strict');
+
+const { auditCompanyLinks, fuzzyKey, REASONS } = require('../scripts/company-link-audit');
+
+// Las dos bases se enlazan por igualdad exacta del nombre de la compañia
+// (helpers/planLimits.js:123). Estos tests fijan QUE MIDE el script, que es lo
+// que va a decidir si el arreglo es de dos filas o una migracion.
+
+const company = (id, name, staff = 1) => ({
+  _id: id,
+  company_name: name,
+  employees: Array.from({ length: staff }, () => ({ active: true })),
+});
+
+const sql = (id, name) => ({ company_id: id, company_name: name });
+
+describe('auditCompanyLinks', () => {
+  test('un nombre identico en las dos bases resuelve', () => {
+    const report = auditCompanyLinks({
+      companies: [company('m1', 'Acme Corp')],
+      sqlRows: [sql(7, 'Acme Corp')],
+      subscriptions: [],
+    });
+    assert.equal(report.summary.ok, 1);
+    assert.equal(report.findings[0].sqlCompanyId, 7);
+  });
+
+  // EL LIMITE DE LA MEDICION, fijado a proposito. Un renombrado de verdad
+  // —"Acme Corp" pasa a llamarse "Acme Corporation"— es indistinguible de una
+  // compañia que nunca estuvo en SQL, y sale como `no_sql_row`. No se puede
+  // hacer mejor desde fuera: afinar la comparacion hasta que estos dos
+  // nombres casen es la misma pendiente que acaba emparejando a dos clientes
+  // distintos. Quien lea el informe tiene que saber que `no_sql_row` significa
+  // "no se puede saber", no "no existe".
+  test('un renombrado a un nombre distinto es indistinguible de no existir', () => {
+    const report = auditCompanyLinks({
+      companies: [company('m1', 'Acme Corporation')],
+      sqlRows: [sql(7, 'Acme Corp')],
+      subscriptions: [],
+    });
+    const found = report.findings[0];
+    assert.equal(found.reason, REASONS.NO_SQL_ROW);
+    assert.equal(found.sqlCompanyId, null);
+    assert.deepEqual(found.candidates, []);
+  });
+
+  test('una diferencia de acento, mayuscula o espacio tambien es name_differs', () => {
+    const report = auditCompanyLinks({
+      companies: [company('m1', '  Café  Múnich ')],
+      sqlRows: [sql(9, 'Cafe Munich')],
+      subscriptions: [],
+    });
+    assert.equal(report.findings[0].reason, REASONS.NAME_DIFFERS);
+    assert.deepEqual(report.findings[0].candidates, [{ id: 9, name: 'Cafe Munich' }]);
+  });
+
+  test('sin nada parecido en SQL es no_sql_row, no name_differs', () => {
+    const report = auditCompanyLinks({
+      companies: [company('m1', 'Acme Corp')],
+      sqlRows: [sql(7, 'Totally Different Ltd')],
+      subscriptions: [],
+    });
+    assert.equal(report.findings[0].reason, REASONS.NO_SQL_ROW);
+    assert.deepEqual(report.findings[0].candidates, []);
+  });
+
+  // `LIMIT 1` elige una de las dos sin decirlo, y puede ser la equivocada.
+  test('un nombre repetido en company_info es ambiguous, con las dos candidatas', () => {
+    const report = auditCompanyLinks({
+      companies: [company('m1', 'Acme Corp')],
+      sqlRows: [sql(7, 'Acme Corp'), sql(8, 'Acme Corp')],
+      subscriptions: [],
+    });
+    const found = report.findings[0];
+    assert.equal(found.reason, REASONS.AMBIGUOUS);
+    assert.equal(found.sqlCompanyId, null);
+    assert.equal(found.candidates.length, 2);
+  });
+
+  test('una compañia de Mongo sin nombre no se cuenta como fallo de cruce', () => {
+    const report = auditCompanyLinks({
+      companies: [{ _id: 'm1', company_name: '   ', employees: [] }],
+      sqlRows: [sql(7, 'Acme Corp')],
+      subscriptions: [],
+    });
+    assert.equal(report.findings[0].reason, REASONS.NO_NAME);
+  });
+
+  // La prioridad no la marca el numero de compañias rotas, la marca cuanta
+  // gente esta detras. Una rota sin personal es deuda; una con veinte es un
+  // incidente.
+  test('cuenta el personal activo que hay detras de cada cruce roto', () => {
+    const report = auditCompanyLinks({
+      companies: [
+        company('m1', 'Rota Grande', 20),
+        company('m2', 'Rota Vacia', 0),
+        company('m3', 'Sana', 5),
+      ],
+      sqlRows: [sql(1, 'Sana')],
+      subscriptions: [],
+    });
+    assert.equal(report.summary.ok, 1);
+    assert.equal(report.summary.staffBehindBrokenLinks, 20);
+  });
+
+  test('el personal inactivo no cuenta', () => {
+    const report = auditCompanyLinks({
+      companies: [
+        { _id: 'm1', company_name: 'Rota', employees: [{ active: true }, { active: false }] },
+      ],
+      sqlRows: [],
+      subscriptions: [],
+    });
+    assert.equal(report.summary.staffBehindBrokenLinks, 1);
+  });
+
+  // El id cacheado en CompanySubscription salva el cruce mientras la fila
+  // exista. Si apunta a una que ya no esta, es peor que no tenerlo: resuelve a
+  // algo que no existe en vez de fallar.
+  test('un id cacheado que ya no existe en SQL se señala', () => {
+    const report = auditCompanyLinks({
+      companies: [company('m1', 'Acme Corp')],
+      sqlRows: [sql(7, 'Acme Corp')],
+      subscriptions: [{ company: 'm1', sql_company_id: 999 }],
+    });
+    assert.equal(report.summary.cachedOrphans, 1);
+    assert.equal(report.findings[0].cachedSqlId, 999);
+    assert.equal(report.findings[0].cachedOrphan, true);
+  });
+
+  test('un id cacheado que sigue existiendo no se señala', () => {
+    const report = auditCompanyLinks({
+      companies: [company('m1', 'Acme Corp')],
+      sqlRows: [sql(7, 'Acme Corp')],
+      subscriptions: [{ company: 'm1', sql_company_id: 7 }],
+    });
+    assert.equal(report.summary.cachedOrphans, 0);
+  });
+
+  // El otro sentido del cruce (resolveMongoCompanyId): inventario y
+  // transacciones en SQL sin dueño en Mongo.
+  test('las filas de SQL que ningun nombre de Mongo alcanza se listan aparte', () => {
+    const report = auditCompanyLinks({
+      companies: [company('m1', 'Acme Corp')],
+      sqlRows: [sql(7, 'Acme Corp'), sql(8, 'Huerfana SL')],
+      subscriptions: [],
+    });
+    assert.equal(report.summary.orphanSqlRows, 1);
+    assert.deepEqual(report.orphanSqlRows, [{ sqlCompanyId: 8, companyName: 'Huerfana SL' }]);
+  });
+
+  test('sin compañias no revienta', () => {
+    const report = auditCompanyLinks({ companies: [], sqlRows: [], subscriptions: [] });
+    assert.equal(report.summary.mongoCompanies, 0);
+    assert.equal(report.summary.staffBehindBrokenLinks, 0);
+  });
+});
+
+describe('fuzzyKey', () => {
+  // Existe SOLO para explicar por que fallo un cruce. Que normalice mucho es
+  // deliberado: cuanto mas agrupa, mejor distingue "no esta" de "esta escrita
+  // de otra forma". Lo que NO puede es convertirse en la regla de
+  // emparejamiento, y por eso el script nunca devuelve un sqlCompanyId sacado
+  // de aqui — ningun test de arriba lo permite.
+  test('iguala acentos, mayusculas, puntuacion y espacios de mas', () => {
+    assert.equal(fuzzyKey('  Café  Múnich, S.L. '), fuzzyKey('cafe munich s l'));
+    assert.equal(fuzzyKey('Acme-Corp'), fuzzyKey('ACME CORP'));
+  });
+
+  test('no iguala nombres que de verdad son distintos', () => {
+    assert.notEqual(fuzzyKey('Acme Corp'), fuzzyKey('Acme Corporation'));
+  });
+
+  test('un nombre vacio da clave vacia', () => {
+    assert.equal(fuzzyKey('   '), '');
+    assert.equal(fuzzyKey(null), '');
+  });
+});
