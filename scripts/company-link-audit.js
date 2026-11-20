@@ -72,11 +72,23 @@ const REASONS = Object.freeze({
 /**
  * El núcleo, sin E/S para poder probarlo.
  *
- * @param companies      [{_id, company_name, employees}]  de Mongo
- * @param sqlRows        [{company_id, company_name}]      de company_info
- * @param subscriptions  [{company, sql_company_id}]       de CompanySubscription
+ * @param companies          [{_id, company_name, employees}]  de Mongo
+ * @param sqlRows            [{company_id, company_name}]      de company_info
+ * @param subscriptions      [{company, sql_company_id}]       de CompanySubscription
+ * @param staffBySqlCompany  Map(company_id -> empleados activos) de company_staff,
+ *                           o `null` si no se consulto.
+ *
+ *   LA DISTINCION ES EL MAPA MISMO, no si tiene la clave. Si se consulto, una
+ *   compañia que NO aparece en el `GROUP BY ... WHERE is_active = 1` tiene CERO
+ *   personal activo — eso es un dato, no una ausencia de dato. Solo cuando no
+ *   hay mapa el personal es desconocido.
+ *
+ *   La primera version trataba "sin clave" como desconocido y, con la consulta
+ *   hecha, imprimio `desconocido` para cinco compañias cuyo cero estaba
+ *   medido. Un "no se sabe" falso cuesta lo mismo que un cero falso: manda a
+ *   alguien a volver a mirar algo que ya estaba contestado.
  */
-function auditCompanyLinks({ companies, sqlRows, subscriptions }) {
+function auditCompanyLinks({ companies, sqlRows, subscriptions, staffBySqlCompany = null }) {
   // Índice exacto: el MISMO cruce que hace resolveSqlCompanyId. Si un nombre
   // está repetido en SQL, se guardan los dos: `LIMIT 1` elige uno en silencio,
   // y eso es un hallazgo por si solo.
@@ -154,10 +166,23 @@ function auditCompanyLinks({ companies, sqlRows, subscriptions }) {
   // El otro sentido: filas de SQL que ningun nombre de Mongo alcanza. Importan
   // porque resolveMongoCompanyId hace el cruce al reves, y porque una compañia
   // solo en SQL es inventario y transacciones sin dueño en Mongo.
+  //
+  // Y SU PERSONAL NO ESTA EN MONGO. Por definicion: no hay documento de
+  // compañia, asi que no hay `employees`. Su gente vive en `company_staff` de
+  // SQL, y es justo la que se queda fuera cuando el cruce SQL->Mongo falla. La
+  // primera version de este script contaba solo el personal de Mongo y por eso
+  // decia "0 personas afectadas" sin haber mirado a los unicos que podian
+  // estarlo. `staffBySqlCompany` lo trae; sin el, el numero es optimista.
   const mongoNames = new Set(companies.map((c) => String(c.company_name ?? '')));
   const orphanSqlRows = sqlRows
     .filter((r) => !mongoNames.has(String(r.company_name ?? '')))
-    .map((r) => ({ sqlCompanyId: Number(r.company_id), companyName: String(r.company_name ?? '') }));
+    .map((r) => ({
+      sqlCompanyId: Number(r.company_id),
+      companyName: String(r.company_name ?? ''),
+      activeStaff: staffBySqlCompany
+        ? staffBySqlCompany.get(Number(r.company_id)) ?? 0
+        : null,
+    }));
 
   const by = (reason) => findings.filter((f) => f.reason === reason);
   const broken = findings.filter((f) => f.reason !== REASONS.OK);
@@ -177,7 +202,20 @@ function auditCompanyLinks({ companies, sqlRows, subscriptions }) {
       // Lo que de verdad decide la prioridad: cuanta gente esta detras de un
       // cruce roto. Una compañia rota sin personal activo es deuda; una con
       // veinte personas es un incidente.
+      //
+      // SON DOS CIFRAS Y NO UNA, a proposito. La de Mongo cuenta a quien tiene
+      // compañia en Mongo que no resuelve hacia SQL; la de SQL cuenta a quien
+      // esta en una compañia que solo existe en SQL — que es el lado por el que
+      // falla el inicio de sesion, y el que la primera version de este script
+      // no miraba. Sumarlas escondria cual de los dos sentidos esta roto.
       staffBehindBrokenLinks: broken.reduce((n, f) => n + f.activeStaff, 0),
+      staffInSqlOnlyCompanies: orphanSqlRows.reduce((n, r) => n + (r.activeStaff ?? 0), 0),
+      sqlOnlyCompaniesWithUnknownStaff: orphanSqlRows.filter((r) => r.activeStaff === null).length,
+      // Cuantas compañias de SQL tienen ALGUN empleado activo. Esta aqui para
+      // que un 0 en la columna de personal se pueda distinguir de una consulta
+      // que no devolvio nada por otra razon —tabla vacia, columna renombrada—:
+      // si esto es 0 con 26 compañias, no te creas los ceros de arriba.
+      sqlCompaniesWithStaff: staffBySqlCompany ? staffBySqlCompany.size : null,
       cachedOrphans: findings.filter((f) => f.cachedOrphan).length,
     },
   };
@@ -202,7 +240,16 @@ async function main() {
       .select('company sql_company_id')
       .lean();
 
-    const report = auditCompanyLinks({ companies, sqlRows, subscriptions });
+    // El personal que SOLO existe en SQL. Mismo criterio de "activo" que usan
+    // los topes del plan (helpers/planLimits.js, COUNT_QUERIES.staff).
+    const [staffRows] = await pool.query(
+      'SELECT company_id, COUNT(*) AS n FROM company_staff WHERE is_active = 1 GROUP BY company_id'
+    );
+    const staffBySqlCompany = new Map(
+      staffRows.map((r) => [Number(r.company_id), Number(r.n ?? 0)])
+    );
+
+    const report = auditCompanyLinks({ companies, sqlRows, subscriptions, staffBySqlCompany });
 
     if (process.argv.includes('--json')) {
       console.log(JSON.stringify(report, null, 2));
@@ -221,8 +268,21 @@ async function main() {
       { metrica: 'sin nombre en Mongo', valor: s.noName },
       { metrica: 'filas SQL sin compañia en Mongo', valor: s.orphanSqlRows },
       { metrica: 'id cacheado que ya no existe', valor: s.cachedOrphans },
-      { metrica: 'PERSONAL ACTIVO tras un cruce roto', valor: s.staffBehindBrokenLinks },
+      { metrica: 'PERSONAL ACTIVO en compañia rota (Mongo)', valor: s.staffBehindBrokenLinks },
+      { metrica: 'PERSONAL ACTIVO en compañia solo-SQL', valor: s.staffInSqlOnlyCompanies },
+      { metrica: 'compañias SQL con algun empleado activo', valor: s.sqlCompaniesWithStaff ?? '-' },
     ]);
+    if (s.sqlCompaniesWithStaff === 0) {
+      console.log(
+        '  AVISO: ninguna compañia de SQL tiene empleados activos, lo cual no es\n' +
+          '  creible con 26 compañias. Mira company_staff antes de fiarte de los ceros.'
+      );
+    }
+    if (s.sqlOnlyCompaniesWithUnknownStaff) {
+      console.log(
+        `  (${s.sqlOnlyCompaniesWithUnknownStaff} compañia(s) solo-SQL sin consultar: desconocido.)`
+      );
+    }
 
     const broken = report.findings.filter((f) => f.reason !== REASONS.OK);
     if (broken.length) {
@@ -246,8 +306,19 @@ async function main() {
     }
 
     if (report.orphanSqlRows.length) {
-      console.log('Filas de company_info sin compañia en Mongo con ese nombre:\n');
-      console.table(report.orphanSqlRows.slice(0, 50));
+      console.log(
+        'Filas de company_info sin compañia en Mongo con ese nombre.\n' +
+          'Este es el sentido por el que falla el inicio de sesion: una cuenta cuya\n' +
+          'compañia SQL no tiene equivalente en Mongo no resuelve, y resolveMongoCompany\n' +
+          'se niega a adivinar. active_staff es cuanta gente hay detras de cada una.\n'
+      );
+      console.table(
+        report.orphanSqlRows.slice(0, 50).map((r) => ({
+          sql_company_id: r.sqlCompanyId,
+          company_name: r.companyName,
+          active_staff: r.activeStaff === null ? 'desconocido' : r.activeStaff,
+        }))
+      );
       if (report.orphanSqlRows.length > 50) {
         console.log(`  ... y ${report.orphanSqlRows.length - 50} mas (usa --json).`);
       }
