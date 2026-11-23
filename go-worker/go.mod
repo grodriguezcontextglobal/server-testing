@@ -5,7 +5,7 @@ go 1.26.11
 toolchain go1.27.4
 
 require (
-	github.com/go-sql-driver/mysql v1.10.1
+	github.com/go-sql-driver/mysql v1.10.2
 	github.com/joho/godotenv v1.5.1
 	github.com/stripe/stripe-go/v79 v79.12.0
 	go.mongodb.org/mongo-driver v1.17.10
