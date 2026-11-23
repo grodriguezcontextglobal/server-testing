@@ -61,6 +61,12 @@
   that ends OK or WARNINGS tags the deployed commit locally as
   deploy-node-<yyyyMMdd-HHmmss> (CM-3; see release-registry.ps1).
 
+  This script does NOT rebuild the Go worker, on purpose: worker.exe is a
+  compiled binary and does not use node_modules, so stopping it would be an
+  outage for nothing. It does WARN, at the start and again at the end, when
+  go-worker\ has changed since the last deploy-go-worker-* tag. Rebuilding is
+  scripts\restart-go-worker.ps1 and stays a separate, deliberate step.
+
 .PARAMETER PushTag
   Also push that tag to origin. A failed push is a warning, never a failure.
 
@@ -138,6 +144,54 @@ function Remove-Tree([string]$Path) {
     & cmd /c "rmdir /s /q `"$Path`"" 2>&1 | Out-Null
 }
 
+# Is the running worker.exe older than the Go sources in the repo?
+#
+# WHY THIS EXISTS. deploy-node.ps1 leaves DevitrakGoWorker running on purpose:
+# it is a compiled binary and does not use node_modules. The cost is that a
+# change under go-worker\ arrives in the repo on `git pull` and NEVER reaches
+# the running process until somebody remembers scripts\restart-go-worker.ps1.
+#
+# On 2026-11-19 that cost was measured: the binary had not been rebuilt since
+# PR #52, and three Go dependency updates that closed published
+# vulnerabilities (GO-2026-6859, GO-2026-6865, klauspost/compress) were in
+# go.mod and in no running process. Dependabot had reported them fixed the
+# moment the PR merged, which is the part that makes this invisible:
+# everything upstream says done.
+#
+# The comparison is against the newest deploy-go-worker-* tag, which
+# release-registry.ps1 writes on every successful Go build (CM-3). The names
+# carry a UTC timestamp, so sorting them as strings sorts them by date.
+#
+# This only ever WARNS. A stale worker is not a reason to refuse a Node
+# deploy: the two components ship separately on purpose, and failing here
+# would stop an unrelated fix from going out.
+function Get-StaleGoWorker([string]$RepoRoot) {
+    $tags = & git -C $RepoRoot tag --list 'deploy-go-worker-*' 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    if (-not $tags) {
+        return 'no deploy-go-worker-* tag exists: this repo has no record of the worker ever being built here.'
+    }
+    # @(...) is load-bearing. With exactly ONE tag, `git tag --list` returns a
+    # String and not an array, and [-1] on a String is its last CHARACTER:
+    # "deploy-go-worker-20261119-204240" would become "0", `git diff 0 HEAD`
+    # would exit 128, and this function would quietly decide there is nothing
+    # to warn about. One tag is precisely the state of a VM that has built the
+    # worker once, so without this the check would have been dead on arrival.
+    $last = @($tags | Sort-Object)[-1]
+
+    # --quiet exits 1 when there are differences. Any other exit code (a tag
+    # pointing at a commit this clone does not have, say) returns nothing
+    # rather than crying wolf.
+    & git -C $RepoRoot diff --quiet $last 'HEAD' -- 'go-worker/' 2>$null
+    $code = $LASTEXITCODE
+    if ($code -ne 1) { return $null }
+
+    $commits = & git -C $RepoRoot log --oneline "$last..HEAD" -- 'go-worker/' 2>$null
+    $count = 0
+    if ($commits) { $count = @($commits).Count }
+    return "go-worker\ changed in $count commit(s) since $last, and worker.exe is still the old build."
+}
+
 # ---------------------------------------------------------------- preflight ---
 
 $isAdmin = ([Security.Principal.WindowsPrincipal] `
@@ -152,6 +206,16 @@ Write-DeployLog "--- deploy-node.ps1 start (SkipInstall=$SkipInstall) ---"
 
 if (-not (Test-Path (Join-Path $repoRoot 'package-lock.json'))) {
     Fail "package-lock.json not found in $repoRoot"
+}
+
+# Checked here, before anything is stopped, and said again at the end: the
+# middle of a deploy is where a warning goes to be scrolled past.
+$staleGoWorker = Get-StaleGoWorker $repoRoot
+if ($staleGoWorker) {
+    Write-Host "    WARNING: the Go worker is out of date" -ForegroundColor Yellow
+    Write-Host "      $staleGoWorker" -ForegroundColor Yellow
+    Write-Host "      This deploy does NOT rebuild it. Run: powershell -ExecutionPolicy Bypass -File scripts\restart-go-worker.ps1" -ForegroundColor Yellow
+    Write-DeployLog "stale go worker: $staleGoWorker"
 }
 
 # The C: drive on this box runs close to full, and an install that runs out of
@@ -224,6 +288,9 @@ foreach ($svc in $services) {
     Write-Host "    $svc stopped"
 }
 Write-Host "    DevitrakGoWorker left running on purpose (compiled binary, does not use node_modules)"
+if ($staleGoWorker) {
+    Write-Host "    ...and that is exactly why the warning above matters." -ForegroundColor Yellow
+}
 
 if (-not $SkipInstall) {
 
@@ -389,10 +456,25 @@ if ($statuses -join ' ' -match 'SERVICE_STOPPED|SERVICE_PAUSED') {
     Write-ReleaseRecord -RepoRoot $repoRoot -Component 'node' -Result 'WARNINGS' -Mode $deployMode `
         -Note "a service is not running: $($statuses -join '  ')" -PushTag:$PushTag
     Write-Host "==> Finished, but a service is not running (see above)." -ForegroundColor Yellow
+    if ($staleGoWorker) {
+        Write-Host "==> STILL PENDING: the Go worker was NOT rebuilt by this deploy." -ForegroundColor Yellow
+        Write-Host "    $staleGoWorker" -ForegroundColor Yellow
+        Write-Host "    powershell -ExecutionPolicy Bypass -File scripts\restart-go-worker.ps1" -ForegroundColor Yellow
+    }
     Write-DeployLog "--- deploy-node.ps1 end: WARNINGS ---"
     exit 1
 }
 
 Write-ReleaseRecord -RepoRoot $repoRoot -Component 'node' -Result 'OK' -Mode $deployMode -PushTag:$PushTag
 Write-Host "==> Done: dependencies installed and the API is answering." -ForegroundColor Green
+
+# Last, because this is the line that is still on screen when the deploy ends.
+# Node being healthy is exactly when somebody closes the window.
+if ($staleGoWorker) {
+    Write-Host ""
+    Write-Host "==> STILL PENDING: the Go worker was NOT rebuilt by this deploy." -ForegroundColor Yellow
+    Write-Host "    $staleGoWorker" -ForegroundColor Yellow
+    Write-Host "    powershell -ExecutionPolicy Bypass -File scripts\restart-go-worker.ps1" -ForegroundColor Yellow
+}
+
 Write-DeployLog "--- deploy-node.ps1 end: OK ---"
