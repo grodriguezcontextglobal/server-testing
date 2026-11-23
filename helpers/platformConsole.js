@@ -94,10 +94,20 @@ const rangeDays = (value) => RANGES[readRange(value)];
  * El orden importa. Una suscripcion cancelada manda sobre todo lo demas: una
  * compañia pausada con dispositivos vencidos sigue estando pausada, y pintarla
  * "en riesgo" invitaria a perseguir a un cliente que ya se fue.
+ *
+ * `incomplete` e `incomplete_expired` se parecen y NO son lo mismo, por eso
+ * estan en lineas distintas. `incomplete` es el primer cobro que aun no ha
+ * cuajado: hay ~23 h para salvarlo, asi que es `at_risk` y alguien deberia
+ * llamar. `incomplete_expired` es esa ventana ya cerrada: la suscripcion no
+ * llego a arrancar nunca y no se puede revivir, que es un final, no un aviso.
+ * Lo encontro el dashboard el 2026-11-20 revisando esta regla: sin nombrarlo,
+ * caia al `return 'active'` del fondo y un cliente que jamas pago salia sano —
+ * justo el fallo que este orden existe para evitar.
  */
 const companyStatus = ({ subscriptionStatus, devicesOverdue } = {}) => {
   const status = String(subscriptionStatus || '').toLowerCase();
   if (status === 'canceled' || status === 'cancelled' || status === 'unpaid') return 'paused';
+  if (status === 'incomplete_expired') return 'paused';
   if (status === 'trialing') return 'trial';
   if (status === 'past_due' || status === 'incomplete') return 'at_risk';
   if (Number(devicesOverdue) > 0) return 'at_risk';
