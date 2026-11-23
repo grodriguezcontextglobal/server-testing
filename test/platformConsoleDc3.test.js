@@ -69,6 +69,40 @@ describe('estado de un cliente', () => {
   test('cancelled con dos eles tambien', () => {
     assert.equal(companyStatus({ subscriptionStatus: 'cancelled' }), 'paused');
   });
+
+  // LOS DOS "incomplete" DE STRIPE, que se parecen y no son lo mismo.
+  // `incomplete` es el primer cobro aun sin cuajar: queda ventana, alguien
+  // deberia llamar. `incomplete_expired` es esa ventana ya cerrada.
+  test('incomplete es en riesgo: todavia se puede salvar', () => {
+    assert.equal(companyStatus({ subscriptionStatus: 'incomplete' }), 'at_risk');
+  });
+
+  // EL HUECO QUE ENCONTRO EL DASHBOARD (2026-11-20). Sin nombrarlo caia al
+  // `active` del fondo: un cliente que nunca llego a pagar salia sano.
+  test('incomplete_expired es pausada, no activa', () => {
+    assert.equal(
+      companyStatus({ subscriptionStatus: 'incomplete_expired' }),
+      'paused'
+    );
+  });
+
+  // Y manda sobre los vencidos, por la misma razon que `canceled`: la
+  // suscripcion no puede revivir, asi que no hay a quien perseguir.
+  test('incomplete_expired manda sobre los vencidos', () => {
+    assert.equal(
+      companyStatus({ subscriptionStatus: 'incomplete_expired', devicesOverdue: 4 }),
+      'paused'
+    );
+  });
+
+  // El orden de las dos lineas es load-bearing solo si alguna pasa a comparar
+  // por prefijo. Hoy las dos son igualdad exacta, y este test lo fija.
+  test('incomplete_expired no se cuela por la rama de incomplete', () => {
+    assert.notEqual(
+      companyStatus({ subscriptionStatus: 'incomplete_expired' }),
+      companyStatus({ subscriptionStatus: 'incomplete' })
+    );
+  });
 });
 
 describe('fila de cliente', () => {
