@@ -261,6 +261,11 @@ const configureRoutes = (app) => {
   // mundo, que es el estado en el que se despliega a propósito.
   app.use("/api/platform", require("./routes/platform"));
 
+  // Asistente de staff: solo lectura, catálogo cerrado, sin servicios externos.
+  // Espacio de nombres propio a propósito — ver la cabecera de
+  // routes/assistant.js.
+  app.use("/api/assistant", require("./routes/assistant"));
+
   app.use("/api", require("./routes/status"));
 
   // Vista agregada del CLUSTER, no de este proceso: sale de Redis, donde los
