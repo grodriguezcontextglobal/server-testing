@@ -55,6 +55,58 @@ test('cors: el origin del console de plataforma esta permitido', () => {
   assert.ok(ACCEPTED_ORIGINS.includes('https://admin.devitrak.net'));
 });
 
+// ───────────────────────────── cabeceras de respuesta legibles ──────────────
+//
+// El otro extremo del contrato: no basta con que el servidor MANDE una
+// cabecera, el navegador solo deja leer siete sin permiso explicito. Las del
+// limitador llevaban desde siempre en el cable y ninguna llegaba al dashboard
+// (medido el 2026-11-24). Ver el comentario de `exposedHeaders` en config/cors.js.
+const EXPOSED_RATE_LIMIT_HEADERS = [
+  'ratelimit-limit',
+  'ratelimit-remaining',
+  'ratelimit-reset',
+  'ratelimit-policy',
+  'retry-after',
+];
+
+test('cors: las cabeceras del limitador son legibles por el navegador', () => {
+  assert.ok(
+    Array.isArray(corsOptions.exposedHeaders),
+    'corsOptions.exposedHeaders no existe: el navegador no puede leer NINGUNA cabecera nuestra',
+  );
+  const exposed = corsOptions.exposedHeaders.map((h) => h.toLowerCase());
+  for (const h of EXPOSED_RATE_LIMIT_HEADERS) {
+    assert.ok(
+      exposed.includes(h),
+      `Falta "${h}" en corsOptions.exposedHeaders → el cliente recibe el 429 sin saber cuando reintentar`,
+    );
+  }
+});
+
+// Y el tripwire que de verdad importa: exponer cabeceras que nadie emite no
+// sirve de nada, y emitirlas sin exponerlas es el fallo que acabamos de
+// arreglar. Los dos limitadores tienen que seguir escribiendo el estandar
+// (`RateLimit-*`) y no el formato viejo (`X-RateLimit-*`), que no esta en la
+// lista de arriba y volveria a dejar al navegador a ciegas, en silencio.
+const fs = require('node:fs');
+const path = require('node:path');
+
+for (const file of ['index.js', 'routes/assistant.js']) {
+  test(`cors: el limitador de ${file} emite cabeceras estandar, que son las expuestas`, () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+    assert.match(
+      source,
+      /standardHeaders:\s*true/,
+      `${file} dejo de emitir RateLimit-* → lo que config/cors.js expone ya no existe`,
+    );
+    assert.doesNotMatch(
+      source,
+      /legacyHeaders:\s*true/,
+      `${file} volvio a X-RateLimit-* → no esta en exposedHeaders y el navegador no lo vera`,
+    );
+  });
+}
+
 test('cors: un origin no listado es rechazado', () => {
   let errored = false;
   corsOptions.origin('http://evil.example.com', (err) => { errored = !!err; });

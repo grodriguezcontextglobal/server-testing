@@ -83,6 +83,45 @@ const corsOptions = {
         // "Set-Cookie",
         // "credentials"
     ],
+    /**
+     * CABECERAS DE RESPUESTA QUE EL NAVEGADOR PUEDE LEER.
+     *
+     * CORS deja ver solo siete cabeceras de respuesta sin permiso explicito
+     * (Cache-Control, Content-Language, Content-Length, Content-Type, Expires,
+     * Last-Modified, Pragma). Cualquier otra existe en el cable y es invisible
+     * para el JavaScript que la recibe, salvo que el servidor la nombre aqui.
+     *
+     * Las del limite de peticiones las venimos mandando desde siempre
+     * (`standardHeaders: true` en el limitador global de index.js y en el del
+     * asistente), y en ninguno de los dos casos las podia leer nadie: el
+     * dashboard vive en admin.devitrak.net y la API en db.devitrak.net, asi que
+     * TODA llamada es cross-origin. Lo encontro el agente del dashboard el
+     * 2026-11-24 midiendo con curl —que no aplica CORS y por eso las veia— y
+     * comparandolo con lo que le llegaba al navegador.
+     *
+     * Lo que costaba: el cliente sabe que le han limitado, pero no cuando puede
+     * volver a intentarlo, asi que tiene que escribir "prueba en un rato" — que
+     * es justo la frase que hace que la gente lo reintente de inmediato. El
+     * segundo que calculamos no llegaba a la persona que lo estaba esperando.
+     *
+     * Es global a proposito y no un caso especial de /api/assistant: el limite
+     * de 300/15 min afecta a todas las rutas y era igual de ilegible.
+     */
+    exposedHeaders: [
+        // Borradores 6 y 7 del estandar: es lo que escribe express-rate-limit
+        // con `standardHeaders: true`, que es como estan los dos limitadores.
+        "RateLimit-Limit",
+        "RateLimit-Remaining",
+        "RateLimit-Reset",
+        "RateLimit-Policy",
+        // Borrador 8: una sola cabecera combinada. Hoy no se emite; nombrarla
+        // ahora evita que el dia que el limitador pase a `draft-8` el sintoma
+        // reaparezca en silencio y haya que volver a medirlo desde fuera.
+        "RateLimit",
+        // La manda express-rate-limit en el 429, y es la forma mas directa de
+        // las dos de decir cuanto falta.
+        "Retry-After"
+    ],
     credentials: true,
     maxAge: 84600,
     optionsSuccessStatus: 200
