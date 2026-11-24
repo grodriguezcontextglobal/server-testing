@@ -31,6 +31,11 @@ const ACTIVITY_ACTIONS = [
   'WAIVE',
   'IMPORT',
   'EXPORT',
+  // Una lectura registrada. La escribe middlewares/auditPiiAccess.js desde el
+  // 2026-10 (GET/POST de consulta sobre datos personales) y, desde el
+  // 2026-11-24, el asistente de staff. Faltaba aqui: esas filas existian y no
+  // eran seleccionables en el filtro del informe.
+  'READ',
   // Audit trail del servidor (constants/auditedRoutes.js), 2026-10-05.
   'RESERVE',
   'RELEASE',
@@ -116,6 +121,12 @@ const ACTIVITY_TARGET_MODELS = [
   'Task',
   'Cache',
   'StripeAccount',
+  // Asistente de staff (controller/assistant.js), 2026-11-24. `ActivityLog` es
+  // el propio registro cuando alguien pregunta por la actividad reciente;
+  // `Assistant` solo para la pregunta que el catalogo no cubre, donde no hay
+  // recurso que nombrar porque no se leyo ninguno.
+  'ActivityLog',
+  'Assistant',
 ];
 
 module.exports = { ACTIVITY_ACTIONS, ACTIVITY_TARGET_MODELS };
