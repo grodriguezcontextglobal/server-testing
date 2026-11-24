@@ -206,9 +206,15 @@ const resolvers = {
     if (!identity.mongoId) return unknownCompany('la actividad');
     const days = RANGE_DAYS[params.range] || 30;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const rows = await d.StaffActivityLog.find({ company_id: identity.mongoId, createdAt: { $gte: since } })
-      .select('summary actor createdAt')
-      .sort({ createdAt: -1 })
+    // El campo es `timestamp`, NO `createdAt`. StaffActivityLog no declara
+    // `timestamps: true` y define su propia fecha (models/StaffActivityLog.js).
+    // Preguntar por `createdAt` no da error: no casa con ningun documento, asi
+    // que la respuesta era siempre "no hay actividad" con count 0 — un silencio
+    // redactado en una frase, que es justo lo que se lee como un dato. El resto
+    // del repo ya lo hacia bien (controller/staffActivityLog.js:202).
+    const rows = await d.StaffActivityLog.find({ company_id: identity.mongoId, timestamp: { $gte: since } })
+      .select('summary actor timestamp')
+      .sort({ timestamp: -1 })
       .limit(params.limit)
       .lean();
     return {
@@ -218,7 +224,7 @@ const resolvers = {
         activity: rows.map((r) => ({
           summary: r.summary || null,
           actor: r?.actor?.name || r?.actor?.email || null,
-          at: iso(r.createdAt),
+          at: iso(r.timestamp),
         })),
       },
       answer:
@@ -241,6 +247,23 @@ const unknownCompany = (what) => ({
 // ───────────────────────────────────────────────────────── auditoria ─────────
 
 /**
+ * SOBRE QUE se leyo, con los nombres de constants/activityVocabulary.js. Es lo
+ * que va a `target_model`, que es obligatorio en el esquema.
+ *
+ * Se mapea el RECURSO y no el asistente: la fila de auditoria contesta "quien
+ * leyo que", y "que" es el inventario o los eventos, no la herramienta con la
+ * que se miraron. Que fue el asistente ya lo dice `display.source`, y cual fue
+ * la pregunta exacta `display.question_id`.
+ */
+const TARGET_MODEL_BY_RESOURCE = {
+  inventory: 'Inventory',
+  events: 'Event',
+  staff: 'Staff',
+  subscription: 'Subscription',
+  activity: 'ActivityLog',
+};
+
+/**
  * La fila de auditoria se escribe ANTES de responder y SIN encolar.
  *
  * Es la misma regla que el console de plataforma (helpers/platformAuditLog.js):
@@ -250,12 +273,23 @@ const unknownCompany = (what) => ({
  *
  * Se guarda QUE se pregunto y QUE se leyo, nunca el resultado. Es un registro de
  * acceso, no una copia de los datos.
+ *
+ * `action` y `target_model` SON OBLIGATORIOS en el esquema y aqui faltaban, asi
+ * que `create()` lanzaba y —siendo esto fail-closed y previo a responder— cada
+ * pregunta terminaba en 500. No lo cogio ningun test porque los 25 inyectan un
+ * modelo falso cuyo `create` acepta cualquier cosa: probaban que la fila SE
+ * ESCRIBE, no que sea VALIDA. Ya nos habia pasado con FORCE_LOGOUT, que dejo 6
+ * jobs en dead-letter por lo mismo (controller/admin.js:1662). El test que
+ * faltaba valida contra el esquema de verdad, no contra el doble.
  */
 async function writeAuditRow(d, { request, identity, choice, question, outcome }) {
   await d.StaffActivityLog.create({
     staff_member_id: request.uid || null,
     actor_type: 'staff',
     actor: { name: request.name || null, email: request.email || null },
+    // Una lectura. Lo escriben ya otras rutas (middlewares/auditPiiAccess.js).
+    action: 'READ',
+    target_model: (question && TARGET_MODEL_BY_RESOURCE[question.resource]) || 'Assistant',
     summary: `Asistente: ${question ? question.label : 'pregunta fuera del catalogo'}`,
     target_label: choice.question_id,
     display: {
@@ -370,4 +404,12 @@ const assistantAsk = (deps) => async (request, response) => {
 const assistantCatalog = async (_request, response) =>
   response.status(200).json({ ok: true, data: catalogOffer() });
 
-module.exports = { assistantAsk, assistantCatalog, resolveCompanyIdentity, resolvers };
+module.exports = {
+  assistantAsk,
+  assistantCatalog,
+  resolveCompanyIdentity,
+  resolvers,
+  // Se exporta para el test: una entrada nueva del catalogo con un recurso que
+  // no este aqui tiene que fallar en el test y no en produccion.
+  TARGET_MODEL_BY_RESOURCE,
+};

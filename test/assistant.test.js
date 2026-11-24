@@ -328,3 +328,100 @@ test('una pregunta demasiado larga se rechaza antes de tocar nada', async () => 
   assert.equal(queries.length, 0);
   assert.equal(audit.length, 0);
 });
+
+// ───────────────── la fila de auditoria contra el ESQUEMA DE VERDAD ─────────
+//
+// Por que estos tests existen: todos los de arriba inyectan un StaffActivityLog
+// falso cuyo `create` acepta cualquier objeto. Probaban que la fila SE ESCRIBE,
+// no que sea VALIDA — y le faltaban `action` y `target_model`, los dos
+// obligatorios. Como la escritura es fail-closed y va antes de responder, el
+// endpoint devolvia 500 en TODAS las preguntas. Lo mismo dejo 6 jobs
+// FORCE_LOGOUT en dead-letter en su dia (controller/admin.js:1662).
+//
+// La unica forma de que un doble no vuelva a tapar esto es validar lo que sale
+// del controlador contra el modelo real. Mongoose valida en memoria: no hace
+// falta conexion, ni .env, ni red.
+
+const StaffActivityLogModel = require('../models/StaffActivityLog');
+const { ACTIVITY_ACTIONS, ACTIVITY_TARGET_MODELS } = require('../constants/activityVocabulary');
+const { TARGET_MODEL_BY_RESOURCE } = require('../controller/assistant');
+const { questionById: buscaPregunta } = require('../helpers/assistantCatalog');
+
+const PREGUNTAS = [
+  ['cuántos equipos tengo', 'Inventory'],
+  ['cuántos equipos tengo fuera', 'Inventory'],
+  ['cuánto dinero facturé el mes pasado', 'Assistant'], // fuera del catálogo
+];
+
+for (const [pregunta, targetModel] of PREGUNTAS) {
+  test(`auditoría: la fila de "${pregunta}" pasa el esquema real`, async () => {
+    const { audit } = await ask(pregunta);
+    assert.equal(audit.length, 1, 'no se escribió fila de auditoría');
+
+    const error = new StaffActivityLogModel(audit[0]).validateSync();
+    assert.equal(
+      error,
+      undefined,
+      `la fila NO es válida -> create() lanza -> 500 en cada pregunta. Campos: ${
+        error && Object.keys(error.errors).join(', ')
+      }`
+    );
+    assert.equal(audit[0].action, 'READ');
+    assert.equal(audit[0].target_model, targetModel);
+  });
+}
+
+test('auditoría: el verbo y los modelos están en el vocabulario publicado', () => {
+  // No es una puerta —el vocabulario nunca descarta un registro— pero una fila
+  // que el filtro del informe no puede pedir es una fila que nadie va a leer.
+  assert.ok(ACTIVITY_ACTIONS.includes('READ'), 'READ no está en ACTIVITY_ACTIONS');
+  for (const model of [...Object.values(TARGET_MODEL_BY_RESOURCE), 'Assistant']) {
+    assert.ok(ACTIVITY_TARGET_MODELS.includes(model), `${model} no está en ACTIVITY_TARGET_MODELS`);
+  }
+});
+
+test('auditoría: TODO recurso del catálogo tiene un target_model', () => {
+  // Una entrada nueva del catálogo con un recurso sin mapear caería al
+  // 'Assistant' de respaldo y perdería en silencio sobre qué se leyó.
+  for (const { id } of catalogOffer()) {
+    const { resource } = buscaPregunta(id);
+    assert.ok(
+      TARGET_MODEL_BY_RESOURCE[resource],
+      `el recurso "${resource}" (${id}) no tiene target_model`
+    );
+  }
+});
+
+// ───────────── las consultas solo usan campos que existen en el esquema ─────
+//
+// `company_activity_recent` filtraba y ordenaba por `createdAt`, que no existe:
+// StaffActivityLog no declara `timestamps: true` y tiene su propio `timestamp`.
+// Mongo no se queja de un campo inexistente, simplemente no casa, asi que la
+// respuesta era siempre "no hay actividad" con count 0 — un silencio redactado
+// en una frase, que se lee igual que un dato.
+
+test('actividad: el filtro usa campos que existen en StaffActivityLog', async () => {
+  let filtro = null;
+  const cadena = {
+    select: () => cadena,
+    sort: () => cadena,
+    limit: () => cadena,
+    lean: async () => [],
+  };
+  await ask('actividad reciente del staff', {
+    StaffActivityLog: {
+      create: async (row) => row,
+      find: (f) => ((filtro = f), cadena),
+    },
+  });
+
+  assert.ok(filtro, 'no se llegó a consultar StaffActivityLog');
+  const paths = Object.keys(StaffActivityLogModel.schema.paths);
+  for (const campo of Object.keys(filtro)) {
+    assert.ok(
+      paths.includes(campo),
+      `el filtro usa "${campo}", que no es un campo de StaffActivityLog -> no casa con nada y la respuesta sería siempre cero`
+    );
+  }
+  assert.ok(filtro.timestamp, 'el filtro ya no acota por fecha');
+});
