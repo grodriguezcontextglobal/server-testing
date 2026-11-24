@@ -284,9 +284,34 @@ const assistantAsk = (deps) => async (request, response) => {
       return response.status(400).json({ ok: false, msg: lengthCheck.msg });
     }
 
-    // La compañia y el alcance salen de aqui, no del cuerpo. Devuelve 400/401/403
-    // ya redactados; se reenvian tal cual para no inventar un vocabulario nuevo.
-    const context = await d.resolveCompanyContextFn(request);
+    // La compañia y el alcance salen de aqui. Devuelve 400/401/403 ya
+    // redactados; se reenvian tal cual para no inventar un vocabulario nuevo.
+    //
+    // SE LE PASA UNA VISTA DE LA PETICION CON EL CUERPO Y LA QUERY VACIOS, no la
+    // peticion entera. `resolveCompanyContext` acepta `body.company_id` y
+    // `query.company_id` como ultimo recurso cuando falta la cabecera. En las
+    // rutas de siempre eso esta bien —la membresia se comprueba igual, asi que
+    // ese valor solo puede ELEGIR entre compañias a las que ya perteneces, no
+    // afirmar una—, pero aqui sobra y estorba, por dos razones.
+    //
+    // Exactitud: "la identidad no sale del cuerpo" tiene que ser cierto porque
+    // el cuerpo no se mira, y no porque la cabecera suela ganar. Un contrato que
+    // depende de un orden de precedencia se rompe el dia que alguien reordena
+    // tres lineas, y se rompe en silencio.
+    //
+    // Y un caso concreto que ya existe: el dashboard manda `company_id` como
+    // OBJETO (`{nosql, sql}`). Sin cabecera, ese objeto acabaria de parametro en
+    // una consulta SQL. Un 400 diciendo que falta la cabecera es mejor
+    // respuesta que averiguar que hace mysql2 con un objeto.
+    const identityRequest = {
+      header: (name) =>
+        typeof request.header === 'function' ? request.header(name) : request.headers?.[name],
+      headers: request.headers,
+      sqlStaffId: request.sqlStaffId,
+      body: {},
+      query: {},
+    };
+    const context = await d.resolveCompanyContextFn(identityRequest);
     if (!context.ok) {
       return response.status(context.status).json({ ok: false, msg: context.msg });
     }

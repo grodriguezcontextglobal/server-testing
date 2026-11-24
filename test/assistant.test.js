@@ -229,6 +229,35 @@ test('EL ALCANCE VIAJA DENTRO DE LA CONSULTA: rol scoped por categoría', async 
   assert.deepEqual(inventario.params, [12, 'Audio']);
 });
 
+test('resolveCompanyContext recibe el cuerpo VACÍO: la compañía solo sale de la cabecera', async () => {
+  // No basta con que la cabecera gane por precedencia: el cuerpo no se mira.
+  // El dashboard manda hoy company_id como OBJETO, y sin esto ese objeto
+  // acabaría de parámetro en una consulta el día que falte la cabecera.
+  let visto = null;
+  await ask(
+    'cuántos equipos tengo',
+    {
+      resolveCompanyContextFn: async (req) => {
+        visto = req;
+        return {
+          ok: true,
+          companyId: 12,
+          access: { role_level: 1, role_type: 'admin', scoped: false, locations: [], categories: [], categoryNames: [] },
+        };
+      },
+    },
+    {
+      body: { question: 'cuántos equipos tengo', company_id: { sql: 999, nosql: 'otra' } },
+      headers: { 's-company-lq': '12' },
+      sqlStaffId: 34,
+    }
+  );
+  assert.deepEqual(visto.body, {}, 'el cuerpo llegó a resolveCompanyContext');
+  assert.deepEqual(visto.query, {}, 'la query llegó a resolveCompanyContext');
+  assert.equal(visto.header('s-company-lq'), '12', 'la cabecera sí tiene que pasar');
+  assert.equal(visto.sqlStaffId, 34, 'la identidad firmada tiene que pasar');
+});
+
 test('un rol scoped SIN asignaciones consulta 1=0, no el inventario entero', async () => {
   const { queries } = await ask('cuántos equipos tengo', {
     resolveCompanyContextFn: async () => ({
