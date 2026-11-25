@@ -41,6 +41,7 @@ const {
 
 const StaffActivityLogModel = require('../models/StaffActivityLog');
 const CompanyModel = require('../models/Company');
+const EventModel = require('../models/Event');
 
 const makeResponse = () => {
   const response = { statusCode: 200, body: null };
@@ -339,6 +340,16 @@ describe('GET /api/platform/events', () => {
     assert.equal(capture.filter.company, undefined);
   });
 
+  // La coleccion `Event` guarda mas de una cosa y `type` llega del cuerpo de
+  // la peticion. Sin este filtro la lista devuelve de mas y Mongo no se queja.
+  test('solo type=event, en la lista y en los dos contadores', async () => {
+    const capture = {};
+    await platformEvents(deps(capture))({ query: {} }, makeResponse());
+    assert.equal(capture.filter.type, 'event');
+    assert.ok(capture.counts.length >= 2, 'total y live');
+    for (const f of capture.counts) assert.equal(f.type, 'event');
+  });
+
   test('status=closed filtra los terminados', async () => {
     const capture = {};
     await platformEvents(deps(capture))({ query: { status: 'closed' } }, makeResponse());
@@ -447,6 +458,20 @@ describe('GET /api/platform/companies/:id', () => {
     assert.equal(response.body.data.membersCount, null);
   });
 
+  // `eventsActive` es el mismo numero que la pestaña de eventos del cliente:
+  // si uno acota por type y el otro no, dos pantallas dicen cifras distintas.
+  test('eventsActive cuenta solo type=event', async () => {
+    const capture = {};
+    const spy = {
+      ...deps,
+      Event: { countDocuments: async (f) => { capture.filter = f; return 2; } },
+    };
+    await platformCompanyDetail(spy)({ params: { id: 'mongoA' }, query: {} }, makeResponse());
+    assert.equal(capture.filter.type, 'event');
+    assert.equal(capture.filter.active, true);
+    assert.equal(capture.filter.company_id, 'mongoA');
+  });
+
   test('un id que no existe es 404, no una ficha vacia', async () => {
     const response = makeResponse();
     await platformCompanyDetail(deps)({ params: { id: 'noexiste' }, query: {} }, response);
@@ -486,6 +511,33 @@ describe('los campos que se consultan existen en el esquema', () => {
       /\$createdAt|createdAt:\s*-?1|createdAt:\s*\{/,
       'StaffActivityLog no tiene createdAt: filtrar u ordenar por ahi devuelve cero sin error'
     );
+  });
+
+  // `type` existe en el esquema con default 'event', pero el unico punto de
+  // escritura es `new Event(request.body)`: el valor lo pone el cliente. Si el
+  // campo desapareciera del esquema, acotar por el devolveria cero en silencio
+  // —el mismo fallo que `$createdAt`— y este test avisaria antes.
+  test('Event declara `type`', () => {
+    assert.ok(Object.keys(EventModel.schema.paths).includes('type'));
+  });
+
+  // Toda consulta a Event desde el console tiene que acotar por type. Sin el
+  // filtro la respuesta sale de mas, que en una lista paginada no se ve.
+  test('ninguna consulta a Event se deja el filtro de tipo', () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const source = fs.readFileSync(path.join(__dirname, '..', 'controller', 'platform.js'), 'utf8');
+    const calls = source.match(/d\.Event\.(countDocuments|find)\(([^;]*?)\)/gs) || [];
+    assert.ok(calls.length >= 3, 'se esperaban al menos tres consultas a Event');
+    for (const call of calls) {
+      assert.match(
+        call,
+        // O nombra EVENT_TYPE, o reusa el `filter` que ya lo lleva (los tests
+        // de arriba comprueban que ese objeto se construye con el tipo).
+        /EVENT_TYPE|filter\)|\.\.\.filter/,
+        `consulta a Event sin acotar por type: ${call.replace(/\s+/g, ' ').slice(0, 90)}`
+      );
+    }
   });
 
   test('companyDetailBody no inventa un importe', () => {
