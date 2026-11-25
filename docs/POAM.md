@@ -1,7 +1,7 @@
 # POA&M: plan de acción e hitos
 
 > **Sistema:** Devitrak (API Node + Go worker + dashboard y app web), alojado en IT Masters Ltd.
-> **Fecha de estado:** 2026-11-16 · **Responsable (POC):** Gustavo Rodriguez
+> **Fecha de estado:** 2026-11-16 · **Revisado:** 2026-11-25 · **Responsable (POC):** Gustavo Rodriguez
 > **Alcance:** infraestructura del proveedor, VMs de producción y aplicación.
 > Las vulnerabilidades de dependencias de terceros van aparte, en
 > [`POAM_dependencias.md`](POAM_dependencias.md) (DEP-2026-001 a 003).
@@ -57,14 +57,33 @@ las VMs y la red. Para esos, nuestro hito es obtener su compromiso con una fecha
 | APP-2026-008 | 17 de 28 ajustes CIS L1 fuera de la línea base | CM-6 | Moderado | Devitrak | 2027-02-14 | Abierto |
 | APP-2026-009 | Software ajeno a producción en las dos VMs, con Docker en marcha | CM-7 | Moderado | Devitrak | 2027-02-14 | Abierto |
 | APP-2026-010 | `/health` sin sonda real: el monitor no detecta degradación | SI-4 | Bajo | Devitrak | 2027-05-15 | Abierto |
-| APP-2026-011 | Protección de la rama `main` no aplicada | CM-3, CM-5 | Bajo | Devitrak | 2027-05-15 | Abierto |
+| APP-2026-011 | Protección de la rama `main` no aplicada | CM-3, CM-5 | Bajo | Devitrak | 2027-05-15 | **Cerrado 2026-11-25** |
 | APP-2026-012 | Retransmisión NTLM posible en la red plana | SC-8, IA-2, CM-6 | Moderado | Compartido | 2027-02-14 | Abierto |
 | APP-2026-013 | Los errores internos se devuelven al cliente (~351 sitios) | SI-11 | Moderado | Devitrak | 2027-02-15 | Abierto |
 | APP-2026-014 | CORS de producción acepta `localhost` con credenciales | AC-4, SC-7 | Moderado | Devitrak | 2027-02-15 | Abierto |
 
-Cuatro altos, dieciocho moderados y dos bajos. Los tres altos de infraestructura son el
-mismo problema visto desde tres lados: cualquiera en internet puede intentar entrar a
-las VMs, nada lo frena y la capa de virtualización no recibe parches.
+Cuatro altos, dieciocho moderados y dos bajos en la medición del 2026-11-16. Tras la
+revisión del 2026-11-25 quedan **23 abiertos**: cuatro altos, dieciocho moderados y uno
+bajo. Los tres altos de infraestructura son el mismo problema visto desde tres lados:
+cualquiera en internet puede intentar entrar a las VMs, nada lo frena y la capa de
+virtualización no recibe parches.
+
+### Revisión del 2026-11-25
+
+Repaso de nueve días contra `origin/main`, volviendo a **medir** lo medible en vez de
+repetir lo escrito. Entraron 32 commits, casi todos de control (consola de plataforma
+M1, sesión por cookie fase 1, asistente de staff de solo lectura con su fila de
+auditoría, lista cerrada de operadores). Tres entradas no coincidían con la realidad:
+
+| Hallazgo | Decía | Dice ahora |
+|---|---|---|
+| APP-2026-011 | Abierto: el ruleset da 403 por ser repositorio privado en plan Free | **Cerrado.** El ruleset `Main` está activo desde el 2026-11-05 y cubre además `release/**` |
+| APP-2026-013 | ~351 sitios, 19 con `JSON.stringify(error)` | Remedido: **19** `JSON.stringify`, **245** `msg: error` en crudo, **41** archivos. El arreglo de tres rutas (`7553f50`) es una muestra, no remediación |
+| APP-2026-014 | Dos orígenes `localhost` (5522, 5523) | Son **tres**: también `http://localhost:3791` |
+
+Ningún otro hallazgo cambió de estado. **El único alto que depende solo de nosotros,
+APP-2026-001, vence el 2026-12-16 y no ha arrancado.** Informe completo de la revisión
+en [`GOVRAMP_status_2026-11-25.md`](GOVRAMP_status_2026-11-25.md).
 
 ---
 
@@ -233,13 +252,14 @@ los plazos de abajo siguen corriendo: nada de lo que se haga se pierde en una mu
 
 | Campo | Valor |
 |---|---|
-| **Debilidad** | El sistema depende de MongoDB Atlas, PlanetScale, Redis Cloud, SendGrid, Cloudinary, Amazon S3 y Stripe. No está documentado el estado de autorización FedRAMP, GovRAMP o SOC 2 de cada uno, ni qué controles heredamos de ellos |
+| **Debilidad** | El sistema depende de MongoDB Atlas, PlanetScale, Redis Cloud, SendGrid, Cloudinary, Amazon S3 y Stripe. No está documentado el estado de autorización FedRAMP, GovRAMP o SOC 2 de cada uno, ni qué controles heredamos de ellos. **Revisión 2026-11-25: no son siete, son nueve.** Faltaban **Cloudflare** (Workers + D1, el vigilante externo de `cloudflare/status-worker/`) y el **webhook de Microsoft Teams** al que ese worker avisa. Además hay una salida sin identificar, `INVENTORY_IMPORT_WEBHOOK_URL` (`controller/document.js:1792`), cuyo destino no se puede saber desde el código |
 | **Detectado por** | Revisión de la Fase 0, pendiente desde el 2026-10-28 |
 | **Activo** | Los siete servicios externos y los datos que salen hacia ellos |
 | **Riesgo** | **Alto**, por alcance. Si alguno no tiene autorización, no puede quedar dentro del límite del sistema sin un plan: eso puede obligar a cambiar de proveedor, lo que es trabajo de meses. Es el hallazgo con más capacidad de alterar el calendario entero |
 | **Responsable** | Devitrak |
 | **Plan** | 1) Por cada servicio, recoger su estado publicado por el propio proveedor, con enlace y fecha de consulta, y qué controles se heredan (SA-9). 2) Diagrama de flujo de datos del SSP: qué datos salen, hacia dónde, por qué puerto y con qué cifrado, desde qué proceso. 3) Para el que no tenga autorización, entrada propia en este POA&M con alternativa evaluada |
-| **Hitos** | 2026-11-30: estado de los siete servicios recopilado. 2026-12-16: diagrama de flujo de datos y decisión sobre los que no cumplan |
+| **Hitos** | 2026-11-30: estado de los ~~siete~~ **nueve** servicios recopilado. 2026-12-16: diagrama de flujo de datos y decisión sobre los que no cumplan |
+| **Avance 2026-11-25** | Inventario hecho y datos que salen hacia cada servicio documentados, en [`SA9_external_services.md`](SA9_external_services.md): los nueve servicios, qué sale hacia cada uno y con qué sensibilidad, las seis preguntas que hay que hacerle a cada proveedor y la tabla de estado a rellenar. **Falta lo que depende de los proveedores**, que es el hito del 2026-11-30 |
 | **Fecha programada** | 2026-12-16 (30 días) |
 | **Estado** | Abierto |
 
@@ -382,6 +402,10 @@ los plazos de abajo siguen corriendo: nada de lo que se haga se pierde en una mu
 | **Responsable** | Devitrak |
 | **Plan** | Pasar a GitHub Team o a una organización y aplicar el ruleset. Decidir en el mismo movimiento si la VM pasa a desplegar desde `main`, porque hoy las PRs van a `main` y producción lee `release/observabilidad` |
 | **Hitos** | 2027-01-15: decisión de plan y de rama. 2027-03-15: ruleset aplicado y verificado |
+| **Cierre** | **2026-11-25.** El ruleset ya estaba aplicado cuando se escribió este hallazgo y no se registró: fue creado el 2026-11-05 (commit `d21ff9c`). El 403 descrito en la debilidad ya no ocurre |
+| **Evidencia** | `gh api repos/grodriguezcontextglobal/server-testing/rulesets/26632321` → `name: Main`, `enforcement: active`, alcance `~DEFAULT_BRANCH` **y `refs/heads/release/**`**, reglas `deletion`, `non_fast_forward`, `pull_request`, `required_status_checks`. Cubre también la rama que lee producción, que es más de lo que pedía el hallazgo |
+| **Residual aceptado** | No se exigen aprobaciones: el equipo es de un mantenedor. CM-5 queda satisfecho por la obligación de PR más checks; la revisión por un segundo par se reevalúa cuando el equipo crezca |
+| **Estado** | **Cerrado** |
 | **Fecha programada** | 2027-05-15 (180 días) |
 | **Estado** | Abierto |
 
@@ -410,6 +434,7 @@ los plazos de abajo siguen corriendo: nada de lo que se haga se pierde en una mu
 | **Responsable** | Devitrak |
 | **Plan** | No son 351 ediciones: un respondedor de errores común que registre el detalle con el id de petición y devuelva al cliente un mensaje genérico más ese id, aplicado por carpetas y apoyado en los tests que ya cubren esas rutas. Primero las rutas que el dashboard puede nombrar desde fuera, que son las que un evaluador prueba. El recuento es de grep: cada sitio hay que mirarlo para confirmar qué expone |
 | **Hitos** | 2026-12-05: respondedor común y las rutas que liste el dashboard. 2027-01-15: `mysql/controllers/` entero. 2027-02-15: el resto y medición de cierre |
+| **Medición 2026-11-25** | Sobre `origin/main`: **19** `JSON.stringify(error)` (los mismos 19), **245** respuestas con `msg: error` en crudo, **41** archivos. El commit `7553f50` arregló tres rutas; el recuento no se mueve. El primer hito (2026-12-05, respondedor común) **no está empezado** y quedan 10 días |
 | **Fecha programada** | 2027-02-15 (90 días) |
 | **Estado** | Abierto |
 
@@ -417,7 +442,7 @@ los plazos de abajo siguen corriendo: nada de lo que se haga se pierde en una mu
 
 | Campo | Valor |
 |---|---|
-| **Debilidad** | `config/cors.js` incluye `http://localhost:5522` y `:5523` en la lista de orígenes aceptados, con `credentials: true`. Es una concesión de desarrollo viviendo en producción |
+| **Debilidad** | `config/cors.js` incluye `http://localhost:5522`, `:5523` y `:3791` en la lista de orígenes aceptados, con `credentials: true`. Es una concesión de desarrollo viviendo en producción. **Revisión 2026-11-25:** son tres, no dos — el `:3791` no se había registrado, y el plan de abajo tiene que retirarlo también |
 | **Detectado por** | El agente del dashboard, 2026-11-17, al descubrirlo porque su primer intento usó el puerto 5524 y fue rechazado |
 | **Activo** | API en DEVITRACKDB (`db.devitrak.net`) |
 | **Riesgo** | Bajo hasta el 2026-11-17; **moderado desde que existe la cookie de sesión**. Con `SameSite=None`, el navegador adjunta la sesión a las peticiones que salgan de cualquier página servida en esos dos orígenes: el servidor de desarrollo de otro proyecto, una herramienta local, un paquete comprometido que abra un puerto. El `X-CSRF-Token` frena las **escrituras**, porque esa página no puede leerlo; no frena las **lecturas**, que están exentas a propósito |
