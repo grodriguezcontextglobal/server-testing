@@ -224,6 +224,163 @@ const summaryBody = ({ range, companies = [], events = [], devices = {}, staff =
   };
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DC3 — segunda tanda: inventory, transactions, events, activity y el detalle
+// de un cliente. Son los recursos que ya estaban en PLATFORM_RESOURCES; lo
+// unico que faltaba era construirlos.
+//
+// TODAS estas filas nombran al cliente, y ahi esta el unico riesgo nuevo: una
+// fila atribuida a la compañia equivocada es peor que una fila sin compañia.
+// Por eso `resolveCompany` devuelve null y no adivina.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * De lo que guarda un documento a un cliente concreto.
+ *
+ * `Transaction.company` se escribe con `new Transaction(request.body)`: es lo
+ * que mande el cliente, sin validar. En unos sitios es el id de Mongo y en
+ * otros el nombre —el mismo patron de `eventSelected`, que guarda el nombre—,
+ * asi que se prueban los dos. Si no resuelve, `companyId` va null y el valor
+ * crudo se conserva en `companyRef`: el operador ve que hay una fila que no
+ * sabemos de quien es, que es la verdad. Atribuirla por parecido seria
+ * enseñarle el movimiento de un cliente a otro.
+ */
+const resolveCompany = (raw, { byId = new Map(), byName = new Map() } = {}) => {
+  const key = String(raw ?? '').trim();
+  if (!key) return { companyId: null, companyName: null, companyRef: null };
+  const hit = byId.get(key) || byName.get(key.toLowerCase());
+  if (!hit) return { companyId: null, companyName: null, companyRef: key };
+  return { companyId: String(hit.id), companyName: hit.name || null, companyRef: key };
+};
+
+/** Indices para `resolveCompany`, construidos una vez por peticion. */
+const companyIndex = (rows = []) => ({
+  byId: new Map(rows.map((r) => [String(r.id), r])),
+  byName: new Map(rows.map((r) => [String(r.name || '').toLowerCase(), r])),
+});
+
+/**
+ * Una fila de GET /api/platform/inventory.
+ *
+ * El cruce es por `company_id` de SQL, que es un numero y es de fiar — no por
+ * nombre. `location` es el NOMBRE de la ubicacion, porque asi lo guarda
+ * `item_inv` (`i.location = l.location_name`), no un id.
+ */
+const inventoryRow = ({ row = {}, company = {} } = {}) => ({
+  id: String(row.item_id ?? ''),
+  companyId: company.companyId ?? null,
+  companyName: company.companyName ?? null,
+  serial: row.serial_number ?? null,
+  group: row.item_group ?? null,
+  category: row.category_name ?? null,
+  location: row.location ?? null,
+  // `warehouse` es la columna que ya usa gatherCompanies para contar los que
+  // estan fuera. 1 = en almacen.
+  status: Number(row.warehouse) === 0 ? 'out' : 'in_warehouse',
+  ownership: row.ownership ?? null,
+});
+
+/**
+ * Una fila de GET /api/platform/transactions.
+ *
+ * `amountCents` SIEMPRE null, por lo mismo que `revenue30dCents` en
+ * `companyRow`: ninguno de los dos modelos de transaccion guarda el importe.
+ * Un 0 aqui diria "esta transaccion fue de cero dolares", que es falso.
+ *
+ * `at` sale de `created_at` (numero, epoch) y si no, de `date` (cadena). Son
+ * dos campos distintos con dos tipos distintos para la misma idea; se prueban
+ * en ese orden porque `created_at` lo pone el servidor y `date` viene del
+ * cuerpo de la peticion.
+ */
+const transactionRow = ({ doc = {}, company = {} } = {}) => ({
+  id: String(doc._id ?? ''),
+  companyId: company.companyId ?? null,
+  companyName: company.companyName ?? null,
+  companyRef: company.companyRef ?? null,
+  type: doc.type || null,
+  event: doc.eventSelected || null,
+  eventId: doc.event_id || null,
+  consumer: doc.consumerInfo?.email || doc.consumerInfo?.name || null,
+  paymentIntent: doc.paymentIntent || null,
+  deviceCount: Array.isArray(doc.device) ? doc.device.length : null,
+  amountCents: null,
+  currency: 'USD',
+  at: iso(doc.created_at ?? doc.date),
+});
+
+/**
+ * Una fila de GET /api/platform/events.
+ *
+ * Se cruza por `company_id`, NUNCA por `company`: ese segundo campo se escribe
+ * con el nombre, con el id, con un proveedor o vacio segun el camino
+ * (controller/event.js 370, 574, 698, 721), asi que no identifica nada.
+ *
+ * `eventInfoDetail` es un objeto sin esquema; de ahi salen nombre y fechas.
+ */
+const eventRow = ({ doc = {}, company = {} } = {}) => ({
+  id: String(doc._id ?? ''),
+  companyId: company.companyId ?? null,
+  companyName: company.companyName ?? null,
+  name: doc.eventInfoDetail?.eventName || null,
+  active: Boolean(doc.active),
+  startsAt: iso(doc.eventInfoDetail?.dateBegin),
+  endsAt: iso(doc.eventInfoDetail?.dateEnd),
+  deviceCount: Array.isArray(doc.deviceSetup) ? doc.deviceSetup.length : null,
+  logisticStatus: doc.logistic_inventory_status || null,
+});
+
+/**
+ * Una fila de GET /api/platform/activity.
+ *
+ * La fecha es `timestamp`. NO `createdAt`: StaffActivityLog no declara
+ * `timestamps: true` y define su propio campo. Filtrar u ordenar por
+ * `createdAt` no da error — simplemente no casa con nada y la respuesta sale
+ * vacia, que es como se ve un fallo que nadie nota.
+ */
+const activityRow = ({ doc = {}, company = {} } = {}) => ({
+  id: String(doc._id ?? ''),
+  companyId: company.companyId ?? null,
+  companyName: company.companyName ?? null,
+  at: iso(doc.timestamp),
+  actorName: doc.actor?.name || null,
+  actorEmail: doc.actor?.email || null,
+  action: doc.action || null,
+  targetModel: doc.target_model || null,
+  targetLabel: doc.target_label || null,
+  summary: doc.summary || null,
+});
+
+/**
+ * GET /api/platform/companies/:id — la misma fila de la lista, mas lo que solo
+ * tiene sentido mirando a un cliente concreto.
+ *
+ * Reutiliza `companyRow` a proposito: si el estado se calculara aqui otra vez,
+ * un cliente podria salir "en riesgo" en la tabla y "activo" en su ficha.
+ */
+const companyDetailBody = ({ row, subscription, counts = {} } = {}) => ({
+  ok: true,
+  data: {
+    ...row,
+    subscription: subscription
+      ? {
+          plan: subscription.plan ?? null,
+          status: subscription.status ?? null,
+          interval: subscription.interval ?? null,
+          currentPeriodEnd: iso(subscription.current_period_end),
+          cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
+          trialUsed: Boolean(subscription.trial_used),
+          demo: Boolean(subscription.demo),
+        }
+      : null,
+    counts: {
+      events: counts.events ?? null,
+      transactions: counts.transactions ?? null,
+      activity30d: counts.activity30d ?? null,
+    },
+    computedAt: new Date().toISOString(),
+  },
+});
+
 module.exports = {
   MAX_LIMIT,
   DEFAULT_LIMIT,
@@ -243,4 +400,12 @@ module.exports = {
   sortCompanies,
   pageOf,
   summaryBody,
+  // DC3, segunda tanda
+  resolveCompany,
+  companyIndex,
+  inventoryRow,
+  transactionRow,
+  eventRow,
+  activityRow,
+  companyDetailBody,
 };
