@@ -260,82 +260,165 @@ const companyIndex = (rows = []) => ({
 });
 
 /**
+ * VOCABULARIOS QUE EL SERVIDOR NO PUEDE SOSTENER ENTEROS.
+ *
+ * El console filtra inventario por available|assigned|lost|in_repair, pero
+ * `item_inv` solo tiene la columna `warehouse`: dentro o fuera. `lost` e
+ * `in_repair` NO son estados que esa tabla registre.
+ *
+ * Devolver cero filas para `lost` diria "no hay equipos perdidos", que es
+ * mentira: lo cierto es "eso no se lleva". Asi que el servidor DECLARA que
+ * valores sostiene y cuales no, y el cliente desactiva los que no — el mismo
+ * trato que ya existe con `filters.staff` del audit, donde el desplegable
+ * espera a que el servidor le diga la lista.
+ */
+const INVENTORY_STATUS = Object.freeze({
+  supported: ['available', 'assigned'],
+  unmeasured: ['lost', 'in_repair'],
+});
+
+const EVENT_STATUS = Object.freeze({
+  // `upcoming` saldria de `eventInfoDetail.dateBegin`, que vive en un objeto
+  // sin esquema y por tanto sin indice: filtrarlo seria un barrido de la
+  // coleccion en cada pulsacion del desplegable. Se CALCULA en la fila, que
+  // es barato, pero no se ofrece como filtro.
+  supported: ['live', 'closed'],
+  unmeasured: ['upcoming'],
+});
+
+/** Sobre de filtros: que acepta el servidor y que no puede medir. */
+const filterSupport = (vocab, asked) => {
+  const out = { supported: vocab.supported, unmeasured: vocab.unmeasured };
+  if (!asked) return out;
+  if (vocab.unmeasured.includes(asked)) {
+    out.applied = null;
+    out.note = `"${asked}" no se registra en el servidor`;
+    return out;
+  }
+  out.applied = asked;
+  return out;
+};
+
+/**
  * Una fila de GET /api/platform/inventory.
  *
- * El cruce es por `company_id` de SQL, que es un numero y es de fiar — no por
- * nombre. `location` es el NOMBRE de la ubicacion, porque asi lo guarda
- * `item_inv` (`i.location = l.location_name`), no un id.
+ * `status` traduce la unica columna que existe —`warehouse`— al vocabulario
+ * del console: dentro es `available`, fuera es `assigned`. Ver
+ * INVENTORY_STATUS para los otros dos.
+ *
+ * `deviceName` es `item_group`, que es como `item_inv` nombra el modelo. No
+ * hay columna que se llame asi; si el console queria `descript_item` o
+ * `brand`, se cambia en una linea.
  */
 const inventoryRow = ({ row = {}, company = {} } = {}) => ({
   id: String(row.item_id ?? ''),
   companyId: company.companyId ?? null,
   companyName: company.companyName ?? null,
   serial: row.serial_number ?? null,
-  group: row.item_group ?? null,
+  deviceName: row.item_group ?? null,
   category: row.category_name ?? null,
   location: row.location ?? null,
-  // `warehouse` es la columna que ya usa gatherCompanies para contar los que
-  // estan fuera. 1 = en almacen.
-  status: Number(row.warehouse) === 0 ? 'out' : 'in_warehouse',
-  ownership: row.ownership ?? null,
+  status: Number(row.warehouse) === 0 ? 'assigned' : 'available',
 });
 
 /**
  * Una fila de GET /api/platform/transactions.
  *
- * `amountCents` SIEMPRE null, por lo mismo que `revenue30dCents` en
- * `companyRow`: ninguno de los dos modelos de transaccion guarda el importe.
- * Un 0 aqui diria "esta transaccion fue de cero dolares", que es falso.
+ * `amountCents` y `status` van SIEMPRE null. El importe no esta guardado en
+ * ninguno de los dos modelos —vive en Stripe— y no hay campo de estado:
+ * `Transaction.active` es un booleano cuyo significado no esta acordado, y
+ * traducirlo a un `status` seria inventarse un vocabulario.
  *
- * `at` sale de `created_at` (numero, epoch) y si no, de `date` (cadena). Son
- * dos campos distintos con dos tipos distintos para la misma idea; se prueban
- * en ese orden porque `created_at` lo pone el servidor y `date` viene del
- * cuerpo de la peticion.
+ * NO lleva el correo del consumidor. El console lee `consumerName` en la
+ * lista entre clientes y `consumerEmail` solo dentro de la ficha de uno
+ * (su nota, seccion 4: la asimetria es deliberada). Mandar el correo aqui
+ * sacaria datos personales de TODOS los clientes a una pantalla que no los
+ * pide.
  */
 const transactionRow = ({ doc = {}, company = {} } = {}) => ({
   id: String(doc._id ?? ''),
   companyId: company.companyId ?? null,
   companyName: company.companyName ?? null,
   companyRef: company.companyRef ?? null,
-  type: doc.type || null,
-  event: doc.eventSelected || null,
+  createdAt: iso(doc.created_at ?? doc.date),
+  consumerName: doc.consumerInfo?.name || null,
+  eventName: doc.eventSelected || null,
   eventId: doc.event_id || null,
-  consumer: doc.consumerInfo?.email || doc.consumerInfo?.name || null,
-  paymentIntent: doc.paymentIntent || null,
-  deviceCount: Array.isArray(doc.device) ? doc.device.length : null,
+  type: doc.type || null,
   amountCents: null,
+  status: null,
   currency: 'USD',
-  at: iso(doc.created_at ?? doc.date),
 });
+
+/** live / upcoming / closed, a partir de lo unico que hay. */
+const eventStatus = ({ active, startsAt } = {}) => {
+  if (!active) return 'closed';
+  const begins = startsAt ? Date.parse(startsAt) : NaN;
+  return Number.isFinite(begins) && begins > Date.now() ? 'upcoming' : 'live';
+};
 
 /**
  * Una fila de GET /api/platform/events.
  *
- * Se cruza por `company_id`, NUNCA por `company`: ese segundo campo se escribe
- * con el nombre, con el id, con un proveedor o vacio segun el camino
- * (controller/event.js 370, 574, 698, 721), asi que no identifica nada.
+ * Se cruza por `company_id`, NUNCA por `company`: ese campo se escribe con el
+ * nombre, con el id, con un proveedor o vacio segun el camino
+ * (controller/event.js 370, 574, 698, 721).
  *
- * `eventInfoDetail` es un objeto sin esquema; de ahi salen nombre y fechas.
+ * `devicesNotReturned` y `revenueCents` van null: lo primero exige saber que
+ * es "no devuelto", que hoy no se calcula; lo segundo es dinero.
  */
-const eventRow = ({ doc = {}, company = {} } = {}) => ({
-  id: String(doc._id ?? ''),
-  companyId: company.companyId ?? null,
-  companyName: company.companyName ?? null,
-  name: doc.eventInfoDetail?.eventName || null,
-  active: Boolean(doc.active),
-  startsAt: iso(doc.eventInfoDetail?.dateBegin),
-  endsAt: iso(doc.eventInfoDetail?.dateEnd),
-  deviceCount: Array.isArray(doc.deviceSetup) ? doc.deviceSetup.length : null,
-  logisticStatus: doc.logistic_inventory_status || null,
+const eventRow = ({ doc = {}, company = {} } = {}) => {
+  const startsAt = iso(doc.eventInfoDetail?.dateBegin);
+  return {
+    id: String(doc._id ?? ''),
+    companyId: company.companyId ?? null,
+    companyName: company.companyName ?? null,
+    name: doc.eventInfoDetail?.eventName || null,
+    status: eventStatus({ active: Boolean(doc.active), startsAt }),
+    startsAt,
+    endsAt: iso(doc.eventInfoDetail?.dateEnd),
+    devicesAssigned: Array.isArray(doc.deviceSetup) ? doc.deviceSetup.length : null,
+    devicesNotReturned: null,
+    revenueCents: null,
+  };
+};
+
+/**
+ * De `target_model` a la categoria que pinta el console.
+ *
+ * `target_model` es TEXTO LIBRE y seguira siendolo: una docena de puntos de
+ * escritura ponen sus propias cadenas y rechazar una desconocida tiraria filas
+ * de auditoria, que es lo unico que un registro no puede hacer. Asi que este
+ * mapa es parcial por construccion.
+ *
+ * Lo que no casa va a `null`, NO a un cajon de sastre. Una fila mal
+ * clasificada desaparece del filtro que le tocaba y aparece en otro; una fila
+ * sin categoria se ve que no la tiene.
+ */
+const ACTIVITY_CATEGORY = Object.freeze({
+  Transaction: 'transaction', StripeTransaction: 'transaction', Fee: 'transaction',
+  CashReport: 'transaction', StripeAccount: 'transaction', StripeLink: 'transaction',
+  Event: 'event', EventInvitation: 'event', Signature: 'event', Terms: 'event',
+  Inventory: 'inventory', Item: 'inventory', Device: 'inventory', Container: 'inventory',
+  Category: 'inventory', Group: 'inventory', Location: 'inventory', SubLocation: 'inventory',
+  Shipment: 'inventory', Identifier: 'inventory',
+  Member: 'member', Guardian: 'member', Consent: 'member', Lease: 'member',
+  Consumer: 'member', User: 'member',
+  Staff: 'staff', AdminUser: 'staff', Invitation: 'staff', Company: 'staff',
+  Subscription: 'staff', ActivityLog: 'staff', Assistant: 'staff',
 });
+
+const activityCategory = (targetModel) => ACTIVITY_CATEGORY[String(targetModel || '')] || null;
 
 /**
  * Una fila de GET /api/platform/activity.
  *
  * La fecha es `timestamp`. NO `createdAt`: StaffActivityLog no declara
  * `timestamps: true` y define su propio campo. Filtrar u ordenar por
- * `createdAt` no da error — simplemente no casa con nada y la respuesta sale
- * vacia, que es como se ve un fallo que nadie nota.
+ * `createdAt` no da error — no casa con nada y la respuesta sale vacia.
+ *
+ * Sin `actorEmail`: esta lista cruza clientes y el console no lo lee aqui. El
+ * correo del operador solo aparece en `/audit`, que es su sitio.
  */
 const activityRow = ({ doc = {}, company = {} } = {}) => ({
   id: String(doc._id ?? ''),
@@ -343,41 +426,43 @@ const activityRow = ({ doc = {}, company = {} } = {}) => ({
   companyName: company.companyName ?? null,
   at: iso(doc.timestamp),
   actorName: doc.actor?.name || null,
-  actorEmail: doc.actor?.email || null,
+  summary: doc.summary || null,
+  category: activityCategory(doc.target_model),
   action: doc.action || null,
   targetModel: doc.target_model || null,
-  targetLabel: doc.target_label || null,
-  summary: doc.summary || null,
 });
 
 /**
- * GET /api/platform/companies/:id — la misma fila de la lista, mas lo que solo
- * tiene sentido mirando a un cliente concreto.
+ * Fecha de alta de un documento de Mongo.
  *
- * Reutiliza `companyRow` a proposito: si el estado se calculara aqui otra vez,
- * un cliente podria salir "en riesgo" en la tabla y "activo" en su ficha.
+ * `Company` no declara `timestamps: true`, asi que no hay `createdAt`. El
+ * ObjectId lleva dentro el segundo en que se creo, asi que la fecha es exacta
+ * y no hay que migrar nada: un campo nuevo solo serviria para los documentos
+ * futuros y dejaria a los 21 clientes actuales sin fecha.
  */
-const companyDetailBody = ({ row, subscription, counts = {} } = {}) => ({
+const createdAtFromId = (id) => {
+  const hex = String(id || '').slice(0, 8);
+  if (!/^[0-9a-f]{8}$/i.test(hex)) return null;
+  return new Date(parseInt(hex, 16) * 1000).toISOString();
+};
+
+/**
+ * GET /api/platform/companies/:id — registro PLANO, como lo lee el console.
+ *
+ * Reutiliza la fila de la lista para que el estado no se calcule dos veces y
+ * pueda salir distinto en dos pantallas.
+ */
+const companyDetailBody = ({ row = {}, company = {}, sqlId = null, counts = {} } = {}) => ({
   ok: true,
   data: {
     ...row,
-    subscription: subscription
-      ? {
-          plan: subscription.plan ?? null,
-          status: subscription.status ?? null,
-          interval: subscription.interval ?? null,
-          currentPeriodEnd: iso(subscription.current_period_end),
-          cancelAtPeriodEnd: Boolean(subscription.cancel_at_period_end),
-          trialUsed: Boolean(subscription.trial_used),
-          demo: Boolean(subscription.demo),
-        }
-      : null,
-    counts: {
-      events: counts.events ?? null,
-      transactions: counts.transactions ?? null,
-      activity30d: counts.activity30d ?? null,
-    },
-    computedAt: new Date().toISOString(),
+    phone: company?.phone?.main || null,
+    createdAt: createdAtFromId(row.id),
+    mongoId: row.id,
+    sqlId,
+    eventsActive: counts.eventsActive ?? null,
+    membersCount: counts.membersCount ?? null,
+    consumersCount: counts.consumersCount ?? null,
   },
 });
 
@@ -403,6 +488,12 @@ module.exports = {
   // DC3, segunda tanda
   resolveCompany,
   companyIndex,
+  INVENTORY_STATUS,
+  EVENT_STATUS,
+  filterSupport,
+  eventStatus,
+  activityCategory,
+  createdAtFromId,
   inventoryRow,
   transactionRow,
   eventRow,
