@@ -2,13 +2,13 @@
 
 /**
  * DC3, segunda tanda: /inventory, /transactions, /events, /activity y
- * /companies/:id.
+ * /companies/:id, con la forma que lee el console
+ * (FRONTEND_console_endpoints_2026-11-25.md).
  *
- * Los dobles de aqui NO son libres: el test de abajo que compara los campos de
- * cada filtro contra `schema.paths` del modelo REAL existe porque un doble que
- * yo escribo no puede contradecirme. Asi fue como se colo `$createdAt` en
- * gatherCompanies y en el asistente: los dos pasaban todos sus tests mientras
- * devolvian cero para siempre.
+ * Los dobles de aqui NO son libres: el bloque final compara contra el esquema
+ * REAL de mongoose, porque un doble que yo escribo no puede contradecirme. Asi
+ * fue como se colo `$createdAt` en gatherCompanies y en el asistente: los dos
+ * pasaban todos sus tests mientras devolvian cero para siempre.
  */
 
 const test = require('node:test');
@@ -18,6 +18,12 @@ const assert = require('node:assert/strict');
 const {
   resolveCompany,
   companyIndex,
+  INVENTORY_STATUS,
+  EVENT_STATUS,
+  filterSupport,
+  eventStatus,
+  activityCategory,
+  createdAtFromId,
   inventoryRow,
   transactionRow,
   eventRow,
@@ -34,6 +40,7 @@ const {
 } = require('../controller/platform');
 
 const StaffActivityLogModel = require('../models/StaffActivityLog');
+const CompanyModel = require('../models/Company');
 
 const makeResponse = () => {
   const response = { statusCode: 200, body: null };
@@ -42,18 +49,19 @@ const makeResponse = () => {
   return response;
 };
 
+const lean = (value) => ({ lean: async () => value });
+const selectLean = (value) => ({ select: () => lean(value) });
+
 /** Dos compañias: una que cruza a SQL y otra que no. */
 const CROSSWALK_DEPS = {
   Company: {
-    find: () => ({ select: () => ({ lean: async () => [
+    find: () => selectLean([
       { _id: 'mongoA', company_name: 'Acme' },
       { _id: 'mongoB', company_name: 'Beta' },
-    ] }) }),
+    ]),
   },
   CompanySubscription: {
-    find: () => ({ select: () => ({ lean: async () => [
-      { company: 'mongoA', sql_company_id: 7 },
-    ] }) }),
+    find: () => selectLean([{ company: 'mongoA', sql_company_id: 7 }]),
   },
 };
 
@@ -64,108 +72,191 @@ const sqlCompanyRows = [{ company_id: 7, company_name: 'Acme' }];
 describe('resolver la compañia de una fila', () => {
   const index = companyIndex([{ id: 'mongoA', name: 'Acme' }]);
 
-  test('resuelve por id de Mongo', () => {
-    assert.deepEqual(resolveCompany('mongoA', index), {
-      companyId: 'mongoA', companyName: 'Acme', companyRef: 'mongoA',
-    });
-  });
-
-  // `Transaction.company` se escribe con `new Transaction(request.body)`, asi
-  // que a veces lleva el nombre. Si no se probara tambien por nombre, esas
-  // filas saldrian huerfanas.
-  test('resuelve por nombre, sin distinguir mayusculas', () => {
+  test('resuelve por id y por nombre', () => {
+    assert.equal(resolveCompany('mongoA', index).companyId, 'mongoA');
     assert.equal(resolveCompany('acme', index).companyId, 'mongoA');
   });
 
-  // Lo importante de esta funcion no es lo que resuelve: es lo que se NIEGA a
-  // resolver. Una fila atribuida al cliente equivocado le enseña el movimiento
-  // de una empresa a otra.
+  // Lo importante no es lo que resuelve: es lo que se NIEGA a resolver. Una
+  // fila atribuida al cliente equivocado le enseña el movimiento de una
+  // empresa a otra.
   test('lo que no casa va a null y conserva el valor crudo', () => {
     assert.deepEqual(resolveCompany('Desconocida', index), {
       companyId: null, companyName: null, companyRef: 'Desconocida',
     });
   });
+});
 
-  test('vacio no inventa un companyRef', () => {
-    assert.equal(resolveCompany('', index).companyRef, null);
+describe('vocabularios que el servidor no sostiene enteros', () => {
+  test('inventario sostiene available y assigned, no lost ni in_repair', () => {
+    assert.deepEqual(INVENTORY_STATUS.supported, ['available', 'assigned']);
+    assert.deepEqual(INVENTORY_STATUS.unmeasured, ['lost', 'in_repair']);
+  });
+
+  // Pedir `lost` no puede devolver "cero perdidos": tiene que decir que eso no
+  // se registra, para que el desplegable lo desactive en vez de mentir.
+  test('pedir un valor no medido se declara, no se aplica', () => {
+    const f = filterSupport(INVENTORY_STATUS, 'lost');
+    assert.equal(f.applied, null);
+    assert.match(f.note, /no se registra/);
+  });
+
+  test('pedir uno soportado sale como aplicado', () => {
+    assert.equal(filterSupport(INVENTORY_STATUS, 'assigned').applied, 'assigned');
+  });
+
+  test('`upcoming` se calcula pero no se filtra', () => {
+    assert.ok(EVENT_STATUS.unmeasured.includes('upcoming'));
+    assert.equal(eventStatus({ active: true, startsAt: '2099-01-01T00:00:00Z' }), 'upcoming');
+    assert.equal(eventStatus({ active: true, startsAt: '2020-01-01T00:00:00Z' }), 'live');
+    assert.equal(eventStatus({ active: false, startsAt: '2099-01-01T00:00:00Z' }), 'closed');
   });
 });
 
 describe('forma de las filas', () => {
-  test('inventario: warehouse 0 es fuera, cualquier otra cosa es almacen', () => {
-    assert.equal(inventoryRow({ row: { warehouse: 0 } }).status, 'out');
-    assert.equal(inventoryRow({ row: { warehouse: 1 } }).status, 'in_warehouse');
+  test('inventario: warehouse 0 es assigned, el resto available', () => {
+    assert.equal(inventoryRow({ row: { warehouse: 0 } }).status, 'assigned');
+    assert.equal(inventoryRow({ row: { warehouse: 1 } }).status, 'available');
+  });
+
+  test('inventario: deviceName sale de item_group', () => {
+    assert.equal(inventoryRow({ row: { item_group: 'Laptop 14' } }).deviceName, 'Laptop 14');
   });
 
   // Mismo motivo que `revenue30dCents`: ningun modelo de transaccion guarda el
-  // importe. Un 0 diria "fue de cero dolares", que es una frase distinta.
-  test('transaccion: el importe es null, nunca 0', () => {
+  // importe. Un 0 diria "fue de cero dolares", que es otra frase.
+  test('transaccion: importe y estado son null, nunca 0 ni una cadena', () => {
     const row = transactionRow({ doc: { _id: 'tx1', type: 'rental' } });
     assert.equal(row.amountCents, null);
-    assert.notEqual(row.amountCents, 0);
+    assert.equal(row.status, null);
   });
 
-  test('transaccion: la fecha sale de created_at antes que de date', () => {
-    const at = transactionRow({ doc: { created_at: 1763000000000, date: '2020-01-01' } }).at;
-    assert.equal(at, new Date(1763000000000).toISOString());
+  test('transaccion: createdAt sale de created_at antes que de date', () => {
+    const row = transactionRow({ doc: { created_at: 1763000000000, date: '2020-01-01' } });
+    assert.equal(row.createdAt, new Date(1763000000000).toISOString());
   });
 
-  test('evento: nombre y fechas salen de eventInfoDetail', () => {
-    const row = eventRow({ doc: { _id: 'e1', active: true, eventInfoDetail: { eventName: 'Expo' } } });
+  // Esta lista cruza clientes. El correo del consumidor solo se lee dentro de
+  // la ficha de un cliente, nunca entre todos.
+  test('transaccion: NO lleva el correo del consumidor', () => {
+    const row = transactionRow({ doc: { consumerInfo: { name: 'Ann', email: 'ann@x.test' } } });
+    assert.equal(row.consumerName, 'Ann');
+    assert.equal(row.consumerEmail, undefined);
+    assert.ok(!JSON.stringify(row).includes('ann@x.test'), 'el correo no puede salir por ningun campo');
+  });
+
+  test('evento: status, devicesAssigned y los dos null', () => {
+    const row = eventRow({
+      doc: { _id: 'e1', active: true, eventInfoDetail: { eventName: 'Expo' }, deviceSetup: [1, 2] },
+    });
     assert.equal(row.name, 'Expo');
-    assert.equal(row.active, true);
+    assert.equal(row.status, 'live');
+    assert.equal(row.devicesAssigned, 2);
+    assert.equal(row.devicesNotReturned, null);
+    assert.equal(row.revenueCents, null);
   });
 
-  test('actividad: la fecha es timestamp', () => {
+  test('actividad: fecha de timestamp, categoria mapeada, sin correo', () => {
     const when = new Date('2026-11-20T10:00:00.000Z');
-    assert.equal(activityRow({ doc: { timestamp: when } }).at, when.toISOString());
+    const row = activityRow({
+      doc: { timestamp: when, target_model: 'Event', actor: { name: 'Ann', email: 'ann@x.test' } },
+    });
+    assert.equal(row.at, when.toISOString());
+    assert.equal(row.category, 'event');
+    assert.equal(row.actorName, 'Ann');
+    assert.ok(!JSON.stringify(row).includes('ann@x.test'), 'el correo del operador solo va en /audit');
+  });
+
+  // `target_model` es texto libre por diseño, asi que el mapa es parcial. Lo
+  // que no casa NO puede caer en un cajon de sastre: una fila mal clasificada
+  // desaparece del filtro que le tocaba y aparece en otro.
+  test('una categoria desconocida es null, no un cajon de sastre', () => {
+    assert.equal(activityCategory('Inventory'), 'inventory');
+    assert.equal(activityCategory('AlgoQueNadieHaVisto'), null);
+  });
+
+  test('createdAt sale del ObjectId, que lleva la fecha dentro', () => {
+    assert.equal(createdAtFromId('64f1a2b3c4d5e6f7a8b9c0d1'), '2023-09-01T08:37:07.000Z');
+    assert.equal(createdAtFromId('no-es-un-objectid'), null);
   });
 });
 
 // ─────────────────────────────────────────────────────── rutas completas ────
 
 describe('GET /api/platform/inventory', () => {
-  const deps = (capture) => ({
+  const deps = (capture = []) => ({
     ...CROSSWALK_DEPS,
     query: async (sql, params) => {
       if (/FROM company_info/.test(sql)) return [sqlCompanyRows];
       capture.push({ sql, params });
-      if (/COUNT\(\*\)/.test(sql)) return [[{ total: 2 }]];
+      if (/SUM\(/.test(sql)) return [[{ total: 2, available: 1, assigned: 1 }]];
+      if (/COUNT\(\*\) AS total/.test(sql)) return [[{ total: 2 }]];
       return [[
-        { item_id: 1, serial_number: 'SN1', warehouse: 0, company_name: 'Acme', location: 'Miami' },
-        { item_id: 2, serial_number: 'SN2', warehouse: 1, company_name: 'Sin cruce', location: 'Dallas' },
+        { item_id: 1, serial_number: 'SN1', item_group: 'Laptop', warehouse: 0, company_name: 'Acme', location: 'Miami' },
+        { item_id: 2, serial_number: 'SN2', item_group: 'Tablet', warehouse: 1, company_name: 'Sin cruce', location: 'Dallas' },
       ]];
     },
   });
 
-  test('devuelve filas con su compañia y el total de verdad', async () => {
-    const capture = [];
+  test('filas, total y totals con lost en null', async () => {
     const response = makeResponse();
-    await platformInventory(deps(capture))({ query: {} }, response);
+    await platformInventory(deps())({ query: {} }, response);
 
-    assert.equal(response.statusCode, 200);
     assert.equal(response.body.total, 2);
+    assert.deepEqual(response.body.totals, { total: 2, available: 1, assigned: 1, lost: null });
     assert.equal(response.body.data[0].companyId, 'mongoA');
-    assert.equal(response.body.data[0].status, 'out');
-    // La segunda no cruza: sin compañia, pero la fila existe y se ve.
-    assert.equal(response.body.data[1].companyId, null);
+    assert.equal(response.body.data[0].status, 'assigned');
+    assert.equal(response.body.data[1].companyId, null, 'la que no cruza se ve, sin compañia');
   });
 
-  // Si una compañia no cruza a SQL, filtrar por ella NO puede ser "sin
-  // filtro": eso devolveria el inventario de todos los clientes a quien pidio
-  // el de uno.
-  test('companyId que no cruza a SQL devuelve vacio, no todo', async () => {
-    const capture = [];
+  test('filters declara lo que el servidor no mide', async () => {
     const response = makeResponse();
-    await platformInventory(deps(capture))({ query: { companyId: 'mongoB' } }, response);
-    assert.ok(capture.every((c) => /1 = 0/.test(c.sql)), 'el filtro tiene que ser imposible, no ausente');
+    await platformInventory(deps())({ query: { status: 'lost' } }, response);
+    assert.equal(response.body.filters.status.applied, null);
+    assert.deepEqual(response.body.filters.status.unmeasured, ['lost', 'in_repair']);
   });
 
-  test('el limite se pasa como parametro, no interpolado', async () => {
+  // Pedir `lost` no puede traducirse a un WHERE: devolveria cero filas y se
+  // leeria como "no hay ninguno perdido".
+  test('un estado no medido no entra en el SQL', async () => {
+    const capture = [];
+    await platformInventory(deps(capture))({ query: { status: 'lost' } }, makeResponse());
+    // Solo el WHERE: la consulta de totales lleva `SUM(i.warehouse ...)`
+    // siempre, y eso no es un filtro.
+    assert.ok(
+      capture.every((c) => !/warehouse/.test(c.sql.split('WHERE')[1] || '')),
+      'un estado no medido no puede convertirse en un filtro de warehouse'
+    );
+  });
+
+  test('available filtra por warehouse <> 0', async () => {
+    const capture = [];
+    await platformInventory(deps(capture))({ query: { status: 'available' } }, makeResponse());
+    assert.ok(capture.some((c) => /WHERE[^]*warehouse <> 0/.test(c.sql)));
+  });
+
+  // Los totales son el reparto del conjunto, no de la vista: no pueden cambiar
+  // al pulsar un filtro de estado.
+  test('los totales se calculan sin la clausula de estado', async () => {
+    const capture = [];
+    await platformInventory(deps(capture))({ query: { status: 'assigned' } }, makeResponse());
+    const breakdown = capture.find((c) => /SUM\(/.test(c.sql));
+    const wherePart = (breakdown.sql.split('WHERE')[1] || '');
+    assert.ok(!/warehouse/.test(wherePart), 'la consulta de totales no lleva el filtro de estado');
+  });
+
+  // Una compañia que no cruza a SQL no tiene inventario que enseñar. `1=0` y
+  // no "sin filtro": lo segundo devolveria el inventario de TODOS.
+  test('companyId que no cruza devuelve vacio, no todo', async () => {
+    const capture = [];
+    await platformInventory(deps(capture))({ query: { companyId: 'mongoB' } }, makeResponse());
+    assert.ok(capture.every((c) => /1 = 0/.test(c.sql)));
+  });
+
+  test('el limite va como parametro, no interpolado', async () => {
     const capture = [];
     await platformInventory(deps(capture))({ query: { limit: '5' } }, makeResponse());
     const page = capture.find((c) => /LIMIT \? OFFSET \?/.test(c.sql));
-    assert.ok(page, 'LIMIT y OFFSET tienen que ir con placeholders');
     assert.deepEqual(page.params.slice(-2), [5, 0]);
   });
 });
@@ -180,21 +271,35 @@ describe('GET /api/platform/transactions', () => {
     ...CROSSWALK_DEPS,
     query: async () => [sqlCompanyRows],
     Transaction: {
-      countDocuments: async (f) => { capture.count = f; return docs.length; },
+      countDocuments: async () => docs.length,
       find: (f) => {
         capture.filter = f;
-        return { sort: (s) => { capture.sort = s; return { skip: () => ({ limit: () => ({ lean: async () => docs }) }) }; } };
+        return { sort: (s) => { capture.sort = s; return { skip: () => ({ limit: () => lean(docs) }) }; } };
       },
     },
   });
 
-  test('resuelve la compañia tanto por id como por nombre', async () => {
+  test('resuelve por id y por nombre, y lo que no casa va a null', async () => {
     const response = makeResponse();
     await platformTransactions(deps())({ query: {} }, response);
     assert.equal(response.body.data[0].companyId, 'mongoA');
     assert.equal(response.body.data[1].companyId, 'mongoA');
     assert.equal(response.body.data[2].companyId, null);
     assert.equal(response.body.data[2].companyRef, 'Fantasma');
+  });
+
+  test('totals: el conteo es real, el dinero null', async () => {
+    const response = makeResponse();
+    await platformTransactions(deps())({ query: {} }, response);
+    assert.deepEqual(response.body.totals, {
+      count: 3, volumeCents: null, refundsCents: null, failed: null,
+    });
+  });
+
+  test('filtra por tipo', async () => {
+    const capture = {};
+    await platformTransactions(deps(capture))({ query: { type: 'refund' } }, makeResponse());
+    assert.equal(capture.filter.type, 'refund');
   });
 
   test('filtrar por compañia busca el id Y el nombre', async () => {
@@ -215,29 +320,45 @@ describe('GET /api/platform/events', () => {
     ...CROSSWALK_DEPS,
     query: async () => [sqlCompanyRows],
     Event: {
-      countDocuments: async () => 1,
+      countDocuments: async (f) => { (capture.counts = capture.counts || []).push(f); return 1; },
       find: (f) => {
         capture.filter = f;
-        return { sort: () => ({ skip: () => ({ limit: () => ({ lean: async () => [
+        return { sort: () => ({ skip: () => ({ limit: () => lean([
           { _id: 'e1', company_id: 'mongoA', active: true, eventInfoDetail: { eventName: 'Expo' }, deviceSetup: [1, 2] },
-        ] }) }) }) };
+        ]) }) }) };
       },
     },
   });
 
-  // `company` se escribe con cuatro cosas distintas segun el camino
-  // (controller/event.js 370, 574, 698, 721). `company_id` es el unico fiable.
+  // `company` se escribe con cuatro cosas distintas segun el camino. Solo
+  // `company_id` identifica a alguien.
   test('filtra por company_id, nunca por company', async () => {
     const capture = {};
     await platformEvents(deps(capture))({ query: { companyId: 'mongoA' } }, makeResponse());
     assert.equal(capture.filter.company_id, 'mongoA');
-    assert.equal(capture.filter.company, undefined, 'company no identifica a nadie');
+    assert.equal(capture.filter.company, undefined);
   });
 
-  test('active=false filtra los terminados', async () => {
+  test('status=closed filtra los terminados', async () => {
     const capture = {};
-    await platformEvents(deps(capture))({ query: { active: 'false' } }, makeResponse());
+    await platformEvents(deps(capture))({ query: { status: 'closed' } }, makeResponse());
     assert.equal(capture.filter.active, false);
+  });
+
+  test('status=upcoming no se traduce a filtro y se declara', async () => {
+    const capture = {};
+    const response = makeResponse();
+    await platformEvents(deps(capture))({ query: { status: 'upcoming' } }, response);
+    assert.equal(capture.filter.active, undefined);
+    assert.equal(response.body.filters.status.applied, null);
+  });
+
+  test('totals: live real, el resto null', async () => {
+    const response = makeResponse();
+    await platformEvents(deps())({ query: {} }, response);
+    assert.equal(response.body.totals.live, 1);
+    assert.equal(response.body.totals.upcoming, null);
+    assert.equal(response.body.totals.revenueCents, null);
   });
 });
 
@@ -249,19 +370,20 @@ describe('GET /api/platform/activity', () => {
       countDocuments: async () => 1,
       find: (f) => {
         capture.filter = f;
-        return { sort: (s) => { capture.sort = s; return { skip: () => ({ limit: () => ({ lean: async () => [
-          { _id: 'a1', company_id: 'mongoA', timestamp: new Date('2026-11-24T00:00:00.000Z'), action: 'READ' },
-        ] }) }) }; } };
+        return { sort: (s) => { capture.sort = s; return { skip: () => ({ limit: () => lean([
+          { _id: 'a1', company_id: 'mongoA', timestamp: new Date('2026-11-24T00:00:00.000Z'), target_model: 'Item' },
+        ]) }) }; } };
       },
     },
   });
 
-  test('filtra y ordena por timestamp', async () => {
+  test('filtra y ordena por timestamp, y mapea la categoria', async () => {
     const capture = {};
     const response = makeResponse();
     await platformActivity(deps(capture))({ query: {} }, response);
     assert.ok(capture.filter.timestamp?.$gte instanceof Date);
     assert.equal(capture.sort.timestamp, -1);
+    assert.equal(response.body.data[0].category, 'inventory');
     assert.equal(response.body.filters.range, '30d');
   });
 
@@ -275,39 +397,59 @@ describe('GET /api/platform/activity', () => {
 describe('GET /api/platform/companies/:id', () => {
   const deps = {
     ...CROSSWALK_DEPS,
+    Company: {
+      find: () => selectLean([
+        { _id: 'mongoA', company_name: 'Acme', employees: [{ active: true }] },
+        { _id: 'mongoB', company_name: 'Beta' },
+      ]),
+      findOne: () => selectLean({ phone: { main: '555-1017' } }),
+    },
     query: async (sql) => {
       if (/FROM company_info/.test(sql)) return [sqlCompanyRows];
       if (/GROUP BY company_id/.test(sql)) return [[{ company_id: 7, total: 4, out_now: 1 }]];
+      if (/members_info/.test(sql)) return [[{ total: 12 }]];
       return [[]];
     },
-    StaffActivityLog: {
-      aggregate: async () => [],
-      countDocuments: async () => 3,
-    },
+    StaffActivityLog: { aggregate: async () => [] },
     Event: { countDocuments: async () => 2 },
+    User: { countDocuments: async () => 9 },
     Transaction: { countDocuments: async () => 5 },
   };
 
-  test('devuelve la ficha con los conteos', async () => {
+  test('registro PLANO con los campos que lee el console', async () => {
     const response = makeResponse();
-    const d = { ...deps, CompanySubscription: {
-      ...CROSSWALK_DEPS.CompanySubscription,
-      findOne: () => ({ lean: async () => ({ plan: 'Pro', status: 'active' }) }),
-    } };
-    await platformCompanyDetail(d)({ params: { id: 'mongoA' }, query: {} }, response);
+    await platformCompanyDetail(deps)({ params: { id: 'mongoA' }, query: {} }, response);
 
+    const data = response.body.data;
     assert.equal(response.statusCode, 200);
-    assert.equal(response.body.data.id, 'mongoA');
-    assert.equal(response.body.data.subscription.plan, 'Pro');
-    assert.deepEqual(response.body.data.counts, { events: 2, transactions: 5, activity30d: 3 });
+    assert.equal(data.id, 'mongoA');
+    assert.equal(data.mongoId, 'mongoA');
+    assert.equal(data.sqlId, 7);
+    assert.equal(data.phone, '555-1017');
+    assert.equal(data.eventsActive, 2);
+    assert.equal(data.membersCount, 12);
+    assert.equal(data.consumersCount, 9);
+    // Plano: nada anidado que el console tenga que desenvolver.
+    assert.equal(data.subscription, undefined);
+    assert.equal(data.counts, undefined);
+    // Y el estado sale de la MISMA fila que la lista, no recalculado.
+    assert.equal(data.status, 'active');
+    assert.equal(data.devicesOverdue, null);
+    assert.equal(data.revenue30dCents, null);
+  });
+
+  // Sin cruce a SQL no hay alumnos que contar. Cero afirmaria que no los
+  // tiene; null dice que no lo sabemos.
+  test('una compañia sin cruce a SQL devuelve membersCount null, no 0', async () => {
+    const response = makeResponse();
+    await platformCompanyDetail(deps)({ params: { id: 'mongoB' }, query: {} }, response);
+    assert.equal(response.body.data.sqlId, null);
+    assert.equal(response.body.data.membersCount, null);
   });
 
   test('un id que no existe es 404, no una ficha vacia', async () => {
     const response = makeResponse();
-    const d = { ...deps, CompanySubscription: {
-      ...CROSSWALK_DEPS.CompanySubscription, findOne: () => ({ lean: async () => null }),
-    } };
-    await platformCompanyDetail(d)({ params: { id: 'noexiste' }, query: {} }, response);
+    await platformCompanyDetail(deps)({ params: { id: 'noexiste' }, query: {} }, response);
     assert.equal(response.statusCode, 404);
   });
 });
@@ -315,20 +457,23 @@ describe('GET /api/platform/companies/:id', () => {
 // ──────────────────────────────────────────── el esquema real como juez ────
 
 describe('los campos que se consultan existen en el esquema', () => {
-  const paths = Object.keys(StaffActivityLogModel.schema.paths);
-
   // ESTE es el test que habria cogido el `$createdAt` de gatherCompanies y el
   // del asistente. Mongo no se queja de un campo inexistente: no casa con
   // nada y devuelve cero, para siempre y en silencio.
   test('StaffActivityLog tiene `timestamp` y NO tiene `createdAt`', () => {
-    assert.ok(paths.includes('timestamp'), 'el campo de fecha es `timestamp`');
-    assert.ok(
-      !paths.includes('createdAt'),
-      'si algun dia se añade timestamps:true, revisar las consultas que asumen `timestamp`'
-    );
+    const paths = Object.keys(StaffActivityLogModel.schema.paths);
+    assert.ok(paths.includes('timestamp'));
+    assert.ok(!paths.includes('createdAt'));
   });
 
-  test('ni el controlador ni los helpers consultan createdAt sobre el log', () => {
+  // Por eso `createdAt` del cliente se deriva del ObjectId: si alguien añade
+  // `timestamps: true` a Company, este test avisa de que ya hay un camino
+  // mejor y de que los documentos viejos seguirian sin el campo.
+  test('Company tampoco declara createdAt', () => {
+    assert.ok(!Object.keys(CompanyModel.schema.paths).includes('createdAt'));
+  });
+
+  test('el controlador no consulta createdAt sobre el log', () => {
     const fs = require('node:fs');
     const path = require('node:path');
     const source = fs.readFileSync(path.join(__dirname, '..', 'controller', 'platform.js'), 'utf8');

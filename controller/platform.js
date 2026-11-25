@@ -66,6 +66,9 @@ const {
   rangeDays,
   resolveCompany,
   companyIndex,
+  INVENTORY_STATUS,
+  EVENT_STATUS,
+  filterSupport,
   inventoryRow,
   transactionRow,
   eventRow,
@@ -80,6 +83,10 @@ const realDeps = () => ({
   AdminUser: require('../models/AdminUser'),
   Event: require('../models/Event'),
   Transaction: require('../models/Transaction'),
+  // `consumer_info` NO tiene company_id —los consumidores cuelgan del evento—
+  // asi que contarlos por cliente se hace por `User.company_providers`, que es
+  // el campo que si guarda el id de la compañia.
+  User: require('../models/User'),
   query: (sql, params) => require('../mysql/database/config')().query(sql, params),
 });
 
@@ -269,17 +276,34 @@ const platformInventory = (deps) => async (request, response) => {
       // "sin filtro": lo segundo devolveria el inventario de TODOS.
       if (sqlId === null) { where.push('1 = 0'); } else { where.push('i.company_id = ?'); params.push(sqlId); }
     }
+    // El console filtra por available|assigned|lost|in_repair. `item_inv` solo
+    // sabe de `warehouse`, asi que sostiene los dos primeros; los otros dos se
+    // DECLARAN como no medidos en `filters` y no se traducen a un WHERE que
+    // devolveria cero y se leeria como "no hay ninguno perdido".
     const status = String(request.query?.status || '').trim();
-    if (status === 'out') where.push('i.warehouse = 0');
-    if (status === 'in_warehouse') where.push('i.warehouse <> 0');
+    if (status === 'available') where.push('i.warehouse <> 0');
+    if (status === 'assigned') where.push('i.warehouse = 0');
     if (search) {
       where.push('(i.serial_number LIKE ? OR i.item_group LIKE ? OR i.category_name LIKE ?)');
       params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
     const clause = where.length ? `WHERE ${where.join(' AND ')}` : '';
 
+    // Los totales se calculan SIN la clausula de estado, para que las cifras
+    // de cabecera no cambien al pulsar un filtro: son el reparto del conjunto,
+    // no de la vista.
+    const baseWhere = where.filter((w) => !/warehouse/.test(w));
+    const baseClause = baseWhere.length ? `WHERE ${baseWhere.join(' AND ')}` : '';
+    // `params` vale para las dos clausulas: el filtro de estado se escribe
+    // entero en el SQL (`i.warehouse = 0`) y no aporta ningun placeholder.
+
     const [[{ total }]] = await d.query(
       `SELECT COUNT(*) AS total FROM item_inv i ${clause}`, params
+    );
+    const [[breakdown]] = await d.query(
+      'SELECT COUNT(*) AS total, SUM(i.warehouse <> 0) AS available, ' +
+        `SUM(i.warehouse = 0) AS assigned FROM item_inv i ${baseClause}`,
+      params
     );
     const [rows] = await d.query(
       'SELECT i.item_id, i.serial_number, i.item_group, i.category_name, i.location, ' +
@@ -295,6 +319,15 @@ const platformInventory = (deps) => async (request, response) => {
         page,
         limit,
         total: Number(total ?? 0),
+        totals: {
+          total: Number(breakdown?.total ?? 0),
+          available: Number(breakdown?.available ?? 0),
+          assigned: Number(breakdown?.assigned ?? 0),
+          // No es cero: es que no se lleva. Un cero aqui diria que no hay
+          // ningun equipo perdido, que es una frase que nadie ha comprobado.
+          lost: null,
+        },
+        filters: { status: filterSupport(INVENTORY_STATUS, status || null) },
       })
     );
   } catch (error) { return fail(response, error); }
@@ -319,6 +352,12 @@ const platformTransactions = (deps) => async (request, response) => {
       const name = crosswalk.find((c) => c.id === companyId)?.name;
       filter.company = { $in: [companyId, ...(name ? [name] : [])] };
     }
+    // `type` es una cadena guardada sin validar, asi que se compara tal cual.
+    // El vocabulario que el console ofrece (deposit|rental|sale|refund) NO
+    // esta verificado contra lo que hay en la coleccion: si una pantalla
+    // filtra y sale vacia, eso es lo primero que hay que mirar.
+    const type = String(request.query?.type || '').trim();
+    if (type) filter.type = type;
 
     const [total, docs] = await Promise.all([
       d.Transaction.countDocuments(filter),
@@ -337,6 +376,15 @@ const platformTransactions = (deps) => async (request, response) => {
         page,
         limit,
         total,
+        totals: {
+          count: total,
+          // Dinero. No esta guardado en ninguno de los dos modelos.
+          volumeCents: null,
+          refundsCents: null,
+          // Saldria de StripeWebhookEvent, que registra el evento pero no el
+          // importe. Hasta entonces, null y no 0.
+          failed: null,
+        },
       })
     );
   } catch (error) { return fail(response, error); }
@@ -356,16 +404,22 @@ const platformEvents = (deps) => async (request, response) => {
 
     const filter = {};
     if (companyId) filter.company_id = companyId;
-    const active = String(request.query?.active || '').trim();
-    if (active === 'true') filter.active = true;
-    if (active === 'false') filter.active = false;
 
-    const [total, docs] = await Promise.all([
+    // El console filtra por live|upcoming|closed. `upcoming` sale de
+    // `eventInfoDetail.dateBegin`, que vive en un objeto sin esquema y por
+    // tanto sin indice: ofrecerlo como filtro seria un barrido por pulsacion.
+    // Se CALCULA en cada fila, que es barato, y se declara no filtrable.
+    const status = String(request.query?.status || request.query?.active || '').trim();
+    if (status === 'live' || status === 'true') filter.active = true;
+    if (status === 'closed' || status === 'false') filter.active = false;
+
+    const [total, docs, live] = await Promise.all([
       d.Event.countDocuments(filter),
       // Las fechas del evento viven dentro de `eventInfoDetail`, que no tiene
       // esquema y por tanto no esta indexado. `_id` descendente da el orden de
       // creacion, que es el que el console quiere ("newest first").
       d.Event.find(filter).sort({ _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+      d.Event.countDocuments({ ...filter, active: true }),
     ]);
 
     return response.status(200).json(
@@ -374,6 +428,15 @@ const platformEvents = (deps) => async (request, response) => {
         page,
         limit,
         total,
+        totals: {
+          live,
+          // Contarlos exigiria recorrer la coleccion entera leyendo una fecha
+          // sin indice. Null hasta que `dateBegin` salga de `eventInfoDetail`.
+          upcoming: null,
+          devicesNotReturned: null,
+          revenueCents: null,
+        },
+        filters: { status: filterSupport(EVENT_STATUS, status || null) },
       })
     );
   } catch (error) { return fail(response, error); }
@@ -429,16 +492,29 @@ const platformCompanyDetail = (deps) => async (request, response) => {
     const row = (await gatherCompanies(d)).find((c) => c.id === id);
     if (!row) return response.status(404).json({ ok: false, msg: 'Company not found' });
 
-    const subscription = await d.CompanySubscription.findOne({ company: id }).lean();
-    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-    const [events, transactions, activity30d] = await Promise.all([
-      d.Event.countDocuments({ company_id: id }),
-      d.Transaction.countDocuments({ company: { $in: [id, row.name] } }),
-      d.StaffActivityLog.countDocuments({ company_id: id, timestamp: { $gte: since } }),
+    const sqlId = (await companyCrosswalk(d)).find((c) => c.id === id)?.sqlId ?? null;
+
+    const [company, eventsActive, consumersCount, memberRows] = await Promise.all([
+      d.Company.findOne({ _id: id }).select('phone').lean(),
+      d.Event.countDocuments({ company_id: id, active: true }),
+      // Por `company_providers`, que guarda el id de la compañia. `consumer_info`
+      // en SQL no tiene columna de compañia: los consumidores cuelgan del evento.
+      d.User.countDocuments({ company_providers: id }),
+      // Sin cruce a SQL no hay alumnos que contar, y cero seria afirmar que no
+      // los tiene. `null` dice lo que pasa: no lo sabemos.
+      sqlId === null
+        ? Promise.resolve(null)
+        : d.query('SELECT COUNT(*) AS total FROM members_info WHERE company_id = ?', [sqlId])
+            .then(([rows]) => Number(rows?.[0]?.total ?? 0)),
     ]);
 
     return response.status(200).json(
-      companyDetailBody({ row, subscription, counts: { events, transactions, activity30d } })
+      companyDetailBody({
+        row,
+        company,
+        sqlId,
+        counts: { eventsActive, membersCount: memberRows, consumersCount },
+      })
     );
   } catch (error) { return fail(response, error); }
 };
