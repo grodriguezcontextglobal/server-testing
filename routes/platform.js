@@ -31,6 +31,11 @@ const {
   platformMe,
   platformCompanies,
   platformSummary,
+  platformInventory,
+  platformTransactions,
+  platformEvents,
+  platformActivity,
+  platformCompanyDetail,
 } = require("../controller/platform");
 
 const router = Router();
@@ -47,5 +52,21 @@ router.get("/me", platformMe);
 // de esta misma cadena, sin tocarla.
 router.get("/summary", platformSummary());
 router.get("/companies", platformCompanies());
+
+// DC3, segunda tanda. Las cinco que el console ya llamaba y respondian 404.
+//
+// `/companies/:id` va DESPUES de `/companies` y eso no es casualidad: express
+// resuelve por orden de registro, asi que una ruta con parametro declarada
+// antes que su hermana literal se la come. Es el mismo sombreado que tapo
+// catorce rutas en routes/item.js.
+router.get("/inventory", platformInventory());
+router.get("/transactions", platformTransactions());
+router.get("/events", platformEvents());
+router.get("/activity", platformActivity());
+router.get("/companies/:id", platformCompanyDetail());
+
+// `/attention` queda fuera a proposito: dos de las cuatro cosas que promete
+// —equipos vencidos e importes fallidos— no tienen dato que las sostenga. Ver
+// el comentario de la segunda tanda en controller/platform.js.
 
 module.exports = router;
