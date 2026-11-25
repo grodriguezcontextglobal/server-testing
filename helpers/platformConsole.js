@@ -277,6 +277,20 @@ const INVENTORY_STATUS = Object.freeze({
   unmeasured: ['lost', 'in_repair'],
 });
 
+/**
+ * La coleccion `Event` NO guarda solo eventos.
+ *
+ * `type` es un campo del esquema con default 'event', pero el unico punto de
+ * escritura es `new Event(request.body)` (controller/event.js:14), asi que el
+ * valor llega del cliente y hay documentos que no son eventos de cliente.
+ * Todo el servidor que lee eventos de verdad ya lo acota —search.js 727, 1204,
+ * 2205 y 2428, event.js 446— y el console era el unico que no.
+ *
+ * Mongo no avisa de esto: sin el filtro la consulta corre igual y devuelve de
+ * mas, que es la forma de equivocarse mas dificil de ver en una lista paginada.
+ */
+const EVENT_TYPE = 'event';
+
 const EVENT_STATUS = Object.freeze({
   // `upcoming` saldria de `eventInfoDetail.dateBegin`, que vive en un objeto
   // sin esquema y por tanto sin indice: filtrarlo seria un barrido de la
@@ -489,6 +503,7 @@ module.exports = {
   resolveCompany,
   companyIndex,
   INVENTORY_STATUS,
+  EVENT_TYPE,
   EVENT_STATUS,
   filterSupport,
   eventStatus,

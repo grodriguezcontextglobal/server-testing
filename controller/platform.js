@@ -67,6 +67,7 @@ const {
   resolveCompany,
   companyIndex,
   INVENTORY_STATUS,
+  EVENT_TYPE,
   EVENT_STATUS,
   filterSupport,
   inventoryRow,
@@ -183,7 +184,9 @@ const platformSummary = (deps) => async (request, response) => {
   try {
     const companies = await gatherCompanies(d);
     const [liveEvents, staffTotal, staffWithMfa] = await Promise.all([
-      d.Event.countDocuments({ active: true }),
+      // `type` ademas de `active`: sin el, el contador de la portada suma
+      // documentos que no son eventos de cliente. Ver EVENT_TYPE.
+      d.Event.countDocuments({ type: EVENT_TYPE, active: true }),
       d.AdminUser.countDocuments({ active: { $ne: false } }),
       d.AdminUser.countDocuments({ active: { $ne: false }, mfaEnabled: true }),
     ]);
@@ -402,7 +405,9 @@ const platformEvents = (deps) => async (request, response) => {
     const { page, limit, companyId } = readListQuery(request.query || {});
     const index = companyIndex(await companyCrosswalk(d));
 
-    const filter = {};
+    // Solo eventos. Ver EVENT_TYPE en helpers/platformConsole.js: la coleccion
+    // guarda mas de una cosa y el resto del servidor ya la acota asi.
+    const filter = { type: EVENT_TYPE };
     if (companyId) filter.company_id = companyId;
 
     // El console filtra por live|upcoming|closed. `upcoming` sale de
@@ -496,7 +501,7 @@ const platformCompanyDetail = (deps) => async (request, response) => {
 
     const [company, eventsActive, consumersCount, memberRows] = await Promise.all([
       d.Company.findOne({ _id: id }).select('phone').lean(),
-      d.Event.countDocuments({ company_id: id, active: true }),
+      d.Event.countDocuments({ type: EVENT_TYPE, company_id: id, active: true }),
       // Por `company_providers`, que guarda el id de la compañia. `consumer_info`
       // en SQL no tiene columna de compañia: los consumidores cuelgan del evento.
       d.User.countDocuments({ company_providers: id }),
