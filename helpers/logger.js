@@ -20,8 +20,23 @@ const logFormat = winston.format.combine(
   winston.format.json()
 );
 
-// Qué proceso escribió el registro. En la VM escriben en los mismos archivos
-// las cuatro instancias de la API (pm2) y los workers de la cola.
+/**
+ * Qué proceso escribió el registro.
+ *
+ * MEDIDO en la VM el 2026-11-26, tras el despliegue de 30517d0: son OCHO
+ * procesos, y cada uno tiene ya su propia serie de archivos.
+ *
+ *   combined-api-0.log … combined-api-3.log   las cuatro instancias de la API
+ *   combined-worker-bulk.log                  DevitrakBulkWorker
+ *   combined-worker-delete.log                DevitrakDeleteWorker
+ *   combined-worker-email.log                 DevitrakEmailWorker
+ *   combined-worker-heavy.log                 DevitrakHeavyWorker
+ *
+ * Son cuatro instancias aunque `ENABLE_NATIVE_CLUSTER` esté en `false`
+ * (index.js): el cluster nativo está apagado, pero `NODE_APP_INSTANCE` llega
+ * definido igualmente. Quien busque un log tiene que saber que hay ocho
+ * sitios donde mirar, no uno.
+ */
 const processRole = () => {
   if (process.env.QUEUE_GROUP) return `worker:${process.env.QUEUE_GROUP}`;
   if (process.env.NODE_APP_INSTANCE !== undefined) return `api:${process.env.NODE_APP_INSTANCE}`;
