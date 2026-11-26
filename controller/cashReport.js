@@ -3,6 +3,7 @@ const CashReport = require("../models/CashReport");
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const { default: mongoose } = require("mongoose");
 const logger = require("../helpers/logger");
+const { respondError } = require("../helpers/errorResponder");
 
 const createReport = async (request, response = express.response) => {
   try {
@@ -62,11 +63,7 @@ const removeCashReportAfterRefund = async (request, response) => {
       cashReport,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      error,
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 
@@ -82,11 +79,7 @@ const updateCashReport = async (request, response) => {
       cashReport,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      error,
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 module.exports = {

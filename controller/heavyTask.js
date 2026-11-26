@@ -22,7 +22,7 @@ const handleHeavyTask = async (req, res) => {
     // const child = 
     execFile(goExecutable, [filePath], (error, stdout, stderr) => {
       if (error) {
-        return res.status(500).json({ ok: false, msg: "Worker failed", error: error.message });
+        return respondError(req, res, error, { msg: "Worker failed" });
       }
 
       if (stderr) {

@@ -2,6 +2,7 @@ const getConnection = require("../database/config");
 const logger = require("../../helpers/logger");
 const { getStaffCompanyAccess, FULL_INVENTORY_ROLES } = require("../helpers/staffAccess");
 const { chunkArray } = require("../../helpers/chunkArray");
+const { respondError } = require("../../helpers/errorResponder");
 
 // Rows per statement for bulk writes -- see bulkAssignInventory.
 const BULK_UPDATE_BATCH_SIZE = 500;
@@ -94,7 +95,7 @@ const createLocation = async (req, res) => {
     });
   } catch (error) {
     logger.error("createLocation error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -166,7 +167,7 @@ const bulkAssignInventory = async (req, res) => {
   } catch (error) {
     await connection.rollback();
     logger.error("bulkAssignInventory error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   } finally {
     connection.release();
   }
@@ -350,7 +351,7 @@ const getCompanyLocations = async (req, res) => {
     });
   } catch (error) {
     logger.error("getCompanyLocations error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -502,7 +503,7 @@ const getCompanyLocationTree = async (req, res) => {
     return res.status(200).json({ ok: true, data });
   } catch (error) {
     logger.error("getCompanyLocationTree error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -556,7 +557,7 @@ const resolveLocationCompanyId = async (req, res, next) => {
     return next();
   } catch (error) {
     logger.error("resolveLocationCompanyId error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -606,7 +607,7 @@ const deleteLocation = async (req, res) => {
         msg: "Cannot delete location because it is referenced by other records.",
       });
     }
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -636,7 +637,7 @@ const listCompanyLocations = async (request, response) => {
     return response.status(200).json({ ok: true, result: rows });
   } catch (error) {
     logger.error("listCompanyLocations error:", error);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 

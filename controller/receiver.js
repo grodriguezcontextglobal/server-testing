@@ -5,6 +5,7 @@ const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
 const User = require("../models/User");
 const { clientRedis } = require("../database/cacheMemoryConfig");
+const { respondError } = require("../helpers/errorResponder");
 const {
   updateReceiverStatus: updateReceiverStatusWorker,
   updateBulkItemsInTransaction: updateBulkItemsInTransactionWorker,
@@ -36,11 +37,7 @@ const addReceiverToTransaction = async (request, response) => {
       date: new Date(),
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      err: error,
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 
@@ -61,10 +58,7 @@ const checkingReceiversAssigned = async (request, response) => {
       });
     }
   } catch (error) {
-    return response.status(501).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error, { status: 501 });
   }
 };
 
@@ -89,10 +83,7 @@ const checkingReceiversExistInDatabase = async (request, response) => {
       });
     }
   } catch (error) {
-    return response.status(501).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error, { status: 501 });
   }
 };
 
@@ -113,10 +104,7 @@ const udpateReceiverStatus = async (request, response) => {
       device: result.receiverUpdated.device,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -127,10 +115,7 @@ const updateBulkItemsInTransaction = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -141,10 +126,7 @@ const updateBulkItemsInPool = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -157,11 +139,7 @@ const poolReceivers = async (request, response) => {
       receiversPool,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      err: error,
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 
@@ -175,11 +153,7 @@ const poolReceiversBulk = async (request, response) => {
       skippedDuplicates,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      err: error,
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 const getListOfItemsInEventPool = async (request, response) => {
@@ -226,11 +200,7 @@ const getListOfItemsInEventPool = async (request, response) => {
     });
     // }
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      err: error,
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 
@@ -243,10 +213,7 @@ const updatePoolReceivers = async (request, response) => {
       receiverUpdated: JSON.stringify(result.receiverUpdated),
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -260,10 +227,7 @@ const receiverPoolList = async (request, response) => {
       receiversInventory: receiversInventory,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -276,10 +240,7 @@ const receiverPoolFoundAndDelete = async (request, response) => {
       deviceDeleted: result.deviceDeleted,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -291,11 +252,10 @@ const receiverPoolBulkDelete = async (request, response) => {
       deletedCount: result.deletedCount,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-      debug: error,
-    });
+    // `debug: error` devolvia el objeto ENTERO, que es peor que los 19
+    // `JSON.stringify(error)`: no hacia falta ni serializarlo. El detalle vive
+    // ahora en el registro, buscable por la referencia (SI-11).
+    return respondError(request, response, error);
   }
 };
 
@@ -307,10 +267,7 @@ const listOfAssignedReceiver = async (request, response) => {
       listOfReceivers: listOfReceivers,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -334,11 +291,7 @@ const listOfAssignedReceiverPlusUserInformation = async (request, response) => {
       listOfReceivers: receiversWithUserInfo,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Error fetching receiver information",
-      error: error.message,
-    });
+    return respondError(request, response, error, { msg: "Error fetching receiver information" });
   }
 };
 
@@ -382,10 +335,7 @@ const updateIssueDevice = async (request, response) => {
       receiverUpdated,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -398,11 +348,7 @@ const updateBulkItemDataInPool = async (request, response) => {
       modifiedCount: result.modifiedCount,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Internal server error.",
-      error: error.message,
-    });
+    return respondError(request, response, error, { msg: "Internal server error." });
   }
 };
 
@@ -413,10 +359,7 @@ const returnAllItemsInTransactionInPool = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -427,10 +370,7 @@ const updateBulkItemsInTransactionPerUserAtOnce = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -443,11 +383,7 @@ const createBulkItemTransactionInUser = async (request, response) => {
       receiversAssignedPerUser: result,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      message: "Please contact Administrator",
-      err: error.message,
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 
@@ -461,10 +397,7 @@ const removingItemFromTransaction = async (request, response) => {
       response: foundItem,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -477,10 +410,7 @@ const getAllTransactionByEventAndConsumer = async (request, response) => {
       listOfReceivers: items,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 

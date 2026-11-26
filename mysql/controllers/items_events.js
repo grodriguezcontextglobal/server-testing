@@ -9,6 +9,7 @@ const runGoWorker = require("../../helpers/goWorker");
 const { createQueuedJobController } = require("../../helpers/queuedController");
 const { resolveEventItemShippingUpdatePlan } = require("../../queue/handlers/eventItemShippingBulkUpdate");
 const { performUpdateLargeData, ITEM_INV_COLUMNS } = require("./item");
+const { respondError } = require("../../helpers/errorResponder");
 const {
   poolReceiversBulk: poolReceiversBulkWorker,
 } = require("../../controller/receiverWorker");
@@ -54,7 +55,7 @@ function createInsertingItemInEvent({ runGoWorkerFn = runGoWorker } = {}) {
       });
     } catch (error) {
       logger.error("Error:", error.message);
-      response.status(error.statusCode || 500).json({ msg: error.message, ok: false });
+      return respondError(request, response, error, { status: error.statusCode || 500 });
     }
   };
 }
@@ -294,7 +295,7 @@ const insertingDeviceInEventDirectly = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error inserting device directly:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -323,7 +324,7 @@ const deletingItemsInEventAfterDeviceInventoryIsUpdated = async (
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -359,7 +360,7 @@ const consultingInventoryCurrentState = async (request, response) => {
     response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -415,7 +416,7 @@ const checkingInventoryCurrentState = async (request, response) => {
     response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -440,7 +441,7 @@ const consultingInventoryInEvent = async (request, response) => {
     response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -459,7 +460,7 @@ const consultingRowInItemInvAssignedEventTable = async (request, response) => {
     response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -476,7 +477,7 @@ const deletingRecordInItemInvAssignedEventRow = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -541,7 +542,7 @@ const consultingLeaseInformationConsumer = async (request, response) => {
     return response.status(200).json({ ok: true, result });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -629,10 +630,7 @@ function createAllocateDeviceToEvent({
       });
     } catch (error) {
       logger.error("Error allocating device to event:", error.message);
-      return response.status(error.statusCode || 500).json({
-        error: error.message,
-        ok: false,
-      });
+      return respondError(request, response, error, { status: error.statusCode || 500 });
     }
   };
 }

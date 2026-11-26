@@ -7,6 +7,7 @@ const { checkTokenVersion } = require("../middlewares/checkValidateToken");
 const { optionalJWT } = require("../middlewares/optionalJWT");
 const { contractLinkGate } = require("../middlewares/contractLinkAuth");
 const { consumerTokenGate } = require("../middlewares/consumerTokenGate");
+const { respondError } = require("../helpers/errorResponder");
 
 // tmp/uploads está gitignoreado (tmp/uploads/), así que puede no existir en un
 // checkout limpio o si el OS/limpiador de temporales lo borra. Multer
@@ -155,10 +156,7 @@ router.use((error, req, res, next) => {
         msg: "File size is too large. Maximum size is 50MB",
       });
     }
-    return res.status(400).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error, { status: 400 });
   }
   next(error);
 });

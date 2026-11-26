@@ -1,6 +1,7 @@
 'use strict';
 
 const { PLATFORM_DOMAIN } = require('../helpers/platformAccess');
+const { respondError } = require("../helpers/errorResponder");
 
 /**
  * Console de plataforma — esqueleto (M1).
@@ -190,7 +191,7 @@ const platformCompanies = (deps) => async (request, response) => {
       listBody({ rows: pageOf(rows, { page, limit }), page, limit, total: rows.length })
     );
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -225,7 +226,7 @@ const platformSummary = (deps) => async (request, response) => {
       })
     );
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -276,7 +277,8 @@ const readListQuery = (query = {}) => ({
   search: String(query.search || '').trim(),
 });
 
-const fail = (response, error) => response.status(500).json({ ok: false, msg: error.message });
+// El respondedor comun, con la firma local de este controlador (SI-11).
+const fail = (request, response, error) => respondError(request, response, error);
 
 /**
  * GET /api/platform/inventory?page=&limit=&search=&companyId=&status=
@@ -354,7 +356,7 @@ const platformInventory = (deps) => async (request, response) => {
         filters: { status: filterSupport(INVENTORY_STATUS, status || null) },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -411,7 +413,7 @@ const platformTransactions = (deps) => async (request, response) => {
         },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -465,7 +467,7 @@ const platformEvents = (deps) => async (request, response) => {
         filters: { status: filterSupport(EVENT_STATUS, status || null) },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -502,7 +504,7 @@ const platformActivity = (deps) => async (request, response) => {
         filters: { range },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -542,7 +544,7 @@ const platformCompanyDetail = (deps) => async (request, response) => {
         counts: { eventsActive, membersCount: memberRows, consumersCount },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -615,7 +617,7 @@ const platformAttention = (deps) => async (request, response) => {
         conditions,
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 // ════════════════════════ LAS NUEVE PESTAÑAS DE LA FICHA ════════════════════
@@ -697,7 +699,7 @@ const platformCompanyActivity = (deps) => async (request, response) => {
         },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -740,7 +742,7 @@ const platformCompanyTransactions = (deps) => async (request, response) => {
         },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -795,7 +797,7 @@ const platformCompanyEvents = (deps) => async (request, response) => {
         total,
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -850,7 +852,7 @@ const platformCompanyInventory = (deps) => async (request, response) => {
         },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -890,7 +892,7 @@ const platformCompanyMembers = (deps) => async (request, response) => {
     return response.status(200).json(
       listBody({ rows: rows.map((row) => memberRow({ row })), page, limit, total: Number(total ?? 0) })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -944,7 +946,7 @@ const platformCompanyConsumers = (deps) => async (request, response) => {
         total,
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -1005,7 +1007,7 @@ const platformCompanyStaff = (deps) => async (request, response) => {
         total: employees.length,
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -1040,7 +1042,7 @@ const platformCompanySubscription = (deps) => async (request, response) => {
         startedAt: doc?._id ? createdAtFromId(String(doc._id)) : null,
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**

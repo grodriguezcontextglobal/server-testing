@@ -26,6 +26,7 @@ const logger = require("../../helpers/logger");
 const { resolveCompanyContext } = require("../helpers/companyContext");
 const { buildInventoryScopeFilter } = require("../helpers/staffAccess");
 const { normalizeIdentifier, reconcile } = require("../helpers/identifier");
+const { respondError } = require("../../helpers/errorResponder");
 
 /**
  * Tope de identificadores por llamada.
@@ -223,7 +224,7 @@ const reconcileEventCount = async (request, response) => {
     return response.status(200).json({ ok: true, ...buildReport(result, foreignRows, values) });
   } catch (error) {
     logger.error("reconcileEventCount failed", { error: error.message });
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -309,7 +310,7 @@ const closeEventCount = async (request, response) => {
       }
     }
     logger.error("closeEventCount failed", { error: error.message });
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   } finally {
     if (connection) connection.release();
   }

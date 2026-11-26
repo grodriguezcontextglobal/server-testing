@@ -87,6 +87,54 @@ describe('la frontera: el error no sale', () => {
   });
 });
 
+describe('la frontera tiene una puerta: los errores de validacion propios', () => {
+  const { publicError, isExposed } = require('../helpers/errorResponder');
+
+  // SI-11 habla de errores INTERNOS. "sortBy must be one of..." no es un error
+  // interno escapandose: es la respuesta de la validacion, escrita por
+  // nosotros, y ocultarla deja al cliente sin saber que corregir.
+  test('un error marcado como publico conserva su mensaje', () => {
+    const response = makeResponse();
+    respondError(makeRequest(), response, publicError('sortBy must be one of: serial, group'), {
+      status: 400,
+    });
+    assert.equal(response.statusCode, 400);
+    assert.match(response.body.msg, /sortBy must be one of/);
+    assert.ok(response.body.ref, 'y sigue llevando referencia');
+  });
+
+  test('un error cualquiera NO conserva el suyo, aunque sea un 400', () => {
+    const response = makeResponse();
+    respondError(makeRequest(), response, new Error('syntax error at position 29'), { status: 400 });
+    assert.equal(response.body.msg, GENERIC_MESSAGE);
+  });
+
+  // Que un error de libreria no pueda colarse diciendo que es publico.
+  test('la marca tiene que ser exactamente true', () => {
+    assert.equal(isExposed(Object.assign(new Error('x'), { expose: 'yes' })), false);
+    assert.equal(isExposed(Object.assign(new Error('x'), { expose: 1 })), false);
+    assert.equal(isExposed(new Error('x')), false);
+    assert.equal(isExposed(null), false);
+    assert.equal(isExposed(publicError('x')), true);
+  });
+
+  test('un msg explicito gana al del error publico', () => {
+    const response = makeResponse();
+    respondError(makeRequest(), response, publicError('detalle interno'), { msg: 'No encontrado' });
+    assert.equal(response.body.msg, 'No encontrado');
+  });
+
+  // Las tres clases de validacion que existen hoy.
+  test('las clases de validacion del repo estan marcadas', () => {
+    const { QueryParamError } = require('../mysql/queries/inventoryQueryCatalog');
+    assert.equal(new QueryParamError('x').expose, true);
+    const source = fs.readFileSync(
+      path.join(__dirname, '..', 'mysql', 'queries', 'inventoryImportQuery.js'), 'utf8'
+    );
+    assert.match(source, /this\.expose = true/, 'ImportValidationError sin marcar');
+  });
+});
+
 describe('la referencia', () => {
   test('la genera el servidor y no se lee de la cabecera', () => {
     const request = makeRequest({ headers: { 'x-request-id': 'inventada-por-el-cliente' } });
@@ -159,8 +207,14 @@ describe('el codigo real como juez', () => {
     for (const dir of dirs) {
       const base = path.join(__dirname, '..', ...dir);
       for (const file of fs.readdirSync(base).filter((f) => f.endsWith('.js'))) {
-        const source = fs.readFileSync(path.join(base, file), 'utf8');
-        if (/JSON\.stringify\(error\)/.test(source)) offenders.push(path.join(...dir, file));
+        // Solo lineas vivas: los comentarios NOMBRAN el patron para explicar
+        // por que se quito, y un centinela que lee comentarios acaba
+        // prohibiendo que se documente la decision.
+        const live = fs.readFileSync(path.join(base, file), 'utf8')
+          .split('\n')
+          .filter((line) => !line.trim().startsWith('//') && !line.trim().startsWith('*'))
+          .join('\n');
+        if (/JSON\.stringify\(error\)/.test(live)) offenders.push(path.join(...dir, file));
       }
     }
     assert.deepEqual(offenders, [], 'estos devuelven el objeto entero del error');

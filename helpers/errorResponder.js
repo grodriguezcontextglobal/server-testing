@@ -89,8 +89,25 @@ const detail = (error) => {
  * frase util para el cliente QUE NO VENGA DEL ERROR: "ese evento no existe"
  * esta bien, `error.message` no, y es justo lo que esto impide.
  */
+/**
+ * ¿El mensaje de este error esta escrito PARA quien hizo la peticion?
+ *
+ * SI-11 habla de errores INTERNOS. Un "sortBy must be one of..." o un "la fila
+ * 5 no tiene numero de serie" no son errores internos escapandose: son la
+ * respuesta de la validacion, redactada por nosotros, y ocultarla deja al
+ * cliente con un 400 y ninguna forma de arreglar lo que mando.
+ *
+ * La marca es `expose`, que es la convencion de `http-errors` y de Express,
+ * para no inventarse una propia. Un error de driver, de Stripe o de Mongo
+ * nunca la lleva.
+ */
+const isExposed = (error) => Boolean(error && error.expose === true);
+
 const respondError = (request, response, error, options = {}) => {
-  const { status = 500, msg = GENERIC_MESSAGE, context = {} } = options;
+  const { status = 500, context = {} } = options;
+  // El orden importa: un `msg` explicito gana; si no, el mensaje del propio
+  // error SOLO si esta marcado como publico; si no, el generico.
+  const msg = options.msg ?? (isExposed(error) ? error.message : GENERIC_MESSAGE);
   const ref = request?.errorRef || newRef();
 
   logger.error('Handled error', {
@@ -110,10 +127,24 @@ const respondError = (request, response, error, options = {}) => {
   return response.status(status).json({ ok: false, msg, ref });
 };
 
+/**
+ * Marca un error como "su mensaje es para el cliente".
+ *
+ *   throw publicError('device or active is required');
+ *
+ * Para los errores de validacion que escribimos nosotros. Lo que NO se puede
+ * hacer con esto es marcar un error que venga de una libreria: su mensaje no
+ * lo hemos escrito y no sabemos que arrastra.
+ */
+const publicError = (message, extra = {}) =>
+  Object.assign(new Error(message), { expose: true, ...extra });
+
 module.exports = {
   GENERIC_MESSAGE,
   attachErrorRef,
   respondError,
   detail,
   newRef,
+  isExposed,
+  publicError,
 };

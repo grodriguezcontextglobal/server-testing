@@ -1,6 +1,7 @@
 const express = require("express");
 const Lease = require("../models/Lease");
 const logger = require("../helpers/logger");
+const { respondError } = require("../helpers/errorResponder");
 
 const createLease = async (request, response = express.response) => {
   try {
@@ -70,10 +71,7 @@ const deleteLease = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 

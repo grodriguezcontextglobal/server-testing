@@ -4,6 +4,7 @@ const getConnection = require("../database/config");
 const { readCompanyId } = require("../../middlewares/authorizePermission");
 const { buildEqualityFilter } = require("../../helpers/sqlEqualityFilter");
 const { respondInternalError } = require("../../helpers/internalError");
+const { respondError } = require("../../helpers/errorResponder");
 require("dotenv").config({ quiet: true });
 const connection = getConnection();
 
@@ -133,11 +134,7 @@ const updateEventInfo = async (request, response) => {
     });
   } catch (error) {
     console.error("Error updating event:", error.message);
-    return response.status(500).json({
-      ok: false,
-      msg: "An internal error occurred while updating the event.",
-      error: error.message,
-    });
+    return respondError(request, response, error, { msg: "An internal error occurred while updating the event." });
   } finally {
     if (connection) {
       connection.release();
@@ -210,10 +207,7 @@ const consultingEventsPerCompany = async (request, response) => {
     // });
   } catch (error) {
     console.log(error);
-    response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 

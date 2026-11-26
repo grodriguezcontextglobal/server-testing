@@ -5,6 +5,7 @@ const getConnection = require("../database/config");
 const StaffActivityLog = require("../../models/StaffActivityLog");
 const { isUnder13 } = require("../helpers/ageCalc");
 const { generateOtc, hashOtc, otcExpiresAt, isOtcExpired, isConsentMutable, isValidDecision } = require("../helpers/consentOtc");
+const { respondError } = require("../../helpers/errorResponder");
 
 const hasBlankRequiredId = (value) =>
   value === undefined || value === null || String(value).trim() === "";
@@ -97,7 +98,7 @@ const schoolDashboard = async (req, res) => {
     return res.status(200).json({ ok: true, ...dashboard });
   } catch (error) {
     logger.error("schoolDashboard error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -136,7 +137,7 @@ const schoolRoster = async (req, res) => {
     return res.status(200).json({ ok: true, count: students.length, students });
   } catch (error) {
     logger.error("schoolRoster error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -251,7 +252,7 @@ const studentExport = async (req, res) => {
     return res.status(200).json({ ok: true, student, guardians, leases, consents, access_log });
   } catch (error) {
     logger.error("studentExport error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -421,7 +422,7 @@ const studentErase = async (req, res) => {
     }
   } catch (error) {
     logger.error("studentErase error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -457,7 +458,7 @@ const studentAccessLog = async (req, res) => {
     return res.status(200).json({ ok: true, member_id, access_log, count: access_log.length });
   } catch (error) {
     logger.error("studentAccessLog error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -487,7 +488,7 @@ const listStudentGuardians = async (req, res) => {
     return res.status(200).json({ ok: true, count: guardians.length, guardians });
   } catch (error) {
     logger.error("listStudentGuardians error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -593,7 +594,7 @@ const addStudentGuardian = async (req, res) => {
     }
   } catch (error) {
     logger.error("addStudentGuardian error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -671,7 +672,7 @@ const searchGuardians = async (req, res) => {
     return res.status(200).json({ ok: true, count: guardians.length, guardians });
   } catch (error) {
     logger.error("searchGuardians error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -739,7 +740,7 @@ const recordConsent = async (req, res) => {
     }
   } catch (error) {
     logger.error("recordConsent error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -873,7 +874,7 @@ const requestConsent = async (req, res) => {
     });
   } catch (error) {
     logger.error("requestConsent error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -975,7 +976,7 @@ const resendConsent = async (req, res) => {
     });
   } catch (error) {
     logger.error("resendConsent error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -1198,7 +1199,7 @@ const publicRespondConsent = async (req, res) => {
     return res.status(200).json({ ok: true, status: decision, consent_id: consent.id });
   } catch (error) {
     logger.error("publicRespondConsent error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -1220,7 +1221,7 @@ const listMemberConsents = async (req, res) => {
     return res.status(200).json({ ok: true, count: rows.length, consents: rows });
   } catch (error) {
     logger.error("listMemberConsents error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -1325,7 +1326,7 @@ const listCompanyConsents = async (req, res) => {
     });
   } catch (error) {
     logger.error("listCompanyConsents error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -1372,7 +1373,7 @@ const consentStatus = async (req, res) => {
     return res.status(200).json({ ok: true, policy_type: pType, ...summary, members });
   } catch (error) {
     logger.error("consentStatus error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -1409,7 +1410,7 @@ const getSchoolSettings = async (req, res) => {
     });
   } catch (error) {
     logger.error("getSchoolSettings error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -1475,7 +1476,7 @@ const setConsentEnforcement = async (req, res) => {
     });
   } catch (error) {
     logger.error("setConsentEnforcement error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -1506,7 +1507,7 @@ const setLeaseReminders = (stop) => async (req, res) => {
     return res.status(200).json({ ok: true, reminders_stopped: stop });
   } catch (error) {
     logger.error("setLeaseReminders error:", error.message);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 const stopLeaseReminders = setLeaseReminders(true);

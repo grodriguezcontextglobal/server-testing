@@ -8,6 +8,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const logger = require("../helpers/logger");
 const runGoWorker = require("../helpers/goWorker");
 const { isStaffOrigin, isStaffSession } = require("../helpers/consumerUserFilter");
+const { respondError } = require("../helpers/errorResponder");
 const {
   buildPublicTransactionList,
   buildPublicTransactionDoc,
@@ -26,8 +27,8 @@ const resolveLane = async (request) => {
   return "public";
 };
 
-const sendLaneError = (response, error) =>
-  response.status(error.status).json({ ok: false, msg: error.message });
+const sendLaneError = (request, response, error) =>
+  respondError(request, response, error, { status: error.status });
 
 // Filtros que manda el staff (A8, 2026-10-27). El dashboard usa operadores de
 // comparación (`active: { $in: [...] }`), así que no se neutralizan todos: solo
@@ -77,12 +78,9 @@ const saveTransaction = async (request, response) => {
       transaction: transactionSaved,
     });
   } catch (error) {
-    if (error instanceof TransactionLaneError) return sendLaneError(response, error);
+    if (error instanceof TransactionLaneError) return sendLaneError(request, response, error);
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -103,10 +101,7 @@ const saveTransactionAdmin = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -167,10 +162,7 @@ const updateTransaction = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -193,12 +185,9 @@ const getListOfAllSavedTransaction = async (request, response) => {
       list: listOfTransactionsSaved,
     });
   } catch (error) {
-    if (error instanceof TransactionLaneError) return sendLaneError(response, error);
+    if (error instanceof TransactionLaneError) return sendLaneError(request, response, error);
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -238,10 +227,7 @@ const gettingListOfSavedTransaction = async (request, response) => {
     }
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -273,10 +259,7 @@ const updateMultipleDocuments = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -316,12 +299,9 @@ const removeDuplicateEntry = async (request, response) => {
       msg: `Duplicate entry ID ${id} removed from transaction document`,
     });
   } catch (error) {
-    if (error instanceof TransactionLaneError) return sendLaneError(response, error);
+    if (error instanceof TransactionLaneError) return sendLaneError(request, response, error);
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 

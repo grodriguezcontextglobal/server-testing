@@ -7,6 +7,7 @@ const runGoWorker = require("../helpers/goWorker");
 const { groupBy } = require("lodash");
 const mongoose = require("mongoose");
 const logger = require("../helpers/logger");
+const { respondError } = require("../helpers/errorResponder");
 const {
   buildUserFilter,
   isStaffOrigin,
@@ -16,8 +17,8 @@ const {
   PUBLIC_PROJECTION,
 } = require("../helpers/consumerUserFilter");
 
-const sendFilterError = (response, error) =>
-  response.status(error.status).json({ ok: false, msg: error.message });
+const sendFilterError = (request, response, error) =>
+  respondError(request, response, error, { status: error.status });
 
 // Con sesión de staff filtra por cualquier campo del modelo; sin sesión solo
 // busca por email exacto (ver helpers/consumerUserFilter.js). `publicFromDashboard`
@@ -38,12 +39,9 @@ const findUsers = async (request, response, { publicFromDashboard }) => {
       users,
     });
   } catch (error) {
-    if (error instanceof UserFilterError) return sendFilterError(response, error);
+    if (error instanceof UserFilterError) return sendFilterError(request, response, error);
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -97,11 +95,8 @@ const getListOfUsers = async (request, response = response) => {
       });
     }
   } catch (error) {
-    if (error instanceof UserFilterError) return sendFilterError(response, error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    if (error instanceof UserFilterError) return sendFilterError(request, response, error);
+    return respondError(request, response, error);
   }
 };
 
@@ -334,13 +329,9 @@ const getListOfUsersAndTransactionsPerEvent = async (request, response) => {
       data: JSON.stringify(result),
     });
   } catch (error) {
-    if (error instanceof UserFilterError) return sendFilterError(response, error);
+    if (error instanceof UserFilterError) return sendFilterError(request, response, error);
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: "Contact Administrator",
-      error: error,
-    });
+    return respondError(request, response, error, { msg: "Contact Administrator" });
   }
 };
 
@@ -374,11 +365,7 @@ const getAllConsumersBasedOnAllEventsPerCompany = async (request, response) => {
       });
     }
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Contact Administrator",
-      error: error.message,
-    });
+    return respondError(request, response, error, { msg: "Contact Administrator" });
   }
 };
 

@@ -970,10 +970,7 @@ const searching = async (req, res) => {
       memberAssignment: memberAssignmentFound,
     });
   } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -991,10 +988,7 @@ const moreConsumer = async (req, res) => {
       consumers: consumerFound,
     });
   } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -1026,11 +1020,7 @@ const previousConsumer = async (req, res) => {
       hasMore,
     });
   } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      message: error.message,
-      error,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -1052,10 +1042,7 @@ const moreEvents = async (req, res) => {
       event: eventFound,
     });
   } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -1076,10 +1063,7 @@ const moreStaff = async (req, res) => {
       staff: staffFound,
     });
   } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -1099,10 +1083,7 @@ const moreDeviceTransaction = async (req, res) => {
       devicePool: devicePoolFound,
     });
   } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 

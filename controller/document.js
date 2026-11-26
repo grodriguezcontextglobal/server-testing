@@ -122,10 +122,7 @@ function createUploadDocument({
       // No incluir el objeto `error` crudo en la respuesta: serializar un
       // MongoServerError/Error puede fallar y escalar al error handler global
       // (enmascarando el 500 real). Solo el mensaje.
-      res.status(500).json({
-        ok: false,
-        msg: error.message,
-      });
+      return respondError(req, res, error);
     }
   };
 }
@@ -146,10 +143,7 @@ const getCompanyDocuments = async (req, res) => {
       documents,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -163,10 +157,7 @@ const getCompanyDocumentByID = async (req, res) => {
       document,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -179,10 +170,7 @@ const getDocumentTypes = async (req, res) => {
       types,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -195,10 +183,7 @@ const getTriggerActions = async (req, res) => {
       actions,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -266,10 +251,7 @@ const getDocumentDownloadUrl = async (req, res) => {
       downloadUrl,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -405,10 +387,7 @@ const updateDocument = async (req, res) => {
       error.name === "ValidationError" ||
       error.name === "CastError" ||
       /^Invalid (document type|trigger action)/.test(error.message);
-    return res.status(isValidation ? 400 : 500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error, { status: isValidation ? 400 : 500 });
   }
 };
 
@@ -435,10 +414,7 @@ const deleteDocument = async (req, res) => {
       msg: "Document deleted successfully",
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -451,10 +427,7 @@ const generateTemporaryDownloadUrl = async (req, res) => {
       downloadUrl,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -723,10 +696,7 @@ const updateStampEventConsumerSignatures = async (request, response) => {
       msg: "Signature updated successfully",
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -783,10 +753,7 @@ const createNewFolder = async (req, res) => {
       folder,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -827,10 +794,7 @@ const getFolders = async (req, res) => {
       folders: structureResponse,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -843,10 +807,7 @@ const getFolderByID = async (req, res) => {
       folder,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -875,10 +836,7 @@ const updateFolder = async (req, res) => {
       folder,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -892,10 +850,7 @@ const deleteFolder = async (req, res) => {
       msg: "Folder deleted successfully",
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -935,10 +890,7 @@ const createStaffMemberVerification = async (req, res) => {
       verificationInfo: new_contract_verification,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 const createConsumerVerification = async (req, res) => {
@@ -977,10 +929,7 @@ const createConsumerVerification = async (req, res) => {
       verificationInfo: new_contract_verification,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -1020,10 +969,7 @@ const createMemberVerification = async (req, res) => {
       verificationInfo: new_contract_verification,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -1772,11 +1718,7 @@ const uploadExcelToS3 = async (req, res) => {
     });
   } catch (error) {
     logger.error(error);
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: error,
-    });
+    return respondError(req, res, error);
   }
 };
 

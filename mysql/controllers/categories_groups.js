@@ -1,4 +1,5 @@
 const getConnection = require("../database/config");
+const { respondError } = require("../../helpers/errorResponder");
 
 // ─── CATEGORIES ──────────────────────────────────────────────────────────────
 
@@ -20,7 +21,7 @@ const listCompanyCategories = async (request, response) => {
 
     return response.status(200).json({ ok: true, result: rows });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -44,7 +45,7 @@ const upsertCategory = async (request, response) => {
 
     return response.status(200).json({ ok: true, result });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -70,7 +71,7 @@ const deleteCategory = async (request, response) => {
 
     return response.status(200).json({ ok: true, result });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -94,7 +95,7 @@ const listCompanyGroups = async (request, response) => {
 
     return response.status(200).json({ ok: true, result: rows });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -118,7 +119,7 @@ const upsertGroup = async (request, response) => {
 
     return response.status(200).json({ ok: true, result });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -144,7 +145,7 @@ const deleteGroup = async (request, response) => {
 
     return response.status(200).json({ ok: true, result });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -182,7 +183,7 @@ const getInventoryGroupedFull = async (request, response) => {
 
     return response.status(200).json({ ok: true, result });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 

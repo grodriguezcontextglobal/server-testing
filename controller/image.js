@@ -32,10 +32,7 @@ const retrieveImage = async (request, response) => {
     }
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
