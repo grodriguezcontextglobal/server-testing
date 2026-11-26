@@ -21,7 +21,7 @@ const Company = require("../models/Company");
 const { resolveCompanyContext } = require("../helpers/companyContext");
 const { isStaffOrigin, isStaffSession } = require("../helpers/consumerUserFilter");
 const { staffView, publicView, isRetrievableId } = require("../helpers/paymentIntentView");
-const { respondError } = require("../helpers/errorResponder");
+const { respondError, publicError } = require("../helpers/errorResponder");
 const {
   persistConnectedAccountId,
   resolveConnectedAccountId,
@@ -957,7 +957,10 @@ const retrieveSubscriptionID = async (request, response) => {
         subscription,
       });
     } else {
-      throw new Error("Payment Intent is not associated with a Subscription.");
+      // `publicError`: lo lanzamos nosotros y el mensaje dice exactamente que
+      // pasa con ESE pago. Sin la marca salia generico desde el despliegue de
+      // 30517d0 (SI-11, helpers/errorResponder.js).
+      throw publicError("Payment Intent is not associated with a Subscription.");
     }
   } catch (error) {
     return respondError(request, response, error);

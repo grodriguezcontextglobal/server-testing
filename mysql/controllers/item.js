@@ -26,7 +26,7 @@ const { createQueuedJobController, waitForJobOutcome } = require("../../helpers/
 const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
 const { chunkArray } = require("../../helpers/chunkArray");
 const crypto = require("node:crypto");
-const { respondError } = require("../../helpers/errorResponder");
+const { respondError, publicError } = require("../../helpers/errorResponder");
 const {
   withPlanCapacity,
   precheckPlanCapacity,
@@ -229,7 +229,9 @@ const insertingItem = async (request, response) => {
       finalLocationName = locName;
     } else {
       if (!company_id || !locName) {
-        throw new Error("Company ID and Location Name are required.");
+        // Validacion de entrada: el mensaje dice que campos faltan, asi que
+        // sale tal cual (SI-11, helpers/errorResponder.js).
+        throw publicError("Company ID and Location Name are required.");
       }
     }
 

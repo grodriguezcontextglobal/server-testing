@@ -220,12 +220,73 @@ describe('el codigo real como juez', () => {
     assert.deepEqual(offenders, [], 'estos devuelven el objeto entero del error');
   });
 
-  test('el middleware se monta antes que el resto', () => {
+  // Las rutas de sondeo se montan FUERA de configureMiddleware a proposito
+  // (index.js), asi que un attachErrorRef que viviera ahi dentro nunca pasaria
+  // por ellas: /ready devolvia `ref: null` siempre. Una referencia que nunca
+  // apunta a nada invita a buscar en el registro algo que no se escribio.
+  test('attachErrorRef se monta antes que las rutas de sondeo', () => {
+    // Se mira DENTRO de initializeApp, que es donde se decide el orden real:
+    // `configureMiddleware` se define arriba del fichero pero se llama abajo,
+    // asi que comparar posiciones en el texto entero no dice nada.
     const source = read('index.js');
-    const ref = source.indexOf('app.use(attachErrorRef)');
-    const log = source.indexOf('app.use(requestLogger)');
-    assert.ok(ref > 0, 'attachErrorRef no esta montado');
-    assert.ok(ref < log, 'tiene que ir antes, para que un rechazo temprano tambien se pueda nombrar');
+    const body = source.slice(source.indexOf('const initializeApp'));
+
+    const ref = body.indexOf('app.use(attachErrorRef)');
+    const health = body.indexOf('app.use(require("./routes/health"))');
+    const middleware = body.indexOf('configureMiddleware(app)');
+
+    assert.ok(ref > 0, 'attachErrorRef no esta montado en initializeApp');
+    assert.ok(health > 0, 'no se encontro el montaje de /health');
+    assert.ok(ref < health, '/health y /ready tienen que recibir la referencia');
+    assert.ok(
+      ref < middleware,
+      'y tiene que ir antes del resto de la cadena, que es la que puede rechazar'
+    );
+  });
+
+  // Lo que mas costo de este hallazgo no fue tapar errores, fue NO tapar los
+  // mensajes que escribimos nosotros. Este test busca el patron que se nos
+  // escapo dos veces: un `throw new Error("texto")` que cae en un
+  // respondError sin `msg` propio, o sea un mensaje util que sale generico.
+  test('ningun throw con mensaje propio acaba tapado', () => {
+    const dirs = [['controller'], ['mysql', 'controllers'], ['helpers'], ['routes']];
+    const tapados = [];
+
+    for (const dir of dirs) {
+      const base = path.join(__dirname, '..', ...dir);
+      if (!fs.existsSync(base)) continue;
+      for (const file of fs.readdirSync(base).filter((f) => f.endsWith('.js'))) {
+        const lines = fs.readFileSync(path.join(base, file), 'utf8').split('\n');
+        lines.forEach((line, i) => {
+          if (!/throw new Error\(\s*["'`][^"'`]{4,}["'`]/.test(line)) return;
+          for (let j = i + 1; j < Math.min(lines.length, i + 300); j += 1) {
+            if (/^(const|function|module\.exports)/.test(lines[j])) break;
+            if (/respondError\(/.test(lines[j])) {
+              // Con `msg:` propio el mensaje no se pierde; sin el, si.
+              if (!/msg:/.test(lines[j])) {
+                tapados.push(`${path.join(...dir, file)}:${i + 1}  ${line.trim()}`);
+              }
+              break;
+            }
+          }
+        });
+      }
+    }
+
+    assert.deepEqual(
+      tapados, [],
+      'usa publicError() si el mensaje es para el cliente, o pasa un msg propio al respondError'
+    );
+  });
+
+  test('/ready no promete una referencia que no existe', () => {
+    const source = read('routes/health.js');
+    if (!/ref:/.test(source)) return; // si deja de devolverla, nada que fijar
+    assert.match(
+      source,
+      /request\.errorRef/,
+      'si /ready devuelve `ref`, tiene que salir de la peticion'
+    );
   });
 
   // Un servidor que dice mas o menos segun una variable de entorno es un

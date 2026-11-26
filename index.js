@@ -82,12 +82,6 @@ const configureMiddleware = (app) => {
   // normalizeForwardedFor NO va aqui: se monta en initializeApp, antes que las
   // rutas de sondeo, porque el limitador de /ready tambien lee req.ip.
 
-  // Una referencia de error por peticion, ANTES de cualquier cosa que pueda
-  // fallar (SI-11, APP-2026-013). Va la primera a proposito: si el limitador
-  // de peticiones o el body parser rechazan algo, ese fallo tambien tiene que
-  // poder nombrarse. Ver helpers/errorResponder.js.
-  app.use(attachErrorRef);
-
   // Request logging middleware (should be first to capture all requests)
   app.use(requestLogger);
   app.use(securityLogger);
@@ -355,6 +349,15 @@ const initializeApp = () => {
   // (clave por defecto = req.ip) lanzaba ERR_ERL_INVALID_IP_ADDRESS. No escribe
   // logs ni rechaza nada, asi que no rompe ninguna razon de las de arriba.
   app.use(normalizeForwardedFor);
+  // Y attachErrorRef por el mismo motivo que normalizeForwardedFor, con el
+  // mismo argumento: genera doce hexadecimales y pone una cabecera, no escribe
+  // logs ni rechaza nada, asi que no rompe ninguna de las razones de arriba.
+  //
+  // Estuvo dentro de configureMiddleware durante un despliegue y el efecto fue
+  // que el 503 de /ready devolvia `ref: null` SIEMPRE —el middleware no habia
+  // pasado por ahi—. Una referencia que nunca apunta a nada es peor que no
+  // tener ninguna: invita a buscar en el registro algo que no se escribio.
+  app.use(attachErrorRef);
   app.use(require("./routes/health"));
   // Buzón de violaciones de CSP del dashboard: mismo motivo, fuera del
   // limitador global y del audit trail. El porqué en routes/cspReport.js.
