@@ -294,10 +294,23 @@ function render(summary, { n = 10, ips = false } = {}) {
   return lines.join('\n');
 }
 
+/**
+ * Las dos convenciones de nombre que han existido.
+ *
+ *   combined.log, combined1.log …        hasta 2026-11-26: UNA serie para
+ *                                        todos los procesos, que es justo lo
+ *                                        que rompía la rotación (ver
+ *                                        helpers/logger.js)
+ *   combined-api-0.log, combined-api-0 1.log … desde entonces: una serie por
+ *                                        proceso
+ *
+ * Se leen las dos, porque los archivos viejos siguen en la VM y son la única
+ * historia que hay de antes del cambio.
+ */
 function logFiles(dir) {
   return fs
     .readdirSync(dir)
-    .filter((f) => /^combined\d*\.log$/.test(f))
+    .filter((f) => /^combined(-[A-Za-z0-9_-]+)?\d*\.log$/.test(f))
     .map((f) => path.join(dir, f));
 }
 

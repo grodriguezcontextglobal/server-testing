@@ -12,7 +12,19 @@ const ACCEPTED_ORIGINS = [
     // esos dos se van el dia de la cookie en produccion.
     "https://ops.devitrak.net",
     "https://admin-testing-dev.netlify.app",
-    "https://login.microsoftonline.com/"
+    // Retirado 2026-11-26: "https://login.microsoftonline.com/" (APP-2026-014).
+    //
+    // Nunca llegó a hacer nada, por dos motivos independientes. No hay una sola
+    // línea de OAuth de Microsoft, Azure ni MSAL en el repositorio, así que
+    // ningún flujo lo usaba. Y el valor llevaba BARRA FINAL, mientras que la
+    // cabecera `Origin` que manda un navegador nunca la lleva: la comparación
+    // es `ACCEPTED_ORIGINS.includes(origin)`, exacta, así que esa entrada no
+    // podía casar con ninguna petición real.
+    //
+    // O sea que quitarla no cambia el comportamiento de nada. Lo que cambia es
+    // lo que lee un evaluador: un dominio de identidad ajeno en la lista de
+    // orígenes con `credentials: true` es una pregunta que había que contestar,
+    // y la respuesta era "no se usa".
 ];
 
 const corsOptions = {

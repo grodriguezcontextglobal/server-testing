@@ -58,10 +58,13 @@ test('el logger real deja pasar http y requests.log solo acepta ese nivel', () =
   delete require.cache[loggerPath];
   const logger = require('../helpers/logger');
   assert.equal(logger.level, 'http');
-  const requests = logger.transports.find((t) => /requests\.log$/.test(t.filename || ''));
-  const combined = logger.transports.find((t) => /combined\.log$/.test(t.filename || ''));
+  // Desde el 2026-11-26 cada proceso tiene su propia serie —`requests-api-0.log`,
+  // `combined-worker-heavy.log`— porque seis procesos rotando el mismo archivo
+  // se pisaban los índices (APP-2026-002, ver helpers/logger.js).
+  const requests = logger.transports.find((t) => /requests(-[\w-]+)?\.log$/.test(t.filename || ''));
+  const combined = logger.transports.find((t) => /combined(-[\w-]+)?\.log$/.test(t.filename || ''));
   assert.ok(requests && combined);
-  assert.equal(combined.level, 'info', 'combined.log no recibe http');
+  assert.equal(combined.level, 'info', 'el archivo combinado no recibe http');
   const pass = (level) => requests.format.transform({ level, message: 'm' }, {});
   assert.ok(pass('http'));
   assert.equal(pass('info'), false);
