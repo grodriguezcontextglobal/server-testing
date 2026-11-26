@@ -36,6 +36,16 @@ const {
   platformEvents,
   platformActivity,
   platformCompanyDetail,
+  platformAttention,
+  platformCompanyActivity,
+  platformCompanyTransactions,
+  platformCompanyEvents,
+  platformCompanyInventory,
+  platformCompanyMembers,
+  platformCompanyConsumers,
+  platformCompanyStaff,
+  platformCompanySubscription,
+  platformCompanyMerchant,
 } = require("../controller/platform");
 
 const router = Router();
@@ -65,8 +75,33 @@ router.get("/events", platformEvents());
 router.get("/activity", platformActivity());
 router.get("/companies/:id", platformCompanyDetail());
 
-// `/attention` queda fuera a proposito: dos de las cuatro cosas que promete
-// —equipos vencidos e importes fallidos— no tienen dato que las sostenga. Ver
-// el comentario de la segunda tanda en controller/platform.js.
+// DC3, tercera tanda: las nueve pestañas de la ficha de un cliente.
+//
+// Una ruta por recurso, NO `/companies/:id/:resource`. Con un comodin, pedir
+// una pestaña que no servimos daria 200 o 400 y el console no podria
+// distinguir "esa pestaña no existe" de "existe y no tiene datos". Asi un
+// recurso que no esta da 404 de verdad.
+//
+// `merchant` esta registrada y contesta 501 con la razon: todo lo que enseña
+// es estado de Stripe y este servidor solo guarda el formulario de alta.
+router.get("/companies/:id/activity", platformCompanyActivity());
+router.get("/companies/:id/transactions", platformCompanyTransactions());
+router.get("/companies/:id/events", platformCompanyEvents());
+router.get("/companies/:id/inventory", platformCompanyInventory());
+router.get("/companies/:id/members", platformCompanyMembers());
+router.get("/companies/:id/consumers", platformCompanyConsumers());
+router.get("/companies/:id/staff", platformCompanyStaff());
+router.get("/companies/:id/subscription", platformCompanySubscription());
+router.get("/companies/:id/merchant", platformCompanyMerchant());
+
+// `/attention` SI se sirve, con una de sus tres condiciones midiendo y las
+// otras dos declaradas en el cuerpo de la respuesta.
+//
+// Antes quedaba fuera a proposito, y el razonamiento era bueno a medias: una
+// pantalla que promete tres avisos y mide uno engaña MENOS que una pantalla
+// que no existe, siempre que diga cual mide. Una lista vacia con
+// `conditions.devicesOverdue.active: false` dice algo muy distinto de una
+// lista vacia a secas, y es el console quien decide como pintarlo.
+router.get("/attention", platformAttention());
 
 module.exports = router;

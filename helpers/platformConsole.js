@@ -62,8 +62,19 @@ const readPaging = (query = {}) => {
   return { page, limit };
 };
 
-/** Sobre de lista. `total` es el total de verdad, no lo que cabe en la pagina. */
-const listBody = ({ rows, page, limit, total, totals, filters }) => ({
+/**
+ * Sobre de lista. `total` es el total de verdad, no lo que cabe en la pagina.
+ *
+ * Las claves opcionales se enumeran de una en una A PROPOSITO —no hay un
+ * `...resto`— para que el sobre sea un contrato y no un cajon. El precio es
+ * que una clave nueva hay que añadirla aqui: `conditions` se perdio en
+ * silencio la primera vez por esto mismo, y lo cogio su test.
+ *
+ * `conditions` lo usa /attention para decir cuales de sus avisos esta midiendo
+ * de verdad. No es lo mismo que `filters`: aquel declara que puede filtrar el
+ * cliente, este declara que puede observar el servidor.
+ */
+const listBody = ({ rows, page, limit, total, totals, filters, conditions }) => ({
   ok: true,
   data: rows,
   page,
@@ -71,6 +82,7 @@ const listBody = ({ rows, page, limit, total, totals, filters }) => ({
   total: Number.isFinite(Number(total)) ? Number(total) : rows.length,
   ...(totals ? { totals } : {}),
   ...(filters ? { filters } : {}),
+  ...(conditions ? { conditions } : {}),
 });
 
 const iso = (value) => {
@@ -300,6 +312,63 @@ const EVENT_STATUS = Object.freeze({
   unmeasured: ['upcoming'],
 });
 
+/**
+ * GET /api/platform/attention — LAS TRES CONDICIONES, Y CUALES SE MIDEN.
+ *
+ * El console pide tres (su nota §5): equipos vencidos mas de 7 dias,
+ * suscripcion `past_due` o cargo fallido, y ningun acceso de staff en 30 dias.
+ * Hoy solo la segunda tiene dato detras.
+ *
+ * `devicesOverdue` no es que salga cero: es que NO EXISTE. Nadie ha decidido
+ * que fecha define "vencido" —la del prestamo, la de devolucion del evento o
+ * la del propio aparato, que son tres numeros distintos para el mismo equipo—
+ * asi que no hay campo que consultar. Devolver una lista sin esa condicion y
+ * callarselo seria peor que no tener la pantalla: un console tranquilo diria
+ * que no hay equipos sin volver.
+ *
+ * La tercera tiene fecha de nacimiento conocida: `lastLoginAt` empezo a
+ * escribirse el 2026-11-09, asi que "sin acceso en 30 dias" no se puede
+ * afirmar de nadie hasta el 2026-12-09. No es una limitacion de coste, es que
+ * el dato no tiene edad suficiente. Se enciende sola ese dia.
+ */
+const STAFF_DORMANT_FROM = '2026-12-09';
+
+/** Estados de suscripcion que ponen a un cliente en la lista. */
+const ATTENTION_SUBSCRIPTION_STATUSES = Object.freeze([
+  'past_due',
+  'incomplete',
+  'unpaid',
+  'incomplete_expired',
+]);
+
+/**
+ * Que condiciones estan midiendo hoy, dicho en la respuesta.
+ *
+ * Va DENTRO del cuerpo y no en la documentacion a proposito: quien mira la
+ * pantalla tiene que poder saber que no la esta viendo entera.
+ */
+const attentionConditions = (now = new Date()) => ({
+  devicesOverdue: {
+    active: false,
+    reason: 'no field defines "overdue"; the due date has not been chosen between lease, event and device',
+  },
+  subscription: { active: true },
+  staffDormant: {
+    active: new Date(now) >= new Date(`${STAFF_DORMANT_FROM}T00:00:00.000Z`),
+    availableFrom: STAFF_DORMANT_FROM,
+    reason: 'lastLoginAt has only been written since 2026-11-09, so 30 days of absence cannot be claimed before then',
+  },
+});
+
+/** Una fila de /attention. */
+const attentionRow = ({ kind, company = {}, reason = null } = {}) => ({
+  id: `${kind}:${company.id}`,
+  kind,
+  companyId: company.id ?? null,
+  companyName: company.name || null,
+  reason,
+});
+
 /** Sobre de filtros: que acepta el servidor y que no puede medir. */
 const filterSupport = (vocab, asked) => {
   const out = { supported: vocab.supported, unmeasured: vocab.unmeasured };
@@ -508,6 +577,11 @@ module.exports = {
   filterSupport,
   eventStatus,
   activityCategory,
+  ACTIVITY_CATEGORY,
+  STAFF_DORMANT_FROM,
+  ATTENTION_SUBSCRIPTION_STATUSES,
+  attentionConditions,
+  attentionRow,
   createdAtFromId,
   inventoryRow,
   transactionRow,
