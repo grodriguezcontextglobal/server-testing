@@ -1,6 +1,7 @@
 'use strict';
 
 const Job = require("../models/Job");
+const { respondError } = require("../helpers/errorResponder");
 
 const OBJECT_ID_REGEX = /^[0-9a-fA-F]{24}$/;
 
@@ -65,7 +66,7 @@ function createGetJobStatus({ findById = (id) => Job.findById(id) } = {}) {
 
       return response.status(200).json(buildJobStatusResponse(job));
     } catch (error) {
-      return response.status(500).json({ ok: false, message: error.message });
+      return respondError(request, response, error);
     }
   };
 }
@@ -82,7 +83,7 @@ function createGetJobStats({
       const rows = await aggregateByStatus();
       return response.status(200).json({ ok: true, stats: buildStatsFromRows(rows) });
     } catch (error) {
-      return response.status(500).json({ ok: false, message: error.message });
+      return respondError(request, response, error);
     }
   };
 }
@@ -138,7 +139,7 @@ function createGetOwnedJobStatus({ findById = (id) => Job.findById(id) } = {}) {
 
       return response.status(200).json(buildOwnedJobResponse(job));
     } catch (error) {
-      return response.status(500).json({ ok: false, message: error.message });
+      return respondError(request, response, error);
     }
   };
 }

@@ -16,6 +16,7 @@ const logger = require("../helpers/logger");
 const { reservePlanCapacity } = require("../helpers/planLimits");
 
 const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
+const { respondError } = require("../helpers/errorResponder");
 
 // ----- shared SQL helpers -----
 
@@ -308,11 +309,7 @@ const registerNewUserAndCompany = async (request, response) => {
       error: error.message,
       stack: error.stack,
     });
-    return response.status(500).json({
-      ok: false,
-      msg: "El registro falló. Por favor contacta soporte.",
-      err: error.message,
-    });
+    return respondError(request, response, error, { msg: "El registro falló. Por favor contacta soporte." });
   }
 };
 
@@ -443,11 +440,7 @@ const registerExistingUserNewCompany = async (request, response) => {
       error: error.message,
       stack: error.stack,
     });
-    return response.status(500).json({
-      ok: false,
-      msg: "El registro de empresa falló. Por favor contacta soporte.",
-      err: error.message,
-    });
+    return respondError(request, response, error, { msg: "El registro de empresa falló. Por favor contacta soporte." });
   }
 };
 
@@ -729,11 +722,7 @@ const acceptInvitation = async (request, response) => {
     });
   } catch (error) {
     logger.error("acceptInvitation error", { error: error.message, stack: error.stack });
-    return response.status(500).json({
-      ok: false,
-      msg: "La aceptación de la invitación falló.",
-      err: error.message,
-    });
+    return respondError(request, response, error, { msg: "La aceptación de la invitación falló." });
   } finally {
     if (planReservation) await planReservation.release();
   }

@@ -1,6 +1,7 @@
 const ErrorLogs = require("../models/ErrorLogs");
 const { buildErrorFeedbackMessage } = require("../nodeMailer/notifications");
 const { enqueue, extractJobContext } = require("../helpers/queue");
+const { respondError } = require("../helpers/errorResponder");
 
 // Mongoose asigna el schema.required en `.validate()`/`.save()`, no al
 // construir un documento. Si no se valida aquí, un componentStack/error
@@ -65,7 +66,7 @@ function createCreateErrorFeed({
         errorId,
       });
     } catch (err) {
-      return response.status(500).json({ ok: false, message: err.message });
+      return respondError(request, response, err);
     }
   };
 }

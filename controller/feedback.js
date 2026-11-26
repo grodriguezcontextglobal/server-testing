@@ -1,4 +1,5 @@
 const Feedback = require("../models/Feedback");
+const { respondError } = require("../helpers/errorResponder");
 
 const newFeedback = async (request, response = express.response) => {
   try {
@@ -52,11 +53,7 @@ const newFeedback = async (request, response = express.response) => {
       newFeedback,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      error,
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 

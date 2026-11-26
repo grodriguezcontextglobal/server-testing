@@ -1,6 +1,7 @@
 require("dotenv").config({ quiet: true });
 const logger = require("../../helpers/logger");
 const getConnection = require("../database/config");
+const { respondError } = require("../../helpers/errorResponder");
 
 // insertingNewLease
 const insertingNewLease = async (request, response) => {
@@ -172,7 +173,7 @@ const insertingNewLeaseConsumer = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -205,7 +206,7 @@ const consultingLease = async (request, response) => {
   try {
     const connection = getConnection();
     const { where, values, error } = whereFromBody(request.body, LEASE_INFO_COLUMNS);
-    if (error) return response.status(400).json({ ok: false, msg: error });
+    if (error) return respondError(request, response, error, { status: 400 });
 
     const query = `SELECT * FROM lease_info WHERE ${where}`;
     const [result] = await connection.execute(query, values);
@@ -213,7 +214,7 @@ const consultingLease = async (request, response) => {
     return response.status(200).json({ ok: true, lease: result });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -221,7 +222,7 @@ const consultingConsumerLease = async (request, response) => {
   try {
     const connection = getConnection();
     const { where, values, error } = whereFromBody(request.body, LEASE_CUSTOMER_INFO_COLUMNS);
-    if (error) return response.status(400).json({ ok: false, msg: error });
+    if (error) return respondError(request, response, error, { status: 400 });
 
     const query = `SELECT * FROM lease_customer_info WHERE ${where}`;
     const [result] = await connection.execute(query, values);
@@ -229,7 +230,7 @@ const consultingConsumerLease = async (request, response) => {
     return response.status(200).json({ ok: true, lease: result });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -310,7 +311,7 @@ const updateLeaseInfo = async (request, response) => {
       .json({ ok: true, items: result.affectedRows, updated_fields: setKeys });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -390,7 +391,7 @@ const updateConsumerLeaseInfo = async (request, response) => {
       .json({ ok: true, items: result.affectedRows, updated_fields: setKeys });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -410,7 +411,7 @@ const deleteLeaseInfo = async (request, response) => {
     return response.status(200).json({ ok: true, items: result.affectedRows });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -430,7 +431,7 @@ const deleteConsumerLeaseInfo = async (request, response) => {
     return response.status(200).json({ ok: true, items: result.affectedRows });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -514,7 +515,7 @@ const retrieveLeaseStatus = async (request, response) => {
     return response.status(200).json({ ok: true, summary, leases: items });
   } catch (error) {
     logger.error("retrieveLeaseStatus error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 

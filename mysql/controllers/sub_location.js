@@ -1,6 +1,7 @@
 const getConnection = require("../database/config");
 const logger = require("../../helpers/logger");
 const { resolveCompanyContext } = require("../helpers/companyContext");
+const { respondError } = require("../../helpers/errorResponder");
 
 /**
  * Helper to process sub-location data (Find or Create) within a transaction
@@ -197,7 +198,7 @@ const createSubLocation = async (req, res) => {
     });
   } catch (error) {
     logger.error("createSubLocation error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -235,7 +236,7 @@ const getSubLocationsHierarchy = async (req, res) => {
     });
   } catch (error) {
     logger.error("getSubLocationsHierarchy error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -313,7 +314,7 @@ const updateSubLocation = async (req, res) => {
       .json({ ok: true, msg: "Sub-location updated successfully" });
   } catch (error) {
     logger.error("updateSubLocation error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -363,7 +364,7 @@ const deleteSubLocation = async (req, res) => {
     return res.status(200).json({ ok: true, msg: "Sub-location deleted successfully" });
   } catch (error) {
     logger.error("deleteSubLocation error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -396,7 +397,7 @@ const checkSubLocation = async (req, res) => {
     }
   } catch (error) {
     logger.error("checkSubLocation error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 

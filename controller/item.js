@@ -1,6 +1,7 @@
 const express = require("express");
 const Item = require("../models/Item");
 const logger = require("../helpers/logger");
+const { respondError } = require("../helpers/errorResponder");
 
 const createItem = async (request, response = express.response) => {
   try {
@@ -70,10 +71,7 @@ const deleteItem = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 

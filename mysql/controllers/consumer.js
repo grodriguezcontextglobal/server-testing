@@ -2,6 +2,7 @@ require("dotenv").config({ quiet: true });
 const { createPool } = require("mysql2");
 const getConnection = require("../database/config");
 const { resolveCompanyContext } = require("../helpers/companyContext");
+const { respondError } = require("../../helpers/errorResponder");
 
 const insertingCustomer = async (request, response) => {
   try {
@@ -18,7 +19,7 @@ const insertingCustomer = async (request, response) => {
     const [result] = await pool.execute(query, values);
     return response.status(201).json({ ok: true, consumer: result });
   } catch (error) {
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -46,7 +47,7 @@ const consultingConsumerInfo = async (request, response) => {
     const [result] = await pool.execute(query, values);
     return response.status(200).json({ ok: true, consumer: result });
   } catch (error) {
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -57,7 +58,7 @@ const consultingConsumerTable = async (request, response) => {
     const [result] = await pool.execute(query);
     return response.status(200).json({ ok: true, consumers: result });
   } catch (error) {
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -130,7 +131,7 @@ const createDeleteCustomer = ({
     const [result] = await pool.execute(query, [consumerId]);
     return response.status(200).json({ ok: true, consumer_deleted: result });
   } catch (error) {
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 

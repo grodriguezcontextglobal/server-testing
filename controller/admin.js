@@ -57,6 +57,7 @@ const { recordSuccessfulLogin, recordFailedLogin } = require("../helpers/account
 const { findCompanyMembership } = require("../helpers/companyMembership");
 const { hasPermission } = require("../constants/rolePermissions");
 const { isValidObjectId } = require("mongoose");
+const { respondError } = require("../helpers/errorResponder");
 
 const createAdminUser = async (request, response = express.response) => {
   const { email, password } = request.body;
@@ -650,11 +651,7 @@ const logoutUser = async (request, response) => {
       msg: "No token provided",
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -679,11 +676,7 @@ const manuallyLogoutUser = async (request, response) => {
       msg: "user logged out",
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -812,11 +805,7 @@ const editAdminUser = async (request, response = response) => {
       ignored_fields,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Contact Administrator",
-      err: error,
-    });
+    return respondError(request, response, error, { msg: "Contact Administrator" });
   }
 };
 
@@ -978,11 +967,7 @@ const editOtherAdminUser = async (request, response = response) => {
       ...(ignored_fields.length ? { ignored_fields } : {}),
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Contact Administrator",
-      err: error,
-    });
+    return respondError(request, response, error, { msg: "Contact Administrator" });
   }
 };
 
@@ -1014,11 +999,7 @@ const deleteAdminUser = async (request, response) => {
       msg: "admin user deleted",
     });
   } catch (error) {
-    response.status(500).json({
-      ok: false,
-      msg: error,
-      err: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1203,11 +1184,7 @@ const updatePassword = async (request, response) => {
       // token,
     });
   } catch (error) {
-    response.status(500).json({
-      ok: false,
-      msg: error,
-      err: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1222,11 +1199,7 @@ const showAllUsers = async (request, response) => {
       stripeTransactions,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-      err: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1239,10 +1212,7 @@ const showStaffs = async (request, response) => {
       staff,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1347,11 +1317,7 @@ const displayAllAdminUser = async (request, response) => {
       adminUsers,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-      err: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1373,11 +1339,7 @@ const articleSetup = async (request, response) => {
       newArticle,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-      err: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1389,11 +1351,7 @@ const displayArticles = async (request, response) => {
       articles,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.response.data,
-      err: error,
-    });
+    return respondError(request, response, error, { msg: error.response.data });
   }
 };
 
@@ -1422,11 +1380,7 @@ const checkStatus = async (request, response) => {
       online: checkOnlineStatus.online,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: error,
-    });
+    return respondError(request, response, error);
   }
 };
 

@@ -1,5 +1,6 @@
 require("dotenv").config({ quiet: true });
 const getConnection = require("../database/config");
+const { respondError } = require("../../helpers/errorResponder");
 
 const connection = getConnection();
 
@@ -19,10 +20,7 @@ const insertingStripeCustomer = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -54,10 +52,7 @@ const consultingStripeCustomer = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 

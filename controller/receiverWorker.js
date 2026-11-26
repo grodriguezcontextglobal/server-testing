@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Receivers = require("../models/Receivers");
 const ReceiversPool = require("../models/ReceiversPool");
 const ReceiverReturnedStatus = require("../models/ReceiverReturnedStatus");
+const { publicError } = require("../helpers/errorResponder");
 
 const parseTime = (v) => {
   if (!v) return new Date();
@@ -21,7 +22,9 @@ const updateReceiverStatus = async (input) => {
   const set = Object.fromEntries(
     RECEIVER_UPDATABLE.filter((key) => input[key] !== undefined).map((key) => [key, input[key]]),
   );
-  if (Object.keys(set).length === 0) throw new Error("device or active is required");
+  // `publicError`: el mensaje es para quien manda el cuerpo, no un error
+  // interno escapandose (SI-11, helpers/errorResponder.js).
+  if (Object.keys(set).length === 0) throw publicError("device or active is required");
   const updatedReceiver = await Receivers.findByIdAndUpdate(id, { $set: set }, { new: true });
   return { ok: true, receiverUpdated: updatedReceiver }; // Go returned {ok: true, receiver: updatedDoc}
 };

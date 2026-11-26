@@ -26,6 +26,7 @@ const { createQueuedJobController, waitForJobOutcome } = require("../../helpers/
 const { resolveUpdatePlan } = require("../../queue/handlers/inventoryBulkUpdateAlphanumeric");
 const { chunkArray } = require("../../helpers/chunkArray");
 const crypto = require("node:crypto");
+const { respondError } = require("../../helpers/errorResponder");
 const {
   withPlanCapacity,
   precheckPlanCapacity,
@@ -419,10 +420,7 @@ const insertingItem = async (request, response) => {
     await connection.rollback();
     logger.error("insertingItem error:", error);
     const status = error.message.includes("not found") ? 404 : 500;
-    return response.status(status).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error, { status: status });
   } finally {
     connection.release();
   }
@@ -524,11 +522,7 @@ function createInsertBulkItemRange({
         msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
       });
     } catch (error) {
-      response.status(500).json({
-        err: error,
-        msg: `${error.message}`,
-        ok: false,
-      });
+      return respondError(request, response, error, { msg: `${error.message}` });
     }
   };
 }
@@ -620,10 +614,7 @@ function createInsertBulkItemAlphanumeric({
       });
     } catch (error) {
       logger.error("Error in insertBulkItemAlhpanumericFormat:", error);
-      response.status(500).json({
-        msg: error.message,
-        ok: false,
-      });
+      return respondError(request, response, error);
     }
   };
 }
@@ -693,10 +684,7 @@ const deleteItem = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -755,10 +743,7 @@ const consultingItemTable = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -804,7 +789,7 @@ const consultingItemInWarehouseTable = async (request, response) => {
     return response.status(201).json({ items: result, ok: true });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -928,10 +913,7 @@ const updateItemInTable = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1365,7 +1347,7 @@ const checkingInventoryCurrentState = async (request, response) => {
     return response.status(201).json({ ok: true, result: workerResponse.data });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -1456,11 +1438,7 @@ const searchingInventoryTracking = async (request, response) => {
       result,
     });
   } catch (error) {
-    response.status(500).json({
-      error,
-      msg: `Error: ${error.message}`,
-      ok: false,
-    });
+    return respondError(request, response, error, { msg: `Error: ${error.message}` });
   }
 };
 
@@ -1503,11 +1481,7 @@ const searchingGetInventoryTracking = async (request, response) => {
       result,
     });
   } catch (error) {
-    response.status(500).json({
-      error,
-      msg: `Error: ${error.message}`,
-      ok: false,
-    });
+    return respondError(request, response, error, { msg: `Error: ${error.message}` });
   }
 };
 
@@ -1666,10 +1640,7 @@ const checkInventoryCompanyExists = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1744,10 +1715,7 @@ const updateContentInContainerItem = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1777,10 +1745,7 @@ const updateItemInTableAfterBeingAddedToEventFromContainer = async (
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1874,10 +1839,7 @@ const retrieveItemLocationQuantityForEvent = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1945,10 +1907,7 @@ const consultItemDataFromSerialNumber = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -2013,10 +1972,7 @@ const getGroupedItemInventory = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -2118,10 +2074,7 @@ const consultingCompanyInventoryWithPagination = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -2201,10 +2154,7 @@ const consultingCompanyInventoryBasedOnLocationAndSubLocation = async (
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -2276,10 +2226,7 @@ const getGroupedItemWithFormatInventory = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -2396,7 +2343,7 @@ const returnEventDevicesToWarehouse = async (request, response) => {
       event_id,
       error: error.message,
     });
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   } finally {
     connection.release();
   }
@@ -2503,7 +2450,7 @@ const runNamedInventoryQuery = async (request, response) => {
       queryName: request.body?.queryName,
       error: error.message,
     });
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -2546,11 +2493,7 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
       result,
     });
   } catch (error) {
-    return response.status(500).json({
-      err: JSON.stringify(error),
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -2590,7 +2533,7 @@ const retrieveItemData = async (request, response) => {
       totalAvailable: result.totalAvailable,
     });
   } catch (error) {
-    return response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 const retrieveCompanyInventory = async (request, response) => {
@@ -2679,10 +2622,7 @@ const retrieveCompanyInventory = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -2769,11 +2709,7 @@ const updateAllItemsInInventory = async (request, response) => {
       result: finalResult,
     });
   } catch (error) {
-    return response.status(500).json({
-      err: JSON.stringify(error),
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -2886,10 +2822,7 @@ const updateItemsBasedOnSerialNumber = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -3085,11 +3018,7 @@ const getContainerItems = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error in getContainerItems:", error);
-    return response.status(500).json({
-      error: error.message,
-      msg: "Error retrieving container items",
-      ok: false,
-    });
+    return respondError(request, response, error, { msg: "Error retrieving container items" });
   }
 };
 
@@ -3141,11 +3070,7 @@ const deleteContainerItem = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error in deleteContainerItem:", error);
-    return response.status(500).json({
-      error: error.message,
-      msg: "Error deleting container",
-      ok: false,
-    });
+    return respondError(request, response, error, { msg: "Error deleting container" });
   }
 };
 
@@ -3209,11 +3134,7 @@ const updateContainerItems = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error in updateContainerItems:", error);
-    return response.status(500).json({
-      error: error.message,
-      msg: "Error updating container",
-      ok: false,
-    });
+    return respondError(request, response, error, { msg: "Error updating container" });
   }
 };
 
@@ -3250,10 +3171,7 @@ function createCheckLargeData({ connectionFn = getConnection } = {}) {
       });
     } catch (error) {
       logger.error("Error:", error.message);
-      return response.status(500).json({
-        msg: error.message,
-        ok: false,
-      });
+      return respondError(request, response, error);
     }
   };
 }
@@ -3320,10 +3238,7 @@ function createUpdateLargeData({ runGoWorkerFn = runGoWorker } = {}) {
       });
     } catch (error) {
       logger.error("Error:", error.message);
-      return response.status(error.statusCode || 500).json({
-        msg: error.message,
-        ok: false,
-      });
+      return respondError(request, response, error, { status: error.statusCode || 500 });
     }
   };
 }
@@ -3498,11 +3413,7 @@ const createUpdateSubLocation = ({
     }
 
     logger.error("Error updating sub location:", error);
-    return res.status(500).json({
-      error: error.message,
-      message: "Internal server error while updating sub location",
-      ok: false,
-    });
+    return respondError(req, res, error, { msg: "Internal server error while updating sub location" });
   } finally {
     connection.release();
   }
@@ -3646,10 +3557,7 @@ const getInventoryHierarchyWithTypes = async (request, response) => {
       ok: true,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -3777,10 +3685,7 @@ const getGroupedInventoryBySearchParameter = async (request, response) => {
       totalResults: items.length,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -3815,10 +3720,7 @@ const filterSuppliersInfoItems = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -3949,10 +3851,7 @@ function createDeleteBulkItems({
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
   };
 }
@@ -4048,7 +3947,7 @@ const retrieveCompanyItemsWithLocations = async (request, response) => {
     return response.status(200).json(payload);
   } catch (error) {
     logger.error("retrieveCompanyItemsWithLocations error:", error);
-    return response.status(500).json({ msg: error.message, ok: false });
+    return respondError(request, response, error);
   }
 };
 
@@ -4126,10 +4025,7 @@ const confirmItemsReturnedToStock = async (request, response) => {
   } catch (error) {
     if (connection) await connection.rollback();
     logger.error("Error confirming item return:", error.message);
-    response.status(500).json({
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   } finally {
     if (connection) connection.release();
   }
@@ -4229,11 +4125,7 @@ function createDeleteBulkItemBasedOnCriteria({
       });
     } catch (error) {
       logger.error("deleteBulkItemBasedOnCriteria error:", error);
-      return response.status(500).json({
-        error: error.message,
-        msg: "An internal error occurred. Please contact the administrator.",
-        ok: false,
-      });
+      return respondError(request, response, error, { msg: "An internal error occurred. Please contact the administrator." });
     }
   };
 }

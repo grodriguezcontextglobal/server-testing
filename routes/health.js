@@ -71,10 +71,17 @@ router.get("/ready", requestMetrics, readinessLimiter, async (request, response)
     const readiness = await getReadiness({ force: request.query.force === "1" });
     return response.status(readiness.ready ? 200 : 503).json(readiness);
   } catch (error) {
-    logger.error("readiness check threw", { error: error.message });
+    logger.error("readiness check threw", {
+      ref: request.errorRef || null,
+      error: error.message,
+    });
+    // Sin `error.message`: un fallo de conexion aqui nombra el host y el
+    // puerto de la base de datos, y /ready responde a quien la llame (SI-11).
+    // La sonda solo necesita saber que NO esta lista; el porque esta en el
+    // registro, con esta referencia.
     return response
       .status(503)
-      .json({ ready: false, status: "unready", error: error.message });
+      .json({ ready: false, status: "unready", ref: request.errorRef || null });
   }
 });
 

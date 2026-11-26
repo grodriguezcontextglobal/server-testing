@@ -7,6 +7,7 @@ const { memberContactProblem, filled } = require("../helpers/memberContact");
 const { chunkArray } = require("../../helpers/chunkArray");
 const { enqueue, extractJobContext } = require("../../helpers/queue");
 const { waitForJobOutcome } = require("../../helpers/queuedController");
+const { respondError } = require("../../helpers/errorResponder");
 const connection = getConnection();
 
 // Rows per INSERT statement for bulk writes. Keeps a single statement's
@@ -182,10 +183,7 @@ const insertNewMember = async (request, response) => {
       inserted_fields: columns,
     });
   } catch (error) {
-    return response.status(500).json({
-      message: "Internal server error",
-      error: error.message,
-    });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -479,9 +477,7 @@ function createInsertBulkMembers({
       msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
     });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
   };
 }
@@ -601,9 +597,7 @@ const retrieveMembersAssignedDevices = async (request, response) => {
       rows,
     });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -684,9 +678,7 @@ const updateMemberInfo = async (request, response) => {
       affectedRows: result.affectedRows || 0,
     });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ message: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -726,9 +718,7 @@ const deleteMember = async (request, response) => {
       affectedRows: result.affectedRows || 0,
     });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -777,9 +767,7 @@ const retrieveMemberInfo = async (request, response) => {
     const [rows] = await connection.query(query, values);
     return response.status(200).json({ ok: true, members: rows });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -1101,9 +1089,7 @@ const insertNewRowINMemberAssignedDeviceTableForLeaseTracking = async (
       columns,
     });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -1458,9 +1444,7 @@ const updateMemberAssignedDeviceLeaseRow = async (request, response) => {
       ...(feeSkipped ? { fee_skipped: feeSkipped } : {}),
     });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -1639,9 +1623,7 @@ const settleMemberFee = async (request, response) => {
       .status(200)
       .json({ ok: true, fee_id: result.insertId, created: true });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -1716,9 +1698,7 @@ const retrieveMemberFees = async (request, response) => {
       .status(200)
       .json({ ok: true, count: normalized.length, rows: normalized });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -1815,9 +1795,7 @@ const deleteMemberAssignedDeviceLeaseRows = async (request, response) => {
       affectedRows: result.affectedRows || 0,
     });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -1872,9 +1850,7 @@ const removeRowAssignedDeviceLeaseMember = async (request, response) => {
       },
     });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -1915,9 +1891,7 @@ const retrieveOverdueLeases = async (request, response) => {
     const [rows] = await connection.query(query, values);
     return response.status(200).json({ ok: true, count: rows.length, rows });
   } catch (error) {
-    return response
-      .status(500)
-      .json({ ok: false, msg: "Internal server error", error: error.message });
+    return respondError(request, response, error, { msg: "Internal server error" });
   }
 };
 
@@ -2007,9 +1981,7 @@ function createBulkReturnMemberLeases({
         msg: "Request queued — still processing. Poll GET /api/jobs/owned/:jobId for the result.",
       });
     } catch (error) {
-      return response
-        .status(500)
-        .json({ ok: false, msg: "Internal server error", error: error.message });
+      return respondError(request, response, error, { msg: "Internal server error" });
     }
   };
 }

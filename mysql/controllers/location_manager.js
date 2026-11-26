@@ -1,4 +1,5 @@
 const getConnection = require("../database/config");
+const { respondError } = require("../../helpers/errorResponder");
 
 const connection = getConnection();
 
@@ -68,10 +69,7 @@ const assignManager = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -112,10 +110,7 @@ const getManagers = async (request, response) => {
         return response.status(200).json({ ok: true, managers: [] });
     }
     console.error("Error:", error.message);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -138,10 +133,7 @@ const removeManager = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 

@@ -18,6 +18,7 @@ const logger = require("../../helpers/logger");
 const { resolveCompanyContext } = require("../helpers/companyContext");
 const { buildInventoryScopeFilter } = require("../helpers/staffAccess");
 const { normalizeIdentifier, IDENTIFIER_TYPES } = require("../helpers/identifier");
+const { respondError } = require("../../helpers/errorResponder");
 
 /** Tope por llamada, alineado al chunk que ya usa el frontend. */
 const MAX_BATCH = 500;
@@ -164,7 +165,7 @@ const registerIdentifier = async (request, response) => {
       }
     }
     logger.error("registerIdentifier failed", { error: error.message });
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   } finally {
     if (connection) connection.release();
   }
@@ -301,7 +302,7 @@ const registerIdentifiersBulk = async (request, response) => {
       }
     }
     logger.error("registerIdentifiersBulk failed", { error: error.message });
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   } finally {
     if (connection) connection.release();
   }
@@ -340,7 +341,7 @@ const getIdentifiersByItems = async (request, response) => {
     return response.status(200).json({ ok: true, identifiers: rows });
   } catch (error) {
     logger.error("getIdentifiersByItems failed", { error: error.message });
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 

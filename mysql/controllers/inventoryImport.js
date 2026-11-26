@@ -25,6 +25,7 @@ const { enqueue, extractJobContext } = require('../../helpers/queue');
 const getConnection = require('../database/config');
 const { resolveAccess } = require('./inventoryPage');
 const { getWritableScope } = require('../helpers/staffAccess');
+const { respondError } = require("../../helpers/errorResponder");
 const {
   validateImportBody,
   distinctLocationNames,
@@ -118,6 +119,11 @@ function createPostInventoryImport({
         skipped: skipped.length,
       });
     } catch (error) {
+      // SI-11 NO aplica aquí y es deliberado: `ImportValidationError` lo
+      // lanzamos nosotros con un mensaje escrito PARA quien sube la hoja
+      // ("la fila 5 no tiene número de serie"). No es un error interno
+      // escapándose, es la respuesta de la validación. Ocultarlo dejaría al
+      // usuario con un 400 y ninguna forma de arreglar su fichero.
       if (error instanceof ImportValidationError) {
         return response.status(400).json({
           ok: false,
@@ -127,7 +133,7 @@ function createPostInventoryImport({
         });
       }
       logger.error(`postInventoryImport: ${error.message}`);
-      return response.status(500).json({ ok: false, msg: error.message });
+      return respondError(request, response, error);
     }
   };
 }

@@ -1,6 +1,7 @@
 const getConnection = require("../database/config");
 const logger = require("../../helpers/logger");
 const { randomUUID: uuidv4 } = require('crypto');
+const { respondError } = require("../../helpers/errorResponder");
 
 const createShipment = async (req, res) => {
   const { 
@@ -43,7 +44,7 @@ const createShipment = async (req, res) => {
   } catch (error) {
     if (connection) await connection.rollback();
     logger.error("Error creating shipment:", error.message);
-    res.status(500).json({ ok: false, error: error.message });
+    return respondError(req, res, error);
   } finally {
     if (connection) connection.release();
   }
@@ -81,7 +82,7 @@ const updateShipment = async (req, res) => {
 
   } catch (error) {
     logger.error("Error updating shipment:", error.message);
-    res.status(500).json({ ok: false, error: error.message });
+    return respondError(req, res, error);
   } finally {
     if (connection) connection.release();
   }
@@ -102,7 +103,7 @@ const deleteShipment = async (req, res) => {
 
   } catch (error) {
     logger.error("Error deleting shipment:", error.message);
-    res.status(500).json({ ok: false, error: error.message });
+    return respondError(req, res, error);
   } finally {
     if (connection) connection.release();
   }
@@ -142,7 +143,7 @@ const getShipments = async (req, res) => {
 
     } catch (error) {
         logger.error("Error retrieving shipments:", error.message);
-        res.status(500).json({ ok: false, error: error.message });
+        return respondError(req, res, error);
     } finally {
         if (connection) connection.release();
     }
@@ -174,7 +175,7 @@ const retrievePackageList = async (req, res) => {
 
   } catch (error) {
     logger.error("Error retrieving package list:", error.message);
-    res.status(500).json({ ok: false, error: error.message });
+    return respondError(req, res, error);
   } finally {
     if (connection) connection.release();
   }

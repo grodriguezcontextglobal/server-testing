@@ -1,5 +1,6 @@
 const { clientRedis } = require("../database/cacheMemoryConfig");
 const Post = require("../models/Post");
+const { respondError } = require("../helpers/errorResponder");
 
 const createPost = async (request, response) => {
   try {
@@ -60,11 +61,7 @@ const deletePost = async (request, response) => {
       post,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      error,
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 
@@ -86,11 +83,7 @@ const updatePost = async (request, response) => {
       post,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      error,
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 module.exports = {

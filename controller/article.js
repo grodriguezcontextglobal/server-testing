@@ -1,6 +1,7 @@
 const express = require("express");
 const Article = require("../models/Article");
 const logger = require("../helpers/logger");
+const { respondError } = require("../helpers/errorResponder");
 
 const articleSetup = async (request, response) => {
   const newArticle = new Article(request.body);
@@ -15,10 +16,7 @@ const articleSetup = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
