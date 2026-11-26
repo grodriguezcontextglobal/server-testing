@@ -7,6 +7,7 @@ const { chunkArray } = require("../../helpers/chunkArray");
 const BULK_UPDATE_BATCH_SIZE = 500;
 const logger = require("../../helpers/logger");
 const { groupBy } = require("lodash");
+const { respondError } = require("../../helpers/errorResponder");
 
 const insertingCompany = async (request, response) => {
   try {
@@ -41,7 +42,7 @@ const insertingCompany = async (request, response) => {
     return response.status(201).json({ ok: true, company: result });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -82,7 +83,7 @@ const consultingCompany = async (request, response) => {
     return response.status(200).json({ ok: true, companies: result });
   } catch (err) {
     logger.error("Error:", err.message);
-    return response.status(500).json({ ok: false, msg: err.message });
+    return respondError(request, response, err);
   }
 };
 
@@ -95,7 +96,7 @@ const deleteCompany = async (request, response) => {
     return response.status(200).json({ ok: true, company_deleted: result });
   } catch (error) {
     logger.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -107,7 +108,7 @@ const consultingCompanyTable = async (request, response) => {
     return response.status(200).json({ ok: true, companies: result });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -163,7 +164,7 @@ const consultingIndustryCompanyTable = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -209,7 +210,7 @@ const updateCompanyData = async (request, response) => {
       .json({ ok: false, message: "Company not found or no changes made." });
   } catch (error) {
     logger.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -332,7 +333,7 @@ const updateGroupItems = async (request, response) => {
       .json({ ok: true, msg: "Items updated successfully" });
   } catch (error) {
     logger.error("Error in updateGroupItems controller:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 

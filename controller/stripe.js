@@ -21,6 +21,7 @@ const Company = require("../models/Company");
 const { resolveCompanyContext } = require("../helpers/companyContext");
 const { isStaffOrigin, isStaffSession } = require("../helpers/consumerUserFilter");
 const { staffView, publicView, isRetrievableId } = require("../helpers/paymentIntentView");
+const { respondError } = require("../helpers/errorResponder");
 const {
   persistConnectedAccountId,
   resolveConnectedAccountId,
@@ -56,10 +57,7 @@ const stripeCustomer = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(400).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error, { status: 400 });
   }
 };
 
@@ -140,10 +138,7 @@ const stripeAccountLink = async (request, response) => {
     });
   } catch (error) {
     logger.error(error.message);
-    return response.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -298,7 +293,9 @@ const stripeCompanyAccountUpdate = async (request, response) => {
     }
 
   } catch (error) {
-    return response.status(500).send({ ok: false, error: error.message });
+    // `.send()` y no `.json()`, que es por lo que el barrido no lo cogió.
+    // Un error de Stripe nombra la cuenta conectada y el intento de pago.
+    return respondError(request, response, error);
   }
 };
 
@@ -361,9 +358,7 @@ const stripePaymentIntent = async (request, response) => {
       idempotencyKey: idempotencyKey ? "present" : "absent",
     });
 
-    return response.status(500).json({
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -392,9 +387,7 @@ const stripePaymentIntentCustomized = async (request, response) => {
     });
   } catch (error) {
     logger.error(error.message);
-    return response.status(500).json({
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -419,10 +412,7 @@ const stripePaymentIntentSubscription = async (request, response) => {
       paymentSubscription,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: "Please contact administrator",
-      error: error.message,
-    });
+    return respondError(request, response, error, { msg: "Please contact administrator" });
   }
 };
 
@@ -476,11 +466,7 @@ const creatingSubscription = async (request, response) => {
       });
     }
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-      error: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -522,10 +508,7 @@ const createSubscriptionNoTrialPeriod = async (request, response) => {
       data: subscription,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -567,11 +550,7 @@ const findSubscriptionIdBySetUpId = async (request, response) => {
       });
     }
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact administrator.",
-      error: error,
-    });
+    return respondError(request, response, error, { msg: "Please contact administrator." });
   }
 };
 
@@ -584,10 +563,7 @@ const searchSubscriptions = async (request, response) => {
       subscriptionInfo: subscription,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -614,10 +590,7 @@ const updateSubcriptionInCompanyAccount = async (request, response) => {
       ...(ignored_fields.length ? { ignored_fields } : {}),
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -638,10 +611,7 @@ const updateCancelSubscription = async (request, response) => {
       subscription: updateSubscription,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -657,10 +627,7 @@ const cancelSubscriptionCompany = async (request, response) => {
       subscription: cancelSubscription,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -677,10 +644,7 @@ const displayAllPaidInvoicesPerSubscription = async (request, response) => {
       invoices,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -698,10 +662,7 @@ const updatePaymentMethodFromAdminDashboard = async (request, response) => {
       paymentIntentUpdated,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -718,10 +679,7 @@ const updateDefaultPaymentMethodInSubscription = async (request, response) => {
       card: paymentMethodUpdated,
     });
   } catch (error) {
-    return response.status(error.statusCode ?? 500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error, { status: error.statusCode ?? 500 });
   }
 };
 
@@ -738,10 +696,7 @@ const updateDefaultPaymentMethodInCustomer = async (request, response) => {
       customer: customerUpdated,
     });
   } catch (error) {
-    return response.status(error.statusCode ?? 500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error, { status: error.statusCode ?? 500 });
   }
 };
 
@@ -761,10 +716,7 @@ const searchStripeTransaction = async (request, response) => {
       paymentIntent,
     });
   } catch (error) {
-    return response.status(500).json({
-      msg: "Please contact administrator",
-      error: error.message,
-    });
+    return respondError(request, response, error, { msg: "Please contact administrator" });
   }
 };
 
@@ -779,10 +731,7 @@ const listAllPaymentIntents = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -795,10 +744,7 @@ const listAllCustomers = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -813,10 +759,7 @@ const searchCustomerId = async (request, response) => {
       customer,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -849,10 +792,7 @@ const saveStripeTransactionAdmin = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -873,11 +813,7 @@ const captureStripePaymentIntent = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(404).json({
-      ok: false,
-      msg: "Transaction failed",
-      error: error,
-    });
+    return respondError(request, response, error, { status: 404, msg: "Transaction failed" });
   }
 };
 
@@ -897,11 +833,7 @@ const cancelStripePaymentIntent = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: "Contact Administrator",
-      error: error,
-    });
+    return respondError(request, response, error, { msg: "Contact Administrator" });
   }
 };
 
@@ -919,10 +851,7 @@ const refundStripePaymentIntent = async (request, response) => {
       refund,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -940,10 +869,7 @@ const partialRefundStripePaymentIntent = async (request, response) => {
       refund,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -981,10 +907,7 @@ const removeDuplicateEntries = async (request, response) => {
       });
     }
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1037,9 +960,7 @@ const retrieveSubscriptionID = async (request, response) => {
       throw new Error("Payment Intent is not associated with a Subscription.");
     }
   } catch (error) {
-    return response.status(500).json({
-      error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1055,10 +976,7 @@ const getListOfAllSavedStripeTransaction = async (request, response) => {
       list: listOfStripeTransactionsSaved,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1074,10 +992,7 @@ const stripeCompanyAccountFound = async (request, response) => {
     });
   } catch (error) {
     logger.error("🚀 ~ stripeCompanyAccountFound ~ error:", error);
-    return response.status(500).json({
-      ok: false,
-      message: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -1090,10 +1005,7 @@ const searchingSubscriptionInStripe = async (request, response) => {
       subscriptions,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      error: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 

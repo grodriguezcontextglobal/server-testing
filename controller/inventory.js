@@ -2,6 +2,7 @@ const express = require("express");
 const Inventory = require("../models/Inventory");
 const logger = require("../helpers/logger");
 const { logStaffActivity } = require("./staffActivityLog");
+const { respondError } = require("../helpers/errorResponder");
 
 const createInventory = async (request, response = express.response) => {
   try {
@@ -107,10 +108,7 @@ const deleteInventory = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 

@@ -25,6 +25,7 @@ const getConnection = require('../database/config');
 const logger = require('../../helpers/logger');
 const { buildInventoryScopeFilter } = require('../helpers/staffAccess');
 const { resolveCompanyContext } = require('../helpers/companyContext');
+const { respondError } = require("../../helpers/errorResponder");
 const {
   buildPageQuery,
   toPage,
@@ -85,12 +86,15 @@ const resolveAccess = async (
   };
 };
 
-const handleError = (response, error, where) => {
+const handleError = (request, response, error, where) => {
+  // `QueryParamError` lo lanzamos nosotros al validar la query, con un mensaje
+  // escrito para quien hace la peticion ("limit must be a number"). Ese SI
+  // sale: SI-11 habla de errores internos, no de los nuestros.
   if (error instanceof QueryParamError) {
     return response.status(400).json({ ok: false, msg: error.message });
   }
   logger.error(`${where}: ${error.message}`);
-  return response.status(500).json({ ok: false, msg: error.message });
+  return respondError(request, response, error);
 };
 
 const getInventoryPage = async (request, response) => {
@@ -116,7 +120,7 @@ const getInventoryPage = async (request, response) => {
 
     return response.status(200).json({ ok: true, ...page });
   } catch (error) {
-    return handleError(response, error, 'getInventoryPage');
+    return handleError(request, response, error, 'getInventoryPage');
   }
 };
 
@@ -165,7 +169,7 @@ const getInventoryFacets = async (request, response) => {
       facets,
     });
   } catch (error) {
-    return handleError(response, error, 'getInventoryFacets');
+    return handleError(request, response, error, 'getInventoryFacets');
   }
 };
 
@@ -191,7 +195,7 @@ const suggestSerials = async (request, response) => {
 
     return response.status(200).json({ ok: true, items: rows });
   } catch (error) {
-    return handleError(response, error, 'suggestSerials');
+    return handleError(request, response, error, 'suggestSerials');
   }
 };
 

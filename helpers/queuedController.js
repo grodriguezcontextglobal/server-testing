@@ -2,6 +2,7 @@
 
 const { enqueue, extractJobContext } = require("./queue");
 const defaultLogger = require("./logger");
+const { respondError } = require("../helpers/errorResponder");
 
 /**
  * Factory genérica para un controller Express que reemplaza "hacer el trabajo
@@ -67,10 +68,7 @@ function createQueuedJobController(
       return response.status(202).json(buildSuccessBody(job));
     } catch (error) {
       logger.error(`queuedJobController: failed to enqueue '${type}'`, { error: error.message });
-      return response.status(500).json({
-        ok: false,
-        message: error.message,
-      });
+      return respondError(request, response, error);
     }
   };
 }
@@ -225,7 +223,7 @@ function createSyncOrQueuedController(
       return response.status(202).json(buildTimeoutBody(job));
     } catch (error) {
       logger.error(`syncOrQueuedController: failed for '${type}'`, { error: error.message });
-      return response.status(500).json({ ok: false, message: error.message });
+      return respondError(request, response, error);
     }
   };
 }

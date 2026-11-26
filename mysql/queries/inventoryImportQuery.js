@@ -46,6 +46,9 @@ class ImportValidationError extends Error {
   constructor(message, errors = []) {
     super(message);
     this.name = 'ImportValidationError';
+    // Mensaje para quien sube la hoja ("la fila 5 no tiene serial"): sale
+    // tal cual. Ver `isExposed` en helpers/errorResponder.js (SI-11).
+    this.expose = true;
     this.errors = errors;
   }
 }

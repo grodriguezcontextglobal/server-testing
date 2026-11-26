@@ -7,6 +7,7 @@ const connection = getConnection();
 const { VALID_ROLE_TYPES } = require('../constants/roles');
 const { LOCATION_SCOPED_ROLES, CATEGORY_SCOPED_ROLES } = require('../helpers/staffAccess');
 const { withPlanCapacity, planContextFromRequest } = require('../../helpers/planLimits');
+const { respondError } = require("../../helpers/errorResponder");
 
 // Tope de staff del plan (2026-11-06): solo cuenta como alta lo que deja a
 // alguien ACTIVO que no lo estaba. Un INSERT IGNORE de alguien que ya está, o
@@ -92,10 +93,7 @@ const insertingStaffMember = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -132,10 +130,7 @@ const consultingStaffMemberInformation = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -153,10 +148,7 @@ const consultingEventTable = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -174,10 +166,7 @@ const deleteEvent = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -218,7 +207,7 @@ const addCompanyStaff = async (request, response) => {
     return response.status(201).json({ ok: true, inserted: result.affectedRows });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -249,7 +238,7 @@ const updateCompanyStaffRole = async (request, response) => {
     return response.status(200).json({ ok: true, updated: result.affectedRows });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -312,7 +301,7 @@ const getStaffPermissions = async (request, response) => {
     return response.status(200).json({ ok: true, roleType, role_level, permissions, locations, categories });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -391,7 +380,7 @@ const updateCompanyStaff = async (request, response) => {
     return response.status(200).json({ ok: true, updated: result.affectedRows });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -459,7 +448,7 @@ const getStaffCompanies = async (request, response) => {
     return response.status(200).json({ ok: true, companies });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -617,7 +606,7 @@ const setCompanyStaffScope = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   } finally {
     conn.release();
   }

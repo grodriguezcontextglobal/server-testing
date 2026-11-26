@@ -2,6 +2,7 @@ const express = require("express");
 const EventLog = require("../models/EventLog");
 const logger = require("../helpers/logger");
 const { createQueuedJobController } = require("../helpers/queuedController");
+const { respondError } = require("../helpers/errorResponder");
 
 // Se encola en vez de guardar inline: sobrevive una caída de Mongo/servidor en
 // vez de perder el log. Responde 202 {ok:true, jobId} en lugar del documento
@@ -17,10 +18,7 @@ const renderActivity = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    response.status(500).json({
-      ok: false,
-      msg: error.message,
-    });
+    return respondError(request, response, error);
   }
 };
 

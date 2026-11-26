@@ -26,6 +26,10 @@ class QueryParamError extends Error {
   constructor(message) {
     super(message);
     this.name = 'QueryParamError';
+    // Su mensaje esta escrito para quien hace la peticion ("sortBy must be
+    // one of ..."), asi que respondError lo deja salir. Ver `isExposed` en
+    // helpers/errorResponder.js (SI-11).
+    this.expose = true;
   }
 }
 

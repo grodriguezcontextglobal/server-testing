@@ -20,6 +20,7 @@ const {
   securityLogger,
 } = require("./middlewares/requestLogger");
 const { requestMetrics } = require("./middlewares/requestMetrics");
+const { attachErrorRef } = require("./helpers/errorResponder");
 const { consumerTokenGate } = require("./middlewares/consumerTokenGate");
 const { auditTrail } = require("./middlewares/auditTrail");
 const { sessionCookieBridge } = require("./middlewares/sessionCookieBridge");
@@ -80,6 +81,12 @@ const app = express();
 const configureMiddleware = (app) => {
   // normalizeForwardedFor NO va aqui: se monta en initializeApp, antes que las
   // rutas de sondeo, porque el limitador de /ready tambien lee req.ip.
+
+  // Una referencia de error por peticion, ANTES de cualquier cosa que pueda
+  // fallar (SI-11, APP-2026-013). Va la primera a proposito: si el limitador
+  // de peticiones o el body parser rechazan algo, ese fallo tambien tiene que
+  // poder nombrarse. Ver helpers/errorResponder.js.
+  app.use(attachErrorRef);
 
   // Request logging middleware (should be first to capture all requests)
   app.use(requestLogger);
@@ -304,6 +311,7 @@ const configureErrorHandling = (app) => {
 
     logger.error("Unhandled Error", {
       type: "unhandled_error",
+      ref: req.errorRef || null,
       clientInfo,
       error: err.message,
       method: req.method,
@@ -313,12 +321,19 @@ const configureErrorHandling = (app) => {
     });
 
     if (!res.headersSent) {
+      // `ref` lo genera el servidor; `requestId` venia de la cabecera del
+      // cliente, que puede no mandarla o mandarla inventada — util para cruzar
+      // con sus registros, inservible para encontrar ESTA linea en los
+      // nuestros. Se devuelven las dos, con el nombre que le toca a cada una.
+      //
+      // Y `message` ya no cambia con NODE_ENV: un servidor que dice mas o
+      // menos segun una variable de entorno es un servidor que un dia dice de
+      // mas, porque esa variable se pone a mano en una VM (SI-11).
       res.status(500).json({
+        ok: false,
         error: "Something went wrong!",
-        message:
-          process.env.NODE_ENV === "development"
-            ? err.message
-            : "Internal server error",
+        message: "Internal server error",
+        ref: req.errorRef || null,
         requestId: clientInfo.requestId,
       });
     }

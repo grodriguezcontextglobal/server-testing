@@ -8,6 +8,7 @@ const ReceiversPool = require("../models/ReceiversPool");
 const logger = require("../helpers/logger");
 const { logStaffActivity } = require("./staffActivityLog");
 const _ = require("lodash");
+const { respondError } = require("../helpers/errorResponder");
 const createEvent = async (request, response = express.response) => {
   try {
     const cache_connection = await clientRedis();
@@ -31,11 +32,7 @@ const createEvent = async (request, response = express.response) => {
       event,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -168,10 +165,7 @@ const deleteEvent = async (request, response) => {
     });
   } catch (error) {
     logger.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -183,11 +177,7 @@ const eventList = async (request, response) => {
       list,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      error: JSON.stringify(error),
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 
@@ -242,7 +232,7 @@ const searchStaffAllEvents = async (request, response) => {
 
     return response.status(200).json({ ok: true, events });
   } catch (error) {
-    return response.status(500).json({ ok: false, message: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -307,11 +297,7 @@ const eventStaffDetailInfo = async (request, response) => {
       staff: JSON.stringify(result),
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-      error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -473,11 +459,7 @@ const inventoryEventBasedOnPeriod = async (request, response) => {
       events: sqlItemInfoAvailable,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-      error,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -542,7 +524,7 @@ const updateLargeNumberOfEventsAtOnce = async (request, response) => {
       set: safeValues,
     });
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -605,11 +587,7 @@ const updateGlobalStateOfEvent = async (request, response) => {
     });
   } catch (error) {
     logger.error("Error updating event global state:", error);
-    return response.status(500).json({
-      ok: false,
-      message: "An internal server error occurred.",
-      error: error.message,
-    });
+    return respondError(request, response, error, { msg: "An internal server error occurred." });
   }
 };
 const updateEventInventoryFreshestData = async (request, response) => {
@@ -819,11 +797,7 @@ const updateEventInventoryFreshestData = async (request, response) => {
       changes,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      message: "Internal server error.",
-      error: error.message,
-    });
+    return respondError(request, response, error, { msg: "Internal server error." });
   }
 };
 

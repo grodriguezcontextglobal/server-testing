@@ -1,6 +1,7 @@
 'use strict';
 
 const { PLATFORM_DOMAIN } = require('../helpers/platformAccess');
+const { respondError } = require("../helpers/errorResponder");
 
 /**
  * Console de plataforma — esqueleto (M1).
@@ -75,7 +76,28 @@ const {
   eventRow,
   activityRow,
   companyDetailBody,
+  activityCategory,
+  ACTIVITY_CATEGORY,
+  eventStatus,
+  createdAtFromId,
+  iso,
+  MAX_LIMIT,
+  ATTENTION_SUBSCRIPTION_STATUSES,
+  attentionConditions,
+  attentionRow,
 } = require('../helpers/platformConsole');
+const {
+  companyActivityRow,
+  companyTransactionRow,
+  companyEventRow,
+  companyInventoryRow,
+  memberRow,
+  consumerRow,
+  staffRow,
+  subscriptionBody,
+  MERCHANT_NOT_SERVED,
+} = require('../helpers/platformCompanyTabs');
+const { effectiveLimits } = require('../helpers/planLimits');
 
 const realDeps = () => ({
   Company: require('../models/Company'),
@@ -169,7 +191,7 @@ const platformCompanies = (deps) => async (request, response) => {
       listBody({ rows: pageOf(rows, { page, limit }), page, limit, total: rows.length })
     );
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -204,7 +226,7 @@ const platformSummary = (deps) => async (request, response) => {
       })
     );
   } catch (error) {
-    return response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -255,7 +277,8 @@ const readListQuery = (query = {}) => ({
   search: String(query.search || '').trim(),
 });
 
-const fail = (response, error) => response.status(500).json({ ok: false, msg: error.message });
+// El respondedor comun, con la firma local de este controlador (SI-11).
+const fail = (request, response, error) => respondError(request, response, error);
 
 /**
  * GET /api/platform/inventory?page=&limit=&search=&companyId=&status=
@@ -333,7 +356,7 @@ const platformInventory = (deps) => async (request, response) => {
         filters: { status: filterSupport(INVENTORY_STATUS, status || null) },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -390,7 +413,7 @@ const platformTransactions = (deps) => async (request, response) => {
         },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -444,7 +467,7 @@ const platformEvents = (deps) => async (request, response) => {
         filters: { status: filterSupport(EVENT_STATUS, status || null) },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -481,7 +504,7 @@ const platformActivity = (deps) => async (request, response) => {
         filters: { range },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
 
 /**
@@ -521,8 +544,516 @@ const platformCompanyDetail = (deps) => async (request, response) => {
         counts: { eventsActive, membersCount: memberRows, consumersCount },
       })
     );
-  } catch (error) { return fail(response, error); }
+  } catch (error) { return fail(request, response, error); }
 };
+
+/**
+ * GET /api/platform/attention?limit=
+ *
+ * Los clientes que necesitan una mirada, y —esto es lo importante— QUE
+ * condiciones se estan midiendo para decirlo. Ver attentionConditions en
+ * helpers/platformConsole.js: de las tres que el console pide, hoy solo la
+ * suscripcion tiene dato detras.
+ *
+ * Se sirve sobre las filas que `gatherCompanies` ya construye, asi que no
+ * añade ni una consulta por encima de lo que cuesta `/companies`.
+ *
+ * `now` se puede inyectar para que la condicion que se enciende el 2026-12-09
+ * se pueda probar antes de esa fecha, en vez de confiar en que alguien se
+ * acuerde de mirarla ese dia.
+ */
+const platformAttention = (deps) => async (request, response) => {
+  const d = withDeps(deps);
+  try {
+    const now = d.now ? new Date(d.now) : new Date();
+    const conditions = attentionConditions(now);
+    const limit = Math.min(Number(request.query?.limit) || 100, MAX_LIMIT);
+
+    const companies = await gatherCompanies(d);
+
+    // Estado CRUDO de la suscripcion, no el `status` ya calculado de la fila:
+    // ese mezcla la suscripcion con los equipos vencidos, y aqui hace falta
+    // saber cual de las dos cosas puso al cliente en la lista.
+    const subs = await d.CompanySubscription.find({})
+      .select('company status')
+      .lean();
+    const statusByCompany = new Map(
+      (subs || []).map((s) => [String(s.company), String(s.status || '').toLowerCase()])
+    );
+
+    const rows = [];
+    for (const company of companies) {
+      const status = statusByCompany.get(String(company.id));
+      if (status && ATTENTION_SUBSCRIPTION_STATUSES.includes(status)) {
+        rows.push(attentionRow({ kind: 'subscription', company, reason: `subscription is ${status}` }));
+      }
+    }
+
+    // La tercera condicion, cuando el dato tenga edad para sostenerla.
+    if (conditions.staffDormant.active) {
+      const since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      const dormant = await d.StaffActivityLog.distinct('company_id', { timestamp: { $gte: since } });
+      const recent = new Set((dormant || []).map(String));
+      for (const company of companies) {
+        if (!recent.has(String(company.id))) {
+          rows.push(attentionRow({
+            kind: 'staff_dormant',
+            company,
+            reason: 'no staff activity in 30 days',
+          }));
+        }
+      }
+    }
+
+    return response.status(200).json(
+      listBody({
+        rows: rows.slice(0, limit),
+        page: 1,
+        limit,
+        total: rows.length,
+        // Quien mira la pantalla tiene que poder ver que no la esta viendo
+        // entera. Una lista vacia con `devicesOverdue.active: false` dice algo
+        // muy distinto de una lista vacia a secas.
+        conditions,
+      })
+    );
+  } catch (error) { return fail(request, response, error); }
+};
+
+// ════════════════════════ LAS NUEVE PESTAÑAS DE LA FICHA ════════════════════
+//
+// GET /api/platform/companies/:id/<recurso>. Cada una se registra como su
+// propia ruta —no `/:id/:resource`— para que un recurso que no servimos de
+// 404 de verdad y el console pueda distinguir "no existe" de "existe y no
+// tiene datos". Es la diferencia que les costo cinco dias con lastActivityAt.
+
+/**
+ * Resuelve el cliente una sola vez para cualquier pestaña.
+ *
+ * Devuelve `null` cuando el id no existe, y la ficha contesta 404 — la misma
+ * respuesta que daba antes de que estas rutas existieran, que es la correcta
+ * para un cliente que no esta.
+ */
+const resolveTabCompany = async (d, id) => {
+  const crosswalk = await companyCrosswalk(d);
+  const hit = crosswalk.find((c) => c.id === id);
+  if (!hit) return null;
+  return { id, name: hit.name || null, sqlId: hit.sqlId ?? null };
+};
+
+const notFound = (response) =>
+  response.status(404).json({ ok: false, msg: 'Company not found' });
+
+/** De categoria del console a los `target_model` que caen en ella. */
+const MODELS_BY_CATEGORY = Object.entries(ACTIVITY_CATEGORY).reduce((acc, [model, cat]) => {
+  (acc[cat] = acc[cat] || []).push(model);
+  return acc;
+}, {});
+
+/**
+ * GET /companies/:id/activity?page=&limit=&category=
+ *
+ * `category` no es un campo guardado: se deriva de `target_model`, que es
+ * texto libre. Filtrar por categoria se traduce a un `$in` de los modelos que
+ * caen en ella; una categoria desconocida NO se ignora en silencio, se declara
+ * en `filters` y la lista sale sin filtrar.
+ */
+const platformCompanyActivity = (deps) => async (request, response) => {
+  const d = withDeps(deps);
+  try {
+    const id = String(request.params?.id || '');
+    const company = await resolveTabCompany(d, id);
+    if (!company) return notFound(response);
+
+    const { page, limit } = readListQuery(request.query || {});
+    const category = String(request.query?.category || '').trim();
+    const models = category ? MODELS_BY_CATEGORY[category] : null;
+
+    const filter = { company_id: id };
+    if (models) filter.target_model = { $in: models };
+
+    const [total, docs] = await Promise.all([
+      d.StaffActivityLog.countDocuments(filter),
+      // `timestamp`, NO `createdAt`: este modelo define el suyo.
+      d.StaffActivityLog.find(filter)
+        .sort({ timestamp: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    return response.status(200).json(
+      listBody({
+        rows: docs.map((doc) =>
+          companyActivityRow({ doc, category: activityCategory(doc.target_model) })
+        ),
+        page,
+        limit,
+        total,
+        filters: {
+          category: {
+            supported: Object.keys(MODELS_BY_CATEGORY),
+            applied: models ? category : null,
+            ...(category && !models ? { note: `"${category}" no es una categoria conocida` } : {}),
+          },
+        },
+      })
+    );
+  } catch (error) { return fail(request, response, error); }
+};
+
+/**
+ * GET /companies/:id/transactions?page=&limit=
+ *
+ * `Transaction.company` se escribe con el id o con el nombre segun el camino,
+ * asi que se buscan los dos. Lleva el correo del consumidor, que la lista
+ * entre clientes no lleva.
+ */
+const platformCompanyTransactions = (deps) => async (request, response) => {
+  const d = withDeps(deps);
+  try {
+    const id = String(request.params?.id || '');
+    const company = await resolveTabCompany(d, id);
+    if (!company) return notFound(response);
+
+    const { page, limit } = readListQuery(request.query || {});
+    const filter = { company: { $in: [id, ...(company.name ? [company.name] : [])] } };
+
+    const [total, docs] = await Promise.all([
+      d.Transaction.countDocuments(filter),
+      d.Transaction.find(filter)
+        .sort({ created_at: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+    ]);
+
+    return response.status(200).json(
+      listBody({
+        rows: docs.map((doc) => companyTransactionRow({ doc })),
+        page,
+        limit,
+        total,
+        totals: {
+          count: total,
+          // Dinero: no esta guardado en ninguno de los dos modelos.
+          volumeCents: null,
+          refundsCents: null,
+        },
+      })
+    );
+  } catch (error) { return fail(request, response, error); }
+};
+
+/**
+ * GET /companies/:id/events?page=&limit=
+ *
+ * `type: 'event'` como en todas partes. `consumersCount` sale de
+ * `User.event_providers`, que guarda ids de evento —NO de `eventSelected`,
+ * que guarda nombres— y se cuenta para TODA la pagina en una agregacion, no
+ * una consulta por fila.
+ */
+const platformCompanyEvents = (deps) => async (request, response) => {
+  const d = withDeps(deps);
+  try {
+    const id = String(request.params?.id || '');
+    const company = await resolveTabCompany(d, id);
+    if (!company) return notFound(response);
+
+    const { page, limit } = readListQuery(request.query || {});
+    const filter = { type: EVENT_TYPE, company_id: id };
+
+    const [total, docs] = await Promise.all([
+      d.Event.countDocuments(filter),
+      d.Event.find(filter).sort({ _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+    ]);
+
+    const ids = docs.map((doc) => String(doc._id));
+    const counts = new Map();
+    if (ids.length) {
+      const grouped = await d.User.aggregate([
+        { $match: { event_providers: { $in: ids } } },
+        { $unwind: '$event_providers' },
+        { $match: { event_providers: { $in: ids } } },
+        { $group: { _id: '$event_providers', n: { $sum: 1 } } },
+      ]);
+      for (const row of grouped || []) counts.set(String(row._id), Number(row.n || 0));
+    }
+
+    return response.status(200).json(
+      listBody({
+        rows: docs.map((doc) =>
+          companyEventRow({
+            doc,
+            status: eventStatus({
+              active: Boolean(doc.active),
+              startsAt: iso(doc.eventInfoDetail?.dateBegin),
+            }),
+            consumersCount: counts.get(String(doc._id)) ?? 0,
+          })
+        ),
+        page,
+        limit,
+        total,
+      })
+    );
+  } catch (error) { return fail(request, response, error); }
+};
+
+/**
+ * GET /companies/:id/inventory?page=&limit=
+ *
+ * Agrupado por modelo, que es como lo lee esta pestaña. Un cliente sin cruce a
+ * SQL no tiene inventario que enseñar: lista vacia con `total: 0`, y NO el
+ * inventario de todos, que es lo que pasaria si se quitara el filtro.
+ */
+const platformCompanyInventory = (deps) => async (request, response) => {
+  const d = withDeps(deps);
+  try {
+    const id = String(request.params?.id || '');
+    const company = await resolveTabCompany(d, id);
+    if (!company) return notFound(response);
+
+    const { page, limit } = readListQuery(request.query || {});
+    if (company.sqlId === null) {
+      return response.status(200).json(
+        listBody({ rows: [], page, limit, total: 0, totals: { total: 0, available: 0, out: 0, lost: null } })
+      );
+    }
+
+    const [[counted]] = await d.query(
+      'SELECT COUNT(DISTINCT i.item_group, i.category_name, i.location) AS groups, ' +
+        'COUNT(*) AS total, SUM(i.warehouse <> 0) AS available, SUM(i.warehouse = 0) AS out_now ' +
+        'FROM item_inv i WHERE i.company_id = ?',
+      [company.sqlId]
+    );
+    const [rows] = await d.query(
+      'SELECT i.item_group, i.category_name, i.location, COUNT(*) AS total, ' +
+        'SUM(i.warehouse <> 0) AS available, SUM(i.warehouse = 0) AS out_now, ' +
+        // Texto, no numero: los seriales llevan un contador al final.
+        'MIN(i.serial_number) AS serial_min, MAX(i.serial_number) AS serial_max ' +
+        'FROM item_inv i WHERE i.company_id = ? ' +
+        'GROUP BY i.item_group, i.category_name, i.location ' +
+        'ORDER BY total DESC, i.item_group ASC LIMIT ? OFFSET ?',
+      [company.sqlId, limit, (page - 1) * limit]
+    );
+
+    return response.status(200).json(
+      listBody({
+        rows: rows.map((row) => companyInventoryRow({ row })),
+        page,
+        limit,
+        total: Number(counted?.groups ?? 0),
+        totals: {
+          total: Number(counted?.total ?? 0),
+          available: Number(counted?.available ?? 0),
+          out: Number(counted?.out_now ?? 0),
+          lost: null,
+        },
+      })
+    );
+  } catch (error) { return fail(request, response, error); }
+};
+
+/**
+ * GET /companies/:id/members?page=&limit=&search=
+ *
+ * Alumnos, desde `members_info`. Sin cruce a SQL no hay alumnos que contar.
+ */
+const platformCompanyMembers = (deps) => async (request, response) => {
+  const d = withDeps(deps);
+  try {
+    const id = String(request.params?.id || '');
+    const company = await resolveTabCompany(d, id);
+    if (!company) return notFound(response);
+
+    const { page, limit, search } = readListQuery(request.query || {});
+    if (company.sqlId === null) {
+      return response.status(200).json(listBody({ rows: [], page, limit, total: 0 }));
+    }
+
+    const where = ['m.company_id = ?'];
+    const params = [company.sqlId];
+    if (search) {
+      where.push('(m.first_name LIKE ? OR m.last_name LIKE ? OR m.email LIKE ? OR m.external_id LIKE ?)');
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
+    }
+    const clause = `WHERE ${where.join(' AND ')}`;
+
+    const [[{ total }]] = await d.query(
+      `SELECT COUNT(*) AS total FROM members_info m ${clause}`, params
+    );
+    const [rows] = await d.query(
+      'SELECT m.member_id, m.external_id, m.first_name, m.last_name, m.email ' +
+        `FROM members_info m ${clause} ORDER BY m.member_id DESC LIMIT ? OFFSET ?`,
+      [...params, limit, (page - 1) * limit]
+    );
+
+    return response.status(200).json(
+      listBody({ rows: rows.map((row) => memberRow({ row })), page, limit, total: Number(total ?? 0) })
+    );
+  } catch (error) { return fail(request, response, error); }
+};
+
+/**
+ * GET /companies/:id/consumers?page=&limit=&search=
+ *
+ * Por `User.company_providers`, NO por `consumer_info`: esa tabla SQL no tiene
+ * columna de compañia. `transactionsCount` se cuenta para toda la pagina de
+ * una vez, agrupando por correo, que es lo unico que las dos colecciones
+ * comparten.
+ */
+const platformCompanyConsumers = (deps) => async (request, response) => {
+  const d = withDeps(deps);
+  try {
+    const id = String(request.params?.id || '');
+    const company = await resolveTabCompany(d, id);
+    if (!company) return notFound(response);
+
+    const { page, limit, search } = readListQuery(request.query || {});
+    const filter = { company_providers: id };
+    if (search) {
+      const safe = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      filter.$or = [
+        { name: { $regex: safe, $options: 'i' } },
+        { lastName: { $regex: safe, $options: 'i' } },
+        { email: { $regex: safe, $options: 'i' } },
+      ];
+    }
+
+    const [total, docs] = await Promise.all([
+      d.User.countDocuments(filter),
+      d.User.find(filter).sort({ _id: -1 }).skip((page - 1) * limit).limit(limit).lean(),
+    ]);
+
+    const emails = docs.map((doc) => doc.email).filter(Boolean);
+    const byEmail = new Map();
+    if (emails.length) {
+      const grouped = await d.Transaction.aggregate([
+        { $match: { 'consumerInfo.email': { $in: emails }, company: { $in: [id, ...(company.name ? [company.name] : [])] } } },
+        { $group: { _id: '$consumerInfo.email', n: { $sum: 1 } } },
+      ]);
+      for (const row of grouped || []) byEmail.set(String(row._id), Number(row.n || 0));
+    }
+
+    return response.status(200).json(
+      listBody({
+        rows: docs.map((doc) =>
+          consumerRow({ doc, transactionsCount: doc.email ? byEmail.get(doc.email) ?? 0 : null })
+        ),
+        page,
+        limit,
+        total,
+      })
+    );
+  } catch (error) { return fail(request, response, error); }
+};
+
+/**
+ * GET /companies/:id/staff?page=&limit=
+ *
+ * El equipo vive en `Company.employees[]`; MFA y ultimo acceso viven en
+ * `AdminUser`. Se cruzan por correo. Un empleado sin cuenta sale con esos dos
+ * campos a null: no ha entrado nunca porque no puede.
+ *
+ * La paginacion se hace en memoria A PROPOSITO: `employees` es un array dentro
+ * del documento de la compañia, asi que ya esta entero en memoria en cuanto se
+ * lee la compañia. Paginarlo en Mongo costaria mas que recortarlo aqui.
+ */
+const platformCompanyStaff = (deps) => async (request, response) => {
+  const d = withDeps(deps);
+  try {
+    const id = String(request.params?.id || '');
+    const company = await resolveTabCompany(d, id);
+    if (!company) return notFound(response);
+
+    const { page, limit } = readListQuery(request.query || {});
+    const doc = await d.Company.findOne({ _id: id }).select('employees').lean();
+    const employees = Array.isArray(doc?.employees) ? doc.employees : [];
+    const slice = employees.slice((page - 1) * limit, (page - 1) * limit + limit);
+
+    const emails = slice.map((e) => e.email).filter(Boolean);
+    const accounts = emails.length
+      ? await d.AdminUser.find({ email: { $in: emails } })
+          .select('email mfaEnabled lastLoginAt')
+          .lean()
+      : [];
+    const byEmail = new Map(accounts.map((a) => [String(a.email), a]));
+
+    // Acciones de los ultimos 30 dias, por cuenta, en una sola agregacion.
+    const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const ids = accounts.map((a) => a._id).filter(Boolean);
+    const actions = new Map();
+    if (ids.length) {
+      const grouped = await d.StaffActivityLog.aggregate([
+        { $match: { company_id: id, staff_member_id: { $in: ids }, timestamp: { $gte: since } } },
+        { $group: { _id: '$staff_member_id', n: { $sum: 1 } } },
+      ]);
+      for (const row of grouped || []) actions.set(String(row._id), Number(row.n || 0));
+    }
+
+    return response.status(200).json(
+      listBody({
+        rows: slice.map((employee) => {
+          const account = employee.email ? byEmail.get(String(employee.email)) || null : null;
+          return staffRow({
+            employee,
+            account,
+            actions30d: account ? actions.get(String(account._id)) ?? 0 : null,
+          });
+        }),
+        page,
+        limit,
+        total: employees.length,
+      })
+    );
+  } catch (error) { return fail(request, response, error); }
+};
+
+/**
+ * GET /companies/:id/subscription
+ *
+ * Registro, no lista. Un cliente sin documento de suscripcion no es un error:
+ * esta en el plan gratuito, que es donde estan todos hoy.
+ */
+const platformCompanySubscription = (deps) => async (request, response) => {
+  const d = withDeps(deps);
+  try {
+    const id = String(request.params?.id || '');
+    const company = await resolveTabCompany(d, id);
+    if (!company) return notFound(response);
+
+    const [doc, companyDoc] = await Promise.all([
+      d.CompanySubscription.findOne({ company: id }).lean(),
+      d.Company.findOne({ _id: id }).select('employees').lean(),
+    ]);
+
+    const seatsUsed = Array.isArray(companyDoc?.employees)
+      ? companyDoc.employees.filter((e) => String(e?.status || '').toLowerCase() === 'active').length
+      : null;
+
+    return response.status(200).json(
+      subscriptionBody({
+        doc,
+        limits: effectiveLimits(doc),
+        seatsUsed,
+        // El documento no declara `timestamps`, asi que la fecha de alta sale
+        // del ObjectId, que la lleva dentro.
+        startedAt: doc?._id ? createdAtFromId(String(doc._id)) : null,
+      })
+    );
+  } catch (error) { return fail(request, response, error); }
+};
+
+/**
+ * GET /companies/:id/merchant
+ *
+ * 501, con la razon dentro. Ver MERCHANT_NOT_SERVED: todo lo que esta pestaña
+ * enseña es estado de Stripe, y este servidor solo guarda el formulario de
+ * alta. Contestar 200 con todo a null diria que el cliente no puede cobrar.
+ */
+const platformCompanyMerchant = () => async (request, response) =>
+  response.status(501).json(MERCHANT_NOT_SERVED);
 
 module.exports = {
   platformMe,
@@ -535,4 +1066,15 @@ module.exports = {
   platformEvents,
   platformActivity,
   platformCompanyDetail,
+  platformAttention,
+  // Las nueve pestañas de la ficha
+  platformCompanyActivity,
+  platformCompanyTransactions,
+  platformCompanyEvents,
+  platformCompanyInventory,
+  platformCompanyMembers,
+  platformCompanyConsumers,
+  platformCompanyStaff,
+  platformCompanySubscription,
+  platformCompanyMerchant,
 };

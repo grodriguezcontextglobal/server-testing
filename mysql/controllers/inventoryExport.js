@@ -25,6 +25,7 @@ const { resolveAccess } = require('./inventoryPage');
 const { buildExportChunkQuery } = require('../queries/inventoryExportQuery');
 const { QueryParamError } = require('../queries/inventoryPageQuery');
 const { buildExportFileName } = require('../../helpers/inventoryExportSheet');
+const { respondError } = require("../../helpers/errorResponder");
 
 const JOB_TYPE = 'inventory:export';
 
@@ -90,10 +91,10 @@ function createPostInventoryExport({
       });
     } catch (error) {
       if (error instanceof QueryParamError) {
-        return response.status(400).json({ ok: false, msg: error.message });
+        return respondError(request, response, error, { status: 400 });
       }
       logger.error(`postInventoryExport: ${error.message}`);
-      return response.status(500).json({ ok: false, msg: error.message });
+      return respondError(request, response, error);
     }
   };
 }

@@ -1,4 +1,5 @@
 'use strict';
+const { respondError } = require("../helpers/errorResponder");
 
 /**
  * PATCH /api/company/update-company/register-process/:id — el paso de Stripe del
@@ -62,6 +63,11 @@ function createLinkStripeAccountAtRegistration({ Company, isValidObjectId, now =
       }
 
       const { writes, error } = parseAccounts(request.body?.stripe_connected_account);
+      // SIN respondError, a proposito: este `error` no es una excepcion, es la
+      // CADENA que devuelve parseAccounts ("Unknown Stripe environment: x.").
+      // Esta escrita para quien manda la peticion y es la unica forma que
+      // tiene de saber que corregir. SI-11 habla de errores internos, no de
+      // los mensajes de validacion que redactamos nosotros.
       if (error) return response.status(400).json({ ok: false, msg: error });
 
       // Atómico: solo escribe si los entornos que se piden siguen vacíos.

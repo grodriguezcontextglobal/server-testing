@@ -1,5 +1,6 @@
 const getConnection = require("../database/config");
 const logger = require("../../helpers/logger");
+const { respondError } = require("../../helpers/errorResponder");
 
 const createSubLocationPath = async (req, res) => {
   const { company_id, location_id, sub_location_path, created_by } = req.body;
@@ -51,7 +52,7 @@ const createSubLocationPath = async (req, res) => {
       });
     }
     logger.error("createSubLocationPath error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -200,7 +201,7 @@ const getLocationPathsTree = async (req, res) => {
     return res.status(200).json({ ok: true, locations: data });
   } catch (error) {
     logger.error("getLocationPathsTree error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 
@@ -303,7 +304,7 @@ const deleteSubLocationPath = async (req, res) => {
     });
   } catch (error) {
     logger.error("deleteSubLocationPath error:", error);
-    return res.status(500).json({ ok: false, msg: error.message });
+    return respondError(req, res, error);
   }
 };
 

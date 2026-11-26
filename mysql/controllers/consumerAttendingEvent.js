@@ -1,5 +1,6 @@
 require("dotenv").config({ quiet: true });
 const getConnection = require("../database/config");
+const { respondError } = require("../../helpers/errorResponder");
 
 const connection = getConnection();
 
@@ -19,7 +20,7 @@ const insertingConsumerAttendingEvent = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -44,7 +45,7 @@ const consultingCustomerAttendingEventsInfo = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
@@ -69,7 +70,7 @@ const renderAllCustomerByEvent = async (request, response) => {
     });
   } catch (error) {
     console.error("Error:", error.message);
-    response.status(500).json({ ok: false, msg: error.message });
+    return respondError(request, response, error);
   }
 };
 
