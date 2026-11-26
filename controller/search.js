@@ -10,6 +10,7 @@ const mongoose = require("mongoose");
 const moment = require("moment");
 const getConnection = require("../mysql/database/config");
 const { groupBy, noConflict } = require("lodash");
+const { respondError } = require("../helpers/errorResponder");
 
 /**
  * A keyword typed into the global search bar is user input. Escape it before it
@@ -2909,11 +2910,7 @@ const advanceSearchingQuery = async (request, response) => {
       inventoryView: inventoryView_,
     });
   } catch (error) {
-    response.status(500).json({
-      ok: false,
-      msg: error.message,
-      error: JSON.stringify(error),
-    });
+    return respondError(request, response, error);
   }
 };
 /**

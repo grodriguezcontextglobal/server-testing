@@ -1,5 +1,6 @@
 const { execFile } = require("child_process");
 const path = require("path");
+const { respondError } = require("../helpers/errorResponder");
 
 /**
  * Controller to handle heavy tasks via Go
@@ -47,7 +48,7 @@ const handleHeavyTask = async (req, res) => {
     // res.json({ ok: true, msg: "Task started successfully. We will notify you when done." });
 
   } catch (error) {
-    return res.status(500).json({ ok: false, msg: "Server error", error: JSON.stringify(error) });
+    return respondError(req, res, error, { msg: "Server error" });
   }
 };
 

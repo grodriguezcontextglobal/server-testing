@@ -10,6 +10,7 @@ const { randomUUID: uuid } = require("crypto");
 const { VALID_ROLE_TYPES } = require('../mysql/constants/roles');
 const { resolveCompanyContext } = require("../helpers/companyContext");
 const { pickCompanyUpdate } = require("../helpers/companyUpdateFields");
+const { respondError } = require("../helpers/errorResponder");
 
 const createCompany = async (request, response = express.response) => {
   try {
@@ -210,11 +211,7 @@ function createUpdatingCompany({
     });
   } catch (error) {
     log.error(error);
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      err: JSON.stringify(error),
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
   };
 }

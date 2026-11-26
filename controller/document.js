@@ -24,6 +24,7 @@ const VerificationConsumersLeaseContracts = require("../models/VerificationConsu
 const SignatureConsumer = require("../models/SignatureConsumer");
 const User = require("../models/User");
 const VerificationMemberLeaseContracts = require("../models/VerificationMemberLeaseContracts");
+const { respondError } = require("../helpers/errorResponder");
 
 // Migrado al contrato async completo (202 + jobId, ver DESIGN_task_queue.md §
 // Fase 2): a diferencia de correos/logs, el cliente SÍ necesita la URL final
@@ -522,11 +523,7 @@ const collectingSignatures = async (req, res) => {
       msg: "Signatures saved successfully",
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -611,11 +608,7 @@ const collectingSignaturesForConsumerMember = async (req, res) => {
       msg: "Signatures saved successfully",
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -678,11 +671,7 @@ const consultingSignaturesStaffMember = async (req, res) => {
       data: consultingSignatures,
     });
   } catch (error) {
-    return res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -713,11 +702,7 @@ const stampEventConsumerSignatures = async (req, res) => {
       signature: signatureData,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -758,11 +743,7 @@ const getConsumerSignatures = async (req, res) => {
       signatures,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -1178,11 +1159,7 @@ const staffMemberVerificationSignedDocumentForAssignmentDevices = async (
       contract_info: matchedContract,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 const consumerMemberVerificationSignedDocumentForAssignmentDevices = async (
@@ -1318,11 +1295,7 @@ const consumerMemberVerificationSignedDocumentForAssignmentDevices = async (
       contract_info: matchedContract,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -1459,11 +1432,7 @@ const memberVerificationSignedDocumentForAssignmentDevices = async (
       contract_info: matchedContract,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -1556,11 +1525,7 @@ const addSignatureToDocument = async (req, res) => {
       all_signed: checkIfAllContractsSigned,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 const addSignatureToConsumerDocument = async (req, res) => {
@@ -1662,11 +1627,7 @@ const addSignatureToConsumerDocument = async (req, res) => {
       all_signed: checkIfAllContractsSigned,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 
@@ -1729,11 +1690,7 @@ const addSignatureToMemberDocument = async (req, res) => {
       all_signed: checkIfAllContractsSigned,
     });
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(req, res, error);
   }
 };
 

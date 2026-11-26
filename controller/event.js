@@ -8,6 +8,7 @@ const ReceiversPool = require("../models/ReceiversPool");
 const logger = require("../helpers/logger");
 const { logStaffActivity } = require("./staffActivityLog");
 const _ = require("lodash");
+const { respondError } = require("../helpers/errorResponder");
 const createEvent = async (request, response = express.response) => {
   try {
     const cache_connection = await clientRedis();
@@ -31,11 +32,7 @@ const createEvent = async (request, response = express.response) => {
       event,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: error.message,
-      err: JSON.stringify(error),
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -183,11 +180,7 @@ const eventList = async (request, response) => {
       list,
     });
   } catch (error) {
-    return response.status(500).json({
-      ok: false,
-      msg: "Please contact Administrator",
-      error: JSON.stringify(error),
-    });
+    return respondError(request, response, error, { msg: "Please contact Administrator" });
   }
 };
 

@@ -2546,11 +2546,7 @@ const consultingCompanyInventoryBasedOnSubmittedParameters = async (
       result,
     });
   } catch (error) {
-    return response.status(500).json({
-      err: JSON.stringify(error),
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
@@ -2769,11 +2765,7 @@ const updateAllItemsInInventory = async (request, response) => {
       result: finalResult,
     });
   } catch (error) {
-    return response.status(500).json({
-      err: JSON.stringify(error),
-      msg: error.message,
-      ok: false,
-    });
+    return respondError(request, response, error);
   }
 };
 
