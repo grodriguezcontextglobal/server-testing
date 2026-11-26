@@ -220,12 +220,38 @@ describe('el codigo real como juez', () => {
     assert.deepEqual(offenders, [], 'estos devuelven el objeto entero del error');
   });
 
-  test('el middleware se monta antes que el resto', () => {
+  // Las rutas de sondeo se montan FUERA de configureMiddleware a proposito
+  // (index.js), asi que un attachErrorRef que viviera ahi dentro nunca pasaria
+  // por ellas: /ready devolvia `ref: null` siempre. Una referencia que nunca
+  // apunta a nada invita a buscar en el registro algo que no se escribio.
+  test('attachErrorRef se monta antes que las rutas de sondeo', () => {
+    // Se mira DENTRO de initializeApp, que es donde se decide el orden real:
+    // `configureMiddleware` se define arriba del fichero pero se llama abajo,
+    // asi que comparar posiciones en el texto entero no dice nada.
     const source = read('index.js');
-    const ref = source.indexOf('app.use(attachErrorRef)');
-    const log = source.indexOf('app.use(requestLogger)');
-    assert.ok(ref > 0, 'attachErrorRef no esta montado');
-    assert.ok(ref < log, 'tiene que ir antes, para que un rechazo temprano tambien se pueda nombrar');
+    const body = source.slice(source.indexOf('const initializeApp'));
+
+    const ref = body.indexOf('app.use(attachErrorRef)');
+    const health = body.indexOf('app.use(require("./routes/health"))');
+    const middleware = body.indexOf('configureMiddleware(app)');
+
+    assert.ok(ref > 0, 'attachErrorRef no esta montado en initializeApp');
+    assert.ok(health > 0, 'no se encontro el montaje de /health');
+    assert.ok(ref < health, '/health y /ready tienen que recibir la referencia');
+    assert.ok(
+      ref < middleware,
+      'y tiene que ir antes del resto de la cadena, que es la que puede rechazar'
+    );
+  });
+
+  test('/ready no promete una referencia que no existe', () => {
+    const source = read('routes/health.js');
+    if (!/ref:/.test(source)) return; // si deja de devolverla, nada que fijar
+    assert.match(
+      source,
+      /request\.errorRef/,
+      'si /ready devuelve `ref`, tiene que salir de la peticion'
+    );
   });
 
   // Un servidor que dice mas o menos segun una variable de entorno es un
