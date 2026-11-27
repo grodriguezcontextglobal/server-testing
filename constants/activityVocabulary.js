@@ -75,6 +75,12 @@ const ACTIVITY_ACTIONS = [
   // scripts/super-user-access.js).
   'GRANT',
   'REVOKE',
+  // 2026-11-27, APP-2026-016: baja y alta de un CLIENTE, no de una cuenta
+  // (scripts/company-offboard.js). Van aparte de DEACTIVATE / REACTIVATE a
+  // proposito: en un informe exportado, "DEACTIVATE Company X" se lee como si
+  // le hubieran apagado algo a una persona de esa compañia.
+  'OFFBOARD',
+  'REINSTATE',
 ];
 
 const ACTIVITY_TARGET_MODELS = [

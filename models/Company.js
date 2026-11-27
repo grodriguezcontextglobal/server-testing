@@ -271,7 +271,48 @@ const Company = new Schema({
     default: {
       "root_admin": "Root Administrator", "admin": "Administrator", "sale_manager": "Sale Manager", "event_manager": "Event Manager", "inventory_manager": "Warehouse Manager", "assistant": "Assistant", "inventory_location_manager": "Inventory Location Manager", "inventory_location_assistant": "Inventory Location Assistant", "category_manager": "Category Manager", "category_assistant": "Category Assistant"
     }
-  }
+  },
+
+  /**
+   * Baja de cliente (APP-2026-016 · AU-11).
+   *
+   * Hasta hoy no habia ningun instante desde el que contar la retencion
+   * acordada para el log del console — "mientras el cliente esta activo, mas
+   * 120 dias" —, asi que scheduler/platformAuditRetention.js contaba desde el
+   * dia en que OBSERVABA que la compañia ya no estaba en Mongo. Eso retiene de
+   * mas, nunca de menos, pero no responde "¿cuando dejo de ser cliente?".
+   *
+   * `offboardedAt` es ese instante. UN SOLO CAMPO Y NO UNA BANDERA APARTE: una
+   * compañia esta activa si y solo si `offboardedAt` es null, asi que no puede
+   * haber un `active: true` discrepando con una fecha de baja. Tampoco se
+   * llama `status`, porque ese nombre ya esta tomado por
+   * `CompanySubscription.status` (active / at_risk / trial / paused), que es el
+   * estado del PAGO y no el de la relacion: dos "status" en la misma ficha se
+   * acaban leyendo el uno por el otro.
+   *
+   * `employees[].active`, que existe desde siempre, es otra cosa: dice si UNA
+   * PERSONA sigue en la compañia. Darla de baja no da de baja al cliente.
+   *
+   * Nada borra datos por esta fecha: la retencion del log del console sigue en
+   * `warn` (PLATFORM_AUDIT_RETENTION_MODE) y lo unico que cambia es DESDE
+   * CUANDO cuenta.
+   */
+  offboardedAt: {
+    type: Date,
+    required: false,
+    default: null,
+  },
+  offboardedReason: {
+    type: String,
+    required: false,
+    default: "",
+  },
+  offboardedBy: {
+    type: Schema.Types.ObjectId,
+    ref: "AdminUser",
+    required: false,
+    default: null,
+  },
 });
 
 Company.method("toJSON", function () {
