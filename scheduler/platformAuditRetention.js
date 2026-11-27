@@ -6,19 +6,30 @@
  * LA REGLA ACORDADA: las filas de un cliente se guardan mientras el cliente
  * esta activo, mas 120 dias.
  *
- * EL PROBLEMA CON ESA REGLA, que conviene tener presente: **hoy el sistema no
- * sabe cuando un cliente deja de serlo.** El modelo Company no tiene ni bandera
- * de activo ni fecha de baja a nivel de compañia — `active` existe, pero dentro
- * de cada empleado de `employees[]`, que es otra cosa. Asi que no hay ningun
- * instante desde el que contar los 120 dias.
+ * DESDE CUANDO SE CUENTAN ESOS 120 DIAS. Desde el 2026-11-27 hay dos casos, y
+ * el primero es el bueno:
  *
- * Lo unico observable es que la compañia ya NO ESTA en Mongo. De ahi el diseño:
+ *   A. La compañia tiene `offboardedAt` (models/Company.js, APP-2026-016): se
+ *      cuenta desde esa fecha. Es el dia real de la baja, dicho por quien la
+ *      dio, y no depende de que este job pase ni de cuando pase.
  *
- *   1. Compañia presente            -> no se borra nada suyo, nunca.
- *   2. Compañia ausente por primera
- *      vez                          -> se anota el dia en `platform_audit_retention`.
- *   3. Ausente desde hace >= 120 d  -> se borran TODAS sus filas.
- *   4. Reaparece                     -> se borra su anotacion; el contador vuelve a cero.
+ *   B. No lo tiene. Entonces lo unico observable sigue siendo que la compañia
+ *      ya NO ESTA en Mongo, que es como funcionaba esto entero hasta hoy:
+ *
+ *        1. Compañia presente            -> no se borra nada suyo, nunca.
+ *        2. Ausente por primera vez      -> se anota el dia en `platform_audit_retention`.
+ *        3. Ausente desde hace >= 120 d  -> se borran TODAS sus filas.
+ *        4. Reaparece                    -> se borra su anotacion; el contador a cero.
+ *
+ * El caso B retiene de mas, nunca de menos, porque el contador arranca al
+ * detectar la ausencia y no antes. Sigue ahi para las compañias borradas a pelo
+ * de Mongo, que no dejan ningun `offboardedAt` detras. Cuando una compañia que
+ * estaba anotada en el caso B recibe su fecha, la anotacion se retira: manda la
+ * fecha declarada.
+ *
+ * Una compañia DADA DE BAJA SIGUE EXISTIENDO en Mongo. Por eso "presente" aqui
+ * no significa "existe" sino "existe y no tiene fecha de baja": si se tratara
+ * como presente por el mero hecho de existir, su log no caducaria nunca.
  *
  * Contar desde la fecha de cada fila en vez de desde la baja seria incorrecto en
  * el sentido peligroso: a un cliente dado de baja ayer se le borraria hoy mismo
@@ -36,6 +47,10 @@
  *      por primera vez               -> se anota en `platform_audit_actor_retention`.
  *   7. Asi desde hace >= 120 d       -> se borran sus filas SIN COMPAÑIA.
  *   8. Vuelve a estar activo         -> se borra su anotacion; el contador a cero.
+ *
+ * Con el mismo reparto A/B: una cuenta desactivada que tenga `deactivatedAt`
+ * —las que desactiva scheduler/staffInactivity.js lo tienen— cuenta desde esa
+ * fecha, y solo las que no lo tengan pasan por la anotacion observada.
  *
  * Las filas CON compañia de ese mismo operador no las toca este paso: sobre los
  * datos de un cliente manda la regla del cliente.
@@ -75,14 +90,16 @@ const retentionDays = (env = process.env) => {
  * Decide que hacer, sin tocar ninguna base. Separado para poder probar la regla
  * —que es la parte delicada— sin MySQL ni Mongo.
  *
- * @param {string[]} companiesInLog   ids de compañia presentes en el log
- * @param {Set<string>} presentCompanies  ids que SIGUEN existiendo en Mongo
+ * @param {string[]} subjectsInLog    ids presentes en el log
+ * @param {Set<string>} present       ids VIGENTES (existen y sin fecha de baja)
  * @param {Map<string, Date>} absentSince ids ya anotados como ausentes, y desde cuando
+ * @param {Map<string, Date>} [knownSince] fecha de baja DECLARADA; manda sobre la anotada
  * @param {Date} now
  * @param {number} days
- * @returns {{mark: string[], clear: string[], purge: {companyId: string, absentSince: Date, days: number}[]}}
+ * @returns {{mark: string[], clear: string[], purge: {subjectId: string, absentSince: Date, days: number, declared: boolean}[]}}
  */
-const planSubjectRetention = ({ subjectsInLog, present, absentSince, now, days }) => {
+const planSubjectRetention = ({ subjectsInLog, present, absentSince, knownSince, now, days }) => {
+  const declaredSince = knownSince || new Map();
   const mark = [];
   const clear = [];
   const purge = [];
@@ -96,7 +113,9 @@ const planSubjectRetention = ({ subjectsInLog, present, absentSince, now, days }
       continue;
     }
 
-    const since = absentSince.get(subjectId);
+    // La fecha declarada manda sobre la observada, y la deja sin uso.
+    const declared = declaredSince.get(subjectId) || null;
+    const since = declared || absentSince.get(subjectId);
     if (!since) {
       mark.push(subjectId);
       continue;
@@ -104,16 +123,22 @@ const planSubjectRetention = ({ subjectsInLog, present, absentSince, now, days }
 
     const elapsedDays = Math.floor((now.getTime() - since.getTime()) / DAY_MS);
     if (elapsedDays >= days) {
-      purge.push({ subjectId, absentSince: since, days: elapsedDays });
+      purge.push({ subjectId, absentSince: since, days: elapsedDays, declared: Boolean(declared) });
+      continue;
     }
+
+    // Con fecha declarada, la anotacion observada ya no pinta nada: estorba y
+    // ademas diria otra cosa. El purgado de arriba la borra por su cuenta.
+    if (declared && absentSince.has(subjectId)) clear.push(subjectId);
   }
 
   return { mark, clear, purge };
 };
 
-const planRetention = ({ companiesInLog, presentCompanies, absentSince, now, days }) => {
+const planRetention = ({ companiesInLog, presentCompanies, absentSince, offboardedAt, now, days }) => {
   const plan = planSubjectRetention({
-    subjectsInLog: companiesInLog, present: presentCompanies, absentSince, now, days,
+    subjectsInLog: companiesInLog, present: presentCompanies, absentSince,
+    knownSince: offboardedAt, now, days,
   });
   return {
     ...plan,
@@ -127,9 +152,10 @@ const planRetention = ({ companiesInLog, presentCompanies, absentSince, now, day
  * cuenta desactivada cuenta como ausente, porque a diferencia de una compañia si
  * tenemos la bandera y seria absurdo no usarla.
  */
-const planActorRetention = ({ actorsInLog, activeOperators, absentSince, now, days }) => {
+const planActorRetention = ({ actorsInLog, activeOperators, absentSince, deactivatedAt, now, days }) => {
   const plan = planSubjectRetention({
-    subjectsInLog: actorsInLog, present: activeOperators, absentSince, now, days,
+    subjectsInLog: actorsInLog, present: activeOperators, absentSince,
+    knownSince: deactivatedAt, now, days,
   });
   return {
     ...plan,
@@ -201,16 +227,31 @@ const runPlatformAuditRetention = async ({
     // como ausente en vez de reventar la consulta entera.
     const valid = ids.filter((id) => Types.ObjectId.isValid(id));
     if (!valid.length) return [];
-    const found = await Company.find({ _id: { $in: valid } }).select('_id').lean();
-    return found.map((doc) => String(doc._id));
+    const found = await Company.find({ _id: { $in: valid } }).select('_id offboardedAt').lean();
+    return found.map((doc) => ({ id: String(doc._id), offboardedAt: doc.offboardedAt || null }));
   });
 
-  const presentCompanies = new Set(await lookup(companiesInLog));
+  // El inyectable puede devolver ids a secas —lo que devolvia hasta el
+  // 2026-11-27, y lo que siguen devolviendo los tests que no miran la baja— o
+  // `{ id, offboardedAt }`. Las dos formas valen; un id suelto significa
+  // "existe y sin fecha de baja".
+  const existing = (await lookup(companiesInLog)).map((row) =>
+    typeof row === 'string'
+      ? { id: row, offboardedAt: null }
+      : { id: String(row.id ?? row._id), offboardedAt: row.offboardedAt || null }
+  );
+  // "Presente" = existe Y no esta dada de baja. Una compañia dada de baja sigue
+  // en Mongo, asi que contarla como presente dejaria su log sin caducar nunca.
+  const presentCompanies = new Set(existing.filter((c) => !c.offboardedAt).map((c) => c.id));
+  const offboardedAt = new Map(
+    existing.filter((c) => c.offboardedAt).map((c) => [c.id, new Date(c.offboardedAt)])
+  );
 
   const { mark, clear, purge } = planRetention({
     companiesInLog,
     presentCompanies,
     absentSince,
+    offboardedAt,
     now,
     days,
   });
@@ -231,17 +272,37 @@ const runPlatformAuditRetention = async ({
     // `active: { $ne: false }` y no `active: true`: una cuenta antigua sin el
     // campo sigue siendo una cuenta en uso, y tratarla como baja le borraria el
     // historial a alguien que entra todos los dias.
-    const found = await AdminUser.find({ _id: { $in: valid }, active: { $ne: false } })
-      .select('_id').lean();
-    return found.map((doc) => String(doc._id));
+    //
+    // Se piden TODAS, activas o no, porque de las desactivadas interesa
+    // `deactivatedAt`: es la fecha real de la baja, igual que `offboardedAt` lo
+    // es para una compañia, y ahorra esperar a que el job observe la ausencia.
+    const found = await AdminUser.find({ _id: { $in: valid } })
+      .select('_id active deactivatedAt').lean();
+    return found.map((doc) => ({
+      id: String(doc._id),
+      active: doc.active !== false,
+      deactivatedAt: doc.deactivatedAt || null,
+    }));
   });
 
-  const activeOperators = new Set(await operatorLookup(actorsInLog));
+  // Igual que con las compañias: un id suelto significa "activo, sin fecha".
+  const operators = (await operatorLookup(actorsInLog)).map((row) =>
+    typeof row === 'string'
+      ? { id: row, active: true, deactivatedAt: null }
+      : { id: String(row.id ?? row._id), active: row.active !== false, deactivatedAt: row.deactivatedAt || null }
+  );
+  const activeOperators = new Set(operators.filter((o) => o.active).map((o) => o.id));
+  const deactivatedAt = new Map(
+    operators
+      .filter((o) => !o.active && o.deactivatedAt)
+      .map((o) => [o.id, new Date(o.deactivatedAt)])
+  );
 
   const actorPlan = planActorRetention({
     actorsInLog,
     activeOperators,
     absentSince: actorAbsentSince,
+    deactivatedAt,
     now,
     days,
   });
@@ -261,9 +322,13 @@ const runPlatformAuditRetention = async ({
     }
     logging.info('[scheduler] platform-audit-retention (warn)', {
       scanned: companiesInLog.length,
+      offboarded: offboardedAt.size,
       wouldMark: mark.length,
       wouldClear: clear.length,
       wouldPurge: purge.length,
+      // De los que se borrarian, cuantos cuentan desde una fecha de baja real
+      // en vez de desde el dia en que el job vio la ausencia.
+      wouldPurgeFromDeclaredDate: purge.filter((p) => p.declared).length,
       orphanRows,
       orphanActors: actorsInLog.length,
       wouldMarkActors: actorPlan.mark.length,
@@ -312,6 +377,7 @@ const runPlatformAuditRetention = async ({
     logging.info('platform audit retention: deleted a former client rows', {
       companyId: item.companyId,
       absentForDays: item.days,
+      countedFrom: item.declared ? 'Company.offboardedAt' : 'first_absent_at',
       rows: outcome?.affectedRows || 0,
     });
   }
@@ -349,6 +415,7 @@ const runPlatformAuditRetention = async ({
     logging.info('platform audit retention: deleted a former operator company-less rows', {
       actorUserId: item.actorUserId,
       inactiveForDays: item.days,
+      countedFrom: item.declared ? 'AdminUser.deactivatedAt' : 'first_absent_at',
       rows: outcome?.affectedRows || 0,
     });
   }
